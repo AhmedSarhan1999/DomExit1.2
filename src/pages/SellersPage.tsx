@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatRubles } from '../utils/formatters';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
+import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { useAuth } from '../context/AuthContext';
 import {
   ShieldCheck,
@@ -42,6 +43,10 @@ export const SellersPage: React.FC = () => {
     'Договор_ДДУ_скан.pdf',
     'Справка_о_расчетах_девелопера.pdf',
   ]);
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([
+    'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
+  ]);
 
   // Created deal ID after step 4
   const [createdDealId, setCreatedDealId] = useState<string>('');
@@ -63,8 +68,31 @@ export const SellersPage: React.FC = () => {
     setCurrentStep(3);
   };
 
+  const handleAddCustomPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setUploadedPhotos(prev => [...prev, reader.result as string]);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddCustomDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      setUploadedFiles(prev => [...prev, files[0].name]);
+    }
+  };
+
   const handleSubmitFinal = async () => {
+    const newLotCode = `U-${Math.floor(10000 + Math.random() * 90000)}`;
     const newDeal = await DealsRepository.addDeal({
+      lotCode: newLotCode,
       lotTitle: `${complexName} — Выход 100%`,
       developer: complexName.split('—')[0]?.trim() || 'Девелопер СПб',
       sellerReturnRub: cleanReturnDomExit,
@@ -73,6 +101,72 @@ export const SellersPage: React.FC = () => {
       stage: 'initial_audit',
       daysLeft: 12,
     });
+
+    // Also register corresponding lot with seller uploaded photos (Mission 8.1)
+    await LotsRepository.add({
+      id: `lot-${Date.now()}`,
+      lotCode: newLotCode,
+      status: 'processing',
+      currentStage: 1, // initial audit
+      approvalStatus: 'pending_owner_approval',
+      complexName: complexName,
+      developer: complexName.split('—')[0]?.trim() || 'Девелопер СПб',
+      city: locationRegion,
+      district: locationRegion === 'spb' ? 'Приморский район' : 'ЦАО',
+      areaM2: 74.5,
+      rooms: '2-room',
+      floor: 9,
+      totalFloors: 22,
+      deliveryDate: '4 кв. 2026 г.',
+      deliveryYear: 2026,
+      finishing: 'clean',
+      imageUrl: uploadedPhotos[0] || 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1000&q=80',
+      galleryImages: uploadedPhotos,
+      sellerUploadedPhotos: uploadedPhotos,
+      approvedGalleryImages: uploadedPhotos.slice(0, 1),
+      constructionReadinessPercent: 75,
+      dduContractPrice: contractPrice,
+      cashPaidBySeller: paidAmount,
+      remainingInstallmentDebt: contractPrice - paidAmount,
+      todayDeveloperPrice: todayMarketPrice,
+      installmentQuarterlyPayment: Math.round((contractPrice - paidAmount) / 12),
+      serviceCommissionRate: 2.5,
+      serviceCommissionRub: Math.round(contractPrice * 0.025),
+      isVerified: false,
+      isUrgentExit: true,
+      isNegotiable: false,
+      isFeatured: false,
+      escrowBank: 'Sberbank',
+      tags: ['Новая заявка', 'Аудит документов'],
+      legalPassport: {
+        passedChecksCount: 38,
+        totalChecksCount: 42,
+        antiBankruptcyIndex: 95,
+        maternalCapitalUsed: false,
+        spousalConsentNotarized: true,
+        fsspDebtRub: 0,
+        efrsbBankruptcyStatus: 'clean',
+        nbkiScore: 760,
+        pdnPercent: 28,
+        developerConsentObtained: false,
+        rosreestrEsignSpeedHours: 48,
+      },
+      ownerDossier: {
+        fullNameMasked: `${sellerName.split(' ')[0]} ${sellerName.split(' ')[1] ? sellerName.split(' ')[1][0] + '.' : ''}`,
+        phoneMasked: sellerPhone.slice(0, 6) + '***' + sellerPhone.slice(-2),
+        dduNumber: `№ ДДУ-${newLotCode}`,
+        apartmentNumber: 'Квартира на согласовании',
+        hideExactFloor: true,
+        floorRangeDisplay: '7–10 этаж',
+      },
+      curator: {
+        name: 'Дежурный юрист DomExit',
+        role: 'Специалист по 214-ФЗ',
+        phone: '+7 (812) 409-32-11',
+        telegram: '@domexit_audit',
+      },
+    });
+
     setCreatedDealId(newDeal.dealId);
     try {
       await login({
@@ -469,23 +563,25 @@ export const SellersPage: React.FC = () => {
                 <p className="text-xs text-slate-500">
                   Поддерживаются форматы PDF, JPG, PNG до 50 МБ (Скан ДДУ, Справка о расчетах, Согласие супруги)
                 </p>
-                <button
-                  type="button"
-                  onClick={() => alert('Окно выбора файла открыто')}
-                  className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50"
-                >
-                  Выбрать файлы
-                </button>
+                <label className="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 cursor-pointer">
+                  <span>Выбрать сканы документов</span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={handleAddCustomDoc}
+                    accept=".pdf,.png,.jpg,.jpeg"
+                  />
+                </label>
               </div>
 
               {/* Uploaded Files List */}
               <div className="space-y-2">
                 <span className="text-xs font-bold text-slate-700 block uppercase tracking-wider">
-                  Загруженные документы (2):
+                  Загруженные документы ({uploadedFiles.length}):
                 </span>
-                {uploadedFiles.map((file) => (
+                {uploadedFiles.map((file, idx) => (
                   <div
-                    key={file}
+                    key={file + idx}
                     className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs"
                   >
                     <div className="flex items-center space-x-2">
@@ -498,6 +594,49 @@ export const SellersPage: React.FC = () => {
                     </span>
                   </div>
                 ))}
+              </div>
+
+              {/* Photo & Floorplan Upload Section (Mission 8.1) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      Фотографии квартиры и планировки ({uploadedPhotos.length})
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Куратор упакует лот и отберет подходящие кадры для открытого каталога
+                    </p>
+                  </div>
+                  <label className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-colors flex items-center space-x-1">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Добавить фото</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleAddCustomPhoto}
+                      accept="image/*"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                  {uploadedPhotos.map((photo, index) => (
+                    <div key={index} className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
+                      <img src={photo} alt={`Фото ${index + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setUploadedPhotos(prev => prev.filter((_, i) => i !== index))}
+                        className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-600 text-[10px]"
+                        title="Удалить"
+                      >
+                        ✕
+                      </button>
+                      <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded backdrop-blur-xs">
+                        {index === 0 ? 'Планировка' : `Фото ${index}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="flex justify-between items-center pt-4">

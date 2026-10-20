@@ -327,60 +327,115 @@ export const AuthModal: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Personas (For instant testing of all roles) */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              <span>{language === 'ru' ? 'Тестовые роли платформы (1 клик):' : 'Instant Role Switch (1-Click):'}</span>
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          {/* Quick Demo Personas (Mission 2.2: 7 Roles with uniform password DomExit2026!) */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+              <span className="flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>{language === 'ru' ? 'Быстрый вход для тестирования ролей:' : 'Quick Demo Login (7 Roles):'}</span>
+              </span>
+              <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded font-bold">
+                Пароль: DomExit2026!
+              </span>
             </div>
-            <div className="grid grid-cols-3 gap-1.5 text-xs font-semibold">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs font-semibold">
+              {/* 1. Owner */}
               <button
                 type="button"
                 onClick={() => quickDemoLogin('owner')}
                 disabled={loading}
-                className="py-1.5 px-2 rounded-lg bg-white hover:bg-indigo-50 text-indigo-950 border border-slate-200 hover:border-indigo-300 text-left truncate shadow-2xs text-[11px]"
+                className="p-2 rounded-xl bg-white hover:bg-indigo-50/80 text-slate-800 hover:text-indigo-950 border border-slate-200 hover:border-indigo-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
               >
-                👑 Владелец (CEO)
+                <div>
+                  <div className="font-bold text-[11px] text-indigo-900">👑 Владелец / CEO</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">amaas9499@gmail.com</div>
+                </div>
+                <span className="text-[9px] font-bold bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">Полный</span>
               </button>
+
+              {/* 2. Employee */}
               <button
                 type="button"
                 onClick={() => quickDemoLogin('employee')}
                 disabled={loading}
-                className="py-1.5 px-2 rounded-lg bg-white hover:bg-blue-50 text-blue-950 border border-slate-200 hover:border-blue-300 text-left truncate shadow-2xs text-[11px]"
+                className="p-2 rounded-xl bg-white hover:bg-blue-50/80 text-slate-800 hover:text-blue-950 border border-slate-200 hover:border-blue-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
               >
-                👔 Сотрудник (Куратор)
+                <div>
+                  <div className="font-bold text-[11px] text-blue-900">👨‍💼 Куратор / Юрист</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">amaas9494@gmail.com</div>
+                </div>
+                <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Штат</span>
               </button>
+
+              {/* 3. Bank */}
               <button
                 type="button"
-                onClick={() => quickDemoLogin('seller')}
+                onClick={() => quickDemoLogin('bank')}
                 disabled={loading}
-                className="py-1.5 px-2 rounded-lg bg-white hover:bg-emerald-50 text-emerald-950 border border-slate-200 hover:border-emerald-300 text-left truncate shadow-2xs text-[11px]"
+                className="p-2 rounded-xl bg-white hover:bg-sky-50/80 text-slate-800 hover:text-sky-950 border border-slate-200 hover:border-sky-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
               >
-                💼 Продавец Александр
+                <div>
+                  <div className="font-bold text-[11px] text-sky-900">🏦 Банк-партнер</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">bank@domexit.ru</div>
+                </div>
+                <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">Эскроу</span>
               </button>
-              <button
-                type="button"
-                onClick={() => quickDemoLogin('buyer')}
-                disabled={loading}
-                className="py-1.5 px-2 rounded-lg bg-white hover:bg-sky-50 text-sky-950 border border-slate-200 hover:border-sky-300 text-left truncate shadow-2xs text-[11px]"
-              >
-                🔑 Покупатель Иван
-              </button>
+
+              {/* 4. Partner */}
               <button
                 type="button"
                 onClick={() => quickDemoLogin('partner')}
                 disabled={loading}
-                className="py-1.5 px-2 rounded-lg bg-white hover:bg-purple-50 text-purple-950 border border-slate-200 hover:border-purple-300 text-left truncate shadow-2xs text-[11px]"
+                className="p-2 rounded-xl bg-white hover:bg-purple-50/80 text-slate-800 hover:text-purple-950 border border-slate-200 hover:border-purple-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
               >
-                🤝 Партнер (Агент)
+                <div>
+                  <div className="font-bold text-[11px] text-purple-900">🤝 Партнер-брокер</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">partner@domexit.ru</div>
+                </div>
+                <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Бонусы</span>
               </button>
+
+              {/* 5. Investor */}
               <button
                 type="button"
                 onClick={() => quickDemoLogin('investor')}
                 disabled={loading}
-                className="py-1.5 px-2 rounded-lg bg-white hover:bg-amber-50 text-amber-950 border border-slate-200 hover:border-amber-300 text-left truncate shadow-2xs text-[11px]"
+                className="p-2 rounded-xl bg-white hover:bg-amber-50/80 text-slate-800 hover:text-amber-950 border border-slate-200 hover:border-amber-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
               >
-                💎 Инвестор VIP
+                <div>
+                  <div className="font-bold text-[11px] text-amber-900">💎 VIP Инвестор</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">investor@domexit.ru</div>
+                </div>
+                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Ранний 48ч</span>
+              </button>
+
+              {/* 6. Seller */}
+              <button
+                type="button"
+                onClick={() => quickDemoLogin('seller')}
+                disabled={loading}
+                className="p-2 rounded-xl bg-white hover:bg-emerald-50/80 text-slate-800 hover:text-emerald-950 border border-slate-200 hover:border-emerald-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="font-bold text-[11px] text-emerald-900">🏠 Продавец ДДУ</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">seller@domexit.ru</div>
+                </div>
+                <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">0% сбор</span>
+              </button>
+
+              {/* 7. Buyer */}
+              <button
+                type="button"
+                onClick={() => quickDemoLogin('buyer')}
+                disabled={loading}
+                className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 border border-slate-200 hover:border-slate-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer sm:col-span-2"
+              >
+                <div>
+                  <div className="font-bold text-[11px] text-slate-900">🔑 Покупатель (100% Кэш / Ипотека)</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">client@domexit.ru / buyer@domexit.ru</div>
+                </div>
+                <span className="text-[9px] font-bold bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded">3 заявки</span>
               </button>
             </div>
           </div>

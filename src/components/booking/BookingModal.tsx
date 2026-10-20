@@ -76,6 +76,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
+    if (purchaseTrack === 'full_cash' && !uploadedDoc) {
+      setErrorMsg(
+        language === 'ru'
+          ? 'Для трека «100% Кэш» обязательно прикрепите свежую выписку со счета о наличии средств для подтверждения ликвидности.'
+          : 'Please upload a recent bank statement confirming liquidity for the 100% Cash track.'
+      );
+      return;
+    }
+
     if (purchaseTrack === 'mortgage_substitution' && !uploadedDoc) {
       setErrorMsg(
         language === 'ru'
@@ -232,6 +241,36 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
             </div>
           </div>
+
+          {/* Conditional Field for Track 1: 100% Cash (Mandatory Bank Statement) */}
+          {purchaseTrack === 'full_cash' && (
+            <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-3 animate-fade-in">
+              <div className="text-xs font-bold text-emerald-950 flex items-center space-x-2">
+                <FileCheck className="w-4 h-4 text-emerald-700" />
+                <span>Обязательное подтверждение доступной ликвидности (100% Кэш)</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Загрузите свежую банковскую выписку со счета или депозита о наличии денежных средств на сумму не менее {formatRubles(lot.dduContractPrice)}.
+              </p>
+              <div>
+                <button
+                  type="button"
+                  onClick={handleUploadBankDoc}
+                  className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-emerald-400 hover:border-emerald-500 bg-white hover:bg-emerald-50/50 text-slate-800 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-2xs"
+                >
+                  <UploadCloud className="w-4 h-4 text-emerald-600" />
+                  <span className="truncate">
+                    {uploadedDoc ? `Прикреплено: ${uploadedDoc.name}` : 'Загрузить свежую выписку со счета (PDF/JPG)'}
+                  </span>
+                </button>
+                {uploadedDoc && (
+                  <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">
+                    ✓ Выписка успешно загружена ({(uploadedDoc.size / 1024).toFixed(1)} КБ)
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Conditional Fields for Track 2 (Mandatory Bank Pre-Approval Certificate + Credit Limit) */}
           {purchaseTrack === 'mortgage_substitution' && (

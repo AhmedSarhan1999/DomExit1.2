@@ -20,7 +20,8 @@ import {
   X,
   Crown,
   Briefcase,
-  ArrowRightLeft
+  ArrowRightLeft,
+  UserCheck
 } from 'lucide-react';
 
 export const AdminSidebar: React.FC = () => {
@@ -171,17 +172,50 @@ export const AdminSidebar: React.FC = () => {
 
         <div className="pt-4 pb-2 px-3">
           <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-            {language === 'ru' ? 'Клиентский доступ' : 'Client Access'}
+            {language === 'ru' ? 'Журналы и комплаенс' : 'Logs & Compliance'}
           </span>
         </div>
 
+        {/* MISSION 12: Архив сделок и журнал решений */}
         <Link
-          to="/portal"
+          to="/admin/archive-logs"
           onClick={() => setMobileDrawerOpen(false)}
-          className="flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-600 hover:text-sky-700 hover:bg-slate-50 transition-colors"
+          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+            isActive('/admin/archive-logs')
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
         >
-          <Layers className="w-4 h-4 text-sky-600" />
-          <span>{language === 'ru' ? 'Личный кабинет клиента' : 'Client Portal'}</span>
+          <FileText className="w-4 h-4 text-emerald-600" />
+          <span>{language === 'ru' ? 'Архив сделок и журнал решений' : 'Deals Archive & Audit Logs'}</span>
+        </Link>
+
+        {/* MISSION 14: Мой профиль куратора */}
+        <Link
+          to="/admin/profile"
+          onClick={() => setMobileDrawerOpen(false)}
+          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+            isActive('/admin/profile')
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <UserCheck className="w-4 h-4 text-indigo-600" />
+          <span>{language === 'ru' ? 'Мой профиль куратора' : 'My Curator Profile'}</span>
+        </Link>
+
+        {/* Bank Portal Link */}
+        <Link
+          to="/bank-portal"
+          onClick={() => setMobileDrawerOpen(false)}
+          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+            isActive('/bank-portal')
+              ? 'bg-sky-50 text-sky-800 border border-sky-200/80 shadow-2xs'
+              : 'text-slate-600 hover:text-sky-900 hover:bg-slate-50'
+          }`}
+        >
+          <Building2 className="w-4 h-4 text-sky-600" />
+          <span>{language === 'ru' ? 'Банковский шлюз (Эскроу)' : 'Bank Escrow Gateway'}</span>
         </Link>
       </nav>
 

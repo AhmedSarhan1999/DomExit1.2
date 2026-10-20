@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useMarketSettings } from '../utils/useMarketSettings';
 import {
   Quote,
   TrendingDown,
@@ -15,6 +16,7 @@ import {
 
 export const StoryPage: React.FC = () => {
   const { language } = useLanguage();
+  const marketSettings = useMarketSettings();
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
@@ -68,10 +70,14 @@ export const StoryPage: React.FC = () => {
 
               <div className="bg-slate-50 border-l-4 border-emerald-500 p-5 rounded-r-2xl text-xs sm:text-sm text-slate-700 leading-relaxed space-y-2 border-y border-r border-slate-200/60">
                 <p>
-                  Рынок новостроек Санкт-Петербурга и Москвы переживает тектонический сдвиг. В 2023–2024 годах тысячи семей приобрели квартиры в рассрочку от застройщиков в надежде перейти на ипотеку перед вводом дома. Но взлет ключевой ставки до 21% закрыл эту возможность.
+                  {language === 'ru'
+                    ? `Рынок новостроек Санкт-Петербурга и Москвы переживает тектонический сдвиг. В 2023–2024 годах тысячи семей приобрели квартиры в рассрочку от застройщиков в надежде перейти на ипотеку перед вводом дома. Но взлет ключевой ставки до ${marketSettings.cbrKeyRatePercent}% закрыл эту возможность.`
+                    : `The primary real estate market in St. Petersburg and Moscow is experiencing a tectonic shift. Thousands of families bought apartments on installments hoping to switch to mortgages, but key rate hikes to ${marketSettings.cbrKeyRatePercent}% closed this door.`}
                 </p>
                 <p>
-                  Стандартный рынок предлагал лишь два губительных пути: потерять 15% штрафа при расторжении с девелопером или месяцами безуспешно продавать лот на Авито. Мы создали DomExit как третий — честный и математически безупречный путь.
+                  {language === 'ru'
+                    ? `Стандартный рынок предлагал лишь два губительных пути: потерять ${marketSettings.developerPenaltyPercent}% штрафа при расторжении с девелопером или месяцами безуспешно продавать лот на Авито. Мы создали DomExit как третий — честный и математически безупречный путь.`
+                    : `The standard market offered only two destructive paths: lose a ${marketSettings.developerPenaltyPercent}% cancellation penalty to the developer or wait months on Avito. We built DomExit as the institutional third way.`}
                 </p>
               </div>
 
@@ -124,7 +130,9 @@ export const StoryPage: React.FC = () => {
               «Ловушка переходного периода»
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Девелоперы массово выдавали программы «10/90» и «20/80» с отсрочкой основного платежа до конца 2025–2026 годов. При текущей ставке ЦБ рефинансировать этот остаток в базовую ипотеку под 22%–25% годовых для большинства покупателей стало экономически невозможно: ежемесячный платеж вырос в 3.5 раза.
+              {language === 'ru'
+                ? `Девелоперы массово выдавали программы «10/90» и «20/80» с отсрочкой основного платежа до конца 2025–2026 годов. При текущей рыночной ставке ${marketSettings.cbrKeyRatePercent}% (в сравнении с субсидированной ${marketSettings.familyMortgageRatePercent}%) рефинансировать этот остаток в базовую ипотеку для большинства покупателей стало невозможно: платеж вырос кратно.`
+                : `Developers widely issued delayed payment plans. With market rates at ${marketSettings.cbrKeyRatePercent}% compared to subsidized ${marketSettings.familyMortgageRatePercent}%, refinancing became impossible for most buyers.`}
             </p>
           </div>
 
@@ -137,7 +145,9 @@ export const StoryPage: React.FC = () => {
               «Тупик стандартного рынка»
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              При попытке расторгнуть договор девелопер удерживает до 15% от полной стоимости квартиры (штраф 1.5–2 млн рублей) и затягивает возврат остатка на 6–18 месяцев. Агентства недвижимости не умеют работать с обременениями рассрочки и требуют непомерные комиссии.
+              {language === 'ru'
+                ? `При попытке расторгнуть договор девелопер удерживает до ${marketSettings.developerPenaltyPercent}% от полной стоимости квартиры (штраф 1.5–3 млн рублей) и затягивает возврат остатка на 6–18 месяцев. DomExit решает это через 100% возврат за 7–14 дней.`
+                : `Developers retain up to ${marketSettings.developerPenaltyPercent}% cancellation penalties and delay refunds. DomExit resolves this via 100% cash refund in 7-14 days.`}
             </p>
           </div>
 

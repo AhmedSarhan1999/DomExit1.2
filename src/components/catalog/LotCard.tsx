@@ -41,11 +41,15 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
                 <span>{language === 'ru' ? 'Доступен' : 'Available'}</span>
               </span>
             )}
-            {lotStatus === 'processing' && (
-              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-md">
-                <span>{language === 'ru' ? `В сделке (этап ${lot.currentStage || 2}/5)` : `In Deal (${lot.currentStage || 2}/5)`}</span>
+            {lot.currentStage === 2 ? (
+              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-indigo-600 text-white text-[11px] font-bold shadow-md">
+                <span>{language === 'ru' ? 'VIP Ранний доступ (Аудит)' : 'VIP Early Access (Audit)'}</span>
               </span>
-            )}
+            ) : lotStatus === 'processing' ? (
+              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-md">
+                <span>{language === 'ru' ? `В сделке (этап ${lot.currentStage || 3}/5)` : `In Deal (${lot.currentStage || 3}/5)`}</span>
+              </span>
+            ) : null}
             {lotStatus === 'closed' && (
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-slate-700 text-white text-[11px] font-bold shadow-md">
                 <span>{language === 'ru' ? 'Сделка закрыта' : 'Closed Deal'}</span>

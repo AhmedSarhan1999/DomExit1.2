@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Lot } from '../types';
+import { Lot, Employee } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { formatRubles, formatPercent } from '../utils/formatters';
 import { BookingModal } from '../components/booking/BookingModal';
 import {
@@ -22,6 +23,8 @@ import {
   Building,
   User,
   Send,
+  Phone,
+  MessageCircle,
   ArrowRight,
   Maximize2,
 } from 'lucide-react';
@@ -32,6 +35,7 @@ export const LotDetailsPage: React.FC = () => {
   const { isFavorite, toggleFavorite } = useAuth();
 
   const [lot, setLot] = useState<Lot | null>(null);
+  const [curatorEmployee, setCuratorEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [accordionDevOpen, setAccordionDevOpen] = useState(false);
@@ -46,6 +50,19 @@ export const LotDetailsPage: React.FC = () => {
       const code = lotCode || 'U-10566';
       const data = await LotsRepository.getByCode(code);
       setLot(data);
+      if (data) {
+        if (data.assignedEmployeeId) {
+          const emp = await EmployeesRepository.getById(data.assignedEmployeeId);
+          if (emp) setCuratorEmployee(emp);
+        } else if (data.curator?.name) {
+          const allEmps = await EmployeesRepository.getAll();
+          const match = allEmps.find(e => 
+            e.name.toLowerCase().includes(data.curator.name.toLowerCase()) || 
+            data.curator.name.toLowerCase().includes(e.name.toLowerCase())
+          );
+          if (match) setCuratorEmployee(match);
+        }
+      }
       setLoading(false);
     }
     fetchLot();
@@ -552,25 +569,78 @@ export const LotDetailsPage: React.FC = () => {
               </Link>
             </div>
 
-            {/* Personal Curator Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
-                  АС
-                </div>
-                <div>
-                  <span className="font-bold text-xs text-slate-900 block">{lot.curator.name}</span>
-                  <span className="text-[11px] text-slate-500 block">{lot.curator.role}</span>
+            {/* Personal Curator Card (Mission 14) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
+              <div className="flex items-center space-x-3.5">
+                {curatorEmployee?.photoUrl || lot.curator.photoUrl ? (
+                  <img
+                    src={curatorEmployee?.photoUrl || lot.curator.photoUrl}
+                    alt={curatorEmployee?.name || lot.curator.name}
+                    className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-sm shadow-xs shrink-0">
+                    {(curatorEmployee?.name || lot.curator.name).slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    {language === 'ru' ? 'Персональный куратор лота' : 'Personal Lot Curator'}
+                  </span>
+                  <span className="font-bold text-sm text-slate-900 block truncate">
+                    {curatorEmployee?.name || lot.curator.name}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-semibold block truncate">
+                    {curatorEmployee?.role || lot.curator.role}
+                  </span>
                 </div>
               </div>
-              <a
-                href="https://t.me/domexit_ru"
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-colors shadow-xs"
-              >
-                Написать
-              </a>
+
+              {(curatorEmployee?.bio || lot.curator.bio) && (
+                <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  {curatorEmployee?.bio || lot.curator.bio}
+                </p>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <a
+                  href={
+                    (curatorEmployee?.telegram || lot.curator.telegram || '').startsWith('http')
+                      ? (curatorEmployee?.telegram || lot.curator.telegram)
+                      : `https://t.me/${(curatorEmployee?.telegram || lot.curator.telegram || 'domexit_ru').replace('@', '')}`
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs text-center flex items-center justify-center space-x-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Telegram</span>
+                </a>
+
+                {(curatorEmployee?.phone || lot.curator.phone) && (
+                  <a
+                    href={`tel:${(curatorEmployee?.phone || lot.curator.phone).replace(/[^\d+]/g, '')}`}
+                    className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors flex items-center justify-center space-x-1"
+                    title={curatorEmployee?.phone || lot.curator.phone}
+                  >
+                    <Phone className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline">{language === 'ru' ? 'Звонок' : 'Call'}</span>
+                  </a>
+                )}
+
+                {(curatorEmployee?.whatsapp || lot.curator.whatsapp) && (
+                  <a
+                    href={`https://wa.me/${(curatorEmployee?.whatsapp || lot.curator.whatsapp || '').replace(/[^\d]/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-colors flex items-center justify-center space-x-1"
+                    title="WhatsApp"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
+                    <span className="hidden sm:inline">WhatsApp</span>
+                  </a>
+                )}
+              </div>
             </div>
 
           </div>

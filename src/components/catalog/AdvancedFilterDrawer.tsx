@@ -24,8 +24,8 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
   const [deliveryYear, setDeliveryYear] = useState<string>('all');
   const [aaaDevelopersOnly, setAaaDevelopersOnly] = useState<boolean>(true);
   const [cessionAssistIncluded, setCessionAssistIncluded] = useState<boolean>(true);
-  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [minDiscount, setMinDiscount] = useState<number>(15);
+  const [urgentOnly, setUrgentOnly] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -36,8 +36,8 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
     setDeliveryYear('all');
     setAaaDevelopersOnly(false);
     setCessionAssistIncluded(false);
-    setPaymentMethod('cash');
     setMinDiscount(10);
+    setUrgentOnly(false);
     onApply({});
   };
 
@@ -49,8 +49,8 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
       deliveryYear,
       aaaDevelopersOnly,
       cessionAssistIncluded,
-      paymentMethod,
       minDiscount,
+      urgentOnly,
     });
     onClose();
   };
@@ -211,42 +211,14 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
           </div>
         </div>
 
-        {/* Column 3: Financing & Programs */}
+        {/* Column 3: Discount & Urgency (Funding type removed per Task 3) */}
         <div className="bg-slate-50/80 rounded-2xl p-5 border border-slate-200/80 space-y-4">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800">
-            {language === 'ru' ? '3. Финансирование и программы' : '3. Financing & Programs'}
+          <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+            {language === 'ru' ? '3. Скидка и параметры выгоды' : '3. Discount & Financial Advantage'}
           </h4>
 
-          <div>
-            <label className="block text-xs text-slate-600 mb-2">
-              {language === 'ru' ? 'Форма расчета:' : 'Settlement format:'}
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { id: 'cash', label: 'Наличный расчет' },
-                { id: 'transfer', label: 'Перевод рассрочки' },
-                { id: 'family_6', label: 'Семейная ипотека 6%' },
-                { id: 'it', label: 'IT-ипотека' },
-                { id: 'military', label: 'Военная ипотека' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPaymentMethod(p.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    paymentMethod === p.id
-                      ? 'bg-amber-500 text-white font-bold shadow-xs'
-                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Discount Range Buttons */}
-          <div className="pt-2 border-t border-slate-200">
+          <div>
             <label className="block text-xs text-slate-600 mb-2">
               {language === 'ru' ? 'Минимальная скидка от цены рынка:' : 'Min market discount:'}
             </label>
@@ -256,7 +228,7 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
                   key={d}
                   type="button"
                   onClick={() => setMinDiscount(d)}
-                  className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  className={`py-2 rounded-lg text-xs font-semibold transition-colors ${
                     minDiscount === d
                       ? 'bg-emerald-600 text-white font-bold shadow-xs'
                       : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -266,6 +238,25 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-200 text-xs text-slate-700 space-y-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={urgentOnly}
+                onChange={(e) => setUrgentOnly(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 accent-emerald-600"
+              />
+              <span className="font-semibold text-slate-800">
+                {language === 'ru' ? 'Только срочный выход (максимальный дисконт)' : 'Urgent exits only (max discount)'}
+              </span>
+            </label>
+            <p className="text-[11px] text-slate-500 leading-relaxed bg-white p-2.5 rounded-xl border border-slate-200">
+              {language === 'ru'
+                ? 'ℹ️ Способ финансирования (100% кэш или ипотека) выбирается покупателем на этапе подачи заявки в зависимости от персональной кредитоспособности.'
+                : 'ℹ️ Funding method (100% cash or mortgage) is selected by the buyer at application depending on credit rating.'}
+            </p>
           </div>
         </div>
 

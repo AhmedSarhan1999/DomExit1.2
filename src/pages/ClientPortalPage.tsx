@@ -29,7 +29,11 @@ import {
   Check,
   CreditCard,
   Banknote,
-  Sliders
+  Sliders,
+  Copy,
+  ExternalLink,
+  FileCheck,
+  Upload
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -39,7 +43,10 @@ import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
-import { DealTrack, BuyerCandidate, Lot, PartnerEntry, InvestorApplication } from '../types';
+import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
+import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
+import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
+import { DealTrack, BuyerCandidate, Lot, PartnerEntry, InvestorApplication, PartnerPreliminaryRequest, BuyerCreditLimitRequest, Employee } from '../types';
 import { FileManager } from '../utils/fileManager';
 
 export const ClientPortalPage: React.FC = () => {
@@ -61,12 +68,34 @@ export const ClientPortalPage: React.FC = () => {
   const [allLots, setAllLots] = useState<Lot[]>([]);
   const [favoriteLots, setFavoriteLots] = useState<Lot[]>([]);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  // Task 4: 7-Day Partner Preliminary Requests & Completion
+  const [pendingPreliminaryReqs, setPendingPreliminaryReqs] = useState<PartnerPreliminaryRequest[]>([]);
+  const [partnerRequests, setPartnerRequests] = useState<PartnerPreliminaryRequest[]>([]);
+  const [selectedReqForCompletion, setSelectedReqForCompletion] = useState<PartnerPreliminaryRequest | null>(null);
+  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState<boolean>(false);
+  const [completionFileUploaded, setCompletionFileUploaded] = useState<boolean>(false);
+  const [completionNotes, setCompletionNotes] = useState<string>('');
+
+  // Task 6: Buyer Bank Credit Limit State
+  const [creditLimitRequest, setCreditLimitRequest] = useState<BuyerCreditLimitRequest | null>(null);
+  const [isCreditLimitModalOpen, setIsCreditLimitModalOpen] = useState<boolean>(false);
+  const [requestedCreditAmount, setRequestedCreditAmount] = useState<number>(8500000);
+  const [selectedBank, setSelectedBank] = useState<string>('Сбербанк');
+  const [curator, setCurator] = useState<Employee | null>(null);
 
   // Partner Referral Form State
-  const [refClientName, setRefClientName] = useState('');
-  const [refClientPhone, setRefClientPhone] = useState('+7 ');
-  const [refComplexName, setRefComplexName] = useState('');
+  const [refClientCode, setRefClientCode] = useState<string>('');
+  const [refClientName, setRefClientName] = useState<string>('');
+  const [refClientPhone, setRefClientPhone] = useState<string>('+7 ');
+  const [refComplexName, setRefComplexName] = useState<string>('');
+  const [refDeveloper, setRefDeveloper] = useState<string>('Setl Group');
+  const [refPaidAmount, setRefPaidAmount] = useState<number>(2500000);
   const [refDduPrice, setRefDduPrice] = useState<number>(10500000);
+  const [refNotes, setRefNotes] = useState<string>('');
+  const [partnerError, setPartnerError] = useState<string | null>(null);
+
   const [partnerDeals, setPartnerDeals] = useState<any[]>([
     {
       id: 'REF-801',
@@ -92,16 +121,62 @@ export const ClientPortalPage: React.FC = () => {
   const [investorBudgetMillions, setInvestorBudgetMillions] = useState<number>(35);
   const [selectedPackage, setSelectedPackage] = useState<'flipping' | 'turnkey' | 'syndicate'>('turnkey');
 
+  const formatRemainingTime = (expiresAt: string): { text: string; isExpired: boolean } => {
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) {
+      return { text: language === 'ru' ? 'Срок истек' : 'Expired', isExpired: true };
+    }
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return {
+      text: language === 'ru' ? `${days} дн. ${hours} ч. ${minutes} мин.` : `${days}d ${hours}h ${minutes}m`,
+      isExpired: false
+    };
+  };
+
   const loadData = async () => {
-    const [d, c, lotsData] = await Promise.all([
+    const clientCode = user?.clientCode || 'DEX-784105';
+    const [d, c, lotsData, pendingReqs, allPartnerReqs, allCreditLimits, allEmps] = await Promise.all([
       DealsRepository.getById(user?.activeDealId || 'DEAL-2025-10566'),
       CandidatesRepository.getAll(),
       LotsRepository.getAll(),
+      PartnerRequestsRepository.getPendingByClientCode(clientCode),
+      PartnerRequestsRepository.getAll(),
+      BankPortalRepository.getAllCreditLimitRequests(),
+      EmployeesRepository.getAll(),
     ]);
 
     setDeal(d);
     setCandidates(c);
     setAllLots(lotsData);
+    setPendingPreliminaryReqs(pendingReqs);
+    setPartnerRequests(allPartnerReqs);
+    if (allEmps && allEmps.length > 0) {
+      setCurator(allEmps[0]);
+    }
+
+    // Find credit limit for current user
+    const userLimit = allCreditLimits.find(l => l.userId === user?.id || l.clientCode === clientCode);
+    if (userLimit) {
+      setCreditLimitRequest(userLimit);
+    } else if (user?.bankCreditLimit) {
+      setCreditLimitRequest({
+        id: 'user-cached-limit',
+        userId: user.id,
+        clientCode: user.clientCode || 'DEX-409112',
+        userName: user.name,
+        userPhone: user.phone || '+7 (921) 000-00-00',
+        requestedAmountRub: user.bankCreditLimit.approvedLimitRub,
+        approvedLimitRub: user.bankCreditLimit.approvedLimitRub,
+        validUntil: user.bankCreditLimit.validUntil,
+        bankName: user.bankCreditLimit.bankName,
+        certificateNumber: user.bankCreditLimit.certificateNumber,
+        reviewedBy: 'Ведущий специалист банка',
+        requestedAt: user.bankCreditLimit.issuedAt,
+        status: 'approved',
+      });
+    }
 
     // Filter user's own bids
     const bids = c.filter(item => item.userId === user?.id || item.name.includes(user?.name?.split(' ')[0] || '___'));
@@ -119,27 +194,100 @@ export const ClientPortalPage: React.FC = () => {
 
   const handlePartnerReferralSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newEntry = {
-      id: `REF-${Math.floor(100 + Math.random() * 900)}`,
-      clientName: refClientName || 'Новый клиент',
-      complexName: refComplexName || 'ЖК Санкт-Петербург',
-      stage: '1. Проверка документов и аудит',
-      stageIndex: 1,
-      bonusRub: 40000,
-      status: 'pending_payment'
-    };
+    setPartnerError(null);
 
-    setPartnerDeals(prev => [newEntry, ...prev]);
+    const cleanCode = refClientCode.trim().toUpperCase();
+    if (!cleanCode.startsWith('DEX-')) {
+      setPartnerError(
+        language === 'ru'
+          ? 'Пожалуйста, введите уникальный ID клиента в формате DEX-XXXXXX (например, DEX-784105).'
+          : 'Please enter a valid client ID formatted as DEX-XXXXXX (e.g. DEX-784105).'
+      );
+      return;
+    }
+
+    const verifiedUser = await PartnerRequestsRepository.verifyClientCode(cleanCode);
+    if (!verifiedUser) {
+      setPartnerError(
+        language === 'ru'
+          ? `Клиент с номером «${cleanCode}» не найден в реестре. Дольщик должен сначала зарегистрироваться на DomExit и передать вам свой персональный ID аккаунта.`
+          : `Client with ID "${cleanCode}" not found. The client must first register on DomExit to receive their personal account ID.`
+      );
+      return;
+    }
+
+    const newReq = await PartnerRequestsRepository.createPreliminaryRequest({
+      partnerId: user?.id || 'partner-current',
+      partnerName: user?.name || 'Партнер DomExit',
+      partnerRefCode: user?.partnerRefCode || 'PARTNER-SPB-12',
+      clientCode: cleanCode,
+      clientName: refClientName || verifiedUser.name || 'Дольщик',
+      clientPhone: refClientPhone || verifiedUser.phone || '+7 (911) 000-00-00',
+      complexName: refComplexName,
+      developer: refDeveloper || 'Застройщик',
+      paidAmountRub: refPaidAmount,
+      contractPriceRub: refDduPrice,
+      notes: refNotes,
+    });
+
+    setPartnerRequests(prev => [newReq, ...prev]);
+    setRefClientCode('');
     setRefClientName('');
     setRefClientPhone('+7 ');
     setRefComplexName('');
+    setRefNotes('');
 
     setActionNotice(
       language === 'ru'
-        ? `Клиент успешно зарегистрирован в базе DomExit! Ваше агентское вознаграждение 40 000 ₽ зафиксировано.`
-        : `Client registered! Your 40,000 ₽ partner bonus is secured.`
+        ? `Предварительный запрос для клиента [${newReq.clientCode}] успешно отправлен! В кабинете клиента включен 7-дневный таймер для загрузки ДДУ.`
+        : `Preliminary request sent for client [${newReq.clientCode}]! A 7-day countdown has been started in the client portal.`
     );
-    setTimeout(() => setActionNotice(null), 5000);
+    setTimeout(() => setActionNotice(null), 6000);
+  };
+
+  const handleCompletePreliminaryRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReqForCompletion) return;
+
+    if (!completionFileUploaded) {
+      alert(language === 'ru' ? 'Пожалуйста, прикрепите скан или фото договора ДДУ!' : 'Please attach your DDU agreement!');
+      return;
+    }
+
+    await PartnerRequestsRepository.completeByClient(selectedReqForCompletion.id, 'lot-new-submitted');
+    setIsCompleteModalOpen(false);
+    setSelectedReqForCompletion(null);
+    setCompletionFileUploaded(false);
+
+    setActionNotice(
+      language === 'ru'
+        ? 'Договор ДДУ успешно прикреплен! Заявка передана на юридическую проверку куратору DomExit.'
+        : 'DDU agreement uploaded! Your application has been handed over to the legal curator.'
+    );
+    loadData();
+    setTimeout(() => setActionNotice(null), 6000);
+  };
+
+  const handleRequestCreditLimit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const req = await BankPortalRepository.requestCreditLimit({
+      userId: user?.id || 'user-current',
+      clientCode: user?.clientCode || 'DEX-784105',
+      userName: user?.name || 'Клиент DomExit',
+      userPhone: user?.phone || '+7 (921) 000-00-00',
+      userEmail: user?.email,
+      requestedAmountRub: requestedCreditAmount,
+      bankName: selectedBank,
+    });
+
+    setCreditLimitRequest(req);
+    setIsCreditLimitModalOpen(false);
+    setActionNotice(
+      language === 'ru'
+        ? `Запрос на кредитный лимит передан в ${selectedBank}. Специалист банка рассмотрит заявку в течение 24 часов.`
+        : `Credit limit request submitted to ${selectedBank}. Bank officer will review within 24 hours.`
+    );
+    setTimeout(() => setActionNotice(null), 6000);
   };
 
   const handleDownloadDoc = (docName: string) => {
@@ -176,9 +324,36 @@ export const ClientPortalPage: React.FC = () => {
                     214-ФЗ Верифицирован
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  {user?.email || user?.phone || '+7 (911) 234-56-78'} • Идентификатор #{user?.id?.slice(0, 8) || 'CLI-78105'}
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-xs text-slate-500">
+                    {user?.email || user?.phone || '+7 (911) 234-56-78'}
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <div className="inline-flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200/90 text-slate-900 border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all shadow-xs">
+                    <span className="text-slate-500 font-sans font-medium text-[11px]">{language === 'ru' ? 'Уникальный ID клиента:' : 'Unique Client ID:'}</span>
+                    <span className="text-indigo-700 tracking-wide font-black">{user?.clientCode || 'DEX-784105'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code = user?.clientCode || 'DEX-784105';
+                        navigator.clipboard.writeText(code);
+                        setCopiedCode(true);
+                        setTimeout(() => setCopiedCode(false), 2500);
+                      }}
+                      className="p-1 hover:bg-white rounded transition-colors cursor-pointer text-slate-600 hover:text-indigo-600"
+                      title={language === 'ru' ? 'Скопировать ID клиента' : 'Copy Client ID'}
+                    >
+                      {copiedCode ? (
+                        <span className="text-emerald-600 text-[10px] font-sans flex items-center space-x-0.5">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{language === 'ru' ? 'Скопировано!' : 'Copied!'}</span>
+                        </span>
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -312,9 +487,149 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         )}
 
+        {/* MISSION 4: 7-Day Countdown Alert for Pending Partner Preliminary Request */}
+        {pendingPreliminaryReqs.length > 0 && (
+          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-500/10 border-2 border-amber-400 shadow-xl space-y-3 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start space-x-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Clock className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px] uppercase tracking-wider">
+                      {language === 'ru' ? 'Срочный запрос партнера • 7 дней' : 'Urgent Partner Request • 7 Days'}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-amber-900">
+                      ID: {pendingPreliminaryReqs[0].clientCode}
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-950 mt-1">
+                    {language === 'ru'
+                      ? `Партнер «${pendingPreliminaryReqs[0].partnerName}» открыл предварительный запрос на чистый выход`
+                      : `Partner "${pendingPreliminaryReqs[0].partnerName}" opened preliminary clean exit request`}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-700 mt-1">
+                    {language === 'ru'
+                      ? `Объект: ${pendingPreliminaryReqs[0].complexName} (${pendingPreliminaryReqs[0].developer}). Подтвердите данные и прикрепите фото договора ДДУ для запуска юридического аудита куратором DomExit.`
+                      : `Property: ${pendingPreliminaryReqs[0].complexName} (${pendingPreliminaryReqs[0].developer}). Please confirm and upload your DDU agreement to start the curator audit.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:items-end gap-2 shrink-0">
+                <div className="px-3.5 py-1.5 rounded-xl bg-white border border-amber-300 shadow-xs flex items-center space-x-2 text-xs font-mono font-bold text-amber-900">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  <span>
+                    {language === 'ru' ? 'Осталось: ' : 'Remaining: '}
+                    {formatRemainingTime(pendingPreliminaryReqs[0].expiresAt).text}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedReqForCompletion(pendingPreliminaryReqs[0]);
+                    setIsCompleteModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
+                >
+                  <FileCheck className="w-4 h-4" />
+                  <span>{language === 'ru' ? 'Подтвердить и прикрепить ДДУ' : 'Confirm & Upload DDU'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ================= TAB 1: BUYER OFFERS VIEW ================= */}
         {activeTab === 'buyer' && (
           <div className="space-y-6 animate-fade-in">
+            {/* Task 6: Bank Credit Limit Card */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 text-white border border-emerald-500/30 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    <span>{language === 'ru' ? 'Банковский кредитный лимит' : 'Bank Credit Limit'}</span>
+                  </span>
+                  {creditLimitRequest?.status === 'approved' && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-black text-[10px]">
+                      {language === 'ru' ? 'ОДОБРЕНО БАНКОМ' : 'BANK APPROVED'}
+                    </span>
+                  )}
+                  {creditLimitRequest?.status === 'pending' && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-bold text-[10px]">
+                      {language === 'ru' ? 'НА РАССМОТРЕНИИ' : 'UNDER REVIEW'}
+                    </span>
+                  )}
+                </div>
+
+                {creditLimitRequest?.status === 'approved' ? (
+                  <div>
+                    <div className="flex items-baseline space-x-3">
+                      <span className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-tight">
+                        {formatRubles(creditLimitRequest.approvedLimitRub || 9000000)}
+                      </span>
+                      <span className="text-xs text-slate-300">
+                        ({creditLimitRequest.bankName} • Сертификат {creditLimitRequest.certificateNumber})
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      {language === 'ru'
+                        ? `Лимит действителен до ${creditLimitRequest.validUntil || '31.12.2026'}. Официальный штамп банка автоматически подтверждает вашу платежеспособность при бронировании лотов.`
+                        : `Limit valid until ${creditLimitRequest.validUntil || '31.12.2026'}. Certified bank stamp verifies your liquidity for lot bookings.`}
+                    </p>
+                  </div>
+                ) : creditLimitRequest?.status === 'pending' ? (
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {language === 'ru' ? 'Заявка на лимит передана кредитному офицеру' : 'Credit limit request is under review'}
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      {language === 'ru'
+                        ? `Запрошено: ${formatRubles(creditLimitRequest.requestedAmountRub)} в ${creditLimitRequest.bankName}. Ожидается выпуск цифрового сертификата.`
+                        : `Requested: ${formatRubles(creditLimitRequest.requestedAmountRub)} at ${creditLimitRequest.bankName}. Pending certificate issue.`}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {language === 'ru' ? 'Получите официальный кредитный лимит банка-партнера' : 'Get a Certified Bank Credit Limit'}
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      {language === 'ru'
+                        ? 'Сбербанк и ВТБ аккредитуют покупателей DomExit по ускоренному регламенту. Одобренный лимит дает приоритет 1-го порядка при выборе куратором.'
+                        : 'Sberbank and VTB certify DomExit buyers with expedited processing. An approved limit gives 1st order priority.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="shrink-0">
+                {creditLimitRequest?.status === 'approved' ? (
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/40 text-right">
+                    <span className="block text-[10px] text-emerald-300 uppercase tracking-wider font-bold">
+                      {language === 'ru' ? 'Статус верификации' : 'Verification Status'}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-white flex items-center justify-end space-x-1 mt-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{language === 'ru' ? '100% Доверенный покупатель' : '100% Trusted Buyer'}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreditLimitModalOpen(true)}
+                    className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg transition-all flex items-center space-x-2 cursor-pointer"
+                  >
+                    <Banknote className="w-4 h-4" />
+                    <span>{language === 'ru' ? 'Запросить кредитный лимит в банке' : 'Request Bank Credit Limit'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
@@ -499,22 +814,61 @@ export const ClientPortalPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Assigned Curator Contact Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Ваш назначенный персональный куратор (сотрудник DomExit):</span>
-                  <span className="font-bold text-slate-900 text-sm">Алексей Морозов (Ведущий юрист-куратор)</span>
-                  <span className="text-slate-500 block mt-0.5">+7 (921) 888-11-22 • Telegram: @alexey_morozov</span>
+              {/* Assigned Curator Contact Card (Mission 14) */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+                <div className="flex items-center space-x-3.5">
+                  {curator?.photoUrl ? (
+                    <img
+                      src={curator.photoUrl}
+                      alt={curator.name}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm">
+                      {(curator?.name || 'АМ').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">
+                      {language === 'ru' ? 'Ваш персональный куратор сделки (сотрудник DomExit):' : 'Your Dedicated Deal Curator (DomExit):'}
+                    </span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {curator?.name || 'Алексей Морозов'}
+                    </span>
+                    <span className="text-emerald-700 font-semibold block text-[11px]">
+                      {curator?.role || 'Ведущий юрист-куратор'}
+                    </span>
+                    <span className="text-slate-500 block text-[11px] mt-0.5">
+                      {curator?.phone || '+7 (921) 888-11-22'} • Telegram: {curator?.telegram || '@alexey_morozov'}
+                    </span>
+                  </div>
                 </div>
-                <a
-                  href="https://t.me/domexit_ru"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center space-x-1.5 transition-colors shadow-xs"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Связаться с куратором</span>
-                </a>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <a
+                    href={
+                      (curator?.telegram || '').startsWith('http')
+                        ? curator?.telegram
+                        : `https://t.me/${(curator?.telegram || 'domexit_ru').replace('@', '')}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Telegram</span>
+                  </a>
+
+                  {curator?.phone && (
+                    <a
+                      href={`tel:${curator.phone.replace(/[^\d+]/g, '')}`}
+                      className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl flex items-center justify-center transition-colors"
+                      title={curator.phone}
+                    >
+                      <span>{language === 'ru' ? 'Звонок' : 'Call'}</span>
+                    </a>
+                  )}
+                </div>
               </div>
 
               {/* Verified Legal Documents Vault */}
@@ -678,20 +1032,49 @@ export const ClientPortalPage: React.FC = () => {
                 )}
               </div>
 
-              {/* MISSION 4.2: Refer Distressed Client Form */}
-              <div className="bg-purple-50/50 border border-purple-200 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center space-x-2 text-purple-900 font-bold text-sm">
+              {/* MISSION 4.2: Refer Distressed Client Form with mandatory DEX-ID */}
+              <div className="bg-purple-50/50 border border-purple-200 rounded-3xl p-6 space-y-4">
+                <div className="flex items-center space-x-2 text-purple-950 font-black text-sm">
                   <Share2 className="w-4 h-4 text-purple-600" />
-                  <span>Зарегистрировать и передать нового дольщика для выхода:</span>
+                  <span>{language === 'ru' ? 'Передать дольщика: регистрация по персональному ID клиента (DEX-XXXXXX)' : 'Refer Client: Register by Personal Client ID (DEX-XXXXXX)'}</span>
                 </div>
 
-                <form onSubmit={handlePartnerReferralSubmit} className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                <p className="text-xs text-slate-600">
+                  {language === 'ru'
+                    ? 'Антифрод-регламент платформы: клиент должен создать аккаунт на DomExit и сообщить вам свой Уникальный ID. После отправки у клиента будет 7 дней для подтверждения запроса и загрузки ДДУ.'
+                    : 'Platform anti-fraud rule: client must create an account on DomExit and provide their Unique ID. The client has 7 days to confirm and upload DDU.'}
+                </p>
+
+                {partnerError && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-center space-x-2 animate-shake">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{partnerError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handlePartnerReferralSubmit} className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">ФИО дольщика *</label>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'Уникальный ID клиента *' : 'Unique Client ID *'}
+                    </label>
                     <input
                       type="text"
                       required
-                      placeholder="Сергей Николаевич"
+                      placeholder="DEX-784105"
+                      value={refClientCode}
+                      onChange={(e) => setRefClientCode(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2 rounded-xl border border-purple-300 bg-white font-mono font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'ФИО дольщика *' : 'Client Full Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Александр Владимирович Б."
                       value={refClientName}
                       onChange={(e) => setRefClientName(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
@@ -699,11 +1082,13 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">Телефон клиента *</label>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'Телефон клиента *' : 'Client Phone *'}
+                    </label>
                     <input
                       type="tel"
                       required
-                      placeholder="+7 (911) 000-00-00"
+                      placeholder="+7 (911) 234-56-78"
                       value={refClientPhone}
                       onChange={(e) => setRefClientPhone(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
@@ -711,14 +1096,56 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">ЖК и застройщик *</label>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'ЖК / Объект *' : 'Complex / Property *'}
+                    </label>
                     <input
                       type="text"
                       required
-                      placeholder="ЖК Чистое Небо (Setl)"
+                      placeholder="ЖК Чистое Небо (Корпус 12)"
                       value={refComplexName}
                       onChange={(e) => setRefComplexName(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'Застройщик *' : 'Developer *'}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Setl Group"
+                      value={refDeveloper}
+                      onChange={(e) => setRefDeveloper(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'Выплачено застройщику (₽) *' : 'Paid to Developer (₽) *'}
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={refPaidAmount}
+                      onChange={(e) => setRefPaidAmount(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      {language === 'ru' ? 'Цена по договору ДДУ (₽) *' : 'DDU Contract Price (₽) *'}
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={refDduPrice}
+                      onChange={(e) => setRefDduPrice(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
                     />
                   </div>
 
@@ -728,17 +1155,79 @@ export const ClientPortalPage: React.FC = () => {
                       className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>Зарегистрировать</span>
+                      <span>{language === 'ru' ? 'Отправить запрос (7 дней)' : 'Send Request (7 Days)'}</span>
                     </button>
                   </div>
                 </form>
               </div>
 
+              {/* MISSION 4.2: Live 7-Day Referral Requests Table */}
+              <div className="space-y-3 pt-2">
+                <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-purple-600" />
+                  <span>{language === 'ru' ? 'Реестр запросов с 7-дневным регламентом подтверждения:' : '7-Day Preliminary Referral Registry:'}</span>
+                </h3>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-3">Код</th>
+                        <th className="py-3 px-3">ID клиента</th>
+                        <th className="py-3 px-3">Клиент</th>
+                        <th className="py-3 px-3">Объект / ЖК</th>
+                        <th className="py-3 px-3">Выплачено</th>
+                        <th className="py-3 px-3 text-right">Регламент и статус</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {partnerRequests.map((req) => {
+                        const countdown = formatRemainingTime(req.expiresAt);
+                        return (
+                          <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900">{req.id}</td>
+                            <td className="py-3 px-3 font-mono font-bold text-indigo-700">{req.clientCode}</td>
+                            <td className="py-3 px-3 font-semibold text-slate-800">
+                              <div>{req.clientName}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">{req.clientPhone}</div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-medium">{req.complexName}</div>
+                              <div className="text-[10px] text-slate-500">{req.developer}</div>
+                            </td>
+                            <td className="py-3 px-3 font-mono font-bold text-emerald-700">
+                              {formatRubles(req.paidAmountRub)}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              {req.status === 'completed' ? (
+                                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] inline-flex items-center space-x-1">
+                                  <Check className="w-3 h-3" />
+                                  <span>{language === 'ru' ? 'Подтвержден клиентом' : 'Confirmed by Client'}</span>
+                                </span>
+                              ) : req.status === 'expired' || countdown.isExpired ? (
+                                <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px]">
+                                  {language === 'ru' ? 'Истек срок 7 дней' : '7 Days Expired'}
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-mono font-bold text-[10px] inline-flex items-center space-x-1">
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>{countdown.text}</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               {/* MISSION 4.2: Live 5-Stage Referral Tracking Table */}
-              <div className="space-y-3">
+              <div className="space-y-3 pt-4 border-t border-slate-100">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Таблица живого отслеживания переданных сделок и вознаграждений:</span>
+                  <span>{language === 'ru' ? 'Отслеживание активных сделок и агентского вознаграждения:' : 'Deal Tracking & Commission Rewards:'}</span>
                 </h3>
 
                 <div className="overflow-x-auto">
@@ -964,6 +1453,231 @@ export const ClientPortalPage: React.FC = () => {
                 </div>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* ================= MODAL 1: Complete 7-Day Preliminary Request ================= */}
+        {isCompleteModalOpen && selectedReqForCompletion && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 animate-scale-up">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
+                    <FileCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-950 text-base">
+                      {language === 'ru' ? 'Подтверждение заявки на чистый выход' : 'Confirm Clean Exit Request'}
+                    </h3>
+                    <span className="text-xs text-slate-500 font-mono">
+                      ID клиента: {selectedReqForCompletion.clientCode}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCompleteModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">{language === 'ru' ? 'Партнер-агент:' : 'Partner Agent:'}</span>
+                  <span className="font-bold text-slate-900">{selectedReqForCompletion.partnerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">{language === 'ru' ? 'Объект / ЖК:' : 'Property / Complex:'}</span>
+                  <span className="font-bold text-slate-900">{selectedReqForCompletion.complexName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">{language === 'ru' ? 'Выплачено застройщику:' : 'Paid to Developer:'}</span>
+                  <span className="font-bold font-mono text-emerald-800">{formatRubles(selectedReqForCompletion.paidAmountRub)}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-amber-200/60 font-mono text-amber-900">
+                  <span>{language === 'ru' ? 'Остаток регламента 7 дней:' : 'Time Left:'}</span>
+                  <span className="font-bold">{formatRemainingTime(selectedReqForCompletion.expiresAt).text}</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleCompletePreliminaryRequest} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    {language === 'ru' ? 'ФИО владельца договора *' : 'Contract Owner Full Name *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    defaultValue={selectedReqForCompletion.clientName}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    {language === 'ru' ? 'Скан или фотографии договора ДДУ (с синей печатью Росреестра) *' : 'DDU Agreement Scan or Photos *'}
+                  </label>
+                  <div className="p-4 border-2 border-dashed border-amber-300 rounded-2xl bg-amber-50/40 text-center space-y-2">
+                    <Upload className="w-6 h-6 text-amber-600 mx-auto" />
+                    <p className="text-xs text-slate-600">
+                      {completionFileUploaded
+                        ? '✓ Файл прикреплен: DDU_Dogovor_214FZ_scan.pdf'
+                        : 'Нажмите для выбора файла (PDF, JPG, PNG до 25 МБ)'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFileUploaded(true)}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        completionFileUploaded
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xs'
+                      }`}
+                    >
+                      {completionFileUploaded ? '✓ ДДУ успешно загружен' : 'Выбрать скан ДДУ'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    {language === 'ru' ? 'Комментарий для куратора (пожелания по срокам или сумме)' : 'Curator Notes'}
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Например: хочу вернуть 100% выплаченного, график рассрочки до декабря..."
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsCompleteModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                  >
+                    {language === 'ru' ? 'Отмена' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-colors cursor-pointer"
+                  >
+                    {language === 'ru' ? 'Подтвердить и отправить куратору DomExit' : 'Confirm & Submit to Curator'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ================= MODAL 2: Request Bank Credit Limit ================= */}
+        {isCreditLimitModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 animate-scale-up">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-950 text-base">
+                      {language === 'ru' ? 'Запрос официального кредитного лимита' : 'Bank Credit Limit Application'}
+                    </h3>
+                    <span className="text-xs text-slate-500">
+                      Партнерские банки: Сбербанк, ВТБ, Альфа-Банк
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCreditLimitModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleRequestCreditLimit} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    {language === 'ru' ? 'Выберите банк-партнер *' : 'Select Partner Bank *'}
+                  </label>
+                  <select
+                    value={selectedBank}
+                    onChange={(e) => setSelectedBank(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="Сбербанк">Сбербанк (Эскроу и семейная ипотека)</option>
+                    <option value="ВТБ">Банк ВТБ (ПАО) (Быстрое одобрение цессий)</option>
+                    <option value="Альфа-Банк">Альфа-Банк (СБР и рассрочки)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-slate-700 font-bold">
+                      {language === 'ru' ? 'Желаемый кредитный лимит (₽):' : 'Requested Credit Limit (₽):'}
+                    </label>
+                    <span className="font-mono font-black text-emerald-700 text-sm">
+                      {formatRubles(requestedCreditAmount)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={2000000}
+                    max={20000000}
+                    step={500000}
+                    value={requestedCreditAmount}
+                    onChange={(e) => setRequestedCreditAmount(Number(e.target.value))}
+                    className="w-full accent-emerald-600 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
+                    <span>2 000 000 ₽</span>
+                    <span>10 000 000 ₽</span>
+                    <span>20 000 000 ₽</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    {language === 'ru' ? 'Тип подтверждения дохода *' : 'Income Proof Type *'}
+                  </label>
+                  <select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-emerald-500">
+                    <option>Справка 2-НДФЛ (Основное место работы)</option>
+                    <option>Выписка по зарплатной карте Сбербанк / ВТБ</option>
+                    <option>Справка для самозанятых (Мой Налог)</option>
+                    <option>Декларация ИП (УСН 6%)</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
+                  <div className="font-bold flex items-center space-x-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Преимущество на DomExit:</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    Одобренный банком штамп лимита закрепляется в вашем профиле и дает гарантию быстрого бронирования квартир по ценам 2023–2024 гг. без повторных проверок.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreditLimitModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                  >
+                    {language === 'ru' ? 'Отмена' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-colors cursor-pointer"
+                  >
+                    {language === 'ru' ? 'Отправить в банк на аккредитацию' : 'Submit for Bank Accreditation'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

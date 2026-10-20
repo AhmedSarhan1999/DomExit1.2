@@ -1,6 +1,14 @@
 import { db } from './firebase';
 import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
-import { initialLots, initialDeals, initialCandidates, initialPartners, initialEmployees } from './seedData';
+import { 
+  initialLots, 
+  initialDeals, 
+  initialCandidates, 
+  initialPartners, 
+  initialEmployees,
+  initialMarketSettings,
+  initialBankEmployees
+} from './seedData';
 import { Lot, DealTrack, BuyerCandidate, PartnerEntry, Employee } from '../types';
 
 /**
@@ -36,6 +44,14 @@ export class DatabaseInitializer {
       const empCacheKey = 'domexit_fb_employees';
       if (!localStorage.getItem(empCacheKey)) {
         localStorage.setItem(empCacheKey, JSON.stringify(initialEmployees));
+      }
+      const marketCacheKey = 'domexit_fb_market_settings';
+      if (!localStorage.getItem(marketCacheKey)) {
+        localStorage.setItem(marketCacheKey, JSON.stringify([initialMarketSettings]));
+      }
+      const bankEmpCacheKey = 'domexit_fb_bank_employees';
+      if (!localStorage.getItem(bankEmpCacheKey)) {
+        localStorage.setItem(bankEmpCacheKey, JSON.stringify(initialBankEmployees));
       }
 
       // 2. Synchronize with live Firestore if available

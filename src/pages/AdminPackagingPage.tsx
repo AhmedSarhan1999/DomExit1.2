@@ -5,6 +5,7 @@ import { formatRubles, formatPercent } from '../utils/formatters';
 import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { Lot } from '../types';
 import {
   PackageCheck,
@@ -19,6 +20,9 @@ import {
   Sparkles,
   ExternalLink,
   CheckCircle2,
+  Upload,
+  Image as ImageIcon,
+  AlertCircle,
 } from 'lucide-react';
 
 export const AdminPackagingPage: React.FC = () => {
@@ -28,12 +32,17 @@ export const AdminPackagingPage: React.FC = () => {
   const [lot, setLot] = useState<Lot | null>(null);
   const [hideFloor, setHideFloor] = useState<boolean>(true);
   const [previewTab, setPreviewTab] = useState<'web' | 'telegram'>('web');
+  const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
   // Financial Truth Engine numeric inputs
   const [oldDduPrice, setOldDduPrice] = useState<number>(10972000);
   const [cashToSeller, setCashToSeller] = useState<number>(2485230);
   const [debtToDev, setDebtToDev] = useState<number>(8486770);
   const [todayDevPrice, setTodayDevPrice] = useState<number>(14200000);
+
+  // Media materials state (Mission 8.1)
+  const [sellerPhotos, setSellerPhotos] = useState<string[]>([]);
+  const [approvedPhotos, setApprovedPhotos] = useState<string[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -45,6 +54,19 @@ export const AdminPackagingPage: React.FC = () => {
         setCashToSeller(data.cashPaidBySeller);
         setDebtToDev(data.remainingInstallmentDebt);
         setTodayDevPrice(data.todayDeveloperPrice);
+
+        const sPhotos = data.sellerUploadedPhotos && data.sellerUploadedPhotos.length > 0
+          ? data.sellerUploadedPhotos
+          : data.galleryImages || [
+              'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
+              'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
+            ];
+        setSellerPhotos(sPhotos);
+
+        const aPhotos = data.approvedGalleryImages && data.approvedGalleryImages.length > 0
+          ? data.approvedGalleryImages
+          : sPhotos.slice(0, 2);
+        setApprovedPhotos(aPhotos);
       }
     }
     load();
@@ -53,6 +75,87 @@ export const AdminPackagingPage: React.FC = () => {
   const buyerNetSavings = todayDevPrice - oldDduPrice;
   const buyerDiscountPercent = (buyerNetSavings / todayDevPrice) * 100;
   const buyerFee = Math.round(oldDduPrice * 0.025);
+
+  const handleTogglePhotoApproval = (photoUrl: string) => {
+    setApprovedPhotos((prev) =>
+      prev.includes(photoUrl) ? prev.filter((p) => p !== photoUrl) : [...prev, photoUrl]
+    );
+  };
+
+  const handleUploadHdMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          const newPhoto = reader.result;
+          setSellerPhotos((prev) => [...prev, newPhoto]);
+          setApprovedPhotos((prev) => [...prev, newPhoto]);
+          setNotificationMsg('HD-рендер добавлен в медиа-пакет и отмечен для публикации!');
+          setTimeout(() => setNotificationMsg(null), 4000);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveMediaPackage = async () => {
+    if (!lot) return;
+    await LotsRepository.updatePackagingPhotos(lot.lotCode, 'Алексей Смирнов', approvedPhotos, sellerPhotos);
+    setNotificationMsg(`Медиа-пакет сохранен: ${approvedPhotos.length} фото утверждено для открытого каталога.`);
+    setTimeout(() => setNotificationMsg(null), 4000);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!lot) return;
+    lot.dduContractPrice = oldDduPrice;
+    lot.cashPaidBySeller = cashToSeller;
+    lot.remainingInstallmentDebt = debtToDev;
+    lot.todayDeveloperPrice = todayDevPrice;
+    if (lot.ownerDossier) {
+      lot.ownerDossier.hideExactFloor = hideFloor;
+    }
+    await LotsRepository.update(lot);
+    setNotificationMsg('Черновик упаковки и параметры Financial Truth успешно сохранены в базе.');
+    setTimeout(() => setNotificationMsg(null), 4000);
+  };
+
+  const handlePublishLot = async () => {
+    if (!lot) return;
+    lot.status = 'available';
+    lot.currentStage = 3;
+    lot.approvedGalleryImages = approvedPhotos;
+    lot.galleryImages = approvedPhotos.length > 0 ? approvedPhotos : lot.galleryImages;
+    await LotsRepository.update(lot);
+
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName: 'Алексей Смирнов',
+      operatorRole: 'curator',
+      actionType: 'packaging_published',
+      title: `Лот #${lot.lotCode} успешно опубликован на сайте`,
+      description: `Упакован по стандарту 152-ФЗ. Одобрено ${approvedPhotos.length} фото. Формула 0% наценки подтверждена.`,
+    });
+
+    setNotificationMsg(`Лот #${lot.lotCode} опубликован в открытом каталоге DomExit!`);
+    setTimeout(() => setNotificationMsg(null), 4000);
+  };
+
+  const handleSendVipTg = async () => {
+    if (!lot) return;
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName: 'Алексей Смирнов',
+      operatorRole: 'curator',
+      actionType: 'vip_telegram_broadcast',
+      title: `Эксклюзивный оффер по лоту #${lot.lotCode} отправлен в закрытый VIP TG-клуб`,
+      description: 'Рассылка 420 аккредитованным инвесторам на ранний доступ за 48 часов до открытого каталога.',
+    });
+
+    setNotificationMsg('Эксклюзивный оффер успешно отправлен в закрытый VIP Telegram-клуб (420 инвесторов, 48ч ранний доступ)!');
+    setTimeout(() => setNotificationMsg(null), 4000);
+  };
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900">
@@ -67,6 +170,17 @@ export const AdminPackagingPage: React.FC = () => {
           title={`Упаковка и публикация лота #${lot?.lotCode || 'U-10566'}`}
           subtitle="Студия анонимизации данных по 152-ФЗ и расчетный движок Financial Truth Engine"
         />
+
+        {/* Notification Toast */}
+        {notificationMsg && (
+          <div className="mx-6 mt-4 p-4 rounded-2xl bg-emerald-600 text-white font-bold text-xs shadow-lg flex items-center justify-between animate-fade-in">
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
+              <span>{notificationMsg}</span>
+            </div>
+            <button onClick={() => setNotificationMsg(null)} className="text-white/80 hover:text-white ml-2">✕</button>
+          </div>
+        )}
 
         <div className="p-6 space-y-6 max-w-[1600px] w-full">
           
@@ -83,7 +197,7 @@ export const AdminPackagingPage: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-bold text-slate-600">Готовность лота к публикации:</span>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono font-bold text-xs">
-                  85%
+                  {approvedPhotos.length > 0 ? '100% (Медиа готовы)' : '85%'}
                 </span>
               </div>
             </div>
@@ -91,22 +205,22 @@ export const AdminPackagingPage: React.FC = () => {
             <div className="flex items-center space-x-3">
               <button
                 type="button"
-                onClick={() => alert('Черновик сохранен локально')}
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 shadow-xs transition-colors"
+                onClick={handleSaveDraft}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 shadow-xs transition-colors cursor-pointer"
               >
                 Сохранить черновик
               </button>
               <button
                 type="button"
-                onClick={() => alert('Лот опубликован в открытом каталоге DomExit')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-xs transition-colors"
+                onClick={handlePublishLot}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
               >
                 Опубликовать на сайте
               </button>
               <button
                 type="button"
-                onClick={() => alert('Оффер отправлен в закрытый VIP Telegram-клуб (420 инвесторов)')}
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center space-x-1.5 transition-all"
+                onClick={handleSendVipTg}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Отправить в VIP TG-клуб (за 48ч)</span>
@@ -238,6 +352,75 @@ export const AdminPackagingPage: React.FC = () => {
                   <p className="text-[11px] text-slate-500 leading-relaxed">
                     Алгоритм машинного зрения DomExit автоматически распознал и закрасил штампы БТИ и личные подписи дольщика на планировке.
                   </p>
+                </div>
+
+                {/* Seller Photos & Curator Approval Studio (Mission 8.1) */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                        Фотографии от продавца и отбор для каталога ({sellerPhotos.length})
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Отметьте галочками фото, подходящие для открытого каталога, или загрузите HD-рендеры
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <label className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer transition-colors flex items-center space-x-1 border border-slate-200">
+                        <Upload className="w-3.5 h-3.5 text-slate-500" />
+                        <span>HD-рендеры</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={handleUploadHdMedia}
+                          accept="image/*"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleSaveMediaPackage}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        Сохранить медиа ({approvedPhotos.length})
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+                    {sellerPhotos.map((photo, index) => {
+                      const isApproved = approvedPhotos.includes(photo);
+                      return (
+                        <div
+                          key={index}
+                          className={`relative rounded-2xl overflow-hidden border-2 transition-all p-1 bg-white ${
+                            isApproved ? 'border-emerald-500 shadow-xs' : 'border-slate-200 opacity-60'
+                          }`}
+                        >
+                          <div className="aspect-video rounded-xl overflow-hidden bg-slate-100 relative">
+                            <img src={photo} alt={`Фото ${index + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[9px] px-2 py-0.5 rounded-full font-mono">
+                              {index === 0 ? 'Планировка' : `Фото ${index + 1}`}
+                            </span>
+                          </div>
+
+                          <div className="pt-2 px-1 flex items-center justify-between">
+                            <label className="flex items-center space-x-1.5 cursor-pointer text-xs">
+                              <input
+                                type="checkbox"
+                                checked={isApproved}
+                                onChange={() => handleTogglePhotoApproval(photo)}
+                                className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer"
+                              />
+                              <span className={`text-[11px] font-bold ${isApproved ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                {isApproved ? 'В каталог' : 'Исключено'}
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

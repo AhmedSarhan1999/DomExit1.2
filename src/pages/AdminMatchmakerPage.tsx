@@ -24,7 +24,8 @@ import {
   Eye,
   CreditCard,
   Banknote,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
 
 export const AdminMatchmakerPage: React.FC = () => {
@@ -55,22 +56,41 @@ export const AdminMatchmakerPage: React.FC = () => {
     setCandidates(lotCandidates.length > 0 ? lotCandidates : candData);
   };
 
+  const [previewCandidate, setPreviewCandidate] = useState<BuyerCandidate | null>(null);
+
   useEffect(() => {
     loadData();
   }, [currentLotCode]);
 
   // Accept candidate & advance platform to closing escrow stage (Mission 5 & 8)
   const handleAcceptWinningCandidate = async (candidate: BuyerCandidate) => {
+    if (!candidate.isVerifiedByCurator) {
+      alert(language === 'ru' ? 'Перед утверждением кандидата необходимо нажать [✓ Проверено куратором] и ознакомиться с выпиской/справкой.' : 'Please verify candidate liquidity first.');
+      return;
+    }
+
     await CandidatesRepository.acceptCandidate(lot?.lotCode || currentLotCode, candidate.id);
     
     setSuccessToast(
       language === 'ru'
-        ? `Кандидат ${candidate.name} (${candidate.code}) официально утвержден победителем отбора за сегодня! Лот переведен в статус «В сделке / Закрытие эскроу».`
-        : `Candidate ${candidate.name} approved! Deal advanced to closing stage.`
+        ? `Кандидат ${candidate.name} (${candidate.code}) официально утвержден победителем отбора за сегодня! Заявки кандидата на другие лоты автоматически отозваны.`
+        : `Candidate ${candidate.name} approved! Deal advanced to closing stage, other active bids auto-withdrawn.`
     );
 
     await loadData();
     setTimeout(() => setSuccessToast(null), 5000);
+  };
+
+  const handleVerifyCandidate = async (candidateId: string) => {
+    const curatorName = user?.name || 'Алексей Морозов (Куратор лота)';
+    await CandidatesRepository.verifyCandidate(candidateId, curatorName);
+    setSuccessToast(
+      language === 'ru'
+        ? '✓ Платежеспособность и выписка кандидата проверены и зафиксированы!'
+        : 'Candidate liquidity verified by curator!'
+    );
+    await loadData();
+    setTimeout(() => setSuccessToast(null), 4000);
   };
 
   // Download / preview bank pre-approval cert
@@ -81,7 +101,10 @@ export const AdminMatchmakerPage: React.FC = () => {
         candidate.bankApprovalDocName || `Справка_одобрения_${candidate.code}.pdf`
       );
     } else {
-      alert('Кандидат идет по 100% кэш-треку (аккредитив). Банковская ипотечная справка не требуется.');
+      FileManager.downloadFile(
+        `data:text/plain;charset=utf-8,${encodeURIComponent('ВЫПИСКА СО СЧЕТА О НАЛИЧИИ СРЕДСТВ\nБанк: ПАО Сбербанк\nКлиент: ' + candidate.name + '\nДоступный остаток: ' + candidate.availableLiquidity + ' руб.')}`,
+        `Выписка_со_счета_${candidate.code}.pdf`
+      );
     }
   };
 
@@ -297,42 +320,61 @@ export const AdminMatchmakerPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Action Bar & Certificate button */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
-                      {/* Bank Doc Preview Button */}
-                      <div>
-                        {candidate.bankApprovalDocUrl ? (
+                    {/* Action Bar: Preview Doc + Verify Curator + Accept Winner (Task 8.2 & Task 9) */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 text-xs">
+                      
+                      <div className="flex items-center space-x-2">
+                        {/* 1. Preview Files / Bank Statement Button */}
+                        <button
+                          type="button"
+                          onClick={() => setPreviewCandidate(candidate)}
+                          className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>
+                            {candidate.buyerTrack === 'full_cash'
+                              ? 'Просмотреть выписку кэша'
+                              : 'Просмотреть справку ипотеки'}
+                          </span>
+                        </button>
+
+                        {/* 2. Curator Verification Button (✓ Проверено куратором) */}
+                        {candidate.isVerifiedByCurator ? (
+                          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs inline-flex items-center space-x-1 shadow-2xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>✓ Проверено куратором</span>
+                          </span>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => handleDownloadDoc(candidate)}
-                            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs border border-sky-200 transition-colors cursor-pointer"
+                            onClick={() => handleVerifyCandidate(candidate.id)}
+                            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs transition-colors cursor-pointer"
                           >
-                            <FileText className="w-3.5 h-3.5 text-sky-600" />
-                            <span>Скачать / Просмотреть справку банка</span>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>✓ Проверено куратором</span>
                           </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">
-                            Справка не требуется (100% кэш на аккредитив)
-                          </span>
                         )}
                       </div>
 
-                      {/* Accept Winning Candidate Button */}
+                      {/* 3. Accept Winning Candidate Button */}
                       <button
                         type="button"
                         onClick={() => handleAcceptWinningCandidate(candidate)}
-                        disabled={candidate.status === 'priority_reserved'}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
+                        disabled={candidate.status === 'priority_reserved' || !candidate.isVerifiedByCurator}
+                        title={!candidate.isVerifiedByCurator ? 'Сначала подтвердите проверку платежеспособности [✓ Проверено куратором]' : ''}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center space-x-1.5 ${
                           candidate.status === 'priority_reserved'
                             ? 'bg-slate-200 text-slate-600 cursor-default'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : !candidate.isVerifiedByCurator
+                            ? 'bg-emerald-600/40 text-white cursor-not-allowed opacity-60'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
                         }`}
                       >
                         <Check className="w-3.5 h-3.5 stroke-[3]" />
                         <span>
                           {candidate.status === 'priority_reserved'
-                            ? 'Победитель отбора зафиксирован'
-                            : 'Принять кандидата с лучшей кредитоспособностью'}
+                            ? 'Победитель зафиксирован'
+                            : 'Утвердить победителем'}
                         </span>
                       </button>
                     </div>
@@ -414,6 +456,107 @@ export const AdminMatchmakerPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* ================= MODAL: Preview Bank Statement / Mortgage Certificate (Task 8.2) ================= */}
+      {previewCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-black text-slate-950 text-base">
+                  {previewCandidate.buyerTrack === 'full_cash'
+                    ? 'Свежая банковская выписка (100% Кэш)'
+                    : 'Справка об одобрении кредита / ипотеки'}
+                </h3>
+              </div>
+              <button onClick={() => setPreviewCandidate(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="flex justify-between items-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Кандидат:</span>
+                  <strong className="text-slate-900 text-sm">{previewCandidate.name}</strong>
+                  <span className="text-slate-500 font-mono block">{previewCandidate.code}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-500 block text-[11px]">Подтвержденный капитал:</span>
+                  <span className="font-mono font-black text-emerald-700 text-base">
+                    {formatRubles(previewCandidate.availableLiquidity)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Simulated Official Document Viewer */}
+              <div className="p-6 bg-slate-50/70 rounded-2xl border-2 border-slate-300 font-mono space-y-3 relative overflow-hidden">
+                <div className="absolute top-3 right-3 opacity-15">
+                  <ShieldCheck className="w-24 h-24 text-emerald-800" />
+                </div>
+
+                <div className="text-center pb-3 border-b border-slate-200">
+                  <span className="font-bold text-xs uppercase tracking-wider text-slate-700 block">
+                    ПАО «СБЕРБАНК РОССИИ» — ЦЕНТР ЭЛЕКТРОННОЙ ВЕРИФИКАЦИИ
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Официальная справка о состоянии расчетного счета / аккредитивного депозита
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 text-[11px] text-slate-700">
+                  <div>ФИО владельца счета: <strong>{previewCandidate.name}</strong></div>
+                  <div>Дата формирования выписки: <strong>{new Date().toLocaleDateString('ru-RU')}</strong></div>
+                  <div>Доступный остаток средств для расчета: <strong className="text-emerald-700">{formatRubles(previewCandidate.availableLiquidity)}</strong></div>
+                  {previewCandidate.creditLimitRub && (
+                    <div>Одобренный кредитный лимит: <strong className="text-amber-800">{formatRubles(previewCandidate.creditLimitRub)}</strong></div>
+                  )}
+                  <div>Назначение: Обеспечение сделки по уступке права требования (214-ФЗ)</div>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-sans flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Подлинность цифровой подписи банка подтверждена: ликвидность на счете достаточна для 100% покрытия сделки.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDoc(previewCandidate)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Скачать оригинал выписки</span>
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  {!previewCandidate.isVerifiedByCurator && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleVerifyCandidate(previewCandidate.id);
+                        setPreviewCandidate(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
+                    >
+                      ✓ Подтвердить: Проверено куратором
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCandidate(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs cursor-pointer"
+                  >
+                    Закрыть
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

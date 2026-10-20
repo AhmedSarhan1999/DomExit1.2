@@ -27,6 +27,9 @@ import { AdminLegalAuditPage } from './pages/AdminLegalAuditPage';
 import { AdminMatchmakerPage } from './pages/AdminMatchmakerPage';
 import { AdminClosingPage } from './pages/AdminClosingPage';
 import { AdminPartnersBotPage } from './pages/AdminPartnersBotPage';
+import { BankPortalPage } from './pages/BankPortalPage';
+import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
+import { AdminCuratorProfilePage } from './pages/AdminCuratorProfilePage';
 import { DatabaseInitializer } from './dal/initializer';
 
 // Helper component to scroll to top on every route change
@@ -88,6 +91,15 @@ export const App: React.FC = () => {
             <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
             
             <Route path="/admin/partners-bot" element={<AdminPartnersBotPage />} />
+
+            {/* Partner Bank Gateway (Mission 6) */}
+            <Route path="/bank-portal" element={<BankPortalPage />} />
+
+            {/* Archive Logs & Decision Journal (Mission 12) */}
+            <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />
+
+            {/* Curator Professional Profile (Mission 14) */}
+            <Route path="/admin/profile" element={<AdminCuratorProfilePage />} />
 
             {/* Catch-all Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

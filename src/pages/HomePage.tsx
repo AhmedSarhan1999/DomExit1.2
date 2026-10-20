@@ -4,6 +4,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { formatRubles } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
+import { useMarketSettings } from '../utils/useMarketSettings';
 import {
   ShieldCheck,
   ArrowRight,
@@ -20,16 +21,18 @@ import {
 
 export const HomePage: React.FC = () => {
   const { language, t } = useLanguage();
+  const marketSettings = useMarketSettings();
 
-  // Bottom 2-minute calculator states
+  // Bottom 2-minute calculator states (Mission 1: 2,000,000 ₽ to 20,000,000 ₽)
   const [calcTab, setCalcTab] = useState<'seller' | 'buyer'>('seller');
   const [paidAmount, setPaidAmount] = useState<number>(3500000);
   const [calcPhone, setCalcPhone] = useState<string>('');
   const [calcSubmitted, setCalcSubmitted] = useState<boolean>(false);
 
-  // Financial calculations
-  const devPenalty = paidAmount * 0.15; // 15% developer penalty
+  // Financial calculations bound to dynamic market settings (Mission 2)
+  const devPenalty = Math.round(paidAmount * (marketSettings.developerPenaltyPercent / 100));
   const cashToHand = paidAmount; // 100% back via DomExit
+
 
   const { login } = useAuth();
 
@@ -561,7 +564,11 @@ export const HomePage: React.FC = () => {
               <div className="space-y-3 pt-2 text-xs text-slate-600">
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>{language === 'ru' ? '0% комиссии с продавца (оплачивает покупатель 2.5%)' : '0% seller commission (buyer pays 2.5%)'}</span>
+                  <span>
+                    {language === 'ru' 
+                      ? `0% комиссии с продавца (оплачивает покупатель ${marketSettings.buyerCommissionPercent}%)` 
+                      : `0% seller commission (buyer pays ${marketSettings.buyerCommissionPercent}%)`}
+                  </span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -569,7 +576,11 @@ export const HomePage: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>{language === 'ru' ? 'Сохранение 100% внесенных денег без 15% штрафа' : 'Save 100% of deposited cash without 15% penalty'}</span>
+                  <span>
+                    {language === 'ru' 
+                      ? `Сохранение 100% внесенных денег без ${marketSettings.developerPenaltyPercent}% штрафа` 
+                      : `Save 100% of deposited cash without ${marketSettings.developerPenaltyPercent}% penalty`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -636,7 +647,7 @@ export const HomePage: React.FC = () => {
               ) : (
                 <form onSubmit={handleCalcSubmit} className="space-y-6">
                   
-                  {/* Slider: Paid to Developer */}
+                  {/* Slider: Paid to Developer (Mission 1: 2,000,000 ₽ to 20,000,000 ₽) */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs">
                       <span className="font-bold text-slate-700">{t.calc2Min.paidAmountLabel}</span>
@@ -646,17 +657,17 @@ export const HomePage: React.FC = () => {
                     </div>
                     <input
                       type="range"
-                      min="500000"
-                      max="15000000"
+                      min="2000000"
+                      max="20000000"
                       step="100000"
                       value={paidAmount}
                       onChange={(e) => setPaidAmount(Number(e.target.value))}
                       className="w-full accent-emerald-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
                     />
                     <div className="flex justify-between text-[11px] text-slate-400">
-                      <span>500 000 ₽</span>
-                      <span>5 000 000 ₽</span>
-                      <span>15 000 000 ₽</span>
+                      <span>2 000 000 ₽</span>
+                      <span>10 000 000 ₽</span>
+                      <span>20 000 000 ₽</span>
                     </div>
                   </div>
 
@@ -682,7 +693,9 @@ export const HomePage: React.FC = () => {
                         +{formatRubles(devPenalty)}
                       </span>
                       <span className="text-[11px] text-amber-800/80 block mt-1">
-                        {language === 'ru' ? 'Предотвращен штраф застройщика (15%)' : 'Saved from 15% dev penalty'}
+                        {language === 'ru' 
+                          ? `Предотвращен штраф застройщика (${marketSettings.developerPenaltyPercent}%)` 
+                          : `Saved from ${marketSettings.developerPenaltyPercent}% dev penalty`}
                       </span>
                     </div>
                   </div>

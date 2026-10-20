@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { Lot } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { LotCard } from '../components/catalog/LotCard';
@@ -21,6 +22,7 @@ import {
 
 export const OpportunitiesPage: React.FC = () => {
   const { language, t } = useLanguage();
+  const { user } = useAuth();
 
   const [lots, setLots] = useState<Lot[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -33,11 +35,14 @@ export const OpportunitiesPage: React.FC = () => {
   // Active filter state
   const [appliedFilters, setAppliedFilters] = useState<any>({});
 
+  const isVipInvestor = !!(user?.isInvestorApproved || user?.role === 'admin' || user?.role === 'curator');
+
   const loadLots = async (customFilter = appliedFilters, search = searchQuery, quick = activeQuickFilter, status = statusFilter) => {
     setLoading(true);
     let filterObj: any = {
       searchQuery: search,
       status: status,
+      isVipInvestor,
       ...customFilter,
     };
 
@@ -52,7 +57,7 @@ export const OpportunitiesPage: React.FC = () => {
 
   useEffect(() => {
     loadLots();
-  }, []);
+  }, [user]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
