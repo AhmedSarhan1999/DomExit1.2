@@ -1,10 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { ShieldCheck, Phone, Mail, MapPin, Send, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Phone, Mail, MapPin, Send, CheckCircle2, Building2 } from 'lucide-react';
+import { useCompanyProfileStore } from '../../stores/useCompanyProfileStore';
 
 export const UnifiedFooter: React.FC = () => {
   const { language, t } = useLanguage();
+  const { profile } = useCompanyProfileStore();
 
   return (
     <footer className="bg-[#F8FAFC] border-t border-slate-200 text-slate-700 pt-16 pb-12 transition-colors">
@@ -24,7 +26,7 @@ export const UnifiedFooter: React.FC = () => {
             <p className="text-sm text-slate-600 leading-relaxed">
               {t.footer.legalDescription}
             </p>
-            <div>
+            <div className="pt-1">
               <a
                 href="https://t.me/domexit_ru"
                 target="_blank"
@@ -79,11 +81,11 @@ export const UnifiedFooter: React.FC = () => {
             <div className="space-y-3 text-xs text-slate-600 leading-relaxed">
               <div className="flex items-start space-x-2">
                 <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{t.footer.mskOffice}</span>
+                <span>{profile.postalAddress}</span>
               </div>
               <div className="flex items-start space-x-2">
-                <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{t.footer.spbOffice}</span>
+                <Building2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>Офис урегулирования расчетов: Москва, Пресненская наб., 12 (Башня Федерация)</span>
               </div>
             </div>
           </div>
@@ -96,14 +98,14 @@ export const UnifiedFooter: React.FC = () => {
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center space-x-2 text-slate-900 font-semibold">
                 <Phone className="w-4 h-4 text-emerald-600" />
-                <a href="tel:+78005553429" className="hover:text-emerald-600">
-                  {t.footer.hotline}
+                <a href={`tel:${profile.officialPhone.replace(/\D/g, '')}`} className="hover:text-emerald-600 font-mono">
+                  {profile.officialPhone}
                 </a>
               </div>
               <div className="flex items-center space-x-2 text-slate-600">
                 <Mail className="w-4 h-4 text-emerald-600" />
-                <a href="mailto:deal@domexit.ru" className="hover:text-emerald-600">
-                  {t.footer.email}
+                <a href={`mailto:${profile.privacyEmail}`} className="hover:text-emerald-600">
+                  {profile.privacyEmail}
                 </a>
               </div>
             </div>
@@ -117,15 +119,45 @@ export const UnifiedFooter: React.FC = () => {
 
         </div>
 
-        {/* Legal Disclaimer Divider & Paragraph */}
-        <div className="pt-8 border-t border-slate-200/80 space-y-4 text-xs text-slate-500 leading-relaxed">
+        {/* Legal Disclaimer Divider & Official Entity Card */}
+        <div className="pt-8 border-t border-slate-200 space-y-4 text-xs text-slate-500 leading-relaxed">
+          <div className="bg-slate-100/70 rounded-2xl p-4 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+            <div className="font-bold text-slate-800">
+              {profile.fullName} ({profile.shortName})
+            </div>
+            <div>
+              ОГРН: <span className="font-mono">{profile.ogrn}</span> • ИНН: <span className="font-mono">{profile.inn}</span> • КПП: <span className="font-mono">{profile.kpp}</span>
+            </div>
+            <div>
+              Юридический адрес: {profile.legalAddress}
+            </div>
+            <div>
+              Расчетный банк: {profile.bankName} (БИК: <span className="font-mono">{profile.bik}</span>, р/с: <span className="font-mono">{profile.checkingAccount}</span>)
+            </div>
+          </div>
+
           <p>{t.footer.disclaimer}</p>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-[11px] text-slate-400">
-            <span>{t.footer.rightsReserved}</span>
-            <div className="flex items-center space-x-4">
-              <Link to="/how-it-works" className="hover:text-slate-600">214-ФЗ Регламент</Link>
-              <Link to="/story" className="hover:text-slate-600">Комплаенс и защита</Link>
-              <Link to="/investors" className="hover:text-slate-600">NDA & Конфиденциальность</Link>
+
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-4 pt-3 text-[11px] text-slate-500 border-t border-slate-200/80">
+            <div>
+              © 2026 {profile.shortName}. Все права защищены. Сервис аккредитован для расчетов по 214-ФЗ.
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
+              <Link to="/privacy" className="hover:text-emerald-700 underline">
+                Политика 152-ФЗ
+              </Link>
+              <Link to="/terms" className="hover:text-emerald-700 underline">
+                Пользовательское соглашение
+              </Link>
+              <Link to="/consent-pd" className="hover:text-emerald-700 underline">
+                Согласие на обработку ПД
+              </Link>
+              <Link to="/consent-ads" className="hover:text-emerald-700 underline">
+                Реклама (ФЗ-38)
+              </Link>
+              <Link to="/consent-distribution" className="hover:text-emerald-700 underline">
+                Распространение ПД (ст. 10.1)
+              </Link>
             </div>
           </div>
         </div>

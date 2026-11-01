@@ -30,6 +30,8 @@ import {
   ASYNC_NETWORK_TIMEOUT_MESSAGE,
 } from '../utils/asyncGuard';
 import { useAuth } from '../context/AuthContext';
+import { ConsentCheckboxes, ConsentState } from '../components/compliance/ConsentCheckboxes';
+import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
 import {
   ShieldCheck,
@@ -107,6 +109,11 @@ export const SellersPage: React.FC = () => {
     'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
     'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
   ]);
+  const [consents, setConsents] = useState<ConsentState>({
+    pdProcessing: false,
+    termsAgreed: false,
+    ads: false,
+  });
 
   // Step 4 Created IDs
   const [createdDealId, setCreatedDealId] = useState<string>('');
@@ -312,6 +319,15 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
+    if (!consents.pdProcessing || !consents.termsAgreed) {
+      setStep3Error(
+        language === 'ru'
+          ? 'Пожалуйста, подтвердите согласие на обработку персональных данных (152-ФЗ) и согласие с условиями сервиса перед отправкой.'
+          : 'Please accept personal data processing (152-FZ) and terms of service before submitting.'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await withAsyncTimeout(
@@ -369,6 +385,14 @@ export const SellersPage: React.FC = () => {
               : [...activeUser.roles, 'seller'],
             activeRole: 'seller',
             activeDealId: result.dealId,
+          });
+
+          await UserConsentsRepository.recordConsent({
+            userId: activeUser.id,
+            phone: sellerPhone,
+            email: activeUser.email,
+            consents,
+            context: 'seller_wizard_submission',
           });
 
           setCreatedDealId(result.dealId);
@@ -1210,6 +1234,14 @@ export const SellersPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Unbundled Legal & 152-FZ / 38-FZ Consents */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                <ConsentCheckboxes
+                  value={consents}
+                  onChange={setConsents}
+                />
+              </div>
+
               <div className="flex justify-between items-center pt-4">
                 <button
                   type="button"
@@ -1220,9 +1252,9 @@ export const SellersPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !consents.pdProcessing || !consents.termsAgreed}
                   onClick={handleSubmitFinal}
-                  className="px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer"
+                  className="px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>

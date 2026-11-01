@@ -22,6 +22,8 @@ import { useAuth } from '../../context/AuthContext';
 import { CandidatesRepository } from '../../dal/repositories/CandidatesRepository';
 import { StorageService } from '../../dal/StorageService';
 import { FileManager } from '../../utils/fileManager';
+import { ConsentCheckboxes, ConsentState } from '../compliance/ConsentCheckboxes';
+import { UserConsentsRepository } from '../../dal/repositories/UserConsentsRepository';
 
 interface BookingModalProps {
   lot: Lot;
@@ -52,7 +54,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
 
   const [readiness, setReadiness] = useState<'48h' | '1-2weeks'>('48h');
-  const [agreementChecked, setAgreementChecked] = useState(true);
+  const [buyerConsents, setBuyerConsents] = useState<ConsentState>({
+    pdProcessing: false,
+    termsAgreed: false,
+    ads: false,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -119,11 +125,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
-    if (!agreementChecked) {
+    if (!buyerConsents.pdProcessing || !buyerConsents.termsAgreed) {
       setErrorMsg(
         language === 'ru'
-          ? 'Пожалуйста, подтвердите согласие с регламентом 214-ФЗ'
-          : 'Please accept 214-FZ terms'
+          ? 'Пожалуйста, подтвердите согласие на обработку персональных данных (152-ФЗ) и согласие с условиями сервиса.'
+          : 'Please accept personal data processing (152-FZ) and terms of service.'
       );
       return;
     }
@@ -198,6 +204,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             ? `Готовность к аккредитиву 48ч${questions ? ` • ${questions}` : ''}`
             : `Выход на сделку 1–2 нед.${questions ? ` • ${questions}` : ''}`,
         status: 'pending',
+      });
+
+      await UserConsentsRepository.recordConsent({
+        userId: activeUser.id,
+        phone: contact,
+        email: activeUser.email,
+        consents: buyerConsents,
+        context: `buyer_bid_lot_${lot.lotCode}`,
       });
 
       setIsSubmitting(false);
@@ -479,29 +493,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
           </div>
 
-          {/* Mandatory Green Acknowledgment */}
-          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-2">
-            <label className="flex items-start space-x-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                required
-                checked={agreementChecked}
-                onChange={(e) => setAgreementChecked(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded text-emerald-600 accent-emerald-600 shrink-0"
-              />
-              <span className="leading-snug">
-                {language === 'ru'
-                  ? 'Согласен с сервисным сбором 2.5%, выплачиваемым строго ПОСЛЕ государственной регистрации уступки в Росреестре (0 ₽ предоплаты). Подтверждаю обработку данных по 152-ФЗ.'
-                  : 'I agree to the 2.5% service commission paid strictly AFTER state registration in Rosreestr (0 ₽ upfront).'}
-              </span>
-            </label>
+          {/* Mandatory Green Acknowledgment & 152-FZ / 38-FZ Consents */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-800 space-y-2">
+            <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 p-2 rounded-xl font-bold">
+              {language === 'ru'
+                ? '✓ Сервисный сбор платформы 2.5% выплачивается строго ПОСЛЕ государственной регистрации уступки в Росреестре (0 ₽ предоплаты).'
+                : '✓ Platform service fee 2.5% is paid strictly AFTER state registration in Rosreestr (0 ₽ upfront).'}
+            </div>
+            <ConsentCheckboxes
+              value={buyerConsents}
+              onChange={setBuyerConsents}
+            />
           </div>
 
           {/* Action Button */}
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="w-full py-3.5 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60"
+            disabled={isSubmitting || !buyerConsents.pdProcessing || !buyerConsents.termsAgreed}
+            className="w-full py-3.5 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>
               {isSubmitting

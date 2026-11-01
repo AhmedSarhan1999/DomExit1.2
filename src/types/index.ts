@@ -650,9 +650,71 @@ export interface AuditLogEntry {
     | 'developer_accreditation_decided'
     | 'credit_limit_granted'
     | 'market_settings_updated'
+    | 'company_profile_updated'
+    | 'security_incident_reported'
     | 'employee_created_modified';
   title: string;
   description: string;
   attachments?: Array<{ name: string; url: string }>;
   metadata?: Record<string, any>;
+}
+
+export interface CompanyLegalProfile {
+  id: string; // 'company_legal_profile'
+  fullName: string;
+  shortName: string;
+  entityType: 'ООО' | 'АО' | 'ИП';
+  inn: string;
+  kpp: string;
+  ogrn: string;
+  legalAddress: string;
+  postalAddress: string;
+  generalDirector: string;
+  dpoName: string;
+  privacyEmail: string;
+  officialPhone: string;
+  bankName: string;
+  bik: string;
+  checkingAccount: string;
+  correspondentAccount: string;
+  updatedAt: string;
+}
+
+export interface UserConsentRecord {
+  id: string; // consent_id
+  userId?: string;
+  clientCode?: string;
+  ipAddress: string;
+  userAgent: string;
+  timestamp: string;
+  policyVersion: string; // e.g. '2026-v1.0'
+  formSource: string; // e.g. 'seller_exit_form', 'buyer_bid_modal', 'registration'
+  consentItems: {
+    pdProcessing: boolean; // ст. 9 152-ФЗ
+    termsAgreed: boolean; // Пользовательское соглашение
+    ads: boolean; // ст. 18 38-ФЗ
+    distribution?: boolean; // ст. 10.1 152-ФЗ
+  };
+}
+
+export interface SecurityIncidentRecord {
+  id: string;
+  timestamp: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  description: string;
+  affectedRecordsCount: number;
+  reportedToRoskomnadzor: boolean;
+  roskomnadzorDraft?: string;
+  roskomnadzorNotificationDate?: string;
+  resolvedAt?: string;
+  deadline24h: string;
+  status: 'investigating' | 'notified_rkn' | 'contained' | 'resolved';
+}
+
+export interface CookieConsentPreferences {
+  essential: boolean;
+  analytics: boolean;
+  marketing: boolean;
+  updatedAt: string;
 }

@@ -32,6 +32,14 @@ import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
 import { AdminCuratorProfilePage } from './pages/AdminCuratorProfilePage';
 import { DatabaseInitializer } from './dal/initializer';
 
+// Federal Law 152-FZ & 38-FZ Legal Pages
+import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage';
+import { TermsOfServicePage } from './pages/legal/TermsOfServicePage';
+import { ConsentPdPage } from './pages/legal/ConsentPdPage';
+import { ConsentAdsPage } from './pages/legal/ConsentAdsPage';
+import { ConsentDistributionPage } from './pages/legal/ConsentDistributionPage';
+import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
+
 // Helper component to scroll to top on every route change
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
@@ -53,6 +61,7 @@ export const App: React.FC = () => {
       <AuthProvider>
         <BrowserRouter>
           <ScrollToTop />
+          <CookieConsentBanner />
           <Routes>
             {/* Public Layout Wrapping Global Header & Footer */}
             <Route element={<PublicLayout />}>
@@ -65,6 +74,13 @@ export const App: React.FC = () => {
               <Route path="/investors" element={<InvestorsPage />} />
               <Route path="/partners" element={<PartnersPublicPage />} />
               <Route path="/verify/:lotCode" element={<VerifyCertificatePage />} />
+
+              {/* Federal 152-FZ & 38-FZ Legal Routes */}
+              <Route path="/privacy" element={<PrivacyPolicyPage />} />
+              <Route path="/terms" element={<TermsOfServicePage />} />
+              <Route path="/consent-pd" element={<ConsentPdPage />} />
+              <Route path="/consent-ads" element={<ConsentAdsPage />} />
+              <Route path="/consent-distribution" element={<ConsentDistributionPage />} />
 
               {/* Unified Client Account & Portal */}
               <Route path="/portal" element={<ClientPortalPage />} />
