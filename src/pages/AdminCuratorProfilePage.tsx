@@ -27,7 +27,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
   const [role, setRole] = useState<string>('Ведущий юрист по 214-ФЗ и эскроу-сделкам');
   const [phone, setPhone] = useState<string>('+7 (812) 409-32-11');
   const [telegram, setTelegram] = useState<string>('@domexit_smirnov');
-  const [whatsapp, setWhatsapp] = useState<string>('+7 (812) 409-32-11');
+  const [maxProfile, setMaxProfile] = useState<string>('+7 (812) 409-32-11');
   const [photoUrl, setPhotoUrl] = useState<string>(
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
   );
@@ -48,7 +48,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
         setRole(emp.role);
         setPhone(formatRussianPhoneInput(emp.phone));
         setTelegram(emp.telegram);
-        setWhatsapp(formatRussianPhoneInput(emp.whatsapp || emp.phone));
+        setMaxProfile(emp.maxProfile || emp.whatsapp || emp.phone);
         if (emp.photoUrl) setPhotoUrl(emp.photoUrl);
         if (emp.bio) setBio(emp.bio);
       }
@@ -75,7 +75,8 @@ export const AdminCuratorProfilePage: React.FC = () => {
       role: role.trim(),
       phone,
       telegram: telegram.startsWith('@') ? telegram.trim() : `@${telegram.trim()}`,
-      whatsapp: isValidRussianPhone(whatsapp) ? whatsapp : phone,
+      maxProfile: maxProfile.trim(),
+      whatsapp: maxProfile.trim(),
       photoUrl,
       bio: bio.trim(),
       activeLotsCount: employee?.activeLotsCount || 3,
@@ -97,7 +98,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
       actionType: 'employee_created_modified',
       title: `Профиль куратора ${updated.name} обновлен`,
       description:
-        'Обновлены контакты (Тел, Telegram, WhatsApp), фотография и юридическое портфолио на закрепленных лотах.',
+        'Обновлены контакты (Телефон, Telegram, профиль MAX), фотография и юридическое портфолио на закрепленных лотах.',
     });
 
     setIsSaving(false);
@@ -263,12 +264,15 @@ export const AdminCuratorProfilePage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">WhatsApp телефон РФ:</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Профиль MAX (Messenger / App) *:
+                  </label>
                   <input
-                    type="tel"
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(formatRussianPhoneInput(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-semibold"
+                    type="text"
+                    placeholder="+7 (XXX) XXX-XX-XX или max://..."
+                    value={maxProfile}
+                    onChange={(e) => setMaxProfile(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-indigo-700 font-semibold focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
@@ -321,22 +325,38 @@ export const AdminCuratorProfilePage: React.FC = () => {
                     {bio}
                   </p>
 
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="grid grid-cols-3 gap-2 pt-1">
                     <a
                       href={`https://t.me/${telegram.replace('@', '')}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm"
+                      className="py-2.5 px-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
                     >
-                      <Send className="w-3.5 h-3.5" />
+                      <Send className="w-3 h-3" />
                       <span>Telegram</span>
                     </a>
                     <a
                       href={`tel:${phone.replace(/[^\d+]/g, '')}`}
-                      className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm"
+                      className="py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
                     >
-                      <Phone className="w-3.5 h-3.5" />
+                      <Phone className="w-3 h-3" />
                       <span>Позвонить</span>
+                    </a>
+                    <a
+                      href={
+                        maxProfile.startsWith('http') || maxProfile.startsWith('max://')
+                          ? maxProfile
+                          : `https://max.ru/${maxProfile.replace(/[^\d]/g, '')}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="py-2.5 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
+                      title="Открыть профиль в приложении MAX"
+                    >
+                      <span className="w-3.5 h-3.5 rounded bg-white text-indigo-700 text-[8px] font-black flex items-center justify-center">
+                        M
+                      </span>
+                      <span>MAX</span>
                     </a>
                   </div>
                 </div>

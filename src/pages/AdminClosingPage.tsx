@@ -21,6 +21,7 @@ import {
   Video,
   AlertTriangle,
   HardDrive,
+  Lock,
 } from 'lucide-react';
 
 export const AdminClosingPage: React.FC = () => {
@@ -117,6 +118,15 @@ export const AdminClosingPage: React.FC = () => {
     lot?.remainingInstallmentDebt ??
     Math.max(0, (lot?.dduContractPrice || sellerReturnRub) - sellerReturnRub);
   const bankName = deal?.escrowWorkflow?.bankName || 'ПАО Сбербанк';
+
+  // Bank hard-gating role checks
+  const isBankOfficer =
+    user?.role === 'bank' ||
+    user?.role === 'bank_officer' ||
+    user?.roles?.includes('bank') ||
+    user?.roles?.includes('bank_officer');
+  const isOwner = user?.role === 'owner' || user?.roles?.includes('owner');
+  const canExecuteBankStep = isBankOfficer || isOwner;
 
   // Step A: Curator Review complete -> Handover to Bank
   const handleHandoverToBank = async () => {
@@ -453,13 +463,33 @@ export const AdminClosingPage: React.FC = () => {
                       Открытие аккредитива и блокировка средств покупателя
                     </p>
                     {currentStep === 'bank_escrow_deposit' && (
-                      <button
-                        type="button"
-                        onClick={handleConfirmBankDeposit}
-                        className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
-                      >
-                        ✓ Подтвердить депонирование
-                      </button>
+                      canExecuteBankStep ? (
+                        <button
+                          type="button"
+                          onClick={handleConfirmBankDeposit}
+                          className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+                        >
+                          ✓ Подтвердить депонирование (Офицер банка)
+                        </button>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
+                          <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">🔒 Действие банка-партнера</span>
+                            <span className="text-slate-600">
+                              Ожидается подтверждение уполномоченного сотрудника банка в шлюзе СБР / Эскроу.
+                            </span>
+                            <div className="mt-1">
+                              <Link
+                                to="/admin/bank-gateway"
+                                className="text-emerald-700 font-bold hover:underline"
+                              >
+                                Перейти в шлюз банка →
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+                      )
                     )}
                   </div>
 
@@ -517,13 +547,33 @@ export const AdminClosingPage: React.FC = () => {
                       Выплата 100% кэша продавцу и комиссии 2.5%
                     </p>
                     {currentStep === 'bank_funds_release' && (
-                      <button
-                        type="button"
-                        onClick={handleReleaseEscrow}
-                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
-                      >
-                        Раскрыть аккредитив и закрыть
-                      </button>
+                      canExecuteBankStep ? (
+                        <button
+                          type="button"
+                          onClick={handleReleaseEscrow}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+                        >
+                          Раскрыть аккредитив и закрыть (Офицер банка)
+                        </button>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
+                          <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">🔒 Раскрытие заблокировано</span>
+                            <span className="text-slate-600">
+                              Раскрытие средств номинального счета СБР и перечисление траншей осуществляются исключительно банковским офицером.
+                            </span>
+                            <div className="mt-1">
+                              <Link
+                                to="/admin/bank-gateway"
+                                className="text-emerald-700 font-bold hover:underline"
+                              >
+                                Перейти в терминал банка →
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+                      )
                     )}
                   </div>
                 </div>

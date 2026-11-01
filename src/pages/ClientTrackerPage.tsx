@@ -20,7 +20,6 @@ import {
   Plus,
   Send,
   Phone,
-  MessageCircle,
   ArrowLeft,
   Check,
   FileText,
@@ -233,17 +232,26 @@ export const ClientTrackerPage: React.FC = () => {
                 </a>
               )}
 
-              {curator?.whatsapp && (
-                <a
-                  href={`https://wa.me/${curator.whatsapp.replace(/[^\d]/g, '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 transition-colors"
-                  title="WhatsApp"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                </a>
-              )}
+              {(curator?.maxProfile || curator?.whatsapp) && (() => {
+                const maxVal = curator?.maxProfile || curator?.whatsapp || '';
+                const maxHref =
+                  maxVal.startsWith('http') || maxVal.startsWith('max://')
+                    ? maxVal
+                    : `https://max.ru/${maxVal.replace(/[^\d]/g, '')}`;
+                return (
+                  <a
+                    href={maxHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 rounded-lg bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 transition-colors flex items-center justify-center font-bold text-[10px]"
+                    title="Профиль MAX"
+                  >
+                    <span className="w-4 h-4 rounded bg-indigo-600 text-white font-black flex items-center justify-center text-[9px]">
+                      M
+                    </span>
+                  </a>
+                );
+              })()}
             </div>
           </div>
         </div>

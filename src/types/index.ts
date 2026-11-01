@@ -136,6 +136,7 @@ export interface Lot {
     telegram: string;
     photoUrl?: string;
     whatsapp?: string;
+    maxProfile?: string;
     bio?: string;
   };
 }
@@ -352,6 +353,7 @@ export interface Employee {
   phone: string;
   telegram: string;
   whatsapp?: string;
+  maxProfile?: string;
   photoUrl?: string;
   bio?: string;
   activeLotsCount: number;
@@ -368,6 +370,9 @@ export interface UserProfile {
   phone: string;
   email?: string;
   telegram?: string;
+  whatsapp?: string;
+  maxProfile?: string;
+  bankName?: string;
   photoURL?: string;
   roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank_officer' | 'bank'>;
   role?: string;
@@ -511,16 +516,38 @@ export interface PartnerPreliminaryRequest {
   activatedDealId?: string;
 }
 
-// Partner Bank Portal Types (Task 6)
+// Partner Bank Portal & Tenant Types
+export interface PartnerBankEntity {
+  id: string; // e.g. 'bank-sber', 'bank-vtb', 'bank-alfa', 'bank-domrf'
+  name: string; // 'Сбербанк' | 'ВТБ' | 'Альфа-Банк' | 'ДОМ.РФ' or custom
+  logoUrl?: string;
+  masterAdminEmail: string;
+  status: 'active' | 'suspended';
+  contactPhone?: string;
+  contactPerson?: string;
+  createdAt: string;
+  kpis: {
+    escrowAccountsCount: number;
+    totalEscrowRub: number;
+    avgApprovalDays: number;
+    devApprovalRatePercent: number;
+    devRejectionRatePercent: number;
+  };
+}
+
+export type BankTabPermission = 'escrow' | 'developer_accreditation' | 'special' | 'credit_limits' | 'staff';
+
 export interface BankEmployee {
   id: string;
   name: string;
   email: string;
   role: 'chief_manager' | 'head_manager' | 'officer' | 'escrow_agent';
-  bankName: string; // 'Сбербанк' | 'ВТБ' | 'Альфа-Банк'
+  bankName: string; // 'Сбербанк' | 'ВТБ' | 'Альфа-Банк' | 'ДОМ.РФ'
   status: 'active' | 'suspended';
   phone?: string;
   createdAt: string;
+  isMasterAdmin?: boolean;
+  permissions?: BankTabPermission[];
 }
 
 export interface SpecialApprovalRequest {
@@ -529,6 +556,10 @@ export interface SpecialApprovalRequest {
   lotCode: string;
   complexName: string;
   developer: string;
+  contractorName?: string; // Grouping by contractor
+  projectTitle?: string;
+  location?: string;
+  costPriceRub?: number;
   contractPriceRub: number;
   requestedByEmployeeId: string;
   requestedByEmployeeName: string;
@@ -536,6 +567,9 @@ export interface SpecialApprovalRequest {
   reason: string;
   requestedAt: string;
   status: 'pending' | 'approved' | 'rejected';
+  approvedRatePercent?: number;
+  maxPdnPercent?: 40 | 50 | 60;
+  documentIds?: string[];
   decisionNotes?: string;
   decidedAt?: string;
   decidedBy?: string;

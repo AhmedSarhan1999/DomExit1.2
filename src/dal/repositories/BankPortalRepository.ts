@@ -3,19 +3,79 @@ import {
   SpecialApprovalRequest,
   BuyerCreditLimitRequest,
   DealTrack,
+  PartnerBankEntity,
+  BankTabPermission,
 } from '../../types';
-import { initialBankEmployees } from '../seedData';
+import { initialBankEmployees, initialPartnerBanks } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { DealsRepository } from './DealsRepository';
 import { LotsRepository } from './LotsRepository';
 import { UsersRepository } from './UsersRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
 
+const PARTNER_BANKS_COLLECTION = 'partner_banks';
 const BANK_EMP_COLLECTION = 'bank_employees';
 const SPECIAL_APPROVAL_COLLECTION = 'bank_special_approvals';
 const CREDIT_LIMITS_COLLECTION = 'bank_credit_limits';
 
 export class BankPortalRepository {
+  // 0. Partner Banks Management (Task 7)
+  static async getAllPartnerBanks(): Promise<PartnerBankEntity[]> {
+    return DatabaseGateway.getAll<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, initialPartnerBanks);
+  }
+
+  static async addPartnerBank(data: {
+    name: string;
+    masterAdminEmail: string;
+    logoUrl?: string;
+    contactPhone?: string;
+    contactPerson?: string;
+    tempPassword?: string;
+  }): Promise<PartnerBankEntity> {
+    const newBank: PartnerBankEntity = {
+      id: `bank-${Date.now()}`,
+      name: data.name.trim(),
+      masterAdminEmail: data.masterAdminEmail.trim(),
+      logoUrl:
+        data.logoUrl ||
+        'https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?auto=format&fit=crop&w=120&q=80',
+      status: 'active',
+      contactPhone: data.contactPhone || '+7 (800) 500-00-00',
+      contactPerson: data.contactPerson || 'Руководитель департамента эскроу',
+      createdAt: new Date().toISOString(),
+      kpis: {
+        escrowAccountsCount: 0,
+        totalEscrowRub: 0,
+        avgApprovalDays: 1.5,
+        devApprovalRatePercent: 100,
+        devRejectionRatePercent: 0,
+      },
+    };
+
+    await DatabaseGateway.save<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, newBank);
+
+    // Also create the Master Bank Admin user in bank_employees
+    await this.addBankEmployee({
+      name: `${data.contactPerson || 'Мастер-Администратор'} (${data.name})`,
+      email: data.masterAdminEmail,
+      role: 'chief_manager',
+      bankName: data.name,
+      phone: data.contactPhone || '+7 (800) 500-00-00',
+      isMasterAdmin: true,
+      permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+    });
+
+    await AuditLogsRepository.addLog({
+      operatorName: 'Виктор Сергеевич (Владелец / CEO)',
+      operatorRole: 'owner',
+      actionType: 'market_settings_updated',
+      title: `Подключен новый банк-партнер: ${newBank.name}`,
+      description: `Мастер-аккаунт: ${newBank.masterAdminEmail}. Создан личный шлюз банка в контуре DomExit.`,
+    });
+
+    return newBank;
+  }
+
   // 1. Bank Employees Management
   static async getAllBankEmployees(): Promise<BankEmployee[]> {
     return DatabaseGateway.getAll<BankEmployee>(BANK_EMP_COLLECTION, initialBankEmployees);
@@ -31,9 +91,23 @@ export class BankPortalRepository {
       status: 'active',
       phone: data.phone || '+7 (812) 500-00-00',
       createdAt: new Date().toISOString(),
+      isMasterAdmin: data.isMasterAdmin ?? false,
+      permissions: data.permissions || ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
     };
     await DatabaseGateway.save<BankEmployee>(BANK_EMP_COLLECTION, newEmp);
     return newEmp;
+  }
+
+  static async updateBankEmployeePermissions(
+    id: string,
+    permissions: BankTabPermission[]
+  ): Promise<BankEmployee | null> {
+    const employees = await this.getAllBankEmployees();
+    const emp = employees.find((e) => e.id === id);
+    if (!emp) return null;
+    emp.permissions = permissions;
+    await DatabaseGateway.save<BankEmployee>(BANK_EMP_COLLECTION, emp);
+    return emp;
   }
 
   static async toggleBankEmployeeStatus(id: string): Promise<BankEmployee | null> {
@@ -45,15 +119,79 @@ export class BankPortalRepository {
     return emp;
   }
 
-  // 2. Special Property Approval Requests
+  // 2. Special Property & Small Contractor Approval Requests (Task 5)
   static async getAllSpecialApprovals(): Promise<SpecialApprovalRequest[]> {
     return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, [
+      {
+        id: 'spec-contractor-1',
+        lotId: 'lot-contractor-1',
+        lotCode: 'U-CONTRACTOR-1',
+        complexName: 'ЖК «Хвойный Квартал» (Корпус 1)',
+        projectTitle: 'Индивидуальный проект «Хвойный Квартал»',
+        developer: 'ООО «СтройИнвест-Северо-Запад»',
+        contractorName: 'ООО «СтройИнвест-Северо-Запад»',
+        location: 'Санкт-Петербург, Приморский район',
+        costPriceRub: 7200000,
+        contractPriceRub: 9850000,
+        requestedByEmployeeId: 'emp-1',
+        requestedByEmployeeName: 'Алексей Смирнов',
+        bankName: 'Сбербанк',
+        reason:
+          'Запрос проектного финансирования и согласования эскроу-аккредитации для независимого подрядчика.',
+        requestedAt: '2026-10-25T11:00:00Z',
+        status: 'pending',
+        documentIds: ['DOC-CONTRACTOR-DDU-01', 'DOC-CONTRACTOR-PLAN-01'],
+      },
+      {
+        id: 'spec-contractor-2',
+        lotId: 'lot-contractor-2',
+        lotCode: 'U-CONTRACTOR-2',
+        complexName: 'Коттеджный поселок «Озерный Край»',
+        projectTitle: 'Вилла «Озерный Край» (Секция 4Б)',
+        developer: 'ООО «СтройИнвест-Северо-Запад»',
+        contractorName: 'ООО «СтройИнвест-Северо-Запад»',
+        location: 'Ленинградская область, Всеволожский район',
+        costPriceRub: 10500000,
+        contractPriceRub: 14200000,
+        requestedByEmployeeId: 'emp-1',
+        requestedByEmployeeName: 'Алексей Смирнов',
+        bankName: 'Сбербанк',
+        reason:
+          'Проектная документация индивидуального строительства по эскроу-счетам.',
+        requestedAt: '2026-10-26T14:20:00Z',
+        status: 'pending',
+        documentIds: ['DOC-CONTRACTOR-DDU-02', 'DOC-CONTRACTOR-PLAN-02'],
+      },
+      {
+        id: 'spec-contractor-3',
+        lotId: 'lot-contractor-3',
+        lotCode: 'U-CONTRACTOR-3',
+        complexName: 'Вилла «Финский Залив»',
+        projectTitle: 'Частная резиденция «Финский Залив»',
+        developer: 'ИП «Васильев Частный Проект»',
+        contractorName: 'ИП «Васильев Частный Проект»',
+        location: 'Санкт-Петербург, Курортный район, Сестрорецк',
+        costPriceRub: 13800000,
+        contractPriceRub: 18500000,
+        requestedByEmployeeId: 'emp-3',
+        requestedByEmployeeName: 'Дмитрий Васильев',
+        bankName: 'Сбербанк',
+        reason:
+          'Индивидуальный проект премиум-класса с отделкой под ключ.',
+        requestedAt: '2026-10-27T16:00:00Z',
+        status: 'pending',
+        documentIds: ['DOC-CONTRACTOR-DDU-03', 'DOC-CONTRACTOR-PLAN-03'],
+      },
       {
         id: 'spec-1',
         lotId: 'lot-3',
         lotCode: 'U-10580',
         complexName: 'ЖК «Морская Набережная»',
+        projectTitle: 'ЖК «Морская Набережная» (Корпус 8)',
         developer: 'Группа ЛСР',
+        contractorName: 'Группа ЛСР',
+        location: 'Санкт-Петербург, Василеостровский район',
+        costPriceRub: 5900000,
         contractPriceRub: 7900000,
         requestedByEmployeeId: 'emp-1',
         requestedByEmployeeName: 'Алексей Смирнов',
@@ -61,7 +199,9 @@ export class BankPortalRepository {
         reason:
           'Нестандартный график квартальных платежей рассрочки. Запрос специальной аккредитации для эскроу-переуступки.',
         requestedAt: '2026-10-18T14:30:00Z',
-        status: 'pending',
+        status: 'approved',
+        approvedRatePercent: 19.8,
+        maxPdnPercent: 50,
       },
     ]);
   }
@@ -109,7 +249,9 @@ export class BankPortalRepository {
     requestId: string,
     decision: 'approved' | 'rejected',
     notes: string,
-    decidedBy: string
+    decidedBy: string,
+    approvedRatePercent?: number,
+    maxPdnPercent?: 40 | 50 | 60
   ): Promise<SpecialApprovalRequest | null> {
     const all = await this.getAllSpecialApprovals();
     const req = all.find((r) => r.id === requestId);
@@ -119,6 +261,9 @@ export class BankPortalRepository {
     req.decisionNotes = notes;
     req.decidedAt = new Date().toISOString();
     req.decidedBy = decidedBy;
+    if (approvedRatePercent !== undefined) req.approvedRatePercent = approvedRatePercent;
+    if (maxPdnPercent !== undefined) req.maxPdnPercent = maxPdnPercent;
+
     await DatabaseGateway.save<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, req);
 
     const lot = await LotsRepository.getByCode(req.lotCode);

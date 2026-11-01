@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatRubles } from '../utils/formatters';
 import { formatRussianPhoneInput } from '../utils/validators';
-import { getRegionByCode } from '../data/russianGeography';
+import { getRegionByCode, getDistrictsForRegion, RUSSIAN_REGIONS } from '../data/russianGeography';
 import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
@@ -16,9 +16,9 @@ import { UsersRepository } from '../dal/repositories/UsersRepository';
 import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
+import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import {
   MarketSettingsRepository,
-  DEFAULT_DISTRICT_YIELD_CONFIGS,
 } from '../dal/repositories/MarketSettingsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import {
@@ -34,6 +34,8 @@ import {
   DistrictYieldConfig,
   UserProfile,
   DocumentMetadata,
+  PartnerBankEntity,
+  RussianCityCode,
 } from '../types';
 import {
   CheckCircle2,
@@ -50,6 +52,10 @@ import {
   Lock,
   HardDrive,
   AlertCircle,
+  Landmark,
+  Building2,
+  Plus,
+  ExternalLink,
 } from 'lucide-react';
 
 export const AdminDashboardPage: React.FC = () => {
@@ -78,12 +84,24 @@ export const AdminDashboardPage: React.FC = () => {
   });
   const [isSavingMarket, setIsSavingMarket] = useState<boolean>(false);
 
-  // District Yield & Capital Growth Engine State (Task 4)
+  // District Yield & Capital Growth Engine State (Task 1: Two-Tier Location Selector)
+  const [selectedYieldCity, setSelectedYieldCity] = useState<RussianCityCode>('spb');
   const [selectedYieldDistrict, setSelectedYieldDistrict] = useState<string>('Приморский район');
   const [districtDailyRentPct, setDistrictDailyRentPct] = useState<number>(0.05);
   const [districtMonthlyRentPct, setDistrictMonthlyRentPct] = useState<number>(0.65);
   const [districtAnnualGrowthPct, setDistrictAnnualGrowthPct] = useState<number>(11.5);
   const [isSavingDistrictYield, setIsSavingDistrictYield] = useState<boolean>(false);
+
+  // Partner Banks Management State (Task 7)
+  const [partnerBanks, setPartnerBanks] = useState<PartnerBankEntity[]>([]);
+  const [showAddBankModal, setShowAddBankModal] = useState<boolean>(false);
+  const [newBankName, setNewBankName] = useState<string>('');
+  const [newBankAdminEmail, setNewBankAdminEmail] = useState<string>('');
+  const [newBankContactPhone, setNewBankContactPhone] = useState<string>('+7 (800) ');
+  const [newBankContactPerson, setNewBankContactPerson] = useState<string>('');
+  const [newBankTempPassword, setNewBankTempPassword] = useState<string>('DomExit2026!');
+  const [newBankLogoUrl, setNewBankLogoUrl] = useState<string>('');
+  const [isSavingBank, setIsSavingBank] = useState<boolean>(false);
 
   // Modal inspection state
   const [modalLot, setModalLot] = useState<Lot | null>(null);
@@ -172,6 +190,7 @@ export const AdminDashboardPage: React.FC = () => {
       invData,
       mSettings,
       allUsers,
+      pBanks,
     ] = await Promise.all([
       AnalyticsRepository.getKPIs(),
       LotsRepository.getAll({ includePendingApproval: true }),
@@ -182,6 +201,7 @@ export const AdminDashboardPage: React.FC = () => {
       InvestorClubRepository.getAll(),
       MarketSettingsRepository.getSettings(),
       UsersRepository.getAll(),
+      BankPortalRepository.getAllPartnerBanks(),
     ]);
 
     // Sort lots so pending owner approval & docs requested appear first in Triage Desk
@@ -208,6 +228,7 @@ export const AdminDashboardPage: React.FC = () => {
     setInvestors(invData);
     setMarketSettings(mSettings);
     setUsersList(allUsers);
+    setPartnerBanks(pBanks);
   };
 
   useEffect(() => {
@@ -728,15 +749,15 @@ export const AdminDashboardPage: React.FC = () => {
                   </div>
                 </form>
 
-                {/* District Yield & Capital Growth Engine (Task 4) */}
+                {/* District Yield & Capital Growth Engine (Task 1: Two-Tier Location Selector) */}
                 <div className="pt-4 border-t border-slate-100 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
-                        District Yield & Capital Growth Engine
+                        District Yield & Capital Growth Engine (Двухуровневый селектор локаций)
                       </span>
                       <h4 className="text-sm font-bold text-slate-900">
-                        Управление коэффициентами аренды и прогнозом роста цен по районам (3 и 5 лет)
+                        Управление коэффициентами аренды и прогнозом роста цен по регионам и районам
                       </h4>
                     </div>
                     <span className="text-[11px] font-semibold text-slate-500">
@@ -744,29 +765,61 @@ export const AdminDashboardPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs items-end">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs items-end">
+                    {/* Tier 1: City / Federal Region */}
                     <div>
                       <label className="block font-bold text-slate-700 mb-1">
-                        Выберите район / локацию:
+                        1. Город / Регион *:
                       </label>
                       <select
-                        value={selectedYieldDistrict}
+                        value={selectedYieldCity}
                         onChange={async (e) => {
-                          const distName = e.target.value;
-                          setSelectedYieldDistrict(distName);
-                          const cfg = await MarketSettingsRepository.getDistrictYieldConfig(distName);
+                          const newCity = e.target.value as RussianCityCode;
+                          setSelectedYieldCity(newCity);
+                          const cityDistricts = getDistrictsForRegion(newCity);
+                          const firstDistrict = cityDistricts[0]?.nameRu || 'Приморский район';
+                          setSelectedYieldDistrict(firstDistrict);
+                          const cfg = await MarketSettingsRepository.getDistrictYieldConfig(
+                            firstDistrict,
+                            newCity
+                          );
                           setDistrictDailyRentPct(cfg.dailyRentPercentOfMarket);
                           setDistrictMonthlyRentPct(cfg.monthlyRentPercentOfMarket);
                           setDistrictAnnualGrowthPct(cfg.annualGrowthPercent);
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-bold focus:bg-white focus:border-emerald-500"
                       >
-                        {Object.keys({
-                          ...DEFAULT_DISTRICT_YIELD_CONFIGS,
-                          ...(marketSettings.districtYieldConfigs || {}),
-                        }).map((distKey) => (
-                          <option key={distKey} value={distKey}>
-                            {distKey}
+                        {RUSSIAN_REGIONS.map((reg) => (
+                          <option key={reg.code} value={reg.code}>
+                            {reg.shortLabelRu || reg.labelRu}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Tier 2: District belonging to selected city */}
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        2. Район / Локация *:
+                      </label>
+                      <select
+                        value={selectedYieldDistrict}
+                        onChange={async (e) => {
+                          const distName = e.target.value;
+                          setSelectedYieldDistrict(distName);
+                          const cfg = await MarketSettingsRepository.getDistrictYieldConfig(
+                            distName,
+                            selectedYieldCity
+                          );
+                          setDistrictDailyRentPct(cfg.dailyRentPercentOfMarket);
+                          setDistrictMonthlyRentPct(cfg.monthlyRentPercentOfMarket);
+                          setDistrictAnnualGrowthPct(cfg.annualGrowthPercent);
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-bold focus:bg-white focus:border-emerald-500"
+                      >
+                        {getDistrictsForRegion(selectedYieldCity).map((dist) => (
+                          <option key={dist.nameRu} value={dist.nameRu}>
+                            {dist.nameRu}
                           </option>
                         ))}
                       </select>
@@ -774,7 +827,7 @@ export const AdminDashboardPage: React.FC = () => {
 
                     <div>
                       <label className="block font-bold text-slate-700 mb-1">
-                        Посуточная аренда (% от рынка/сут.):
+                        Посуточно (%/сут.):
                       </label>
                       <input
                         type="number"
@@ -789,7 +842,7 @@ export const AdminDashboardPage: React.FC = () => {
 
                     <div>
                       <label className="block font-bold text-slate-700 mb-1">
-                        Долгосрочная аренда (% от рынка/мес.):
+                        Долгосрочно (%/мес.):
                       </label>
                       <input
                         type="number"
@@ -804,7 +857,7 @@ export const AdminDashboardPage: React.FC = () => {
 
                     <div>
                       <label className="block font-bold text-slate-700 mb-1">
-                        Прогноз роста цены (% годовых):
+                        Рост цены (%/год):
                       </label>
                       <input
                         type="number"
@@ -827,6 +880,7 @@ export const AdminDashboardPage: React.FC = () => {
                             await MarketSettingsRepository.saveDistrictYieldConfig(
                               {
                                 districtNameRu: selectedYieldDistrict,
+                                city: selectedYieldCity,
                                 dailyRentPercentOfMarket: districtDailyRentPct,
                                 monthlyRentPercentOfMarket: districtMonthlyRentPct,
                                 annualGrowthPercent: districtAnnualGrowthPct,
@@ -838,16 +892,105 @@ export const AdminDashboardPage: React.FC = () => {
                           setMarketSettings(latestSettings);
                           setIsSavingDistrictYield(false);
                           setNotificationMsg(
-                            `Коэффициенты доходности для района «${savedCfg.districtNameRu}» сохранены (Посуточно: ${savedCfg.dailyRentPercentOfMarket}%, Долгосрочно: ${savedCfg.monthlyRentPercentOfMarket}%, Рост: +${savedCfg.annualGrowthPercent}%/год).`
+                            `Коэффициенты доходности для района «${savedCfg.districtNameRu}» (${selectedYieldCity.toUpperCase()}) сохранены (Посуточно: ${savedCfg.dailyRentPercentOfMarket}%, Долгосрочно: ${savedCfg.monthlyRentPercentOfMarket}%, Рост: +${savedCfg.annualGrowthPercent}%/год).`
                           );
                         }}
                         className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                       >
                         <Save className="w-3.5 h-3.5" />
-                        <span>{isSavingDistrictYield ? 'Сохранение...' : 'Обновить район'}</span>
+                        <span>{isSavingDistrictYield ? '...' : 'Обновить район'}</span>
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* PARTNER BANKS MANAGEMENT & INTEGRATION HUB (Task 7) */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-black">
+                      <Landmark className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900">
+                        Управление банками-партнерами (Partner Bank Escrow & Integration Hub)
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Мониторинг счетов СБР/Эскроу, ключевых KPI одобрения девелоперов и подключение новых банковских шлюзов
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddBankModal(true)}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Добавить новый банк-партнер</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {partnerBanks.map((bank) => (
+                    <div
+                      key={bank.id}
+                      className="bg-slate-50 hover:bg-white border border-slate-200 rounded-2xl p-5 space-y-4 transition-all shadow-xs hover:shadow-md"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0">
+                            {bank.logoUrl ? (
+                              <img src={bank.logoUrl} alt={bank.name} className="w-full h-full object-cover rounded-lg" />
+                            ) : (
+                              <Building2 className="w-5 h-5 text-emerald-700" />
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-slate-900">{bank.name}</h4>
+                            <span className="text-[10px] font-bold text-slate-400 block">{bank.contactPerson || 'Офис эскроу'}</span>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Активен ✓
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-200/60">
+                        <div className="p-2 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block">Эскроу-счета:</span>
+                          <strong className="text-sm font-black text-slate-900">{bank.kpis.escrowAccountsCount}</strong>
+                        </div>
+                        <div className="p-2 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block">Объем в СБР:</span>
+                          <strong className="text-xs font-black text-emerald-700 font-mono">
+                            {formatRubles(bank.kpis.totalEscrowRub)}
+                          </strong>
+                        </div>
+                        <div className="p-2 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block">Ср. скорость:</span>
+                          <strong className="text-sm font-black text-slate-900">{bank.kpis.avgApprovalDays} дн.</strong>
+                        </div>
+                        <div className="p-2 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block">Одобрение:</span>
+                          <strong className="text-sm font-black text-emerald-700">{bank.kpis.devApprovalRatePercent}%</strong>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+                        <span className="text-[11px] text-slate-500 truncate max-w-[150px]" title={bank.masterAdminEmail}>
+                          {bank.masterAdminEmail}
+                        </span>
+                        <Link
+                          to="/admin/bank-gateway"
+                          className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center space-x-1"
+                        >
+                          <span>В шлюз</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -2308,6 +2451,174 @@ export const AdminDashboardPage: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md cursor-pointer"
                 >
                   Создать и активировать доступ
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add New Partner Bank (Task 7) */}
+      {showAddBankModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl animate-fade-in">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-black">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900">
+                    Подключение нового банка-партнера
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Создание шлюза СБР / Эскроу и учетной записи Master Bank Admin
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddBankModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!newBankName.trim() || !newBankAdminEmail.trim()) {
+                  showError('Укажите наименование банка и Master Admin Email.');
+                  return;
+                }
+                setIsSavingBank(true);
+                try {
+                  await BankPortalRepository.addPartnerBank({
+                    name: newBankName.trim(),
+                    masterAdminEmail: newBankAdminEmail.trim(),
+                    contactPhone: newBankContactPhone.trim(),
+                    contactPerson: newBankContactPerson.trim(),
+                    logoUrl: newBankLogoUrl.trim() || undefined,
+                    tempPassword: newBankTempPassword.trim(),
+                  });
+                  const updatedBanks = await BankPortalRepository.getAllPartnerBanks();
+                  setPartnerBanks(updatedBanks);
+                  setIsSavingBank(false);
+                  setShowAddBankModal(false);
+                  setNewBankName('');
+                  setNewBankAdminEmail('');
+                  setNewBankContactPerson('');
+                  showToast(`Банк-партнер «${newBankName}» успешно подключен к контуру DomExit!`);
+                } catch {
+                  setIsSavingBank(false);
+                  showError('Ошибка при подключении банка-партнера.');
+                }
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Наименование кредитной организации / банка *:
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Например: ПАО «Газпромбанк», ПАО «Совкомбанк»"
+                  value={newBankName}
+                  onChange={(e) => setNewBankName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-semibold focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Master Bank Admin Email *:
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="officer@partnerbank.ru"
+                    value={newBankAdminEmail}
+                    onChange={(e) => setNewBankAdminEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono font-semibold focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Временный пароль для входа *:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newBankTempPassword}
+                    onChange={(e) => setNewBankTempPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono font-semibold focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    ФИО руководителя направления / офицера:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Иванов Сергей Николаевич"
+                    value={newBankContactPerson}
+                    onChange={(e) => setNewBankContactPerson(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Прямой телефон эскроу-департамента:
+                  </label>
+                  <input
+                    type="tel"
+                    value={newBankContactPhone}
+                    onChange={(e) => setNewBankContactPhone(formatRussianPhoneInput(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  URL официального логотипа (опционально):
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://images.unsplash.com/photo-..."
+                  value={newBankLogoUrl}
+                  onChange={(e) => setNewBankLogoUrl(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-[11px] focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] leading-relaxed">
+                ℹ️ При подключении автоматически активируется выделенный банковский шлюз в контуре DomExit. Уполномоченному администратору банка будут делегированы права подтверждения депонирования СБР, аккредитации застройщиков и утверждения кредитных лимитов.
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddBankModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingBank}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-xs cursor-pointer flex items-center space-x-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{isSavingBank ? 'Подключение...' : 'Подключить банк'}</span>
                 </button>
               </div>
             </form>

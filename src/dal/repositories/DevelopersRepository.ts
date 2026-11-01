@@ -14,6 +14,24 @@ const ACCREDITATION_REQUESTS_COLLECTION = 'developer_accreditation_requests';
 
 export const PARTNER_BANKS: PartnerBankName[] = ['Сбербанк', 'ВТБ', 'Альфа-Банк', 'ДОМ.РФ'];
 
+export const RUSSIAN_TOP_DEVELOPERS: string[] = [
+  'ПИК',
+  'Самолёт',
+  'ЛСР',
+  'Setl Group',
+  'ФСК',
+  'Эталон',
+  'А101',
+  'Брусника',
+  'Главстрой',
+  'RBI',
+  'КВС',
+  'ГК Пионер',
+  'MR Group',
+  'Sminex',
+  'Донстрой',
+];
+
 function buildDefaultBankTerms(
   sberRate = 19.8,
   vtbRate = 20.2,
@@ -467,6 +485,203 @@ class DevelopersRepositoryController {
     });
 
     return updatedReq;
+  }
+
+  async accreditDeveloperForBank(params: {
+    developerId?: string;
+    developerName: string;
+    developerInn?: string;
+    bankName: PartnerBankName;
+    baseRatePercent: number;
+    familyMortgage6: boolean;
+    itMortgage6: boolean;
+    maxPdnPercent: 40 | 50 | 60;
+    officerName: string;
+  }): Promise<AccreditedDeveloper> {
+    const all = await this.getAllDevelopers();
+    let dev = params.developerId
+      ? all.find((d) => d.id === params.developerId)
+      : await this.findDeveloperByName(params.developerName);
+
+    const now = new Date().toISOString();
+    const newTerms: DeveloperBankTerms = {
+      bankName: params.bankName,
+      isAccredited: true,
+      baseRatePercent: params.baseRatePercent,
+      familyMortgage6: params.familyMortgage6,
+      itMortgage6: params.itMortgage6,
+      maxPdnPercent: params.maxPdnPercent,
+      accreditedAt: now,
+      accreditedBy: params.officerName,
+    };
+
+    if (!dev) {
+      dev = {
+        id: `dev-${Date.now()}`,
+        name: params.developerName.trim(),
+        inn: params.developerInn?.trim() || '7700000000',
+        isAccredited: true,
+        bankTerms: [newTerms],
+        createdAt: now,
+        updatedAt: now,
+      };
+    } else {
+      const otherTerms = dev.bankTerms.filter((b) => b.bankName !== params.bankName);
+      dev = {
+        ...dev,
+        isAccredited: true,
+        bankTerms: [...otherTerms, newTerms],
+        updatedAt: now,
+      };
+    }
+
+    await DatabaseGateway.save<AccreditedDeveloper>(DEVELOPERS_COLLECTION, dev);
+
+    // Synchronize lots
+    const allLots = await LotsRepository.getAll();
+    for (const lot of allLots) {
+      if (normalizeDeveloperName(lot.developer) === normalizeDeveloperName(dev.name)) {
+        const cleanTags = (lot.tags || []).filter((t) => t !== 'Ожидает аккредитации банков');
+        if (!cleanTags.includes(`Аккредитован: ${params.bankName}`)) {
+          cleanTags.push(`Аккредитован: ${params.bankName}`);
+        }
+        await LotsRepository.save({
+          ...lot,
+          developerAccreditationStatus: 'accredited',
+          tags: cleanTags,
+        });
+      }
+    }
+
+    await AuditLogsRepository.addLog({
+      operatorName: params.officerName,
+      operatorRole: 'bank_officer',
+      actionType: 'developer_accreditation_decided',
+      title: `Банк ${params.bankName} включил «${dev.name}» в реестр аккредитованных застройщиков`,
+      description: `Ставка: ${params.baseRatePercent}%, ПДН: ${params.maxPdnPercent}%, Семейная 6%: ${
+        params.familyMortgage6 ? 'Да' : 'Нет'
+      }.`,
+    });
+
+    return dev;
+  }
+
+  async removeDeveloperAccreditation(
+    developerId: string,
+    bankName: PartnerBankName,
+    officerName: string
+  ): Promise<AccreditedDeveloper | null> {
+    const all = await this.getAllDevelopers();
+    const dev = all.find((d) => d.id === developerId);
+    if (!dev) return null;
+
+    const updatedBankTerms = dev.bankTerms.filter((b) => b.bankName !== bankName);
+    const hasRemainingAccreditation = updatedBankTerms.some((b) => b.isAccredited);
+
+    const updatedDev: AccreditedDeveloper = {
+      ...dev,
+      bankTerms: updatedBankTerms,
+      isAccredited: hasRemainingAccreditation,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await DatabaseGateway.save<AccreditedDeveloper>(DEVELOPERS_COLLECTION, updatedDev);
+
+    // Update lots tags
+    const allLots = await LotsRepository.getAll();
+    for (const lot of allLots) {
+      if (normalizeDeveloperName(lot.developer) === normalizeDeveloperName(dev.name)) {
+        const cleanTags = (lot.tags || []).filter((t) => t !== `Аккредитован: ${bankName}`);
+        if (!hasRemainingAccreditation) {
+          cleanTags.push('Ожидает аккредитации банков');
+        }
+        await LotsRepository.save({
+          ...lot,
+          developerAccreditationStatus: hasRemainingAccreditation
+            ? 'accredited'
+            : 'pending_bank_accreditation',
+          tags: cleanTags,
+        });
+      }
+    }
+
+    await AuditLogsRepository.addLog({
+      operatorName: officerName,
+      operatorRole: 'bank_officer',
+      actionType: 'developer_accreditation_decided',
+      title: `Банк ${bankName} отозвал аккредитацию застройщика «${dev.name}»`,
+      description: `Застройщик исключен из реестра банка ${bankName}.`,
+    });
+
+    return updatedDev;
+  }
+
+  async getCompetitiveTermsSummary(
+    developerName: string,
+    currentBank?: PartnerBankName
+  ): Promise<{
+    minRate: number | null;
+    lowestBank: string | null;
+    avgRate: number | null;
+    maxPdn: number | null;
+    otherOffersCount: number;
+    hasFamilyMortgage: boolean;
+    hasItMortgage: boolean;
+  }> {
+    const dev = await this.findDeveloperByName(developerName);
+    if (!dev || !dev.bankTerms) {
+      return {
+        minRate: null,
+        lowestBank: null,
+        avgRate: null,
+        maxPdn: null,
+        otherOffersCount: 0,
+        hasFamilyMortgage: false,
+        hasItMortgage: false,
+      };
+    }
+
+    const otherTerms = dev.bankTerms.filter(
+      (b) => b.isAccredited && (!currentBank || b.bankName !== currentBank)
+    );
+
+    if (otherTerms.length === 0) {
+      return {
+        minRate: null,
+        lowestBank: null,
+        avgRate: null,
+        maxPdn: null,
+        otherOffersCount: 0,
+        hasFamilyMortgage: false,
+        hasItMortgage: false,
+      };
+    }
+
+    let minRate = otherTerms[0].baseRatePercent;
+    let lowestBank = otherTerms[0].bankName;
+    let totalRate = 0;
+    let maxPdn = otherTerms[0].maxPdnPercent;
+
+    for (const t of otherTerms) {
+      if (t.baseRatePercent < minRate) {
+        minRate = t.baseRatePercent;
+        lowestBank = t.bankName;
+      }
+      if (t.maxPdnPercent > maxPdn) {
+        maxPdn = t.maxPdnPercent;
+      }
+      totalRate += t.baseRatePercent;
+    }
+
+    return {
+      minRate,
+      lowestBank,
+      avgRate: Number((totalRate / otherTerms.length).toFixed(1)),
+      maxPdn,
+      otherOffersCount: otherTerms.length,
+      hasFamilyMortgage: otherTerms.some((b) => b.familyMortgage6),
+      hasItMortgage: otherTerms.some((b) => b.itMortgage6),
+    };
   }
 }
 

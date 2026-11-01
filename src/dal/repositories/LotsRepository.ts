@@ -212,6 +212,7 @@ export class LotsRepository {
     telegram: string;
     photoUrl?: string;
     whatsapp?: string;
+    maxProfile?: string;
     bio?: string;
   }): Promise<void> {
     const list = await this.getAll({ includePendingApproval: true });
@@ -225,6 +226,7 @@ export class LotsRepository {
         telegram: employee.telegram,
         photoUrl: employee.photoUrl,
         whatsapp: employee.whatsapp,
+        maxProfile: employee.maxProfile,
         bio: employee.bio,
       };
       await DatabaseGateway.save<Lot>(COLLECTION, lot);

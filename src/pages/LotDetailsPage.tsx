@@ -567,19 +567,19 @@ export const LotDetailsPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                   <span className="text-xs text-slate-500 font-medium block">
-                    Долгосрочная аренда ({monthlyRentPercent}% от рынка):
+                    Долгосрочная аренда:
                   </span>
                   <span className="text-xl font-black text-slate-950 block">
                     {formatRubles(computedLongTermMonthlyRub)} / мес.
                   </span>
                   <span className="text-[11px] text-slate-500 block">
-                    Годовой поток: {formatRubles(computedLongTermMonthlyRub * 12)}
+                    Годовой доход: {formatRubles(computedLongTermMonthlyRub * 12)}
                   </span>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                   <span className="text-xs text-slate-500 font-medium block">
-                    Посуточная аренда ({dailyRentPercent}% в сутки):
+                    Посуточная аренда:
                   </span>
                   <span className="text-xl font-black text-slate-950 block">
                     {formatRubles(computedShortTermDailyRub)} / сутки
@@ -591,7 +591,7 @@ export const LotDetailsPage: React.FC = () => {
 
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-1">
                   <span className="text-xs text-emerald-800 font-semibold block">
-                    Арендная доходность (ROI к цене ДДУ):
+                    Арендная доходность (ROI):
                   </span>
                   <span className="text-2xl font-black text-emerald-700 block">
                     {computedAnnualRentalYieldPercent}% годовых
@@ -606,15 +606,15 @@ export const LotDetailsPage: React.FC = () => {
                     Мгновенный прирост капитала:
                   </span>
                   <span className="text-2xl font-black text-emerald-700 block">
-                    +{instantEquityGrowthPercent}%
+                    +{instantEquityGrowthPercent}% сразу при покупке
                   </span>
                   <span className="text-[11px] text-emerald-800 block">
-                    Выгода в день сделки: +{formatRubles(savingsRub)}
+                    Чистая выгода в день сделки: +{formatRubles(savingsRub)}
                   </span>
                 </div>
               </div>
 
-              {/* 3-Year & 5-Year Capital Growth Forecast Card (Task 4) */}
+              {/* 3-Year & 5-Year Capital Growth Forecast Card (Task 2 & 4) */}
               <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -626,7 +626,7 @@ export const LotDetailsPage: React.FC = () => {
                     </h4>
                   </div>
                   <span className="px-3 py-1 rounded-xl bg-white border border-slate-200 text-xs font-extrabold text-slate-800">
-                    Среднегодовой рост локации: +{annualGrowthPercent}% / год
+                    Капитализация и прирост актива
                   </span>
                 </div>
 
@@ -1081,22 +1081,32 @@ export const LotDetailsPage: React.FC = () => {
                   </a>
                 )}
 
-                {(curatorEmployee?.whatsapp || lot.curator.whatsapp) && (
-                  <a
-                    href={`https://wa.me/${(
-                      curatorEmployee?.whatsapp ||
-                      lot.curator.whatsapp ||
-                      ''
-                    ).replace(/[^\d]/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-colors flex items-center justify-center space-x-1"
-                    title="WhatsApp"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
-                    <span className="hidden sm:inline">WhatsApp</span>
-                  </a>
-                )}
+                {(curatorEmployee?.maxProfile || lot.curator.maxProfile || curatorEmployee?.whatsapp || lot.curator.whatsapp) && (() => {
+                  const maxVal =
+                    curatorEmployee?.maxProfile ||
+                    lot.curator.maxProfile ||
+                    curatorEmployee?.whatsapp ||
+                    lot.curator.whatsapp ||
+                    '';
+                  const maxHref =
+                    maxVal.startsWith('http') || maxVal.startsWith('max://')
+                      ? maxVal
+                      : `https://max.ru/${maxVal.replace(/[^\d]/g, '')}`;
+                  return (
+                    <a
+                      href={maxHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-black transition-colors flex items-center justify-center space-x-1.5 shadow-2xs"
+                      title="Профиль MAX (Messenger / App)"
+                    >
+                      <span className="w-4 h-4 rounded-md bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center leading-none">
+                        M
+                      </span>
+                      <span>MAX</span>
+                    </a>
+                  );
+                })()}
               </div>
             </div>
 

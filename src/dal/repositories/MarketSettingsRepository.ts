@@ -103,6 +103,86 @@ export const DEFAULT_DISTRICT_YIELD_CONFIGS: Record<string, DistrictYieldConfig>
     annualGrowthPercent: 15.8,
     updatedAt: '2026-10-28T10:00:00.000Z',
   },
+  'Хостинский район': {
+    districtNameRu: 'Хостинский район',
+    city: 'sochi',
+    dailyRentPercentOfMarket: 0.08,
+    monthlyRentPercentOfMarket: 0.75,
+    annualGrowthPercent: 14.5,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Лазаревский район': {
+    districtNameRu: 'Лазаревский район',
+    city: 'sochi',
+    dailyRentPercentOfMarket: 0.07,
+    monthlyRentPercentOfMarket: 0.70,
+    annualGrowthPercent: 13.5,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Ново-Савиновский район': {
+    districtNameRu: 'Ново-Савиновский район',
+    city: 'kazan',
+    dailyRentPercentOfMarket: 0.052,
+    monthlyRentPercentOfMarket: 0.66,
+    annualGrowthPercent: 12.0,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Вахитовский район': {
+    districtNameRu: 'Вахитовский район',
+    city: 'kazan',
+    dailyRentPercentOfMarket: 0.058,
+    monthlyRentPercentOfMarket: 0.70,
+    annualGrowthPercent: 13.0,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Советский район (Казань)': {
+    districtNameRu: 'Советский район (Казань)',
+    city: 'kazan',
+    dailyRentPercentOfMarket: 0.048,
+    monthlyRentPercentOfMarket: 0.62,
+    annualGrowthPercent: 11.2,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Приволжский район': {
+    districtNameRu: 'Приволжский район',
+    city: 'kazan',
+    dailyRentPercentOfMarket: 0.050,
+    monthlyRentPercentOfMarket: 0.64,
+    annualGrowthPercent: 11.5,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Ленинский район (ЕКБ)': {
+    districtNameRu: 'Ленинский район (ЕКБ)',
+    city: 'ekb',
+    dailyRentPercentOfMarket: 0.050,
+    monthlyRentPercentOfMarket: 0.65,
+    annualGrowthPercent: 11.8,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Октябрьский район (ЕКБ)': {
+    districtNameRu: 'Октябрьский район (ЕКБ)',
+    city: 'ekb',
+    dailyRentPercentOfMarket: 0.048,
+    monthlyRentPercentOfMarket: 0.63,
+    annualGrowthPercent: 11.2,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Верх-Исетский район': {
+    districtNameRu: 'Верх-Исетский район',
+    city: 'ekb',
+    dailyRentPercentOfMarket: 0.052,
+    monthlyRentPercentOfMarket: 0.67,
+    annualGrowthPercent: 12.2,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
+  'Кировский район (ЕКБ)': {
+    districtNameRu: 'Кировский район (ЕКБ)',
+    city: 'ekb',
+    dailyRentPercentOfMarket: 0.049,
+    monthlyRentPercentOfMarket: 0.64,
+    annualGrowthPercent: 11.5,
+    updatedAt: '2026-10-28T10:00:00.000Z',
+  },
 };
 
 export class MarketSettingsRepository {
@@ -124,19 +204,24 @@ export class MarketSettingsRepository {
     return this.cachedSettings;
   }
 
-  static async getDistrictYieldConfig(districtNameRu: string): Promise<DistrictYieldConfig> {
+  static async getDistrictYieldConfig(districtNameRu: string, city?: string): Promise<DistrictYieldConfig> {
     const settings = await this.getSettings();
     const map = settings.districtYieldConfigs || DEFAULT_DISTRICT_YIELD_CONFIGS;
     const trimmed = (districtNameRu || '').trim();
+    if (city && map[`${city}:${trimmed}`]) return map[`${city}:${trimmed}`];
     if (map[trimmed]) return map[trimmed];
 
     const matchedKey = Object.keys(map).find(
-      (k) => k.toLowerCase() === trimmed.toLowerCase() || trimmed.toLowerCase().includes(k.toLowerCase())
+      (k) =>
+        k.toLowerCase() === trimmed.toLowerCase() ||
+        (city && k.toLowerCase() === `${city}:${trimmed}`.toLowerCase()) ||
+        trimmed.toLowerCase().includes(k.toLowerCase())
     );
     if (matchedKey) return map[matchedKey];
 
     return {
       districtNameRu: trimmed || 'Приморский район',
+      city: (city as any) || 'spb',
       dailyRentPercentOfMarket: 0.05,
       monthlyRentPercentOfMarket: 0.65,
       annualGrowthPercent: 11.0,
@@ -154,11 +239,15 @@ export class MarketSettingsRepository {
       updatedAt: new Date().toISOString(),
       updatedBy: operatorName,
     };
+    const key = config.districtNameRu.trim();
     const nextMap: Record<string, DistrictYieldConfig> = {
       ...DEFAULT_DISTRICT_YIELD_CONFIGS,
       ...(current.districtYieldConfigs || {}),
-      [config.districtNameRu.trim()]: updatedConfig,
+      [key]: updatedConfig,
     };
+    if (config.city) {
+      nextMap[`${config.city}:${key}`] = updatedConfig;
+    }
 
     await this.saveSettings({
       districtYieldConfigs: nextMap,
