@@ -1,6 +1,6 @@
 import { DealTrack } from '../../types';
 import { initialDeals } from '../seedData';
-import { FirebaseAdapter } from '../adapters/FirebaseAdapter';
+import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { CandidatesRepository } from './CandidatesRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
@@ -9,38 +9,78 @@ const COLLECTION = 'deals';
 
 export class DealsRepository {
   static async getAll(): Promise<DealTrack[]> {
-    return FirebaseAdapter.getAllEntities<DealTrack>(COLLECTION, initialDeals);
+    return DatabaseGateway.getAll<DealTrack>(COLLECTION, initialDeals);
   }
 
   static async getById(dealId: string): Promise<DealTrack | null> {
+    if (!dealId) return null;
     const deals = await this.getAll();
-    const cleanId = dealId.toUpperCase();
+    const cleanId = dealId.trim().toUpperCase();
     const found = deals.find(
-      (d) => d.dealId.toUpperCase() === cleanId || d.lotCode.toUpperCase() === cleanId || d.id === dealId
+      (d) =>
+        d.dealId.toUpperCase() === cleanId ||
+        d.lotCode.toUpperCase() === cleanId ||
+        d.id.toUpperCase() === cleanId
     );
     return found || null;
   }
 
+  static async getByEmployee(employeeId: string): Promise<DealTrack[]> {
+    const [deals, assignedLots] = await Promise.all([
+      this.getAll(),
+      LotsRepository.getByAssignedEmployee(employeeId),
+    ]);
+    const assignedLotCodes = new Set(assignedLots.map((l) => l.lotCode.toUpperCase()));
+    return deals.filter(
+      (d) =>
+        d.assignedEmployeeId === employeeId ||
+        assignedLotCodes.has(d.lotCode.toUpperCase())
+    );
+  }
+
+  static async getBySeller(uid: string, clientCode?: string): Promise<DealTrack[]> {
+    const deals = await this.getAll();
+    return deals.filter(
+      (d) =>
+        (uid && d.sellerUserId === uid) ||
+        (clientCode && d.sellerClientCode?.toUpperCase() === clientCode.toUpperCase())
+    );
+  }
+
+  static async getByPartner(partnerRefCode: string): Promise<DealTrack[]> {
+    if (!partnerRefCode) return [];
+    const clean = partnerRefCode.trim().toUpperCase();
+    const deals = await this.getAll();
+    return deals.filter((d) => d.partnerRefCode?.trim().toUpperCase() === clean);
+  }
+
   static async updateStage(dealId: string, stage: DealTrack['stage']): Promise<DealTrack | null> {
     const deals = await this.getAll();
-    const deal = deals.find((d) => d.dealId === dealId || d.id === dealId || d.lotCode === dealId);
+    const clean = dealId.trim().toUpperCase();
+    const deal = deals.find(
+      (d) =>
+        d.dealId.toUpperCase() === clean ||
+        d.id.toUpperCase() === clean ||
+        d.lotCode.toUpperCase() === clean
+    );
     if (!deal) return null;
     deal.stage = stage;
     deal.updatedDate = new Date().toISOString().split('T')[0];
-    await FirebaseAdapter.saveEntity(COLLECTION, deal);
+    await DatabaseGateway.save<DealTrack>(COLLECTION, deal);
     return deal;
   }
 
   static async update(deal: DealTrack): Promise<DealTrack> {
     deal.updatedDate = new Date().toISOString().split('T')[0];
-    await FirebaseAdapter.saveEntity(COLLECTION, deal);
+    await DatabaseGateway.save<DealTrack>(COLLECTION, deal);
     return deal;
   }
 
-  /**
-   * Step A (Mission 10.1): Curator review complete & handover to Partner Bank
-   */
-  static async handoverToBank(dealId: string, curatorName: string, bankName: string = 'ПАО Сбербанк'): Promise<DealTrack | null> {
+  static async handoverToBank(
+    dealId: string,
+    curatorName: string,
+    bankName: string = 'ПАО Сбербанк'
+  ): Promise<DealTrack | null> {
     const deal = await this.getById(dealId);
     if (!deal) return null;
 
@@ -48,11 +88,14 @@ export class DealsRepository {
     deal.escrowWorkflow = deal.escrowWorkflow || {
       step: 'bank_escrow_deposit',
       bankName,
-      escrowAccountNumber: `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-${bankName.includes('Сбер') ? 'СБЕР' : 'ВТБ'}`,
-      depositedAmountRub: deal.sellerReturnRub + (deal.sellerReturnRub * 0.025),
+      escrowAccountNumber: `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-${
+        bankName.includes('Сбер') ? 'СБЕР' : bankName.includes('Альфа') ? 'АЛЬФА' : 'ВТБ'
+      }`,
+      depositedAmountRub: Math.round(deal.sellerReturnRub + deal.sellerReturnRub * 0.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
+    deal.escrowWorkflow.bankName = bankName;
     deal.escrowWorkflow.step = 'bank_escrow_deposit';
     deal.escrowWorkflow.curatorHandoverAt = new Date().toISOString();
 
@@ -71,10 +114,12 @@ export class DealsRepository {
     return deal;
   }
 
-  /**
-   * Step B (Mission 10.2): Bank officer confirms escrow account and buyer deposit
-   */
-  static async confirmBankDeposit(dealId: string, bankOfficerName: string, escrowAccount?: string, amount?: number): Promise<DealTrack | null> {
+  static async confirmBankDeposit(
+    dealId: string,
+    bankOfficerName: string,
+    escrowAccount?: string,
+    amount?: number
+  ): Promise<DealTrack | null> {
     const deal = await this.getById(dealId);
     if (!deal) return null;
 
@@ -82,7 +127,7 @@ export class DealsRepository {
       step: 'signing_photos',
       bankName: 'ПАО Сбербанк',
       escrowAccountNumber: escrowAccount || 'АК-78401/2026-СБЕР',
-      depositedAmountRub: amount || 2759530,
+      depositedAmountRub: amount || Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
@@ -99,16 +144,13 @@ export class DealsRepository {
       operatorName: bankOfficerName,
       operatorRole: 'bank_officer',
       actionType: 'escrow_funds_deposited',
-      title: `Банк подтвердил депонирование средств: ${deal.escrowWorkflow.depositedAmountRub.toLocaleString()} ₽`,
+      title: `Банк подтвердил депонирование средств: ${deal.escrowWorkflow.depositedAmountRub.toLocaleString('ru-RU')} ₽`,
       description: `Средства заблокированы на номинальном счете ${deal.escrowWorkflow.escrowAccountNumber} до регистрации Росреестра.`,
     });
 
     return deal;
   }
 
-  /**
-   * Step C (Mission 10.3): Curator uploads signing session photo/video proof & Rosreestr registration stamp
-   */
   static async submitSigningProof(
     dealId: string,
     curatorName: string,
@@ -123,7 +165,7 @@ export class DealsRepository {
       step: 'bank_funds_release',
       bankName: 'ПАО Сбербанк',
       escrowAccountNumber: 'АК-78401/2026-СБЕР',
-      depositedAmountRub: 2759530,
+      depositedAmountRub: Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
@@ -147,9 +189,6 @@ export class DealsRepository {
     return deal;
   }
 
-  /**
-   * Step D (Mission 10.4): Bank officer releases escrow funds to seller, pays platform fee 2.5%, closes deal
-   */
   static async releaseEscrowFunds(dealId: string, bankOfficerName: string): Promise<DealTrack | null> {
     const deal = await this.getById(dealId);
     if (!deal) return null;
@@ -158,17 +197,19 @@ export class DealsRepository {
       step: 'deal_finalized',
       bankName: 'ПАО Сбербанк',
       escrowAccountNumber: 'АК-78401/2026-СБЕР',
-      depositedAmountRub: 2759530,
+      depositedAmountRub: Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
     deal.escrowWorkflow.step = 'deal_finalized';
     deal.escrowWorkflow.fundsReleasedAt = new Date().toISOString();
     deal.escrowWorkflow.platformFeeRub = Math.round(deal.sellerReturnRub * 0.025);
-    deal.stage = 'closing_escrow';
+    deal.stage = 'completed';
     deal.daysLeft = 0;
+    if (deal.partnerRefCode) {
+      deal.partnerPayoutStatus = 'paid';
+    }
 
-    // Mark lot closed
     const lot = await LotsRepository.getByCode(deal.lotCode);
     if (lot) {
       lot.status = 'closed';
@@ -184,17 +225,18 @@ export class DealsRepository {
       operatorName: bankOfficerName,
       operatorRole: 'bank_officer',
       actionType: 'escrow_released',
-      title: `Аккредитив раскрыт: ${deal.sellerReturnRub.toLocaleString()} ₽ выплачено продавцу`,
-      description: `Сделка успешно завершена. Комиссия DomExit (2.5% = ${deal.escrowWorkflow.platformFeeRub?.toLocaleString()} ₽) списана.`,
+      title: `Аккредитив раскрыт: ${deal.sellerReturnRub.toLocaleString('ru-RU')} ₽ выплачено продавцу`,
+      description: `Сделка успешно завершена. Комиссия DomExit (2.5% = ${deal.escrowWorkflow.platformFeeRub?.toLocaleString('ru-RU')} ₽) перечислена.`,
     });
 
     return deal;
   }
 
-  /**
-   * Step E (Mission 10.5): Emergency cancel & relist lot with candidate auto-push
-   */
-  static async cancelDealAndRelist(dealId: string, curatorName: string, reason: string): Promise<DealTrack | null> {
+  static async cancelDealAndRelist(
+    dealId: string,
+    curatorName: string,
+    reason: string
+  ): Promise<DealTrack | null> {
     const deal = await this.getById(dealId);
     if (!deal) return null;
 
@@ -207,14 +249,13 @@ export class DealsRepository {
       signingProofVideos: [],
     };
     deal.escrowWorkflow.step = 'deal_cancelled';
+    deal.stage = 'buyer_matching';
 
-    // 1. Relist lot back to catalog
     await LotsRepository.relistLot(deal.lotCode, curatorName, reason);
 
-    // 2. Notify past candidates for this lot
     const candidates = await CandidatesRepository.getByLot(deal.lotCode);
     for (const c of candidates) {
-      if (c.status === 'declined' || c.status === 'under_review') {
+      if (c.status === 'declined' || c.status === 'under_review' || c.status === 'priority_reserved') {
         c.status = 'pending';
         c.priorityBadge = 'Лот снова доступен (Спец-уведомление)';
         await CandidatesRepository.update(c);
@@ -237,40 +278,50 @@ export class DealsRepository {
   }
 
   static async addDeal(deal: Partial<DealTrack>): Promise<DealTrack> {
+    const generatedLotCode = deal.lotCode || `U-${Math.floor(10000 + Math.random() * 90000)}`;
     const newDeal: DealTrack = {
-      id: `deal-${Date.now()}`,
-      dealId: `DEAL-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
-      lotCode: deal.lotCode || `U-${Math.floor(10000 + Math.random() * 90000)}`,
+      id: deal.id || `deal-${Date.now()}`,
+      dealId:
+        deal.dealId ||
+        `DEAL-${new Date().getFullYear()}-${generatedLotCode.replace(/[^0-9]/g, '') || Math.floor(10000 + Math.random() * 90000)}`,
+      lotCode: generatedLotCode,
       lotTitle: deal.lotTitle || 'Новый выход ДДУ',
-      developer: deal.developer || 'Застройщик СПб',
+      complexName: deal.complexName,
+      developer: deal.developer || 'Застройщик РФ',
+      city: deal.city,
+      district: deal.district,
+      sellerName: deal.sellerName,
+      sellerUserId: deal.sellerUserId,
+      sellerClientCode: deal.sellerClientCode,
+      buyerName: deal.buyerName,
+      buyerUserId: deal.buyerUserId,
+      buyerClientCode: deal.buyerClientCode,
+      partnerRefCode: deal.partnerRefCode,
+      partnerRewardRub: deal.partnerRewardRub,
+      partnerPayoutStatus: deal.partnerPayoutStatus,
       route: deal.route || 'ddu_assignment',
       stage: deal.stage || 'initial_audit',
-      daysLeft: deal.daysLeft || 14,
+      daysLeft: deal.daysLeft ?? 14,
       sellerReturnRub: deal.sellerReturnRub || 2500000,
       discountRub: deal.discountRub || 1500000,
-      fsspClear: true,
-      efrsbClear: true,
-      matchingCandidatesCount: 1,
-      clientName: deal.clientName || 'Новый клиент',
-      curatorName: 'Алексей Смирнов',
-      createdDate: new Date().toISOString().split('T')[0],
+      fsspClear: deal.fsspClear ?? true,
+      efrsbClear: deal.efrsbClear ?? true,
+      matchingCandidatesCount: deal.matchingCandidatesCount ?? 0,
+      clientName: deal.clientName || deal.sellerName || 'Новый клиент',
+      curatorName: deal.curatorName || 'Ожидает назначения куратора',
+      assignedEmployeeId: deal.assignedEmployeeId,
+      createdDate: deal.createdDate || new Date().toISOString().split('T')[0],
       updatedDate: new Date().toISOString().split('T')[0],
-      escrowWorkflow: {
+      escrowWorkflow: deal.escrowWorkflow || {
         step: 'curator_review',
         bankName: 'ПАО Сбербанк',
-        escrowAccountNumber: 'АК-78401/2026-СБЕР',
-        depositedAmountRub: 2759530,
-        signingProofPhotos: [
-          'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=400&q=80',
-        ],
-        signingProofVideos: [
-          'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        ],
-        rosreestrStampDocUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=400&q=80',
+        escrowAccountNumber: `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-СБЕР`,
+        depositedAmountRub: Math.round((deal.sellerReturnRub || 2500000) * 1.025),
+        signingProofPhotos: [],
+        signingProofVideos: [],
       },
     };
-    await FirebaseAdapter.saveEntity(COLLECTION, newDeal);
+    await DatabaseGateway.save<DealTrack>(COLLECTION, newDeal);
     return newDeal;
   }
 }
-

@@ -1,43 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { 
-  ShieldCheck, 
-  CheckCircle2, 
-  Clock, 
-  FileText, 
-  Download, 
-  Eye, 
-  User, 
-  Send, 
-  ArrowRight, 
-  Building2, 
-  DollarSign, 
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  ShieldCheck,
+  CheckCircle2,
+  Clock,
+  FileText,
+  Download,
+  User,
+  Send,
+  ArrowRight,
   LogOut,
   AlertCircle,
-  ThumbsUp,
-  XCircle,
-  TrendingUp,
-  Lock,
-  ChevronRight,
   Heart,
   Users,
   Crown,
-  Briefcase,
   Share2,
   Plus,
-  Sparkles,
   Check,
-  CreditCard,
   Banknote,
   Sliders,
   Copy,
-  ExternalLink,
   FileCheck,
-  Upload
+  Upload,
+  FolderLock,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { formatRubles } from '../utils/formatters';
+import { formatRubles, formatPercent } from '../utils/formatters';
+import {
+  formatRussianPhoneInput,
+  isValidRussianPhone,
+  validateSellerFinancials,
+} from '../utils/validators';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
@@ -46,39 +41,104 @@ import { InvestorClubRepository } from '../dal/repositories/InvestorClubReposito
 import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
-import { DealTrack, BuyerCandidate, Lot, PartnerEntry, InvestorApplication, PartnerPreliminaryRequest, BuyerCreditLimitRequest, Employee } from '../types';
+import { SellerRequestsRepository } from '../dal/repositories/SellerRequestsRepository';
+import { StorageService } from '../dal/StorageService';
+import { DatabaseGateway } from '../dal/DatabaseGateway';
+import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import {
+  DealTrack,
+  BuyerCandidate,
+  Lot,
+  PartnerEntry,
+  InvestorApplication,
+  PartnerPreliminaryRequest,
+  BuyerCreditLimitRequest,
+  Employee,
+  SellerExitRequest,
+  DocumentMetadata,
+} from '../types';
 import { FileManager } from '../utils/fileManager';
 
+type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'investor';
+
+const VALID_TABS: PortalTab[] = ['buyer', 'seller', 'favorites', 'partner', 'investor'];
+
+const STAGE_LABEL_RU: Record<DealTrack['stage'], string> = {
+  initial_audit: '1. Первичный комплаенс',
+  document_check: '2. Правовой аудит 214-ФЗ',
+  packaging: '3. Упаковка и публикация',
+  buyer_matching: '4. Подбор покупателя',
+  closing_escrow: '5. Аккредитив и Эскроу',
+  completed: '✓ Зарегистрировано в Росреестре',
+};
+
+const STAGE_NUM_MAP: Record<DealTrack['stage'], number> = {
+  initial_audit: 1,
+  document_check: 2,
+  packaging: 3,
+  buyer_matching: 4,
+  closing_escrow: 5,
+  completed: 5,
+};
+
 export const ClientPortalPage: React.FC = () => {
-  const { user, logout, openAuthModal, toggleFavorite, upgradeToPartner, upgradeToInvestor } = useAuth();
+  const { user, logout, toggleFavorite, upgradeToPartner, upgradeToInvestor } = useAuth();
   const { language } = useLanguage();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // 5 Dynamic Tabs: buyer | seller | favorites | partner | investor
-  const [activeTab, setActiveTab] = useState<'buyer' | 'seller' | 'favorites' | 'partner' | 'investor'>(() => {
+  const resolveDefaultTab = (): PortalTab => {
+    const paramTab = searchParams.get('tab') as PortalTab | null;
+    if (paramTab && VALID_TABS.includes(paramTab)) return paramTab;
     if (user?.activeRole === 'seller') return 'seller';
-    if (user?.activeRole === 'partner' && user?.isPartnerApproved) return 'partner';
-    if (user?.activeRole === 'investor' && user?.isInvestorApproved) return 'investor';
+    if (user?.activeRole === 'partner') return 'partner';
+    if (user?.activeRole === 'investor') return 'investor';
     return 'buyer';
-  });
+  };
 
-  const [deal, setDeal] = useState<DealTrack | null>(null);
-  const [candidates, setCandidates] = useState<BuyerCandidate[]>([]);
+  const [activeTab, setActiveTab] = useState<PortalTab>(resolveDefaultTab);
+
+  // Sync URL ?tab= changes (e.g. from UnifiedNavbar role switcher)
+  useEffect(() => {
+    const paramTab = searchParams.get('tab') as PortalTab | null;
+    if (paramTab && VALID_TABS.includes(paramTab) && paramTab !== activeTab) {
+      setActiveTab(paramTab);
+    }
+  }, [searchParams]);
+
+  const handleSelectTab = (tab: PortalTab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab }, { replace: true });
+  };
+
+  // Buyer & General State
   const [userBids, setUserBids] = useState<BuyerCandidate[]>([]);
   const [allLots, setAllLots] = useState<Lot[]>([]);
+  const [allDeals, setAllDeals] = useState<DealTrack[]>([]);
   const [favoriteLots, setFavoriteLots] = useState<Lot[]>([]);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
-  // Task 4: 7-Day Partner Preliminary Requests & Completion
+  // Seller State
+  const [sellerLots, setSellerLots] = useState<Lot[]>([]);
+  const [sellerDeals, setSellerDeals] = useState<DealTrack[]>([]);
+  const [sellerRequests, setSellerRequests] = useState<SellerExitRequest[]>([]);
+  const [selectedSellerLotCode, setSelectedSellerLotCode] = useState<string>('');
+  const [sellerVaultDocs, setSellerVaultDocs] = useState<DocumentMetadata[]>([]);
+  const [isSellerVaultOpen, setIsSellerVaultOpen] = useState<boolean>(false);
+  const [isUploadingRequestedDoc, setIsUploadingRequestedDoc] = useState<boolean>(false);
+
+  // 7-Day Partner Preliminary Requests & Completion
   const [pendingPreliminaryReqs, setPendingPreliminaryReqs] = useState<PartnerPreliminaryRequest[]>([]);
   const [partnerRequests, setPartnerRequests] = useState<PartnerPreliminaryRequest[]>([]);
+  const [partnerDeals, setPartnerDeals] = useState<DealTrack[]>([]);
+  const [partnerAppRecord, setPartnerAppRecord] = useState<PartnerEntry | null>(null);
   const [selectedReqForCompletion, setSelectedReqForCompletion] = useState<PartnerPreliminaryRequest | null>(null);
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState<boolean>(false);
-  const [completionFileUploaded, setCompletionFileUploaded] = useState<boolean>(false);
+  const [completionDocMeta, setCompletionDocMeta] = useState<DocumentMetadata | null>(null);
   const [completionNotes, setCompletionNotes] = useState<string>('');
+  const [completionError, setCompletionError] = useState<string | null>(null);
 
-  // Task 6: Buyer Bank Credit Limit State
+  // Buyer Bank Credit Limit State
   const [creditLimitRequest, setCreditLimitRequest] = useState<BuyerCreditLimitRequest | null>(null);
   const [isCreditLimitModalOpen, setIsCreditLimitModalOpen] = useState<boolean>(false);
   const [requestedCreditAmount, setRequestedCreditAmount] = useState<number>(8500000);
@@ -88,38 +148,22 @@ export const ClientPortalPage: React.FC = () => {
   // Partner Referral Form State
   const [refClientCode, setRefClientCode] = useState<string>('');
   const [refClientName, setRefClientName] = useState<string>('');
-  const [refClientPhone, setRefClientPhone] = useState<string>('+7 ');
+  const [refClientPhone, setRefClientPhone] = useState<string>('+7 (');
   const [refComplexName, setRefComplexName] = useState<string>('');
   const [refDeveloper, setRefDeveloper] = useState<string>('Setl Group');
-  const [refPaidAmount, setRefPaidAmount] = useState<number>(2500000);
+  const [refPaidAmount, setRefPaidAmount] = useState<number>(2800000);
   const [refDduPrice, setRefDduPrice] = useState<number>(10500000);
-  const [refNotes, setRefNotes] = useState<string>('');
   const [partnerError, setPartnerError] = useState<string | null>(null);
 
-  const [partnerDeals, setPartnerDeals] = useState<any[]>([
-    {
-      id: 'REF-801',
-      clientName: 'Михаил Ковалев',
-      complexName: 'ЖК Чистое Небо',
-      stage: '4. Закрытие эскроу',
-      stageIndex: 4,
-      bonusRub: 45000,
-      status: 'pending_payment'
-    },
-    {
-      id: 'REF-792',
-      clientName: 'Анна Васильева',
-      complexName: 'ЖК Pulse Premier',
-      stage: '5. Зарегистрировано в Росреестре',
-      stageIndex: 5,
-      bonusRub: 50000,
-      status: 'paid'
-    }
-  ]);
-
   // Investor Package Builder State
-  const [investorBudgetMillions, setInvestorBudgetMillions] = useState<number>(35);
-  const [selectedPackage, setSelectedPackage] = useState<'flipping' | 'turnkey' | 'syndicate'>('turnkey');
+  const [investorAppRecord, setInvestorAppRecord] = useState<InvestorApplication | null>(null);
+  const [investorBudgetMillions, setInvestorBudgetMillions] = useState<number>(
+    user?.investorPackagePreference?.budgetMillions || 35
+  );
+  const [selectedPackage, setSelectedPackage] = useState<'flipping' | 'turnkey' | 'syndicate'>(
+    user?.investorPackagePreference?.selectedPackage || 'turnkey'
+  );
+  const [packageSavedToast, setPackageSavedToast] = useState<boolean>(false);
 
   const formatRemainingTime = (expiresAt: string): { text: string; isExpired: boolean } => {
     const diff = new Date(expiresAt).getTime() - Date.now();
@@ -130,40 +174,116 @@ export const ClientPortalPage: React.FC = () => {
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     return {
-      text: language === 'ru' ? `${days} дн. ${hours} ч. ${minutes} мин.` : `${days}d ${hours}h ${minutes}m`,
-      isExpired: false
+      text:
+        language === 'ru'
+          ? `${days} дн. ${hours} ч. ${minutes} мин.`
+          : `${days}d ${hours}h ${minutes}m`,
+      isExpired: false,
     };
   };
 
   const loadData = async () => {
+    const uid = user?.id || '';
     const clientCode = user?.clientCode || 'DEX-784105';
-    const [d, c, lotsData, pendingReqs, allPartnerReqs, allCreditLimits, allEmps] = await Promise.all([
-      DealsRepository.getById(user?.activeDealId || 'DEAL-2025-10566'),
+    const partnerRefCode = user?.partnerRefCode || '';
+
+    const [
+      lotsData,
+      myBids,
+      allCandidates,
+      pendingReqs,
+      myPartnerReqs,
+      myPartnerDeals,
+      myCreditLimits,
+      allEmps,
+      mySellerLots,
+      mySellerDeals,
+      mySellerReqs,
+      myPartnerEntry,
+      myInvestorEntry,
+      allDealsList,
+    ] = await Promise.all([
+      LotsRepository.getAll({ status: 'all', isVipInvestor: true, includePendingApproval: true }),
+      CandidatesRepository.getByUserId(uid, clientCode),
       CandidatesRepository.getAll(),
-      LotsRepository.getAll(),
       PartnerRequestsRepository.getPendingByClientCode(clientCode),
-      PartnerRequestsRepository.getAll(),
-      BankPortalRepository.getAllCreditLimitRequests(),
+      PartnerRequestsRepository.getByPartner(uid, partnerRefCode),
+      partnerRefCode ? DealsRepository.getByPartner(partnerRefCode) : Promise.resolve([]),
+      BankPortalRepository.getCreditLimitsByUser(uid, clientCode),
       EmployeesRepository.getAll(),
+      LotsRepository.getBySeller(uid, clientCode),
+      DealsRepository.getBySeller(uid, clientCode),
+      SellerRequestsRepository.getByUser(uid, clientCode),
+      PartnersRepository.getById(uid || clientCode),
+      InvestorClubRepository.getByUser(uid, clientCode),
+      DealsRepository.getAll(),
     ]);
 
-    setDeal(d);
-    setCandidates(c);
     setAllLots(lotsData);
+    setAllDeals(allDealsList);
     setPendingPreliminaryReqs(pendingReqs);
-    setPartnerRequests(allPartnerReqs);
-    if (allEmps && allEmps.length > 0) {
+    setPartnerRequests(myPartnerReqs);
+    setPartnerDeals(myPartnerDeals);
+    setPartnerAppRecord(myPartnerEntry);
+    setInvestorAppRecord(myInvestorEntry);
+
+    if (myInvestorEntry?.selectedBudgetMillions) {
+      setInvestorBudgetMillions(myInvestorEntry.selectedBudgetMillions);
+    }
+    if (myInvestorEntry?.selectedPackage) {
+      setSelectedPackage(myInvestorEntry.selectedPackage);
+    }
+
+    // Buyer bids: strictly user's own bids (or demo fallback if guest)
+    if (myBids.length > 0) {
+      setUserBids(myBids);
+    } else if (!uid) {
+      setUserBids(allCandidates.slice(0, 1));
+    } else {
+      setUserBids([]);
+    }
+
+    // Seller lots & deals (fallback to U-10566 / DEAL-2025-10566 if demo seller has no custom lot yet)
+    let resolvedSellerLots = mySellerLots;
+    let resolvedSellerDeals = mySellerDeals;
+    if (resolvedSellerLots.length === 0) {
+      const fallbackLot = lotsData.find((l) => l.lotCode === 'U-10566') || lotsData[0];
+      if (fallbackLot) resolvedSellerLots = [fallbackLot];
+    }
+    if (resolvedSellerDeals.length === 0) {
+      const fallbackDeal = await DealsRepository.getById(user?.activeDealId || 'DEAL-2025-10566');
+      if (fallbackDeal) resolvedSellerDeals = [fallbackDeal];
+    }
+
+    setSellerLots(resolvedSellerLots);
+    setSellerDeals(resolvedSellerDeals);
+    setSellerRequests(mySellerReqs);
+
+    const activeCode =
+      selectedSellerLotCode && resolvedSellerLots.some((l) => l.lotCode === selectedSellerLotCode)
+        ? selectedSellerLotCode
+        : resolvedSellerLots[0]?.lotCode || 'U-10566';
+    setSelectedSellerLotCode(activeCode);
+
+    const activeLotObj = resolvedSellerLots.find((l) => l.lotCode === activeCode);
+    const docs = await StorageService.getDocumentsByEntity('lot', activeCode);
+    setSellerVaultDocs(docs);
+
+    if (activeLotObj?.assignedEmployeeId) {
+      const emp = allEmps.find((e) => e.id === activeLotObj.assignedEmployeeId);
+      setCurator(emp || allEmps[0] || null);
+    } else if (allEmps.length > 0) {
       setCurator(allEmps[0]);
     }
 
-    // Find credit limit for current user
-    const userLimit = allCreditLimits.find(l => l.userId === user?.id || l.clientCode === clientCode);
-    if (userLimit) {
-      setCreditLimitRequest(userLimit);
+    // Credit limit
+    if (myCreditLimits.length > 0) {
+      setCreditLimitRequest(myCreditLimits[0]);
     } else if (user?.bankCreditLimit) {
       setCreditLimitRequest({
         id: 'user-cached-limit',
         userId: user.id,
+        uid: user.id,
         clientCode: user.clientCode || 'DEX-409112',
         userName: user.name,
         userPhone: user.phone || '+7 (921) 000-00-00',
@@ -172,25 +292,78 @@ export const ClientPortalPage: React.FC = () => {
         validUntil: user.bankCreditLimit.validUntil,
         bankName: user.bankCreditLimit.bankName,
         certificateNumber: user.bankCreditLimit.certificateNumber,
-        reviewedBy: 'Ведущий специалист банка',
+        reviewedBy: 'Кредитный комитет банка-партнера',
         requestedAt: user.bankCreditLimit.issuedAt,
+        timestamp: user.bankCreditLimit.issuedAt,
         status: 'approved',
       });
+    } else {
+      setCreditLimitRequest(null);
     }
 
-    // Filter user's own bids
-    const bids = c.filter(item => item.userId === user?.id || item.name.includes(user?.name?.split(' ')[0] || '___'));
-    setUserBids(bids.length > 0 ? bids : c.slice(0, 2));
-
-    // Filter favorites
+    // Favorites
     const favCodes = user?.favorites || [];
-    const favs = lotsData.filter(l => favCodes.includes(l.lotCode));
-    setFavoriteLots(favs);
+    setFavoriteLots(lotsData.filter((l) => favCodes.includes(l.lotCode)));
   };
 
   useEffect(() => {
     loadData();
+    const unsub = DatabaseGateway.subscribe(() => {
+      loadData();
+    });
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, user?.favorites]);
+
+  // Reload S3 documents when seller switches between multiple submitted lots
+  useEffect(() => {
+    if (!selectedSellerLotCode) return;
+    StorageService.getDocumentsByEntity('lot', selectedSellerLotCode).then(setSellerVaultDocs);
+  }, [selectedSellerLotCode]);
+
+  const activeSellerLot =
+    sellerLots.find((l) => l.lotCode === selectedSellerLotCode) || sellerLots[0] || null;
+  const activeSellerDeal =
+    sellerDeals.find((d) => d.lotCode === activeSellerLot?.lotCode) || sellerDeals[0] || null;
+  const activeSellerRequest =
+    sellerRequests.find((r) => r.lotCode === activeSellerLot?.lotCode) || null;
+
+  // Seller uploads document requested by Curator / Owner
+  const handleUploadCuratorRequestedDoc = async () => {
+    if (!activeSellerLot) return;
+    try {
+      setIsUploadingRequestedDoc(true);
+      const selected = await FileManager.selectAndReadFile(
+        'other',
+        '.pdf,.png,.jpg,.jpeg,.doc,.docx'
+      );
+      if (selected && selected.file) {
+        const meta = await StorageService.uploadDocument({
+          file: selected.file,
+          category: 'additional',
+          categoryLabelRu: `Ответ на запрос куратора (#${activeSellerLot.lotCode})`,
+          entityType: 'lot',
+          entityId: activeSellerLot.lotCode,
+          uploadedByUid: user?.id || 'seller',
+          clientCode: user?.clientCode || 'DEX-SELLER',
+        });
+
+        await LotsRepository.submitRequestedDocBySeller(
+          activeSellerLot.lotCode,
+          { name: meta.name, url: meta.cloudUrl || '', docId: meta.id },
+          user?.name || 'Продавец ДДУ'
+        );
+
+        setActionNotice(
+          `Документ «${meta.name}» сохранен в S3-сейфе и отправлен куратору на проверку!`
+        );
+        await loadData();
+        setTimeout(() => setActionNotice(null), 6000);
+      }
+    } finally {
+      setIsUploadingRequestedDoc(false);
+    }
+  };
 
   const handlePartnerReferralSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,9 +373,20 @@ export const ClientPortalPage: React.FC = () => {
     if (!cleanCode.startsWith('DEX-')) {
       setPartnerError(
         language === 'ru'
-          ? 'Пожалуйста, введите уникальный ID клиента в формате DEX-XXXXXX (например, DEX-784105).'
-          : 'Please enter a valid client ID formatted as DEX-XXXXXX (e.g. DEX-784105).'
+          ? 'Введите уникальный ID клиента в формате DEX-XXXXXX (например, DEX-784105).'
+          : 'Enter a valid client ID formatted as DEX-XXXXXX.'
       );
+      return;
+    }
+
+    if (!isValidRussianPhone(refClientPhone)) {
+      setPartnerError('Введите телефон клиента в стандарте РФ +7 (XXX) XXX-XX-XX.');
+      return;
+    }
+
+    const finCheck = validateSellerFinancials(refPaidAmount, refDduPrice);
+    if (!finCheck.valid) {
+      setPartnerError(finCheck.paidErrorRu || finCheck.contractErrorRu || 'Проверьте финансовые параметры ДДУ.');
       return;
     }
 
@@ -210,8 +394,8 @@ export const ClientPortalPage: React.FC = () => {
     if (!verifiedUser) {
       setPartnerError(
         language === 'ru'
-          ? `Клиент с номером «${cleanCode}» не найден в реестре. Дольщик должен сначала зарегистрироваться на DomExit и передать вам свой персональный ID аккаунта.`
-          : `Client with ID "${cleanCode}" not found. The client must first register on DomExit to receive their personal account ID.`
+          ? `Клиент с кодом «${cleanCode}» не найден в реестре. Дольщик должен сначала зарегистрироваться на DomExit и сообщить свой DEX-ID.`
+          : `Client with ID "${cleanCode}" not found.`
       );
       return;
     }
@@ -219,52 +403,100 @@ export const ClientPortalPage: React.FC = () => {
     const newReq = await PartnerRequestsRepository.createPreliminaryRequest({
       partnerId: user?.id || 'partner-current',
       partnerName: user?.name || 'Партнер DomExit',
-      partnerRefCode: user?.partnerRefCode || 'PARTNER-SPB-12',
+      partnerRefCode: user?.partnerRefCode || partnerAppRecord?.referralCode || 'PARTNER-SPB-12',
       clientCode: cleanCode,
-      clientName: refClientName || verifiedUser.name || 'Дольщик',
-      clientPhone: refClientPhone || verifiedUser.phone || '+7 (911) 000-00-00',
-      complexName: refComplexName,
-      developer: refDeveloper || 'Застройщик',
+      clientName: refClientName.trim() || verifiedUser.name || 'Дольщик',
+      clientPhone: refClientPhone,
+      complexName: refComplexName.trim(),
+      developer: refDeveloper.trim() || 'Застройщик',
       paidAmountRub: refPaidAmount,
       contractPriceRub: refDduPrice,
-      notes: refNotes,
+      notes: '',
     });
 
-    setPartnerRequests(prev => [newReq, ...prev]);
+    setPartnerRequests((prev) => [newReq, ...prev]);
     setRefClientCode('');
     setRefClientName('');
-    setRefClientPhone('+7 ');
+    setRefClientPhone('+7 (');
     setRefComplexName('');
-    setRefNotes('');
 
     setActionNotice(
-      language === 'ru'
-        ? `Предварительный запрос для клиента [${newReq.clientCode}] успешно отправлен! В кабинете клиента включен 7-дневный таймер для загрузки ДДУ.`
-        : `Preliminary request sent for client [${newReq.clientCode}]! A 7-day countdown has been started in the client portal.`
+      `Предварительный запрос для клиента [${newReq.clientCode}] отправлен! В кабинете клиента запущен 7-дневный таймер загрузки ДДУ.`
     );
     setTimeout(() => setActionNotice(null), 6000);
+  };
+
+  // Real S3 upload for 7-day Partner Preliminary Request modal
+  const handleSelectPreliminaryDduFile = async () => {
+    if (!selectedReqForCompletion) return;
+    const selected = await FileManager.selectAndReadFile(
+      'ddu',
+      '.pdf,.png,.jpg,.jpeg'
+    );
+    if (selected && selected.file) {
+      const meta = await StorageService.uploadDocument({
+        file: selected.file,
+        category: 'ddu_contract',
+        categoryLabelRu: 'Скан договора участия в долевом строительстве (ДДУ)',
+        entityType: 'seller_request',
+        entityId: selectedReqForCompletion.id,
+        uploadedByUid: user?.id || 'seller',
+        clientCode: selectedReqForCompletion.clientCode,
+      });
+      setCompletionDocMeta(meta);
+      setCompletionError(null);
+    }
   };
 
   const handleCompletePreliminaryRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReqForCompletion) return;
+    setCompletionError(null);
 
-    if (!completionFileUploaded) {
-      alert(language === 'ru' ? 'Пожалуйста, прикрепите скан или фото договора ДДУ!' : 'Please attach your DDU agreement!');
+    if (!completionDocMeta) {
+      setCompletionError('Пожалуйста, загрузите реальный скан или фото договора ДДУ в S3-хранилище.');
       return;
     }
 
-    await PartnerRequestsRepository.completeByClient(selectedReqForCompletion.id, 'lot-new-submitted');
+    const { lot } = await SellerRequestsRepository.submitSellerRequest({
+      uid: user?.id || 'usr-seller-001',
+      clientCode: selectedReqForCompletion.clientCode,
+      sellerName: selectedReqForCompletion.clientName,
+      sellerPhone: selectedReqForCompletion.clientPhone,
+      sellerInn: '781045901234',
+      city: 'spb',
+      district: 'Приморский район',
+      complexName: selectedReqForCompletion.complexName,
+      developer: selectedReqForCompletion.developer,
+      dduNumber: `ДДУ-${selectedReqForCompletion.id}`,
+      areaM2: 52.0,
+      rooms: '2-room',
+      floor: 9,
+      totalFloors: 22,
+      contractPriceRub: Math.max(
+        selectedReqForCompletion.contractPriceRub,
+        selectedReqForCompletion.paidAmountRub + 1500000
+      ),
+      paidAmountRub: Math.max(2000000, selectedReqForCompletion.paidAmountRub),
+      exitRoute: 'ddu_assignment',
+      documentIds: [completionDocMeta.id],
+      referredByPartnerCode: selectedReqForCompletion.partnerRefCode,
+      preliminaryReferralId: selectedReqForCompletion.id,
+    });
+
+    await StorageService.rebindDocumentsToEntity([completionDocMeta.id], 'lot', lot.lotCode);
+
     setIsCompleteModalOpen(false);
     setSelectedReqForCompletion(null);
-    setCompletionFileUploaded(false);
+    setCompletionDocMeta(null);
+    setCompletionNotes('');
+    setSelectedSellerLotCode(lot.lotCode);
+    handleSelectTab('seller');
 
     setActionNotice(
-      language === 'ru'
-        ? 'Договор ДДУ успешно прикреплен! Заявка передана на юридическую проверку куратору DomExit.'
-        : 'DDU agreement uploaded! Your application has been handed over to the legal curator.'
+      `Договор ДДУ сохранен в S3! Создан лот #${lot.lotCode} и направлен на верификацию Владельцу платформы.`
     );
-    loadData();
+    await loadData();
     setTimeout(() => setActionNotice(null), 6000);
   };
 
@@ -272,6 +504,7 @@ export const ClientPortalPage: React.FC = () => {
     e.preventDefault();
     const req = await BankPortalRepository.requestCreditLimit({
       userId: user?.id || 'user-current',
+      uid: user?.id || 'user-current',
       clientCode: user?.clientCode || 'DEX-784105',
       userName: user?.name || 'Клиент DomExit',
       userPhone: user?.phone || '+7 (921) 000-00-00',
@@ -283,21 +516,50 @@ export const ClientPortalPage: React.FC = () => {
     setCreditLimitRequest(req);
     setIsCreditLimitModalOpen(false);
     setActionNotice(
-      language === 'ru'
-        ? `Запрос на кредитный лимит передан в ${selectedBank}. Специалист банка рассмотрит заявку в течение 24 часов.`
-        : `Credit limit request submitted to ${selectedBank}. Bank officer will review within 24 hours.`
+      `Запрос на кредитный лимит (${formatRubles(requestedCreditAmount)}) передан в ${selectedBank}. Решение отобразится здесь после ответа банковского офицера.`
     );
     setTimeout(() => setActionNotice(null), 6000);
   };
 
-  const handleDownloadDoc = (docName: string) => {
-    // Generates and downloads real legal sample file
-    const sampleContent = `ОФИЦИАЛЬНЫЙ ДОКУМЕНТ ПЛАТФОРМЫ DOMEXIT\nДокумент: ${docName}\nДата: ${new Date().toLocaleDateString('ru-RU')}\nСтатус проверки 214-ФЗ: ПОДТВЕРЖДЕНО\nШифрование ГОСТ Р 57580`;
-    FileManager.downloadFile(
-      `data:text/plain;charset=utf-8,${encodeURIComponent(sampleContent)}`,
-      docName
-    );
+  const handleDownloadBidProof = async (bid: BuyerCandidate) => {
+    if (bid.documentId) {
+      const doc = await StorageService.getDocumentById(bid.documentId);
+      if (doc) {
+        await StorageService.downloadDocument(doc);
+        return;
+      }
+    }
+    if (bid.bankApprovalDocUrl) {
+      FileManager.downloadFile(
+        bid.bankApprovalDocUrl,
+        bid.bankApprovalDocName || 'Подтверждение_банка.pdf'
+      );
+    }
   };
+
+  const handleSaveInvestorPackage = async (
+    nextBudget: number,
+    nextPkg: 'flipping' | 'turnkey' | 'syndicate'
+  ) => {
+    setInvestorBudgetMillions(nextBudget);
+    setSelectedPackage(nextPkg);
+    if (user) {
+      await InvestorClubRepository.savePackagePreference(
+        user.id,
+        user.clientCode || 'DEX-990088',
+        nextBudget,
+        nextPkg
+      );
+      setPackageSavedToast(true);
+      setTimeout(() => setPackageSavedToast(false), 2500);
+    }
+  };
+
+  const vipEarlyAccessLots = allLots.filter(
+    (l) => (l.isEarlyAccessVIP || l.currentStage === 2) && l.approvalStatus !== 'rejected'
+  );
+
+  const activeStageNum = activeSellerDeal ? STAGE_NUM_MAP[activeSellerDeal.stage] || 1 : 2;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
@@ -307,21 +569,20 @@ export const ClientPortalPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            
             <div className="flex items-center space-x-4">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 p-0.5 shadow-md">
                 <div className="w-full h-full bg-emerald-600 rounded-[14px] flex items-center justify-center font-bold text-white text-xl">
-                  {user?.name?.charAt(0) || 'П'}
+                  {user?.name?.charAt(0) || 'К'}
                 </div>
               </div>
 
               <div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-xl sm:text-2xl font-black text-slate-950">
                     {user?.name || (language === 'ru' ? 'Личный кабинет' : 'Client Portal')}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider">
-                    214-ФЗ Верифицирован
+                    214-ФЗ • 152-ФЗ Верифицирован
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
@@ -330,13 +591,17 @@ export const ClientPortalPage: React.FC = () => {
                   </span>
                   <span className="text-slate-300">•</span>
                   <div className="inline-flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200/90 text-slate-900 border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all shadow-xs">
-                    <span className="text-slate-500 font-sans font-medium text-[11px]">{language === 'ru' ? 'Уникальный ID клиента:' : 'Unique Client ID:'}</span>
-                    <span className="text-indigo-700 tracking-wide font-black">{user?.clientCode || 'DEX-784105'}</span>
+                    <span className="text-slate-500 font-sans font-medium text-[11px]">
+                      {language === 'ru' ? 'ID клиента:' : 'Client ID:'}
+                    </span>
+                    <span className="text-indigo-700 tracking-wide font-black">
+                      {user?.clientCode || 'DEX-784105'}
+                    </span>
                     <button
                       type="button"
                       onClick={() => {
                         const code = user?.clientCode || 'DEX-784105';
-                        navigator.clipboard.writeText(code);
+                        navigator.clipboard?.writeText(code);
                         setCopiedCode(true);
                         setTimeout(() => setCopiedCode(false), 2500);
                       }}
@@ -346,7 +611,7 @@ export const ClientPortalPage: React.FC = () => {
                       {copiedCode ? (
                         <span className="text-emerald-600 text-[10px] font-sans flex items-center space-x-0.5">
                           <Check className="w-3.5 h-3.5" />
-                          <span>{language === 'ru' ? 'Скопировано!' : 'Copied!'}</span>
+                          <span>OK</span>
                         </span>
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
@@ -357,11 +622,10 @@ export const ClientPortalPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Actions */}
             <div className="flex items-center space-x-3">
               <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Сбербанк / ВТБ Эскроу: Активен</span>
+                <span>Yandex S3 / Эскроу: Активен</span>
               </div>
 
               <button
@@ -373,48 +637,43 @@ export const ClientPortalPage: React.FC = () => {
                 <span>{language === 'ru' ? 'Выйти' : 'Sign Out'}</span>
               </button>
             </div>
-
           </div>
 
-          {/* MISSION 4: Dynamic Tabs Architecture */}
+          {/* 5 Dynamic Portal Tabs */}
           <div className="flex flex-wrap gap-2 border-b border-slate-200 pt-2">
-            
-            {/* Tab 1: Buyer Bids */}
             <button
               type="button"
-              onClick={() => setActiveTab('buyer')}
+              onClick={() => handleSelectTab('buyer')}
               className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
                 activeTab === 'buyer'
                   ? 'border-sky-600 text-sky-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <span>🔑 {language === 'ru' ? 'Мои предложения о покупке' : 'My Purchase Offers'}</span>
+              <span>{language === 'ru' ? 'Мои заявки на покупку' : 'My Purchase Offers'}</span>
               <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[10px]">
                 {userBids.length}
               </span>
             </button>
 
-            {/* Tab 2: Seller Listings */}
             <button
               type="button"
-              onClick={() => setActiveTab('seller')}
+              onClick={() => handleSelectTab('seller')}
               className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
                 activeTab === 'seller'
                   ? 'border-emerald-600 text-emerald-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <span>💼 {language === 'ru' ? 'Мой объект на продажу (0%)' : 'My Seller Listing'}</span>
+              <span>{language === 'ru' ? 'Мои объекты на выход (0%)' : 'My Seller Exits'}</span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px]">
-                В работе
+                {sellerLots.length}
               </span>
             </button>
 
-            {/* Tab 3: Favorites */}
             <button
               type="button"
-              onClick={() => setActiveTab('favorites')}
+              onClick={() => handleSelectTab('favorites')}
               className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
                 activeTab === 'favorites'
                   ? 'border-rose-600 text-rose-700'
@@ -422,16 +681,15 @@ export const ClientPortalPage: React.FC = () => {
               }`}
             >
               <Heart className="w-3.5 h-3.5" />
-              <span>{language === 'ru' ? 'Избранные объекты' : 'Favorites'}</span>
+              <span>{language === 'ru' ? 'Избранное' : 'Favorites'}</span>
               <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px]">
                 {favoriteLots.length}
               </span>
             </button>
 
-            {/* Tab 4: Dynamic Partner Portal */}
             <button
               type="button"
-              onClick={() => setActiveTab('partner')}
+              onClick={() => handleSelectTab('partner')}
               className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
                 activeTab === 'partner'
                   ? 'border-purple-600 text-purple-700'
@@ -447,10 +705,9 @@ export const ClientPortalPage: React.FC = () => {
               )}
             </button>
 
-            {/* Tab 5: Dynamic VIP Investor Portal */}
             <button
               type="button"
-              onClick={() => setActiveTab('investor')}
+              onClick={() => handleSelectTab('investor')}
               className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
                 activeTab === 'investor'
                   ? 'border-amber-600 text-amber-700'
@@ -465,7 +722,6 @@ export const ClientPortalPage: React.FC = () => {
                 </span>
               )}
             </button>
-
           </div>
 
         </div>
@@ -474,45 +730,44 @@ export const ClientPortalPage: React.FC = () => {
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
         
-        {/* Action Notice Toast */}
         {actionNotice && (
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 font-semibold text-xs flex items-center justify-between shadow-md animate-fade-in">
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 font-semibold text-xs flex items-center justify-between shadow-md">
             <div className="flex items-center space-x-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>{actionNotice}</span>
             </div>
-            <button onClick={() => setActionNotice(null)} className="text-emerald-700 hover:text-emerald-950">
+            <button
+              type="button"
+              onClick={() => setActionNotice(null)}
+              className="text-emerald-700 hover:text-emerald-950"
+            >
               ✕
             </button>
           </div>
         )}
 
-        {/* MISSION 4: 7-Day Countdown Alert for Pending Partner Preliminary Request */}
+        {/* 7-Day Countdown Alert for Pending Partner Preliminary Request */}
         {pendingPreliminaryReqs.length > 0 && (
-          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-500/10 border-2 border-amber-400 shadow-xl space-y-3 animate-fade-in">
+          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-500/10 border-2 border-amber-400 shadow-xl space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start space-x-3.5">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md">
-                  <Clock className="w-5 h-5 animate-pulse" />
+                  <Clock className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px] uppercase tracking-wider">
-                      {language === 'ru' ? 'Срочный запрос партнера • 7 дней' : 'Urgent Partner Request • 7 Days'}
+                      Срочный запрос партнера • 7 дней
                     </span>
                     <span className="text-xs font-mono font-bold text-amber-900">
                       ID: {pendingPreliminaryReqs[0].clientCode}
                     </span>
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-slate-950 mt-1">
-                    {language === 'ru'
-                      ? `Партнер «${pendingPreliminaryReqs[0].partnerName}» открыл предварительный запрос на чистый выход`
-                      : `Partner "${pendingPreliminaryReqs[0].partnerName}" opened preliminary clean exit request`}
+                    Партнер «{pendingPreliminaryReqs[0].partnerName}» открыл предварительный запрос на чистый выход
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-700 mt-1">
-                    {language === 'ru'
-                      ? `Объект: ${pendingPreliminaryReqs[0].complexName} (${pendingPreliminaryReqs[0].developer}). Подтвердите данные и прикрепите фото договора ДДУ для запуска юридического аудита куратором DomExit.`
-                      : `Property: ${pendingPreliminaryReqs[0].complexName} (${pendingPreliminaryReqs[0].developer}). Please confirm and upload your DDU agreement to start the curator audit.`}
+                    Объект: {pendingPreliminaryReqs[0].complexName} ({pendingPreliminaryReqs[0].developer}). Загрузите скан ДДУ в защищенное S3-хранилище для запуска аудита.
                   </p>
                 </div>
               </div>
@@ -521,8 +776,7 @@ export const ClientPortalPage: React.FC = () => {
                 <div className="px-3.5 py-1.5 rounded-xl bg-white border border-amber-300 shadow-xs flex items-center space-x-2 text-xs font-mono font-bold text-amber-900">
                   <Clock className="w-4 h-4 text-amber-600" />
                   <span>
-                    {language === 'ru' ? 'Осталось: ' : 'Remaining: '}
-                    {formatRemainingTime(pendingPreliminaryReqs[0].expiresAt).text}
+                    Осталось: {formatRemainingTime(pendingPreliminaryReqs[0].expiresAt).text}
                   </span>
                 </div>
 
@@ -535,7 +789,7 @@ export const ClientPortalPage: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
                   <FileCheck className="w-4 h-4" />
-                  <span>{language === 'ru' ? 'Подтвердить и прикрепить ДДУ' : 'Confirm & Upload DDU'}</span>
+                  <span>Подтвердить и загрузить ДДУ</span>
                 </button>
               </div>
             </div>
@@ -544,30 +798,35 @@ export const ClientPortalPage: React.FC = () => {
 
         {/* ================= TAB 1: BUYER OFFERS VIEW ================= */}
         {activeTab === 'buyer' && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Task 6: Bank Credit Limit Card */}
+          <div className="space-y-6">
+            {/* Bank Credit Limit Card */}
             <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 text-white border border-emerald-500/30 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1">
                     <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                    <span>{language === 'ru' ? 'Банковский кредитный лимит' : 'Bank Credit Limit'}</span>
+                    <span>Банковский кредитный лимит</span>
                   </span>
                   {creditLimitRequest?.status === 'approved' && (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-black text-[10px]">
-                      {language === 'ru' ? 'ОДОБРЕНО БАНКОМ' : 'BANK APPROVED'}
+                      ОДОБРЕНО БАНКОМ
                     </span>
                   )}
                   {creditLimitRequest?.status === 'pending' && (
                     <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-bold text-[10px]">
-                      {language === 'ru' ? 'НА РАССМОТРЕНИИ' : 'UNDER REVIEW'}
+                      НА РАССМОТРЕНИИ БАНКА
+                    </span>
+                  )}
+                  {creditLimitRequest?.status === 'rejected' && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold text-[10px]">
+                      ОТКАЗ ПО ПДН
                     </span>
                   )}
                 </div>
 
                 {creditLimitRequest?.status === 'approved' ? (
                   <div>
-                    <div className="flex items-baseline space-x-3">
+                    <div className="flex flex-wrap items-baseline gap-3">
                       <span className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-tight">
                         {formatRubles(creditLimitRequest.approvedLimitRub || 9000000)}
                       </span>
@@ -576,31 +835,27 @@ export const ClientPortalPage: React.FC = () => {
                       </span>
                     </div>
                     <p className="text-xs text-slate-300 mt-1">
-                      {language === 'ru'
-                        ? `Лимит действителен до ${creditLimitRequest.validUntil || '31.12.2026'}. Официальный штамп банка автоматически подтверждает вашу платежеспособность при бронировании лотов.`
-                        : `Limit valid until ${creditLimitRequest.validUntil || '31.12.2026'}. Certified bank stamp verifies your liquidity for lot bookings.`}
+                      Лимит действителен до {creditLimitRequest.validUntil || '31.12.2026'}. Официальный штамп банка подтверждает вашу кредитоспособность при подаче заявок на цессии.
                     </p>
                   </div>
                 ) : creditLimitRequest?.status === 'pending' ? (
                   <div>
                     <h3 className="text-base font-bold text-white">
-                      {language === 'ru' ? 'Заявка на лимит передана кредитному офицеру' : 'Credit limit request is under review'}
+                      Заявка передана в кредитный департамент ({creditLimitRequest.bankName})
                     </h3>
                     <p className="text-xs text-slate-300 mt-0.5">
-                      {language === 'ru'
-                        ? `Запрошено: ${formatRubles(creditLimitRequest.requestedAmountRub)} в ${creditLimitRequest.bankName}. Ожидается выпуск цифрового сертификата.`
-                        : `Requested: ${formatRubles(creditLimitRequest.requestedAmountRub)} at ${creditLimitRequest.bankName}. Pending certificate issue.`}
+                      Запрошенный лимит: {formatRubles(creditLimitRequest.requestedAmountRub)}. Ожидает верификации офицером в Банковском шлюзе (`/bank-portal`).
                     </p>
                   </div>
                 ) : (
                   <div>
                     <h3 className="text-base font-bold text-white">
-                      {language === 'ru' ? 'Получите официальный кредитный лимит банка-партнера' : 'Get a Certified Bank Credit Limit'}
+                      Получите предварительный кредитный лимит банка-партнера
                     </h3>
                     <p className="text-xs text-slate-300 mt-0.5">
-                      {language === 'ru'
-                        ? 'Сбербанк и ВТБ аккредитуют покупателей DomExit по ускоренному регламенту. Одобренный лимит дает приоритет 1-го порядка при выборе куратором.'
-                        : 'Sberbank and VTB certify DomExit buyers with expedited processing. An approved limit gives 1st order priority.'}
+                      {creditLimitRequest?.rejectionReason
+                        ? `Предыдущее решение банка: ${creditLimitRequest.rejectionReason}`
+                        : 'Сбербанк, ВТБ и Альфа-Банк аккредитуют покупателей DomExit по ускоренному регламенту перевода долга ДДУ.'}
                     </p>
                   </div>
                 )}
@@ -610,11 +865,11 @@ export const ClientPortalPage: React.FC = () => {
                 {creditLimitRequest?.status === 'approved' ? (
                   <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/40 text-right">
                     <span className="block text-[10px] text-emerald-300 uppercase tracking-wider font-bold">
-                      {language === 'ru' ? 'Статус верификации' : 'Verification Status'}
+                      Статус верификации
                     </span>
                     <span className="text-xs font-mono font-bold text-white flex items-center justify-end space-x-1 mt-0.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{language === 'ru' ? '100% Доверенный покупатель' : '100% Trusted Buyer'}</span>
+                      <span>100% Доверенный покупатель</span>
                     </span>
                   </div>
                 ) : (
@@ -624,296 +879,544 @@ export const ClientPortalPage: React.FC = () => {
                     className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg transition-all flex items-center space-x-2 cursor-pointer"
                   >
                     <Banknote className="w-4 h-4" />
-                    <span>{language === 'ru' ? 'Запросить кредитный лимит в банке' : 'Request Bank Credit Limit'}</span>
+                    <span>Запросить кредитный лимит в банке</span>
                   </button>
                 )}
               </div>
             </div>
 
+            {/* Live Buyer Bids List */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                    Ваши заявки на покупку и статус в ежедневном отборе
+                    Ваши заявки на покупку ({userBids.length} из макс. 3 активных)
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Куратор объекта рассматривает заявки в ежедневном окне и утверждает кандидата с подтвержденной платежеспособностью.
+                    Все поданные предложения синхронизированы с модулем матчмейкинга ответственного куратора.
                   </p>
                 </div>
                 <Link
                   to="/opportunities"
                   className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs transition-colors"
                 >
-                  Найти еще объекты в каталоге →
+                  Открыть каталог лотов РФ →
                 </Link>
               </div>
 
-              <div className="space-y-4">
-                {userBids.map((bid) => (
-                  <div key={bid.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-xs">
-                            #{bid.lotCode || 'U-10566'}
-                          </span>
-                          <span className="font-bold text-sm text-slate-900">ЖК «Чистое Небо» (Приморский р-н)</span>
+              {userBids.length === 0 ? (
+                <div className="p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-3">
+                  <p className="text-sm font-bold text-slate-700">
+                    У вас пока нет активных предложений о покупке
+                  </p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Выберите проверенную квартиру в каталоге переуступок и подайте заявку в ежедневное окно отбора.
+                  </p>
+                  <Link
+                    to="/opportunities"
+                    className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                  >
+                    <span>Перейти к выбору объекта</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {userBids.map((bid) => {
+                    const matchedLot = allLots.find(
+                      (l) => l.lotCode.toUpperCase() === (bid.lotCode || '').toUpperCase()
+                    );
+                    const lotDisplayTitle = matchedLot
+                      ? `${matchedLot.complexName} (${matchedLot.district})`
+                      : `Лот #${bid.lotCode}`;
+                    const formattedDate = bid.timestamp
+                      ? new Date(bid.timestamp).toLocaleString('ru-RU')
+                      : bid.requestedTimestamp;
+
+                    return (
+                      <div
+                        key={bid.id}
+                        className="p-5 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-4"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link
+                                to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                className="font-mono font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded text-xs"
+                              >
+                                #{bid.lotCode}
+                              </Link>
+                              <Link
+                                to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                className="font-bold text-sm text-slate-900 hover:text-emerald-700"
+                              >
+                                {lotDisplayTitle}
+                              </Link>
+                            </div>
+                            <span className="text-xs text-slate-500 mt-1 block">
+                              Подано: {formattedDate} • Заявитель: {bid.name} ({bid.clientCode || user?.clientCode})
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            {bid.buyerTrack === 'mortgage_substitution' ? (
+                              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                Трек: Кэш + Ипотека
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                Трек: 100% Кэш
+                              </span>
+                            )}
+
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                bid.status === 'priority_reserved'
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : bid.status === 'declined' ||
+                                    bid.status === 'withdrawn_accepted_elsewhere'
+                                  ? 'bg-slate-200 text-slate-700'
+                                  : 'bg-sky-100 text-sky-800'
+                              }`}
+                            >
+                              {bid.status === 'priority_reserved'
+                                ? '✓ Утверждено куратором!'
+                                : bid.status === 'under_review'
+                                ? 'Ликвидность проверена • В финале'
+                                : bid.status === 'withdrawn_accepted_elsewhere'
+                                ? 'Авто-отзыв (одобрен другой лот)'
+                                : bid.status === 'declined'
+                                ? 'Выбран другой кандидат'
+                                : 'На рассмотрении куратора'}
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-xs text-slate-500 mt-1 block">
-                          Подано: {bid.requestedTimestamp || 'Сегодня'} • На имя: {bid.name}
-                        </span>
-                      </div>
 
-                      <div className="flex items-center space-x-2">
-                        {bid.buyerTrack === 'mortgage_substitution' ? (
-                          <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                            Трек: Кэш + Ипотека
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                            Трек: 100% Кэш
-                          </span>
-                        )}
-
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          bid.status === 'priority_reserved'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-sky-100 text-sky-800'
-                        }`}>
-                          {bid.status === 'priority_reserved' ? '✓ Бронь принята куратором!' : 'На рассмотрении куратора'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-white rounded-xl border border-slate-200 text-xs">
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Готовность депозита:</span>
-                        <span className="font-mono font-bold text-slate-900">{formatRubles(bid.availableLiquidity)}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Срок выхода на сделку:</span>
-                        <span className="font-bold text-slate-800">{bid.readinessTimeline}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Банковский документ:</span>
-                        {bid.bankApprovalDocUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadDoc(bid.bankApprovalDocName || 'Одобрение_Ипотеки_Банк.pdf')}
-                            className="text-sky-700 hover:underline font-bold flex items-center space-x-1 mt-0.5"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>{bid.bankApprovalDocName || 'Справка_банка.pdf'}</span>
-                          </button>
-                        ) : (
-                          <span className="text-slate-400">Не требуется (100% кэш)</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {bid.status === 'priority_reserved' && (
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Поздравляем! Ваше предложение утверждено. Переходим к открытию аккредитива в банке.</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-white rounded-xl border border-slate-200 text-xs">
+                          <div>
+                            <span className="text-slate-500 block text-[11px]">Подтвержденный кэш:</span>
+                            <span className="font-mono font-bold text-slate-900">
+                              {formatRubles(bid.availableLiquidity)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[11px]">Регламент выхода:</span>
+                            <span className="font-bold text-slate-800">{bid.readinessTimeline}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[11px]">Документ в S3-сейфе:</span>
+                            {bid.documentId || bid.bankApprovalDocUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadBidProof(bid)}
+                                className="text-sky-700 hover:underline font-bold flex items-center space-x-1 mt-0.5 cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span className="truncate">
+                                  {bid.bankApprovalDocName || 'Подтверждение_ликвидности.pdf'}
+                                </span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400">В обработке</span>
+                            )}
+                          </div>
                         </div>
-                        <Link
-                          to={`/opportunities/${bid.lotCode || 'U-10566'}`}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
-                        >
-                          Открыть паспорт сделки
-                        </Link>
+
+                        {bid.status === 'priority_reserved' && (() => {
+                          const linkedDeal = allDeals.find(
+                            (d) => d.lotCode.toUpperCase() === (bid.lotCode || '').toUpperCase()
+                          );
+                          const wfStep = linkedDeal?.escrowWorkflow?.step || 'curator_review';
+                          return (
+                            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-2">
+                              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2 font-bold">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <span>
+                                    {wfStep === 'curator_review' &&
+                                      'Ваша заявка утверждена куратором! Готовится передача пакета документов в банк-партнёр.'}
+                                    {wfStep === 'bank_escrow_deposit' &&
+                                      'Шаг 1 синхронизирован: Документы переданы в банк • Открывается аккредитив СБР.'}
+                                    {wfStep === 'signing_photos' &&
+                                      'Шаг 2 синхронизирован: Средства надежно заблокированы в банке (Депонирование СБР подтверждено). Назначено подписание.'}
+                                    {wfStep === 'bank_funds_release' &&
+                                      'Шаг 3 синхронизирован: Подписание завершено, штамп Росреестра загружен • Передано в банк на раскрытие аккредитива.'}
+                                    {wfStep === 'deal_finalized' &&
+                                      'Шаг 4 завершён: Аккредитив СБР раскрыт, транши выплачены • Сделка официально закрыта!'}
+                                  </span>
+                                </div>
+                                <Link
+                                  to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
+                                >
+                                  Паспорт лота →
+                                </Link>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* ================= TAB 2: SELLER LISTINGS VIEW ================= */}
         {activeTab === 'seller' && (
-          <div className="space-y-8 animate-fade-in">
-            {/* Header Card: Active Exit Lot */}
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold font-mono text-slate-500 uppercase tracking-wider">
-                      {deal?.lotCode || 'ЛОТ #U-10566'}
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold">
-                      Справка Setl Group сверена
-                    </span>
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight mt-1">
-                    {deal?.lotTitle || 'ЖК «Чистое Небо» — 2-комн. 58.4 м² (Приморский р-н)'}
-                  </h2>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <div className="text-right">
-                    <span className="text-xs text-slate-500 block font-medium">Сумма к получению на руки:</span>
-                    <span className="text-2xl font-black text-emerald-700 font-mono">
-                      {formatRubles(deal?.sellerReturnRub || 2485230)}
-                    </span>
-                  </div>
-                  <div className="h-10 w-px bg-slate-200" />
-                  <div className="text-right">
-                    <span className="text-xs text-slate-500 block font-medium">Комиссия продавца:</span>
-                    <span className="text-xl font-black text-slate-900">0 ₽</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 5-Step Timeline */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                  <span>Этап ликвидации договора цессии:</span>
-                  <span className="text-emerald-700">Шаг 4 из 5 (75% завершено)</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                  <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs">
-                    <div className="flex items-center space-x-1.5 text-emerald-700 font-bold mb-1">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>1. Оценка ДДУ</span>
-                    </div>
-                    <span className="text-[11px] text-slate-500">Завершено</span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs">
-                    <div className="flex items-center space-x-1.5 text-emerald-700 font-bold mb-1">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>2. Проверка</span>
-                    </div>
-                    <span className="text-[11px] text-slate-500">42 параметра OK</span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs">
-                    <div className="flex items-center space-x-1.5 text-emerald-700 font-bold mb-1">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>3. Упаковка</span>
-                    </div>
-                    <span className="text-[11px] text-slate-500">152-ФЗ защита</span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-emerald-500 text-slate-950 font-bold text-xs shadow-md ring-2 ring-emerald-500/30">
-                    <div className="flex items-center space-x-1.5 mb-1">
-                      <Clock className="w-4 h-4 text-slate-950" />
-                      <span>4. Подбор</span>
-                    </div>
-                    <span className="text-[11px] text-slate-900">Идет выбор лучшего</span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-slate-100 text-slate-400 text-xs">
-                    <div className="font-bold mb-1">5. Выплата кэша</div>
-                    <span className="text-[11px]">Эскроу Сбербанка</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Assigned Curator Contact Card (Mission 14) */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
-                <div className="flex items-center space-x-3.5">
-                  {curator?.photoUrl ? (
-                    <img
-                      src={curator.photoUrl}
-                      alt={curator.name}
-                      className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm">
-                      {(curator?.name || 'АМ').slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">
-                      {language === 'ru' ? 'Ваш персональный куратор сделки (сотрудник DomExit):' : 'Your Dedicated Deal Curator (DomExit):'}
-                    </span>
-                    <span className="font-bold text-slate-900 text-sm">
-                      {curator?.name || 'Алексей Морозов'}
-                    </span>
-                    <span className="text-emerald-700 font-semibold block text-[11px]">
-                      {curator?.role || 'Ведущий юрист-куратор'}
-                    </span>
-                    <span className="text-slate-500 block text-[11px] mt-0.5">
-                      {curator?.phone || '+7 (921) 888-11-22'} • Telegram: {curator?.telegram || '@alexey_morozov'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <a
-                    href={
-                      (curator?.telegram || '').startsWith('http')
-                        ? curator?.telegram
-                        : `https://t.me/${(curator?.telegram || 'domexit_ru').replace('@', '')}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
+          <div className="space-y-6">
+            {/* Switcher if Seller submitted multiple lots + New Exit CTA */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {sellerLots.map((sl) => (
+                  <button
+                    key={sl.lotCode}
+                    type="button"
+                    onClick={() => setSelectedSellerLotCode(sl.lotCode)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      activeSellerLot?.lotCode === sl.lotCode
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Telegram</span>
-                  </a>
-
-                  {curator?.phone && (
-                    <a
-                      href={`tel:${curator.phone.replace(/[^\d+]/g, '')}`}
-                      className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl flex items-center justify-center transition-colors"
-                      title={curator.phone}
-                    >
-                      <span>{language === 'ru' ? 'Звонок' : 'Call'}</span>
-                    </a>
-                  )}
-                </div>
+                    #{sl.lotCode} • {sl.complexName}
+                  </button>
+                ))}
               </div>
 
-              {/* Verified Legal Documents Vault */}
-              <div className="space-y-3 pt-4 border-t border-slate-100">
-                <h4 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-emerald-600" />
-                  <span>Цифровая комната документов (152-ФЗ защита):</span>
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    'Договор_ДДУ_Чистое_Небо_10566.pdf',
-                    'Справка_о_расчетах_SetlGroup_OK.pdf',
-                    'Выписка_ЕФРСБ_ФССП_Чисто.pdf',
-                    'Нотариальное_согласие_супруги.pdf',
-                  ].map((docName, idx) => (
-                    <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                      <span className="font-medium text-slate-800 truncate mr-2">{docName}</span>
+              <Link
+                to="/sellers"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Подать еще один объект ДДУ</span>
+              </Link>
+            </div>
+
+            {/* URGENT ALERT: Curator or Owner Requested Additional Documents */}
+            {activeSellerLot?.additionalDocsRequested?.status === 'pending' && (
+              <div className="p-5 sm:p-6 rounded-3xl bg-amber-50 border-2 border-amber-400 shadow-lg space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black uppercase">
+                      Требуется действие продавца • Комплаенс 214-ФЗ
+                    </span>
+                    <h3 className="text-base sm:text-lg font-black text-slate-950">
+                      Куратор запросил дополнительные документы по лоту #{activeSellerLot.lotCode}
+                    </h3>
+                    <p className="text-xs text-slate-700">
+                      <strong>Список:</strong>{' '}
+                      {activeSellerLot.additionalDocsRequested.requestedList.join(', ')}
+                    </p>
+                    {activeSellerLot.additionalDocsRequested.notes && (
+                      <p className="text-xs text-amber-900 bg-white/80 p-2.5 rounded-xl border border-amber-200">
+                        Комментарий юриста: {activeSellerLot.additionalDocsRequested.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isUploadingRequestedDoc}
+                    onClick={handleUploadCuratorRequestedDoc}
+                    className="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4 text-emerald-400" />
+                    <span>
+                      {isUploadingRequestedDoc
+                        ? 'Шифрование S3...'
+                        : 'Загрузить запрошенный файл в S3'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Rejection Notice if Rejected */}
+            {activeSellerLot?.approvalStatus === 'rejected' && (
+              <div className="p-5 rounded-3xl bg-rose-50 border border-rose-300 text-xs text-rose-900 space-y-1">
+                <span className="font-black text-sm block">
+                  Заявка по лоту #{activeSellerLot.lotCode} отклонена комплаенсом
+                </span>
+                <p>
+                  Причина: {activeSellerLot.rejectionReason || activeSellerRequest?.rejectionReason || 'Несоответствие критериям 214-ФЗ'}
+                </p>
+              </div>
+            )}
+
+            {/* Main Seller Exit Dossier Card */}
+            {activeSellerLot && (
+              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold font-mono text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded">
+                        ЛОТ #{activeSellerLot.lotCode}
+                      </span>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          activeSellerLot.approvalStatus === 'pending_owner_approval'
+                            ? 'bg-amber-100 text-amber-900'
+                            : activeSellerLot.approvalStatus === 'rejected'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        {activeSellerLot.approvalStatus === 'pending_owner_approval'
+                          ? 'Ожидает одобрения Владельцем платформы'
+                          : activeSellerLot.approvalStatus === 'rejected'
+                          ? 'Отклонен'
+                          : 'Одобрен и закреплен за куратором'}
+                      </span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight mt-1.5">
+                      {activeSellerLot.complexName} — {activeSellerLot.areaM2} м² ({activeSellerLot.district})
+                    </h2>
+                    <span className="text-xs text-slate-500">
+                      Застройщик: {activeSellerLot.developer} • Эскроу: ПАО {activeSellerLot.escrowBank}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <span className="text-xs text-slate-500 block font-medium">
+                        Сумма к возврату на руки:
+                      </span>
+                      <span className="text-2xl font-black text-emerald-700 font-mono">
+                        {formatRubles(activeSellerLot.cashPaidBySeller)}
+                      </span>
+                    </div>
+                    <div className="h-10 w-px bg-slate-200" />
+                    <div className="text-right">
+                      <span className="text-xs text-slate-500 block font-medium">Комиссия продавца:</span>
+                      <span className="text-xl font-black text-slate-900">0 ₽</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live 5-Step Timeline */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap justify-between items-center gap-2 text-xs font-bold text-slate-700">
+                    <span>Текущая стадия сделки ({activeSellerDeal?.dealId || 'Реестр 214-ФЗ'}):</span>
+                    <div className="flex items-center space-x-3">
+                      <span className="text-emerald-700">
+                        {activeSellerDeal
+                          ? STAGE_LABEL_RU[activeSellerDeal.stage]
+                          : `Этап ${activeStageNum} из 5`}
+                      </span>
+                      {activeSellerDeal && (
+                        <Link
+                          to={`/client/tracker/${activeSellerDeal.dealId}`}
+                          className="inline-flex items-center space-x-1 text-indigo-700 hover:underline"
+                        >
+                          <span>Детальный трекер офферов</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                    {[
+                      { num: 1, title: '1. Оценка ДДУ', sub: '100% возврат' },
+                      { num: 2, title: '2. Проверка', sub: '42 параметра' },
+                      { num: 3, title: '3. Упаковка', sub: 'Публикация' },
+                      { num: 4, title: '4. Подбор', sub: 'Матчмейкинг' },
+                      { num: 5, title: '5. Выплата', sub: 'Аккредитив банка' },
+                    ].map((st) => {
+                      const isDone = activeSellerDeal?.stage === 'completed' || st.num < activeStageNum;
+                      const isCurrent = activeSellerDeal?.stage !== 'completed' && st.num === activeStageNum;
+                      return (
+                        <div
+                          key={st.num}
+                          className={`p-3 rounded-2xl text-xs border ${
+                            isCurrent
+                              ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-600 shadow-md'
+                              : isDone
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                              : 'bg-slate-100 border-slate-200 text-slate-400'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-1.5 font-bold mb-1">
+                            {isDone && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                            {isCurrent && <Clock className="w-4 h-4 text-slate-950" />}
+                            <span>{st.title}</span>
+                          </div>
+                          <span className="text-[11px] opacity-85">{st.sub}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {activeSellerDeal?.escrowWorkflow && (
+                    <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center space-x-2 font-bold text-emerald-950">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>
+                          {activeSellerDeal.escrowWorkflow.step === 'curator_review' &&
+                            'Банковский шлюз СБР: Подготовка пакета документов куратором перед передачей в банк'}
+                          {activeSellerDeal.escrowWorkflow.step === 'bank_escrow_deposit' &&
+                            'Шаг 1: Документы переданы в банк • Ожидается подтверждение депонирования средств покупателя на СБР'}
+                          {activeSellerDeal.escrowWorkflow.step === 'signing_photos' &&
+                            'Шаг 2: Банк подтвердил депонирование средств покупателя на эскроу/СБР • Назначена сессия подписания'}
+                          {activeSellerDeal.escrowWorkflow.step === 'bank_funds_release' &&
+                            'Шаг 3: Штамп Росреестра загружен куратором • Передано в банк на раскрытие аккредитива и выплату вашего кэша'}
+                          {activeSellerDeal.escrowWorkflow.step === 'deal_finalized' &&
+                            `Шаг 4: Аккредитив СБР раскрыт! Транш ${formatRubles(
+                              activeSellerDeal.sellerReturnRub
+                            )} (100% кэш, 0% комиссии) перечислен вам. Сделка закрыта.`}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] font-bold text-emerald-700 shrink-0">
+                        {activeSellerDeal.escrowWorkflow.bankName} •{' '}
+                        {activeSellerDeal.escrowWorkflow.escrowAccountNumber}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Assigned Curator Contact Card */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+                  <div className="flex items-center space-x-3.5">
+                    {curator?.photoUrl ? (
+                      <img
+                        src={curator.photoUrl}
+                        alt={curator.name}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm">
+                        {(activeSellerLot.curator?.name || curator?.name || 'КД')
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-slate-500 block text-[11px]">
+                        Ответственный сотрудник DomExit:
+                      </span>
+                      <span className="font-bold text-slate-900 text-sm">
+                        {activeSellerLot.assignedEmployeeName ||
+                          activeSellerLot.curator?.name ||
+                          curator?.name ||
+                          'Комплаенс-деск DomExit'}
+                      </span>
+                      <span className="text-emerald-700 font-semibold block text-[11px]">
+                        {activeSellerLot.curator?.role || curator?.role || 'Юрист по 214-ФЗ'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <a
+                      href={`https://t.me/${(
+                        activeSellerLot.curator?.telegram ||
+                        curator?.telegram ||
+                        'domexit_ru'
+                      ).replace('@', '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Telegram куратора</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Live Yandex S3 Cloud Document Vault */}
+                <div className="space-y-3 pt-4 border-t border-slate-100">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h4 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
+                      <FolderLock className="w-4 h-4 text-emerald-600" />
+                      <span>
+                        Защищенный сейф документов (Yandex S3 Bucket • {sellerVaultDocs.length} файлов):
+                      </span>
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setIsSellerVaultOpen(true)}
+                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Открыть сейф документов S3</span>
+                    </button>
+                  </div>
+
+                  {sellerVaultDocs.length === 0 ? (
+                    <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-2 text-xs text-slate-500">
+                      <p>Документы по данному лоту еще не загружены в облачный сейф.</p>
                       <button
                         type="button"
-                        onClick={() => handleDownloadDoc(docName)}
-                        className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center space-x-1 shrink-0 cursor-pointer"
+                        onClick={() => setIsSellerVaultOpen(true)}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold cursor-pointer"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Скачать</span>
+                        Загрузить обязательный пакет (ДДУ, Справка об оплате, СФР)
                       </button>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {sellerVaultDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs gap-2"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-800 block truncate">
+                              {doc.name}
+                            </span>
+                            <span className="text-[10px] text-slate-500 block truncate">
+                              {doc.categoryLabelRu || doc.category} • {(doc.sizeBytes / 1024).toFixed(0)} КБ
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                doc.status === 'approved'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : doc.status === 'rejected'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-sky-100 text-sky-800'
+                              }`}
+                            >
+                              {doc.status === 'approved'
+                                ? 'Одобрен'
+                                : doc.status === 'rejected'
+                                ? 'Отклонен'
+                                : 'В сейфе'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => StorageService.downloadDocument(doc)}
+                              className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center space-x-1 shrink-0 cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* ================= TAB 3: FAVORITES VIEW (MISSION 6) ================= */}
+        {/* ================= TAB 3: FAVORITES VIEW ================= */}
         {activeTab === 'favorites' && (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-6">
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center space-x-2">
                     <Heart className="w-5 h-5 text-rose-600 fill-rose-600" />
-                    <span>Сохраненные объекты (Постоянные ссылки и живые статусы)</span>
+                    <span>Избранные объекты ({favoriteLots.length})</span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Даже если объект переходит в статус «В сделке» или «Закрыт», он навсегда остается доступен по прямой ссылке.
+                    Сохраненные лоты с живым отслеживанием статуса сделки в реестре 214-ФЗ.
                   </p>
                 </div>
                 <Link
@@ -927,9 +1430,11 @@ export const ClientPortalPage: React.FC = () => {
               {favoriteLots.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
                   <Heart className="w-10 h-10 text-slate-300 mx-auto" />
-                  <h3 className="font-bold text-base text-slate-700">У вас пока нет сохраненных объектов</h3>
+                  <h3 className="font-bold text-base text-slate-700">
+                    У вас пока нет сохраненных объектов
+                  </h3>
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Нажимайте на сердечко на любой карточке в каталоге, чтобы следить за стадией продажи объекта.
+                    Нажимайте на иконку сердца на карточке любого лота в каталоге для быстрого доступа.
                   </p>
                   <Link
                     to="/opportunities"
@@ -941,24 +1446,37 @@ export const ClientPortalPage: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {favoriteLots.map((fav) => (
-                    <div key={fav.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition-shadow">
+                    <div
+                      key={fav.id}
+                      className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition-shadow"
+                    >
                       <div className="relative h-44 overflow-hidden">
-                        <img src={fav.imageUrl} alt={fav.complexName} className="w-full h-full object-cover" />
+                        <img
+                          src={fav.imageUrl}
+                          alt={fav.complexName}
+                          className="w-full h-full object-cover"
+                        />
                         <div className="absolute top-3 left-3">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shadow-sm ${
-                            fav.status === 'available'
-                              ? 'bg-emerald-600 text-white'
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shadow-sm ${
+                              fav.status === 'available'
+                                ? 'bg-emerald-600 text-white'
+                                : fav.status === 'processing'
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-slate-700 text-white'
+                            }`}
+                          >
+                            {fav.status === 'available'
+                              ? 'Доступен'
                               : fav.status === 'processing'
-                              ? 'bg-amber-600 text-white'
-                              : 'bg-slate-700 text-white'
-                          }`}>
-                            {fav.status === 'available' ? 'Доступен' : fav.status === 'processing' ? 'В сделке' : 'Закрыт'}
+                              ? 'В сделке'
+                              : 'Закрыт'}
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => toggleFavorite(fav.lotCode)}
-                          className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-full text-rose-600 shadow-sm transition-transform active:scale-90"
+                          className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-full text-rose-600 shadow-sm cursor-pointer"
                         >
                           <Heart className="w-4 h-4 fill-rose-600" />
                         </button>
@@ -970,7 +1488,9 @@ export const ClientPortalPage: React.FC = () => {
                             #{fav.lotCode}
                           </span>
                           <h4 className="font-bold text-sm text-slate-900 mt-1">{fav.complexName}</h4>
-                          <span className="text-xs text-slate-500">{fav.developer} • {fav.areaM2} м²</span>
+                          <span className="text-xs text-slate-500">
+                            {fav.district} • {fav.developer} • {fav.areaM2} м²
+                          </span>
                         </div>
 
                         <div className="flex justify-between items-baseline pt-2 border-t border-slate-100 text-xs">
@@ -997,66 +1517,78 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         )}
 
-        {/* ================= TAB 4: PARTNER PORTAL VIEW (MISSION 4) ================= */}
+        {/* ================= TAB 4: PARTNER PORTAL VIEW ================= */}
         {activeTab === 'partner' && (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-6">
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
               
               {/* Partner Status Header */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold uppercase tracking-wider">
-                      Официальный партнер DomExit
+                      {user?.isPartnerApproved || partnerAppRecord?.status === 'approved'
+                        ? 'Аккредитованный партнер DomExit'
+                        : partnerAppRecord?.status === 'pending'
+                        ? 'Заявка партнера на модерации у Владельца'
+                        : partnerAppRecord?.status === 'docs_requested'
+                        ? 'Запрошены реквизиты партнера'
+                        : 'Партнерский кабинет B2B'}
                     </span>
                     <span className="text-xs font-mono font-bold text-slate-600">
-                      Реферальный код: <strong>{user?.partnerRefCode || 'PARTNER-SPB-12'}</strong>
+                      Реф-код:{' '}
+                      <strong>
+                        {user?.partnerRefCode || partnerAppRecord?.referralCode || 'НЕ АКТИВИРОВАН'}
+                      </strong>
                     </span>
                   </div>
                   <h2 className="text-xl font-black text-slate-950 tracking-tight mt-1">
-                    Партнерская программа для риелторов, брокеров и юристов
+                    Партнерский деск: передача клиентов по DEX-ID и контроль выплат
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    Передавайте клиентов, которым тяжело тянуть рассрочку или грозит расторжение ДДУ. Вознаграждение 30 000 – 50 000 ₽ выплачивается сразу после закрытия сделки.
-                  </p>
+                  {partnerAppRecord?.requestedDocsNotes && (
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl mt-1.5">
+                      Запрос от Владельца платформы: {partnerAppRecord.requestedDocsNotes}
+                    </p>
+                  )}
                 </div>
-                
-                {!user?.isPartnerApproved && (
+
+                {!user?.isPartnerApproved && !partnerAppRecord && (
                   <button
                     type="button"
                     onClick={() => upgradeToPartner()}
-                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs"
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs cursor-pointer"
                   >
-                    Активировать партнерский доступ
+                    Подать заявку на партнерский статус
                   </button>
                 )}
               </div>
 
-              {/* MISSION 4.2: Refer Distressed Client Form with mandatory DEX-ID */}
+              {/* Refer Distressed Client Form with mandatory DEX-ID & strict financial validation */}
               <div className="bg-purple-50/50 border border-purple-200 rounded-3xl p-6 space-y-4">
                 <div className="flex items-center space-x-2 text-purple-950 font-black text-sm">
                   <Share2 className="w-4 h-4 text-purple-600" />
-                  <span>{language === 'ru' ? 'Передать дольщика: регистрация по персональному ID клиента (DEX-XXXXXX)' : 'Refer Client: Register by Personal Client ID (DEX-XXXXXX)'}</span>
+                  <span>
+                    Передать дольщика: регистрация по персональному ID клиента (DEX-XXXXXX)
+                  </span>
                 </div>
 
                 <p className="text-xs text-slate-600">
-                  {language === 'ru'
-                    ? 'Антифрод-регламент платформы: клиент должен создать аккаунт на DomExit и сообщить вам свой Уникальный ID. После отправки у клиента будет 7 дней для подтверждения запроса и загрузки ДДУ.'
-                    : 'Platform anti-fraud rule: client must create an account on DomExit and provide their Unique ID. The client has 7 days to confirm and upload DDU.'}
+                  Клиент регистрируется на DomExit и сообщает вам свой код (например, <code>DEX-784105</code>). У клиента открывается 7-дневный регламент загрузки скана ДДУ.
                 </p>
 
                 {partnerError && (
-                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-center space-x-2 animate-shake">
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-center space-x-2">
                     <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                     <span>{partnerError}</span>
                   </div>
                 )}
 
-                <form onSubmit={handlePartnerReferralSubmit} className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
+                <form
+                  onSubmit={handlePartnerReferralSubmit}
+                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs"
+                >
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'Уникальный ID клиента *' : 'Unique Client ID *'}
-                    </label>
+                    <label className="block text-slate-700 font-bold mb-1">ID клиента (DEX) *</label>
                     <input
                       type="text"
                       required
@@ -1068,13 +1600,11 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'ФИО дольщика *' : 'Client Full Name *'}
-                    </label>
+                    <label className="block text-slate-700 font-bold mb-1">ФИО дольщика *</label>
                     <input
                       type="text"
                       required
-                      placeholder="Александр Владимирович Б."
+                      placeholder="Белов Александр Владимирович"
                       value={refClientName}
                       onChange={(e) => setRefClientName(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
@@ -1082,27 +1612,23 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'Телефон клиента *' : 'Client Phone *'}
-                    </label>
+                    <label className="block text-slate-700 font-bold mb-1">Телефон РФ (+7) *</label>
                     <input
                       type="tel"
                       required
                       placeholder="+7 (911) 234-56-78"
                       value={refClientPhone}
-                      onChange={(e) => setRefClientPhone(e.target.value)}
+                      onChange={(e) => setRefClientPhone(formatRussianPhoneInput(e.target.value))}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'ЖК / Объект *' : 'Complex / Property *'}
-                    </label>
+                    <label className="block text-slate-700 font-bold mb-1">ЖК / Объект *</label>
                     <input
                       type="text"
                       required
-                      placeholder="ЖК Чистое Небо (Корпус 12)"
+                      placeholder="ЖК «Чистое Небо»"
                       value={refComplexName}
                       onChange={(e) => setRefComplexName(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
@@ -1110,9 +1636,7 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'Застройщик *' : 'Developer *'}
-                    </label>
+                    <label className="block text-slate-700 font-bold mb-1">Застройщик *</label>
                     <input
                       type="text"
                       required
@@ -1125,11 +1649,13 @@ export const ClientPortalPage: React.FC = () => {
 
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'Выплачено застройщику (₽) *' : 'Paid to Developer (₽) *'}
+                      Выплачено девелоперу (≥ 2 млн ₽) *
                     </label>
                     <input
                       type="number"
                       required
+                      min={2000000}
+                      max={50000000}
                       value={refPaidAmount}
                       onChange={(e) => setRefPaidAmount(Number(e.target.value))}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
@@ -1138,11 +1664,12 @@ export const ClientPortalPage: React.FC = () => {
 
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">
-                      {language === 'ru' ? 'Цена по договору ДДУ (₽) *' : 'DDU Contract Price (₽) *'}
+                      Полная цена по ДДУ (₽) *
                     </label>
                     <input
                       type="number"
                       required
+                      min={2100000}
                       value={refDduPrice}
                       onChange={(e) => setRefDduPrice(Number(e.target.value))}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
@@ -1155,132 +1682,154 @@ export const ClientPortalPage: React.FC = () => {
                       className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>{language === 'ru' ? 'Отправить запрос (7 дней)' : 'Send Request (7 Days)'}</span>
+                      <span>Отправить запрос (7 дней)</span>
                     </button>
                   </div>
                 </form>
               </div>
 
-              {/* MISSION 4.2: Live 7-Day Referral Requests Table */}
+              {/* Strictly Isolated 7-Day Referral Requests Table */}
               <div className="space-y-3 pt-2">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
                   <Clock className="w-4 h-4 text-purple-600" />
-                  <span>{language === 'ru' ? 'Реестр запросов с 7-дневным регламентом подтверждения:' : '7-Day Preliminary Referral Registry:'}</span>
+                  <span>Ваши переданные запросы ({partnerRequests.length}):</span>
                 </h3>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-700">
-                    <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
-                      <tr>
-                        <th className="py-3 px-3">Код</th>
-                        <th className="py-3 px-3">ID клиента</th>
-                        <th className="py-3 px-3">Клиент</th>
-                        <th className="py-3 px-3">Объект / ЖК</th>
-                        <th className="py-3 px-3">Выплачено</th>
-                        <th className="py-3 px-3 text-right">Регламент и статус</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {partnerRequests.map((req) => {
-                        const countdown = formatRemainingTime(req.expiresAt);
-                        return (
-                          <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-3 px-3 font-mono font-bold text-slate-900">{req.id}</td>
-                            <td className="py-3 px-3 font-mono font-bold text-indigo-700">{req.clientCode}</td>
+                {partnerRequests.length === 0 ? (
+                  <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                    У вас пока нет отправленных 7-дневных запросов. Заполните форму выше, используя DEX-ID клиента.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-3">Код</th>
+                          <th className="py-3 px-3">ID клиента</th>
+                          <th className="py-3 px-3">Клиент</th>
+                          <th className="py-3 px-3">Объект / ЖК</th>
+                          <th className="py-3 px-3">Выплачено</th>
+                          <th className="py-3 px-3 text-right">Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {partnerRequests.map((req) => {
+                          const countdown = formatRemainingTime(req.expiresAt);
+                          return (
+                            <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-3 font-mono font-bold text-slate-900">{req.id}</td>
+                              <td className="py-3 px-3 font-mono font-bold text-indigo-700">
+                                {req.clientCode}
+                              </td>
+                              <td className="py-3 px-3 font-semibold text-slate-800">
+                                <div>{req.clientName}</div>
+                                <div className="text-[10px] text-slate-500 font-mono">
+                                  {req.clientPhone}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-medium">{req.complexName}</div>
+                                <div className="text-[10px] text-slate-500">{req.developer}</div>
+                              </td>
+                              <td className="py-3 px-3 font-mono font-bold text-emerald-700">
+                                {formatRubles(req.paidAmountRub)}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {req.status === 'completed' ? (
+                                  <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] inline-flex items-center space-x-1">
+                                    <Check className="w-3 h-3" />
+                                    <span>Подтвержден ({req.activatedLotCode || 'В работе'})</span>
+                                  </span>
+                                ) : req.status === 'expired' || countdown.isExpired ? (
+                                  <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px]">
+                                    Истек срок 7 дней
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-mono font-bold text-[10px] inline-flex items-center space-x-1">
+                                    <Clock className="w-3 h-3 text-amber-600" />
+                                    <span>{countdown.text}</span>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Live 5-Stage Partner Deal Commission Table (from DealsRepository.getByPartner) */}
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Активные сделки по вашему реф-коду и агентское вознаграждение ({partnerDeals.length}):</span>
+                </h3>
+
+                {partnerDeals.length === 0 ? (
+                  <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                    Когда клиент подтвердит ваш запрос и загрузит ДДУ, сделка автоматически отобразится здесь с расчетом комиссии.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-3">ID сделки</th>
+                          <th className="py-3 px-3">Клиент</th>
+                          <th className="py-3 px-3">Объект / Лот</th>
+                          <th className="py-3 px-3">Текущий этап</th>
+                          <th className="py-3 px-3">Вознаграждение</th>
+                          <th className="py-3 px-3 text-right">Статус выплаты</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {partnerDeals.map((d) => (
+                          <tr key={d.dealId} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                              {d.dealId}
+                            </td>
                             <td className="py-3 px-3 font-semibold text-slate-800">
-                              <div>{req.clientName}</div>
-                              <div className="text-[10px] text-slate-500 font-mono">{req.clientPhone}</div>
+                              {d.clientName || d.sellerName}
                             </td>
                             <td className="py-3 px-3">
-                              <div className="font-medium">{req.complexName}</div>
-                              <div className="text-[10px] text-slate-500">{req.developer}</div>
+                              {d.complexName || d.lotTitle} (#{d.lotCode})
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-bold text-[10px]">
+                                {STAGE_LABEL_RU[d.stage]}
+                              </span>
                             </td>
                             <td className="py-3 px-3 font-mono font-bold text-emerald-700">
-                              {formatRubles(req.paidAmountRub)}
+                              {formatRubles(d.partnerRewardRub || 35000)}
                             </td>
                             <td className="py-3 px-3 text-right">
-                              {req.status === 'completed' ? (
-                                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] inline-flex items-center space-x-1">
-                                  <Check className="w-3 h-3" />
-                                  <span>{language === 'ru' ? 'Подтвержден клиентом' : 'Confirmed by Client'}</span>
-                                </span>
-                              ) : req.status === 'expired' || countdown.isExpired ? (
-                                <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px]">
-                                  {language === 'ru' ? 'Истек срок 7 дней' : '7 Days Expired'}
+                              {d.stage === 'completed' || d.partnerPayoutStatus === 'paid' ? (
+                                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                  Выплачено
                                 </span>
                               ) : (
-                                <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-mono font-bold text-[10px] inline-flex items-center space-x-1">
-                                  <Clock className="w-3 h-3 text-amber-600" />
-                                  <span>{countdown.text}</span>
+                                <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
+                                  После раскрытия эскроу
                                 </span>
                               )}
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* MISSION 4.2: Live 5-Stage Referral Tracking Table */}
-              <div className="space-y-3 pt-4 border-t border-slate-100">
-                <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>{language === 'ru' ? 'Отслеживание активных сделок и агентского вознаграждения:' : 'Deal Tracking & Commission Rewards:'}</span>
-                </h3>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-700">
-                    <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
-                      <tr>
-                        <th className="py-3 px-3">Код передачи</th>
-                        <th className="py-3 px-3">Клиент</th>
-                        <th className="py-3 px-3">Объект / ЖК</th>
-                        <th className="py-3 px-3">Текущий этап сделки</th>
-                        <th className="py-3 px-3">Ваша комиссия</th>
-                        <th className="py-3 px-3 text-right">Статус выплаты</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {partnerDeals.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-3 font-mono font-bold text-slate-900">{item.id}</td>
-                          <td className="py-3 px-3 font-semibold text-slate-800">{item.clientName}</td>
-                          <td className="py-3 px-3">{item.complexName}</td>
-                          <td className="py-3 px-3">
-                            <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-bold text-[10px]">
-                              {item.stage}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 font-mono font-bold text-emerald-700">
-                            {formatRubles(item.bonusRub)}
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            {item.status === 'paid' ? (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                                Выплачено
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
-                                В процессе закрытия
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
             </div>
           </div>
         )}
 
-        {/* ================= TAB 5: VIP INVESTOR PORTAL VIEW (MISSION 4.3) ================= */}
+        {/* ================= TAB 5: VIP INVESTOR PORTAL VIEW ================= */}
         {activeTab === 'investor' && (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-6">
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
               
               {/* Investor VIP Header */}
@@ -1289,70 +1838,100 @@ export const ClientPortalPage: React.FC = () => {
                   <div className="flex items-center space-x-2">
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1">
                       <Crown className="w-3 h-3 text-amber-700" />
-                      <span>Аккредитованный VIP Инвестор DomExit</span>
+                      <span>
+                        {user?.isInvestorApproved || investorAppRecord?.status === 'approved'
+                          ? 'Аккредитованный VIP Инвестор DomExit'
+                          : investorAppRecord?.status === 'pending'
+                          ? 'Анкета инвестора на рассмотрении Владельца'
+                          : 'Закрытый клуб инвесторов'}
+                      </span>
                     </span>
                   </div>
                   <h2 className="text-xl font-black text-slate-950 tracking-tight mt-1">
-                    Закрытый клуб инвесторов: Ранний доступ и пакетные стратегии
+                    Закрытый пул «Ранний доступ 48 часов» и пакетные стратегии
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    Эксклюзивный доступ к входящим уступкам за 48 часов до публикации в общем каталоге. Прямой контакт с руководством платформы.
-                  </p>
+                  {investorAppRecord?.requestedDocsNotes && (
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl mt-1.5">
+                      Запрос IR-деска: {investorAppRecord.requestedDocsNotes}
+                    </p>
+                  )}
                 </div>
 
-                {!user?.isInvestorApproved && (
+                {!user?.isInvestorApproved && !investorAppRecord && (
                   <button
                     type="button"
                     onClick={() => upgradeToInvestor()}
-                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs"
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs cursor-pointer"
                   >
-                    Активировать статус VIP Инвестора
+                    Подать заявку в VIP-Клуб
                   </button>
                 )}
               </div>
 
-              {/* MISSION 4.3 #1: 48-Hour Early Access Units Desk */}
+              {/* 48-Hour Early Access Units Desk (Dynamic from live repository) */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
                     <Clock className="w-4 h-4 text-amber-600" />
-                    <span>Срочные лоты в режиме «Ранний доступ 48 часов» (только для VIP):</span>
+                    <span>
+                      Лоты в режиме «Ранний доступ 48 часов» ({vipEarlyAccessLots.length} объектов):
+                    </span>
                   </h3>
                   <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                    Доступно до публикации в каталоге
+                    Приоритетный перехват до общего рынка
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {allLots.slice(1, 3).map((lot) => (
-                    <div key={lot.id} className="p-4 rounded-2xl border-2 border-amber-300 bg-amber-50/30 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-bold text-[10px] uppercase">
-                            Осталось 34 часа
-                          </span>
-                          <h4 className="font-bold text-sm text-slate-900 mt-1">{lot.complexName}</h4>
-                          <span className="text-xs text-slate-500">{lot.developer} • {lot.areaM2} м²</span>
-                        </div>
-                        <span className="font-mono font-bold text-emerald-700 text-sm">
-                          {formatRubles(lot.cashPaidBySeller)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-amber-200 text-xs">
-                        <span className="text-slate-600">Дисконт к рынку: <strong>-24.5%</strong></span>
-                        <Link
-                          to={`/opportunities/${lot.lotCode}`}
-                          className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs"
+                  {(vipEarlyAccessLots.length > 0 ? vipEarlyAccessLots : allLots.slice(0, 2)).map(
+                    (lot) => {
+                      const discPct =
+                        lot.todayDeveloperPrice > 0
+                          ? ((lot.todayDeveloperPrice - lot.dduContractPrice) /
+                              lot.todayDeveloperPrice) *
+                            100
+                          : 22;
+                      return (
+                        <div
+                          key={lot.id}
+                          className="p-4 rounded-2xl border-2 border-amber-300 bg-amber-50/30 space-y-3"
                         >
-                          Перехватить лот →
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-bold text-[10px] uppercase">
+                                Осталось {lot.earlyAccessHoursLeft || 36} ч. • #{lot.lotCode}
+                              </span>
+                              <h4 className="font-bold text-sm text-slate-900 mt-1">
+                                {lot.complexName}
+                              </h4>
+                              <span className="text-xs text-slate-500">
+                                {lot.district} • {lot.developer} • {lot.areaM2} м²
+                              </span>
+                            </div>
+                            <span className="font-mono font-bold text-emerald-700 text-sm shrink-0">
+                              {formatRubles(lot.cashPaidBySeller)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-2 border-t border-amber-200 text-xs">
+                            <span className="text-slate-700">
+                              Дисконт к застройщику:{' '}
+                              <strong className="text-emerald-700">-{formatPercent(discPct)}</strong>
+                            </span>
+                            <Link
+                              to={`/opportunities/${lot.lotCode}`}
+                              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs"
+                            >
+                              Открыть паспорт лота →
+                            </Link>
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
                 </div>
               </div>
 
-              {/* MISSION 4.3 #2: Direct Communication Channel with Leadership */}
+              {/* Direct Communication Channel with Leadership */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="font-bold text-xs text-slate-900 flex items-center space-x-1.5">
@@ -1360,7 +1939,7 @@ export const ClientPortalPage: React.FC = () => {
                     <span>Прямая линия с руководством: Генеральный директор (CEO) Виктор Сергеевич</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Обсуждение синдицированных пулов от 50 млн ₽, оптового выкупа и индивидуальных условий закрытия.
+                    Структурирование синдицированных пулов от 50 млн ₽ и оптовый выкуп региональных цессий.
                   </p>
                 </div>
                 <a
@@ -1370,86 +1949,78 @@ export const ClientPortalPage: React.FC = () => {
                   className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Открыть закрытый чат</span>
+                  <span>Прямой канал IR Desk</span>
                 </a>
               </div>
 
-              {/* MISSION 4.3 #3: Interactive Budget & Investment Package Builder */}
+              {/* Interactive Budget & Investment Package Builder (Persisted Live via DAL) */}
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
                     <Sliders className="w-4 h-4 text-indigo-600" />
-                    <span>Интерактивный конструктор капитала и готовые пакеты:</span>
+                    <span>Интерактивный конструктор инвестиционного мандата:</span>
                   </h3>
-                  <span className="font-mono font-black text-indigo-700 text-sm">
-                    Выбранный капитал: {investorBudgetMillions} 000 000 ₽
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    {packageSavedToast && (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                        ✓ Сохранено в профиле
+                      </span>
+                    )}
+                    <span className="font-mono font-black text-indigo-700 text-sm">
+                      Капитал: {investorBudgetMillions} 000 000 ₽
+                    </span>
+                  </div>
                 </div>
 
                 <input
                   type="range"
                   min={10}
-                  max={100}
+                  max={150}
                   step={5}
                   value={investorBudgetMillions}
-                  onChange={(e) => setInvestorBudgetMillions(Number(e.target.value))}
+                  onChange={(e) =>
+                    handleSaveInvestorPackage(Number(e.target.value), selectedPackage)
+                  }
                   className="w-full accent-indigo-600 cursor-pointer"
                 />
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                  {/* Package 1 */}
-                  <div
-                    onClick={() => setSelectedPackage('flipping')}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
-                      selectedPackage === 'flipping'
-                        ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <span className="font-bold text-xs text-slate-900 block">Пакет «Оптовый флиппинг»</span>
-                    <p className="text-[11px] text-slate-600 leading-snug">
-                      Выкуп пула из 2–4 студий с дисконтом 22-25% и быстрая перепродажа за 45-60 дней.
-                    </p>
-                    <div className="text-xs font-mono font-bold text-indigo-700 pt-1">
-                      Ожидаемая доходность: 32% годовых
+                  {[
+                    {
+                      id: 'flipping' as const,
+                      title: 'Пакет «Оптовый флиппинг»',
+                      desc: 'Выкуп пула из 2–4 ликвидных квартир с дисконтом 22–28% и реализация перед вводом корпуса.',
+                      irr: 'Целевая доходность: 32% годовых',
+                    },
+                    {
+                      id: 'turnkey' as const,
+                      title: 'Пакет «Под ключ + Аренда»',
+                      desc: 'Выкуп цессии + чистовая меблировка + передача в арендное управление с первого дня выдачи ключей.',
+                      irr: 'Целевая доходность: 19% годовых',
+                    },
+                    {
+                      id: 'syndicate' as const,
+                      title: 'Пакет «Синдицированный пул»',
+                      desc: 'Совместное финансирование крупных лотов бизнес/премиум класса в Москве, СПб и Сочи по 214-ФЗ.',
+                      irr: 'Фиксированный ориентир: 24% годовых',
+                    },
+                  ].map((pkg) => (
+                    <div
+                      key={pkg.id}
+                      onClick={() => handleSaveInvestorPackage(investorBudgetMillions, pkg.id)}
+                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
+                        selectedPackage === pkg.id
+                          ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="font-bold text-xs text-slate-900 block">{pkg.title}</span>
+                      <p className="text-[11px] text-slate-600 leading-snug">{pkg.desc}</p>
+                      <div className="text-xs font-mono font-bold text-indigo-700 pt-1">
+                        {pkg.irr}
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Package 2 */}
-                  <div
-                    onClick={() => setSelectedPackage('turnkey')}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
-                      selectedPackage === 'turnkey'
-                        ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <span className="font-bold text-xs text-slate-900 block">Пакет «Под ключ + Аренда»</span>
-                    <p className="text-[11px] text-slate-600 leading-snug">
-                      Выкуп + чистовая отделка + меблировка + доверительное управление арендой через сервис.
-                    </p>
-                    <div className="text-xs font-mono font-bold text-indigo-700 pt-1">
-                      Ожидаемая доходность: 19% годовых
-                    </div>
-                  </div>
-
-                  {/* Package 3 */}
-                  <div
-                    onClick={() => setSelectedPackage('syndicate')}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
-                      selectedPackage === 'syndicate'
-                        ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <span className="font-bold text-xs text-slate-900 block">Пакет «Синдицированный пул»</span>
-                    <p className="text-[11px] text-slate-600 leading-snug">
-                      Долевое участие в закрытии крупных корпоративных цессий с обеспечением залогом по 214-ФЗ.
-                    </p>
-                    <div className="text-xs font-mono font-bold text-indigo-700 pt-1">
-                      Фиксированная выплата: 24% годовых
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -1457,10 +2028,10 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         )}
 
-        {/* ================= MODAL 1: Complete 7-Day Preliminary Request ================= */}
+        {/* ================= MODAL 1: Complete 7-Day Preliminary Request with Real S3 Upload ================= */}
         {isCompleteModalOpen && selectedReqForCompletion && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 animate-scale-up">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
@@ -1468,7 +2039,7 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-950 text-base">
-                      {language === 'ru' ? 'Подтверждение заявки на чистый выход' : 'Confirm Clean Exit Request'}
+                      Подтверждение заявки и загрузка ДДУ в S3
                     </h3>
                     <span className="text-xs text-slate-500 font-mono">
                       ID клиента: {selectedReqForCompletion.clientCode}
@@ -1476,6 +2047,7 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsCompleteModalOpen(false)}
                   className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
                 >
@@ -1485,68 +2057,62 @@ export const ClientPortalPage: React.FC = () => {
 
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-slate-600">{language === 'ru' ? 'Партнер-агент:' : 'Partner Agent:'}</span>
+                  <span className="text-slate-600">Партнер-агент:</span>
                   <span className="font-bold text-slate-900">{selectedReqForCompletion.partnerName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-600">{language === 'ru' ? 'Объект / ЖК:' : 'Property / Complex:'}</span>
+                  <span className="text-slate-600">Объект / ЖК:</span>
                   <span className="font-bold text-slate-900">{selectedReqForCompletion.complexName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-600">{language === 'ru' ? 'Выплачено застройщику:' : 'Paid to Developer:'}</span>
-                  <span className="font-bold font-mono text-emerald-800">{formatRubles(selectedReqForCompletion.paidAmountRub)}</span>
-                </div>
-                <div className="flex justify-between pt-1 border-t border-amber-200/60 font-mono text-amber-900">
-                  <span>{language === 'ru' ? 'Остаток регламента 7 дней:' : 'Time Left:'}</span>
-                  <span className="font-bold">{formatRemainingTime(selectedReqForCompletion.expiresAt).text}</span>
+                  <span className="text-slate-600">Сумма к возврату:</span>
+                  <span className="font-bold font-mono text-emerald-800">
+                    {formatRubles(selectedReqForCompletion.paidAmountRub)}
+                  </span>
                 </div>
               </div>
+
+              {completionError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+                  {completionError}
+                </div>
+              )}
 
               <form onSubmit={handleCompletePreliminaryRequest} className="space-y-4 text-xs">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    {language === 'ru' ? 'ФИО владельца договора *' : 'Contract Owner Full Name *'}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    defaultValue={selectedReqForCompletion.clientName}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    {language === 'ru' ? 'Скан или фотографии договора ДДУ (с синей печатью Росреестра) *' : 'DDU Agreement Scan or Photos *'}
+                    Скан договора ДДУ (с отметкой Росреестра / ЭЦП) *
                   </label>
                   <div className="p-4 border-2 border-dashed border-amber-300 rounded-2xl bg-amber-50/40 text-center space-y-2">
                     <Upload className="w-6 h-6 text-amber-600 mx-auto" />
                     <p className="text-xs text-slate-600">
-                      {completionFileUploaded
-                        ? '✓ Файл прикреплен: DDU_Dogovor_214FZ_scan.pdf'
-                        : 'Нажмите для выбора файла (PDF, JPG, PNG до 25 МБ)'}
+                      {completionDocMeta
+                        ? `✓ Сохранено в S3: ${completionDocMeta.name} (${(
+                            completionDocMeta.sizeBytes / 1024
+                          ).toFixed(0)} КБ)`
+                        : 'Выберите реальный файл со своего устройства (PDF, JPG, PNG)'}
                     </p>
                     <button
                       type="button"
-                      onClick={() => setCompletionFileUploaded(true)}
-                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        completionFileUploaded
+                      onClick={handleSelectPreliminaryDduFile}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        completionDocMeta
                           ? 'bg-emerald-600 text-white'
                           : 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xs'
                       }`}
                     >
-                      {completionFileUploaded ? '✓ ДДУ успешно загружен' : 'Выбрать скан ДДУ'}
+                      {completionDocMeta ? 'Заменить файл ДДУ' : 'Выбрать файл ДДУ с устройства'}
                     </button>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    {language === 'ru' ? 'Комментарий для куратора (пожелания по срокам или сумме)' : 'Curator Notes'}
+                    Комментарий для комплаенс-офиса
                   </label>
                   <textarea
                     rows={2}
-                    placeholder="Например: хочу вернуть 100% выплаченного, график рассрочки до декабря..."
+                    placeholder="Пожелания по срокам выхода на сделку..."
                     value={completionNotes}
                     onChange={(e) => setCompletionNotes(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-amber-500"
@@ -1559,13 +2125,13 @@ export const ClientPortalPage: React.FC = () => {
                     onClick={() => setIsCompleteModalOpen(false)}
                     className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
                   >
-                    {language === 'ru' ? 'Отмена' : 'Cancel'}
+                    Отмена
                   </button>
                   <button
                     type="submit"
                     className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-colors cursor-pointer"
                   >
-                    {language === 'ru' ? 'Подтвердить и отправить куратору DomExit' : 'Confirm & Submit to Curator'}
+                    Подтвердить и отправить на аудит
                   </button>
                 </div>
               </form>
@@ -1575,8 +2141,8 @@ export const ClientPortalPage: React.FC = () => {
 
         {/* ================= MODAL 2: Request Bank Credit Limit ================= */}
         {isCreditLimitModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 animate-scale-up">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold">
@@ -1584,14 +2150,15 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-950 text-base">
-                      {language === 'ru' ? 'Запрос официального кредитного лимита' : 'Bank Credit Limit Application'}
+                      Запрос официального кредитного лимита
                     </h3>
                     <span className="text-xs text-slate-500">
-                      Партнерские банки: Сбербанк, ВТБ, Альфа-Банк
+                      Прямая интеграция со шлюзом банков-партнеров
                     </span>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsCreditLimitModalOpen(false)}
                   className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
                 >
@@ -1601,25 +2168,21 @@ export const ClientPortalPage: React.FC = () => {
 
               <form onSubmit={handleRequestCreditLimit} className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    {language === 'ru' ? 'Выберите банк-партнер *' : 'Select Partner Bank *'}
-                  </label>
+                  <label className="block text-slate-700 font-bold mb-1">Банк-партнер *</label>
                   <select
                     value={selectedBank}
                     onChange={(e) => setSelectedBank(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="Сбербанк">Сбербанк (Эскроу и семейная ипотека)</option>
-                    <option value="ВТБ">Банк ВТБ (ПАО) (Быстрое одобрение цессий)</option>
-                    <option value="Альфа-Банк">Альфа-Банк (СБР и рассрочки)</option>
+                    <option value="Сбербанк">ПАО Сбербанк (Эскроу и перевод долга ДДУ)</option>
+                    <option value="ВТБ">Банк ВТБ (ПАО) (Ипотека на уступки 214-ФЗ)</option>
+                    <option value="Альфа-Банк">АО Альфа-Банк (Комбо-лимиты и аккредитивы)</option>
                   </select>
                 </div>
 
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-slate-700 font-bold">
-                      {language === 'ru' ? 'Желаемый кредитный лимит (₽):' : 'Requested Credit Limit (₽):'}
-                    </label>
+                    <label className="text-slate-700 font-bold">Желаемый лимит кредита:</label>
                     <span className="font-mono font-black text-emerald-700 text-sm">
                       {formatRubles(requestedCreditAmount)}
                     </span>
@@ -1627,39 +2190,12 @@ export const ClientPortalPage: React.FC = () => {
                   <input
                     type="range"
                     min={2000000}
-                    max={20000000}
+                    max={25000000}
                     step={500000}
                     value={requestedCreditAmount}
                     onChange={(e) => setRequestedCreditAmount(Number(e.target.value))}
                     className="w-full accent-emerald-600 cursor-pointer"
                   />
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
-                    <span>2 000 000 ₽</span>
-                    <span>10 000 000 ₽</span>
-                    <span>20 000 000 ₽</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    {language === 'ru' ? 'Тип подтверждения дохода *' : 'Income Proof Type *'}
-                  </label>
-                  <select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-emerald-500">
-                    <option>Справка 2-НДФЛ (Основное место работы)</option>
-                    <option>Выписка по зарплатной карте Сбербанк / ВТБ</option>
-                    <option>Справка для самозанятых (Мой Налог)</option>
-                    <option>Декларация ИП (УСН 6%)</option>
-                  </select>
-                </div>
-
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-1">
-                  <div className="font-bold flex items-center space-x-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Преимущество на DomExit:</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    Одобренный банком штамп лимита закрепляется в вашем профиле и дает гарантию быстрого бронирования квартир по ценам 2023–2024 гг. без повторных проверок.
-                  </p>
                 </div>
 
                 <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
@@ -1668,13 +2204,13 @@ export const ClientPortalPage: React.FC = () => {
                     onClick={() => setIsCreditLimitModalOpen(false)}
                     className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
                   >
-                    {language === 'ru' ? 'Отмена' : 'Cancel'}
+                    Отмена
                   </button>
                   <button
                     type="submit"
                     className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-colors cursor-pointer"
                   >
-                    {language === 'ru' ? 'Отправить в банк на аккредитацию' : 'Submit for Bank Accreditation'}
+                    Отправить в банк на скоринг
                   </button>
                 </div>
               </form>
@@ -1684,7 +2220,22 @@ export const ClientPortalPage: React.FC = () => {
 
       </main>
 
+      {/* Interactive Cloud Document Vault Modal for Seller */}
+      {activeSellerLot && (
+        <DocumentVaultModal
+          isOpen={isSellerVaultOpen}
+          onClose={() => setIsSellerVaultOpen(false)}
+          entityType="lot"
+          entityId={activeSellerLot.lotCode}
+          entityTitle={`${activeSellerLot.complexName} (#${activeSellerLot.lotCode})`}
+          uploadedByUid={user?.id || 'usr-seller-001'}
+          clientCode={user?.clientCode || 'DEX-784105'}
+          mode="seller"
+          canUpload={true}
+          canReview={false}
+          onDocumentsChanged={(updated) => setSellerVaultDocs(updated)}
+        />
+      )}
     </div>
   );
 };
-

@@ -1,16 +1,40 @@
 export type Language = 'ru' | 'en';
 
+export type RussianCityCode = 'spb' | 'msk' | 'sochi' | 'kazan' | 'ekb' | 'nsk' | 'nn';
+
+export interface MetroStationInfo {
+  name: string;
+  lineColor?: string;
+  travelTimeText: string; // e.g. '5 мин. пешком' | '12 мин. транспортом'
+  mode: 'walk' | 'drive';
+}
+
+export interface RentalPotentialInfo {
+  longTermMonthlyRub: number; // e.g. 65000
+  shortTermDailyRub: number; // e.g. 3800
+  estimatedAnnualYieldPercent: number; // e.g. 8.4
+}
+
 export interface Lot {
   id: string;
   lotCode: string; // e.g. U-10566, U-14102
   complexName: string; // e.g. ЖК «Чистое Небо», ЖК «Pulse Premier»
   developer: string; // e.g. Setl Group, ПИК, Группа ЛСР
-  city: 'spb' | 'msk';
-  district: string; // e.g. Приморский район, Невский район
+  city: RussianCityCode;
+  district: string; // e.g. Приморский район, Пресненский район
+  streetAddress?: string; // e.g. Комендантский пр., уч. 4
   areaM2: number;
   rooms: 'studio' | '1-room' | '2-room' | '3-room' | 'euro';
   floor: number;
   totalFloors: number;
+  ceilingHeightM?: number; // e.g. 2.78, 3.05
+  districtAvgPricePerM2?: number; // e.g. 285000
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+  metroStations?: MetroStationInfo[];
+  rentalPotential?: RentalPotentialInfo;
   deliveryDate: string; // e.g. 4 кв. 2026 г.
   deliveryYear: number;
   finishing: 'clean' | 'whitebox' | 'without';
@@ -32,14 +56,21 @@ export interface Lot {
   isUrgentExit: boolean;
   isNegotiable: boolean;
   isFeatured: boolean;
+  isEarlyAccessVIP?: boolean; // 48-hour VIP Investor early access window
+  earlyAccessHoursLeft?: number;
   escrowBank: 'Sberbank' | 'VTB' | 'AlfaBank';
   tags: string[];
   status?: 'available' | 'processing' | 'closed'; // Status in Catalog
   currentStage?: number; // Current deal stage 1-5
   approvalStatus?: 'approved' | 'pending_owner_approval' | 'rejected';
+  rejectionReason?: string;
   assignedEmployeeId?: string; // ID of assigned employee
   assignedEmployeeName?: string; // Name of assigned employee
   sellerUserId?: string; // ID of the seller user
+  sellerClientCode?: string; // DEX-XXXXXX
+  sellerInn?: string;
+  referredByPartnerCode?: string;
+  documentIds?: string[];
 
   // Seller photos & packaging approval
   sellerUploadedPhotos?: string[];
@@ -51,7 +82,7 @@ export interface Lot {
     notes: string;
     requestedAt: string;
     status: 'pending' | 'submitted' | 'resolved';
-    submittedDocs?: Array<{ name: string; url: string; uploadedAt: string }>;
+    submittedDocs?: Array<{ name: string; url: string; uploadedAt: string; docId?: string }>;
   };
 
   // Operations log
@@ -62,9 +93,16 @@ export interface Lot {
     notes: string;
   }>;
 
-  // Partner bank special accreditation
+  // Partner bank special accreditation & developer accreditation
   specialApprovalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   specialApprovalBank?: string;
+  developerInn?: string;
+  developerAccreditationStatus?: 'accredited' | 'pending_bank_accreditation' | 'rejected';
+
+  // Telemetry & Engagement Metrics
+  publishedAt?: string; // ISO Timestamp or formatted date
+  viewsCount?: number;
+  favoritesCount?: number;
 
   // Legal passport parameters (42 items summary)
   legalPassport: {
@@ -102,11 +140,86 @@ export interface Lot {
   };
 }
 
+export type DocumentCategory =
+  | 'ddu_contract'
+  | 'developer_payment_cert'
+  | 'sfr_maternal_cap'
+  | 'bank_statement_origin'
+  | 'mortgage_approval'
+  | 'buyer_cash_statement'
+  | 'rosreestr_extract'
+  | 'additional';
+
+export type DocumentReviewStatus = 'uploaded' | 'under_review' | 'approved' | 'rejected';
+
+export interface DocumentMetadata {
+  id: string;
+  bucket: string; // e.g. 'domexit-yandex-s3-152fz'
+  objectKey: string; // S3-compatible key e.g. 'sellers/DEX-784105/U-10566/ddu_contract_1730.pdf'
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string; // ISO Timestamp
+  uploadedByUid: string;
+  clientCode: string; // DEX-XXXXXX
+  entityType: 'seller_request' | 'lot' | 'buyer_application' | 'partner_application' | 'investor_application' | 'deal';
+  entityId: string;
+  category: DocumentCategory;
+  categoryLabelRu?: string;
+  status: DocumentReviewStatus;
+  rejectionReason?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  sha256Hash?: string;
+  previewDataUrl?: string; // Thumbnail or lightweight inline preview
+  cloudUrl?: string;
+  storageDriver: 'indexeddb_s3' | 'firebase_cloud' | 'yandex_s3';
+}
+
+export interface SellerExitRequest {
+  id: string;
+  uid: string;
+  clientCode: string; // DEX-XXXXXX
+  lotId: string;
+  lotCode: string;
+  dealId: string;
+  timestamp: string;
+  sellerName: string;
+  sellerPhone: string;
+  sellerInn: string;
+  city: RussianCityCode;
+  district: string;
+  complexName: string;
+  developer: string;
+  developerInn?: string;
+  dduNumber: string;
+  areaM2: number;
+  rooms: Lot['rooms'];
+  floor: number;
+  totalFloors: number;
+  contractPriceRub: number;
+  paidAmountRub: number;
+  remainingDebtRub: number;
+  exitRoute: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
+  documentIds: string[];
+  status: 'pending_owner_review' | 'approved_assigned' | 'docs_requested' | 'rejected';
+  rejectionReason?: string;
+  requestedDocsList?: string[];
+  requestedDocsNotes?: string;
+  assignedEmployeeId?: string;
+  assignedEmployeeName?: string;
+  referredByPartnerCode?: string;
+}
+
 export interface BuyerCandidate {
   id: string;
   code: string; // e.g. B-409
   lotCode?: string; // lot code applied for (e.g. U-10566)
   userId?: string; // user ID who submitted bid
+  uid?: string; // canonical user UID
+  clientCode?: string; // DEX-XXXXXX
+  phone?: string;
+  email?: string;
   name: string;
   location: string;
   matchScore: number; // e.g. 98%
@@ -117,6 +230,7 @@ export interface BuyerCandidate {
   bankApprovalDocName?: string; // Uploaded file name
   bankStatementUrl?: string; // Recent bank statement for 100% cash track
   bankStatementName?: string;
+  documentId?: string; // Reference into StorageService vault
   curatorVerified?: boolean;
   curatorVerifiedAt?: string;
   curatorVerifiedBy?: string;
@@ -126,6 +240,7 @@ export interface BuyerCandidate {
   priorityBadge?: string;
   status: 'pending' | 'priority_reserved' | 'under_review' | 'declined' | 'withdrawn_accepted_elsewhere';
   requestedTimestamp: string;
+  timestamp?: string;
 }
 
 export interface DealTrack {
@@ -135,10 +250,19 @@ export interface DealTrack {
   lotTitle: string;
   developer: string;
   complexName?: string;
+  city?: RussianCityCode;
+  district?: string;
   sellerName?: string;
+  sellerUserId?: string;
+  sellerClientCode?: string;
   buyerName?: string;
+  buyerUserId?: string;
+  buyerClientCode?: string;
+  partnerRefCode?: string;
+  partnerRewardRub?: number;
+  partnerPayoutStatus?: 'pending' | 'paid';
   route: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
-  stage: 'initial_audit' | 'document_check' | 'packaging' | 'buyer_matching' | 'closing_escrow';
+  stage: 'initial_audit' | 'document_check' | 'packaging' | 'buyer_matching' | 'closing_escrow' | 'completed';
   daysLeft: number;
   sellerReturnRub: number;
   discountRub: number;
@@ -172,6 +296,8 @@ export interface DealTrack {
 export interface InvestorApplication {
   id: string;
   userId?: string;
+  uid?: string;
+  clientCode?: string; // DEX-XXXXXX
   timestamp: string;
   fullName: string;
   companyOrFund?: string;
@@ -182,17 +308,29 @@ export interface InvestorApplication {
   strategy: 'flipping' | 'rental_fitout' | 'equity_platform' | 'institutional_partnership';
   targetRegions: string[];
   requestedServices: string[];
+  targetIrr?: string;
   customProposal: string;
   ndaAgreed: boolean;
-  status?: 'pending' | 'approved' | 'rejected';
+  selectedBudgetMillions?: number;
+  selectedPackage?: 'flipping' | 'turnkey' | 'syndicate';
+  documentIds?: string[];
+  status?: 'pending' | 'approved' | 'rejected' | 'docs_requested';
+  rejectionReason?: string;
+  requestedDocsNotes?: string;
 }
 
 export interface PartnerEntry {
   id: string;
   userId?: string;
+  uid?: string;
+  clientCode?: string; // DEX-XXXXXX
+  timestamp?: string;
   name: string;
   role: string;
   organization: string;
+  inn?: string;
+  email?: string;
+  city?: string;
   category: 'developer_cancellation' | 'mortgage_broker' | 'lawyer' | 'trade_in_developer';
   leadsCountMonthly: number;
   paidBonusesRub: number;
@@ -200,7 +338,10 @@ export interface PartnerEntry {
   fixedRewardPerDealRub: number; // 30 000 ₽
   referralCode: string;
   phone: string;
-  status?: 'pending' | 'approved' | 'rejected';
+  documentIds?: string[];
+  status?: 'pending' | 'approved' | 'rejected' | 'docs_requested';
+  rejectionReason?: string;
+  requestedDocsNotes?: string;
 }
 
 export interface Employee {
@@ -228,7 +369,7 @@ export interface UserProfile {
   email?: string;
   telegram?: string;
   photoURL?: string;
-  roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank_officer'>;
+  roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank_officer' | 'bank'>;
   role?: string;
   activeRole?: string;
   isPartnerApproved: boolean;
@@ -238,6 +379,11 @@ export interface UserProfile {
   favorites: string[];
   registeredAt: string;
   activeDealId?: string;
+  investorPackagePreference?: {
+    budgetMillions: number;
+    selectedPackage: 'flipping' | 'turnkey' | 'syndicate';
+    updatedAt: string;
+  };
   bankCreditLimit?: {
     approvedLimitRub: number;
     validUntil: string;
@@ -248,32 +394,97 @@ export interface UserProfile {
 }
 
 export interface KPIStats {
-  todayNewRequestsCount: number; // 18
-  todayNewRequestsGrowth: string; // +24% к н/н
-  todayNewRequestsReturnRub: number; // 42 500 000 ₽
-  activeLotsCount: number; // 142
-  activeLotsSpbCount: number; // 98
-  activeLotsMskCount: number; // 44
-  averageDiscountPercent: number; // 18.2%
-  dealsInEscrowStageCount: number; // 9
-  dealsInEscrowTotalRub: number; // 84 600 000 ₽
-  dealsInSberCount: number; // 7
-  dealsInVtbCount: number; // 2
-  expectedCommissionMonthlyRub: number; // 3 850 000 ₽
-  actualCommissionMonthlyRub: number; // 2 140 000 ₽
-  reservedCommissionMonthlyRub: number; // 1 710 000 ₽
-  sellerCommissionTotalRub: number; // 0 ₽
+  todayNewRequestsCount: number;
+  todayNewRequestsGrowth: string;
+  todayNewRequestsReturnRub: number;
+  activeLotsCount: number;
+  activeLotsSpbCount: number;
+  activeLotsMskCount: number;
+  activeLotsRegionsCount?: number;
+  averageDiscountPercent: number;
+  dealsInEscrowStageCount: number;
+  dealsInEscrowTotalRub: number;
+  dealsInSberCount: number;
+  dealsInVtbCount: number;
+  expectedCommissionMonthlyRub: number;
+  actualCommissionMonthlyRub: number;
+  reservedCommissionMonthlyRub: number;
+  sellerCommissionTotalRub: number;
 }
 
-// Market Parameters & Rates Settings (Task 2)
+// District Yield & Capital Growth Engine Config (Task 4)
+export interface DistrictYieldConfig {
+  districtNameRu: string; // e.g. 'Приморский район', 'Московский район', 'Пресненский район'
+  city?: RussianCityCode;
+  dailyRentPercentOfMarket: number; // e.g. 0.05 (% of current developer/market price per day)
+  monthlyRentPercentOfMarket: number; // e.g. 0.65 (% of current developer/market price per month)
+  annualGrowthPercent: number; // e.g. 11 (% expected annual capital growth)
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+// Market Parameters & Rates Settings (Task 2 & Task 4)
 export interface MarketSettings {
   id: string; // 'market_parameters'
   cbrKeyRatePercent: number; // Key / Market mortgage rate ЦБ РФ (e.g. 23%)
   familyMortgageRatePercent: number; // Subsidized Family Mortgage (e.g. 6%)
   developerPenaltyPercent: number; // Developer cancellation penalty (e.g. 15%)
   buyerCommissionPercent: number; // Platform commission for buyer (e.g. 2.5%)
+  districtYieldConfigs?: Record<string, DistrictYieldConfig>;
   updatedAt: string;
   updatedBy?: string;
+}
+
+// Developer Accreditation Engine Types (Task 1 & Task 2)
+export type PartnerBankName = 'Сбербанк' | 'ВТБ' | 'Альфа-Банк' | 'ДОМ.РФ';
+
+export interface DeveloperBankTerms {
+  bankName: PartnerBankName;
+  isAccredited: boolean;
+  baseRatePercent: number; // e.g. 19.8%
+  familyMortgage6: boolean; // Семейная ипотека 6%
+  itMortgage6: boolean; // IT-ипотека 6%
+  maxPdnPercent: 40 | 50 | 60; // Max Debt-to-Income ratio (ПДН) allowed by bank
+  accreditedAt?: string;
+  accreditedBy?: string;
+}
+
+export interface AccreditedDeveloper {
+  id: string;
+  name: string; // e.g. 'ПИК', 'Setl Group', 'Самолёт'
+  inn: string; // 10-digit corporate ИНН
+  isAccredited: boolean;
+  bankTerms: DeveloperBankTerms[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeveloperAccreditationRequest {
+  id: string;
+  developerName: string;
+  developerInn: string;
+  lotId: string;
+  lotCode: string;
+  complexName: string;
+  city: RussianCityCode;
+  district: string;
+  contractPriceRub: number;
+  sellerName: string;
+  sellerClientCode: string;
+  documentIds: string[]; // DDU contract, payment cert, project plan
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  decisions: Array<{
+    bankName: PartnerBankName;
+    decision: 'approved' | 'rejected';
+    baseRatePercent?: number;
+    familyMortgage6?: boolean;
+    itMortgage6?: boolean;
+    maxPdnPercent?: 40 | 50 | 60;
+    notes?: string;
+    decidedBy: string;
+    decidedAt: string;
+  }>;
 }
 
 // Partner Preliminary Referral with 7-Day Expiration (Task 4)
@@ -296,6 +507,8 @@ export interface PartnerPreliminaryRequest {
   expiresAt: string; // 7-day countdown deadline
   status: 'pending_client' | 'completed' | 'expired';
   activatedLotId?: string;
+  activatedLotCode?: string;
+  activatedDealId?: string;
 }
 
 // Partner Bank Portal Types (Task 6)
@@ -331,10 +544,13 @@ export interface SpecialApprovalRequest {
 export interface BuyerCreditLimitRequest {
   id: string;
   userId: string;
+  uid?: string;
   clientCode: string;
   userName: string;
   userPhone: string;
   userEmail?: string;
+  incomeProofType?: string;
+  monthlyIncomeRub?: number;
   requestedAmountRub: number;
   approvedLimitRub?: number;
   validUntil?: string; // YYYY-MM-DD
@@ -343,8 +559,10 @@ export interface BuyerCreditLimitRequest {
   certificateNumber?: string;
   reviewedBy?: string;
   requestedAt: string;
+  timestamp?: string;
   reviewedAt?: string;
   notes?: string;
+  rejectionReason?: string;
 }
 
 // Operations & Decisions Audit Log (Task 7 & 12)
@@ -355,25 +573,36 @@ export interface AuditLogEntry {
   dealId?: string;
   operatorId: string;
   operatorName: string;
-  operatorRole: 'curator' | 'bank_officer' | 'owner' | 'system';
-  actionType: 
-    | 'legal_approved' 
-    | 'legal_rejected' 
-    | 'doc_requested' 
+  operatorRole: 'curator' | 'bank_officer' | 'owner' | 'system' | 'client';
+  actionType:
+    | 'legal_approved'
+    | 'legal_rejected'
+    | 'doc_requested'
     | 'doc_uploaded'
-    | 'packaging_published' 
-    | 'buyer_matched' 
-    | 'escrow_transferred_to_bank' 
-    | 'escrow_funds_deposited' 
-    | 'signing_docs_uploaded' 
+    | 'document_vault_action'
+    | 'packaging_published'
+    | 'buyer_matched'
+    | 'buyer_bid_submitted'
+    | 'seller_request_submitted'
+    | 'seller_request_decided'
+    | 'partner_application_submitted'
+    | 'partner_application_decided'
+    | 'investor_application_submitted'
+    | 'investor_application_decided'
+    | 'lot_assigned_to_curator'
+    | 'escrow_transferred_to_bank'
+    | 'escrow_funds_deposited'
+    | 'signing_docs_uploaded'
     | 'signing_proof_uploaded'
-    | 'funds_released_closed' 
+    | 'funds_released_closed'
     | 'escrow_released'
     | 'deal_cancelled_relisted'
     | 'packaging_photos_approved'
     | 'vip_telegram_broadcast'
     | 'special_bank_approval_requested'
     | 'special_bank_approval_decided'
+    | 'developer_accreditation_submitted'
+    | 'developer_accreditation_decided'
     | 'credit_limit_granted'
     | 'market_settings_updated'
     | 'employee_created_modified';
@@ -382,4 +611,3 @@ export interface AuditLogEntry {
   attachments?: Array<{ name: string; url: string }>;
   metadata?: Record<string, any>;
 }
-

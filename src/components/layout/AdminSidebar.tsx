@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -12,85 +12,126 @@ import {
   Building2,
   Bot,
   Search,
-  CheckCircle,
   ExternalLink,
-  Shield,
-  Layers,
   Menu,
   X,
   Crown,
   Briefcase,
   ArrowRightLeft,
-  UserCheck
+  UserCheck,
 } from 'lucide-react';
 
 export const AdminSidebar: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { language } = useLanguage();
   const { user, switchRole } = useAuth();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [quickSearch, setQuickSearch] = useState('');
 
-  const isOwner = user?.activeRole === 'owner' || (!user?.activeRole && true);
   const isEmployee = user?.activeRole === 'employee';
+  const isOwner = !isEmployee;
 
   const allNavItems = [
     {
       path: '/admin/dashboard',
-      label: isOwner 
-        ? (language === 'ru' ? 'Дашборд Владельца' : 'Owner Dashboard')
-        : (language === 'ru' ? 'Мои назначенные объекты' : 'My Assigned Lots'),
+      matchPrefix: '/admin/dashboard',
+      label: isOwner
+        ? language === 'ru'
+          ? 'Дашборд Владельца'
+          : 'Owner Dashboard'
+        : language === 'ru'
+        ? 'Мои назначенные объекты'
+        : 'My Assigned Lots',
       icon: LayoutDashboard,
       roles: ['owner', 'employee'],
     },
     {
       path: '/admin/pipeline',
-      label: isOwner 
-        ? (language === 'ru' ? 'Воронка всех сделок' : 'Platform Pipeline')
-        : (language === 'ru' ? 'Моя воронка сделок' : 'My Deal Pipeline'),
+      matchPrefix: '/admin/pipeline',
+      label: isOwner
+        ? language === 'ru'
+          ? 'Воронка всех сделок'
+          : 'Platform Pipeline'
+        : language === 'ru'
+        ? 'Моя воронка сделок'
+        : 'My Deal Pipeline',
       icon: GitPullRequest,
       roles: ['owner', 'employee'],
     },
     {
       path: '/admin/matchmaker/U-10566',
+      matchPrefix: '/admin/matchmaker',
       label: isOwner
-        ? (language === 'ru' ? 'ИИ-Матчмейкер (Все лоты)' : 'All Lots Matchmaker')
-        : (language === 'ru' ? 'Матчмейкер (Заявки на мои лоты)' : 'My Lots Buyer Offers'),
+        ? language === 'ru'
+          ? 'ИИ-Матчмейкер (Все лоты)'
+          : 'All Lots Matchmaker'
+        : language === 'ru'
+        ? 'Матчмейкер (Заявки на мои лоты)'
+        : 'My Lots Buyer Offers',
       icon: Users,
       roles: ['owner', 'employee'],
     },
     {
       path: '/admin/packaging/U-10566',
+      matchPrefix: '/admin/packaging',
       label: language === 'ru' ? 'Каталог и упаковка 152-ФЗ' : 'Packaging Studio 152-FZ',
       icon: PackageCheck,
       roles: ['owner', 'employee'],
     },
     {
       path: '/admin/legal-audit/U-10566',
+      matchPrefix: '/admin/legal-audit',
       label: language === 'ru' ? 'Юридический аудит (42 пункта)' : 'Legal Audit (42 Checks)',
       icon: Scale,
       roles: ['owner', 'employee'],
     },
     {
       path: '/admin/closing/DEAL-2025-10566',
+      matchPrefix: '/admin/closing',
       label: language === 'ru' ? 'Сделки в банках (Эскроу)' : 'Bank Escrow Closing',
       icon: Building2,
       roles: ['owner', 'employee'],
     },
     {
       path: '/admin/partners-bot',
+      matchPrefix: '/admin/partners-bot',
       label: language === 'ru' ? 'Управление Партнерами и TG-бот' : 'Partners & TG Bot Desk',
       icon: Bot,
-      roles: ['owner'], // STRICTLY HIDDEN FROM EMPLOYEE AS DIRECTED
+      roles: ['owner'],
     },
   ];
 
-  // Filter items according to active role
   const visibleNavItems = allNavItems.filter((item) => {
     if (isEmployee) return item.roles.includes('employee');
     return true;
   });
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (prefix: string) => location.pathname.startsWith(prefix);
+
+  const handleQuickSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = quickSearch.trim();
+    if (!q) return;
+    const normalized = q.replace(/^#/, '');
+    if (/^U-\d+/i.test(normalized)) {
+      navigate(`/admin/legal-audit/${normalized.toUpperCase()}`);
+    } else if (/^DEAL-/i.test(normalized)) {
+      navigate(`/admin/closing/${normalized.toUpperCase()}`);
+    } else {
+      navigate(`/admin/archive-logs?q=${encodeURIComponent(q)}`);
+    }
+    setMobileDrawerOpen(false);
+  };
+
+  const displayName =
+    user?.name || (isOwner ? 'Виктор Сергеевич (CEO)' : 'Алексей Смирнов (Куратор)');
+  const initials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0] || '')
+    .join('')
+    .toUpperCase();
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-white text-slate-700">
@@ -123,36 +164,38 @@ export const AdminSidebar: React.FC = () => {
           <button
             type="button"
             onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
-            title="Переключить режим для тестирования"
+            title="Переключить режим роли"
             className="p-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
           </button>
         </div>
         <p className="text-[10px] text-slate-400 mt-1">
-          {isOwner 
-            ? 'Полный доступ: выручка 2.5%, новые заявки, назначение сотрудников' 
-            : 'Только назначенные объекты и прямые заявки покупателей'}
+          {isOwner
+            ? 'Полный доступ: выручка 2.5%, новые заявки, назначение сотрудников'
+            : 'Изоляция 152-ФЗ: только назначенные вам объекты и прямые заявки'}
         </p>
       </div>
 
       {/* Quick Search */}
-      <div className="p-4">
+      <form onSubmit={handleQuickSearchSubmit} className="p-4">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder={language === 'ru' ? 'Поиск лота или ФИО...' : 'Search lot or name...'}
+            value={quickSearch}
+            onChange={(e) => setQuickSearch(e.target.value)}
+            placeholder={language === 'ru' ? 'Поиск лота (#U-...) или ФИО...' : 'Search lot or name...'}
             className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
           />
         </div>
-      </div>
+      </form>
 
       {/* Nav Links */}
       <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
-          const active = isActive(item.path);
+          const active = isActive(item.matchPrefix);
           return (
             <Link
               key={item.path}
@@ -176,7 +219,7 @@ export const AdminSidebar: React.FC = () => {
           </span>
         </div>
 
-        {/* MISSION 12: Архив сделок и журнал решений */}
+        {/* Архив сделок и журнал решений */}
         <Link
           to="/admin/archive-logs"
           onClick={() => setMobileDrawerOpen(false)}
@@ -190,7 +233,7 @@ export const AdminSidebar: React.FC = () => {
           <span>{language === 'ru' ? 'Архив сделок и журнал решений' : 'Deals Archive & Audit Logs'}</span>
         </Link>
 
-        {/* MISSION 14: Мой профиль куратора */}
+        {/* Мой профиль куратора */}
         <Link
           to="/admin/profile"
           onClick={() => setMobileDrawerOpen(false)}
@@ -231,12 +274,10 @@ export const AdminSidebar: React.FC = () => {
 
         <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-200">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-            {isOwner ? 'ВC' : 'АМ'}
+            {initials || (isOwner ? 'ВС' : 'АС')}
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-xs font-bold text-slate-900 truncate">
-              {isOwner ? 'Виктор Сергеевич' : 'Алексей Морозов'}
-            </span>
+            <span className="text-xs font-bold text-slate-900 truncate">{displayName}</span>
             <span className="text-[10px] text-emerald-700 truncate">
               {isOwner ? 'Генеральный директор' : 'Куратор отдела выходов'}
             </span>
@@ -248,12 +289,10 @@ export const AdminSidebar: React.FC = () => {
 
   return (
     <>
-      {/* 1. Desktop Persistent Sidebar (Hidden on mobile < md) */}
       <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 text-slate-700 flex-col shrink-0 min-h-screen">
         {sidebarContent}
       </aside>
 
-      {/* 2. Mobile Floating Trigger Button (< md) */}
       <div className="md:hidden fixed top-3 left-3 z-50">
         <button
           type="button"
@@ -266,16 +305,12 @@ export const AdminSidebar: React.FC = () => {
         </button>
       </div>
 
-      {/* 3. Mobile Slide-out Drawer with Backdrop */}
       {mobileDrawerOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          {/* Backdrop */}
           <div
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
             onClick={() => setMobileDrawerOpen(false)}
           />
-
-          {/* Drawer Container */}
           <div className="relative w-72 max-w-[85vw] bg-white h-full shadow-2xl z-10 flex flex-col">
             <button
               type="button"
@@ -291,4 +326,3 @@ export const AdminSidebar: React.FC = () => {
     </>
   );
 };
-

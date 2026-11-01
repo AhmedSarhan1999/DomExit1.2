@@ -1,141 +1,195 @@
 import { db } from '../firebase';
-import { 
-  collection, 
-  getDocs, 
-  doc, 
-  setDoc, 
-  deleteDoc, 
-  query, 
-  where 
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  getDoc,
+  deleteDoc,
 } from 'firebase/firestore';
+import { IDatabaseAdapter } from '../interfaces/IDatabaseAdapter';
 
 /**
- * Transitional Data Access Layer: Firebase & Offline Cloud Adapter
- * 
- * Provides unified persistence layer for:
- * - Google Cloud Firebase / Firestore
- * - Resilient Local Storage Cache (Zero Latency & Offline Fallback)
- * - Prepared for 1-click transition to Yandex Cloud (YDB) in production
+ * Recursively strips `undefined` properties before writing to Firestore,
+ * preventing Firestore SDK runtime rejections on optional fields.
  */
-export class FirebaseAdapter {
-  private static isConnected = true;
+function sanitizeForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      if (v !== undefined) {
+        cleaned[k] = sanitizeForFirestore(v);
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
 
-  /**
-   * Save or update an entity in the designated collection
-   */
-  static async saveEntity<T extends { id: string }>(
-    collectionName: string, 
+/**
+ * Transitional Data Access Layer: Firebase & Resilient Local Cache Adapter
+ * Implements IDatabaseAdapter for 1-click transition to YandexCloudAdapter.
+ */
+export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
+  readonly providerName = 'firebase' as const;
+
+  async saveEntity<T extends { id: string }>(
+    collectionName: string,
     entity: T
   ): Promise<T> {
+    const cleanEntity = sanitizeForFirestore(entity);
     const storageKey = `domexit_fb_${collectionName}`;
-    
-    // 1. Update LocalStorage cache immediately for snappy UI
+
+    // 1. Update LocalStorage cache immediately for zero-latency reactivity
     try {
       const cached = this.getCache<T>(collectionName);
-      const existingIdx = cached.findIndex(item => item.id === entity.id);
+      const existingIdx = cached.findIndex((item) => item.id === cleanEntity.id);
       if (existingIdx >= 0) {
-        cached[existingIdx] = entity;
+        cached[existingIdx] = cleanEntity;
       } else {
-        cached.unshift(entity);
+        cached.unshift(cleanEntity);
       }
       localStorage.setItem(storageKey, JSON.stringify(cached));
     } catch (e) {
-      console.warn(`[FirebaseAdapter] Local cache update error:`, e);
+      console.warn('[FirebaseAdapter] Local cache update error:', e);
     }
 
-    // 2. Sync to Firebase Firestore if online
+    // 2. Sync to live Firebase Firestore
     try {
-      if (db && (db as any).app) {
-        const docRef = doc(db, collectionName, entity.id);
-        await setDoc(docRef, entity, { merge: true });
-        console.info(`[FirebaseAdapter] Synced to Firestore: ${collectionName}/${entity.id}`);
+      if (db && (db as unknown as { app?: unknown }).app) {
+        const docRef = doc(db, collectionName, cleanEntity.id);
+        await setDoc(docRef, cleanEntity as Record<string, unknown>, { merge: true });
       }
     } catch (fbError) {
-      console.info(`[FirebaseAdapter] Firestore sync simulated / local mode:`, fbError);
+      console.info(`[FirebaseAdapter] Firestore sync fallback (${collectionName}/${cleanEntity.id}):`, fbError);
     }
 
-    return entity;
+    return cleanEntity;
   }
 
-  /**
-   * Retrieve all items from a collection
-   */
-  static async getAllEntities<T extends { id: string }>(
-    collectionName: string, 
-    seedFallback: T[]
+  async getAllEntities<T extends { id: string }>(
+    collectionName: string,
+    seedFallback: T[] = []
   ): Promise<T[]> {
     const storageKey = `domexit_fb_${collectionName}`;
+    const localCached = this.getCache<T>(collectionName);
 
-    // Try fetching from Firestore first
+    // Fetch from live Firestore and merge with local/seed items so newly created or seeded entities are never lost
     try {
-      if (db && (db as any).app) {
+      if (db && (db as unknown as { app?: unknown }).app) {
         const colRef = collection(db, collectionName);
         const snapshot = await getDocs(colRef);
         if (!snapshot.empty) {
-          const items: T[] = [];
-          snapshot.forEach(docSnap => items.push(docSnap.data() as T));
-          localStorage.setItem(storageKey, JSON.stringify(items));
-          return items;
+          const remoteMap = new Map<string, T>();
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as T;
+            if (data && data.id) {
+              remoteMap.set(data.id, data);
+            }
+          });
+
+          // Merge local cached items that may not yet have flushed or additional seed items
+          for (const localItem of localCached) {
+            if (!remoteMap.has(localItem.id)) {
+              remoteMap.set(localItem.id, localItem);
+            }
+          }
+          for (const seedItem of seedFallback) {
+            if (!remoteMap.has(seedItem.id)) {
+              remoteMap.set(seedItem.id, seedItem);
+            }
+          }
+
+          const merged = Array.from(remoteMap.values());
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(merged));
+          } catch {}
+          return merged;
         }
       }
-    } catch (fbError) {
-      // Graceful fallback to cached or seeded data
+    } catch {
+      // Graceful fallback to local cache or seed data
     }
 
-    // Return from LocalStorage cache
-    const cached = this.getCache<T>(collectionName);
-    if (cached.length > 0) {
-      return cached;
+    if (localCached.length > 0) {
+      // Ensure any newly added seed lots/entities appear cleanly
+      if (seedFallback.length > 0) {
+        const existingIds = new Set(localCached.map((i) => i.id));
+        const missingSeeds = seedFallback.filter((s) => !existingIds.has(s.id));
+        if (missingSeeds.length > 0) {
+          const combined = [...localCached, ...missingSeeds];
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(combined));
+          } catch {}
+          return combined;
+        }
+      }
+      return localCached;
     }
 
-    // Initialize with seed data if clean environment
+    if (seedFallback.length > 0) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(seedFallback));
+      } catch {}
+    }
+    return [...seedFallback];
+  }
+
+  async getEntityById<T extends { id: string }>(
+    collectionName: string,
+    id: string,
+    seedFallback: T[] = []
+  ): Promise<T | null> {
+    if (!id) return null;
+
+    // Direct doc lookup first when Firestore is active
     try {
-      localStorage.setItem(storageKey, JSON.stringify(seedFallback));
-    } catch {}
-    return seedFallback;
-  }
+      if (db && (db as unknown as { app?: unknown }).app) {
+        const docRef = doc(db, collectionName, id);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          return snap.data() as T;
+        }
+      }
+    } catch {
+      // Fall back to collection cache
+    }
 
-  /**
-   * Retrieve a single entity by ID
-   */
-  static async getEntityById<T extends { id: string }>(
-    collectionName: string, 
-    id: string, 
-    seedFallback: T[] = []
-  ): Promise<T | null> {
     const all = await this.getAllEntities<T>(collectionName, seedFallback);
-    return all.find(item => item.id === id) || null;
+    return all.find((item) => item.id === id) || null;
   }
 
-  static async getEntity<T extends { id: string }>(
-    collectionName: string, 
-    id: string, 
+  async queryEntities<T extends { id: string }>(
+    collectionName: string,
+    predicate: (item: T) => boolean,
     seedFallback: T[] = []
-  ): Promise<T | null> {
-    return this.getEntityById<T>(collectionName, id, seedFallback);
+  ): Promise<T[]> {
+    const all = await this.getAllEntities<T>(collectionName, seedFallback);
+    return all.filter(predicate);
   }
 
-  /**
-   * Remove an entity
-   */
-  static async removeEntity(collectionName: string, id: string): Promise<boolean> {
+  async removeEntity(collectionName: string, id: string): Promise<boolean> {
     const storageKey = `domexit_fb_${collectionName}`;
     try {
-      const cached = this.getCache<any>(collectionName);
-      const filtered = cached.filter(item => item.id !== id);
+      const cached = this.getCache<{ id: string }>(collectionName);
+      const filtered = cached.filter((item) => item.id !== id);
       localStorage.setItem(storageKey, JSON.stringify(filtered));
 
-      if (db && (db as any).app) {
+      if (db && (db as unknown as { app?: unknown }).app) {
         const docRef = doc(db, collectionName, id);
         await deleteDoc(docRef);
       }
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
 
-  private static getCache<T>(collectionName: string): T[] {
+  private getCache<T>(collectionName: string): T[] {
     const storageKey = `domexit_fb_${collectionName}`;
     const raw = localStorage.getItem(storageKey);
     if (!raw) return [];
@@ -144,5 +198,43 @@ export class FirebaseAdapter {
     } catch {
       return [];
     }
+  }
+}
+
+export const firebaseAdapterInstance = new FirebaseDatabaseAdapter();
+
+/**
+ * Static facade delegating to the active adapter instance for seamless repository compatibility.
+ */
+export class FirebaseAdapter {
+  static saveEntity<T extends { id: string }>(collectionName: string, entity: T): Promise<T> {
+    return firebaseAdapterInstance.saveEntity(collectionName, entity);
+  }
+
+  static getAllEntities<T extends { id: string }>(
+    collectionName: string,
+    seedFallback: T[] = []
+  ): Promise<T[]> {
+    return firebaseAdapterInstance.getAllEntities(collectionName, seedFallback);
+  }
+
+  static getEntityById<T extends { id: string }>(
+    collectionName: string,
+    id: string,
+    seedFallback: T[] = []
+  ): Promise<T | null> {
+    return firebaseAdapterInstance.getEntityById(collectionName, id, seedFallback);
+  }
+
+  static getEntity<T extends { id: string }>(
+    collectionName: string,
+    id: string,
+    seedFallback: T[] = []
+  ): Promise<T | null> {
+    return firebaseAdapterInstance.getEntityById(collectionName, id, seedFallback);
+  }
+
+  static removeEntity(collectionName: string, id: string): Promise<boolean> {
+    return firebaseAdapterInstance.removeEntity(collectionName, id);
   }
 }

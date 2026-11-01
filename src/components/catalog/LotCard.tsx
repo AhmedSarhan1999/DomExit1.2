@@ -4,7 +4,8 @@ import { Lot } from '../../types';
 import { formatRubles, formatPercent } from '../../utils/formatters';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { ShieldCheck, Flame, ArrowRight, Building, Calendar, Wallet, Heart } from 'lucide-react';
+import { resolveLotGeoDetails } from '../../data/russianGeography';
+import { ShieldCheck, Flame, ArrowRight, Heart, MapPin, TrainFront } from 'lucide-react';
 
 interface LotCardProps {
   lot: Lot;
@@ -12,13 +13,22 @@ interface LotCardProps {
 
 export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
   const { language, t } = useLanguage();
-  const { user, isFavorite, toggleFavorite } = useAuth();
+  const { isFavorite, toggleFavorite } = useAuth();
   const favorited = isFavorite(lot.lotCode);
 
+  const geo = resolveLotGeoDetails(lot);
+  const primaryMetro = geo.metroStations[0];
+
   const savingsRub = lot.todayDeveloperPrice - lot.dduContractPrice;
-  const savingsPercent = (savingsRub / lot.todayDeveloperPrice) * 100;
+  const savingsPercent =
+    lot.todayDeveloperPrice > 0 ? (savingsRub / lot.todayDeveloperPrice) * 100 : 0;
 
   const lotStatus = lot.status || 'available';
+  const floorLabel = lot.ownerDossier?.hideExactFloor
+    ? `${lot.ownerDossier.floorRangeDisplay} ${language === 'ru' ? 'эт.' : 'fl.'}`
+    : language === 'ru'
+    ? `Этаж ${lot.floor} из ${lot.totalFloors}`
+    : `Floor ${lot.floor}/${lot.totalFloors}`;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
@@ -34,20 +44,20 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
 
         {/* Top Badges */}
         <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-          <div className="flex items-center space-x-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {lotStatus === 'available' && (
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-emerald-500 text-slate-950 text-[11px] font-bold shadow-md">
                 <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>{language === 'ru' ? 'Доступен' : 'Available'}</span>
               </span>
             )}
-            {lot.currentStage === 2 ? (
+            {lot.currentStage === 2 || lot.isEarlyAccessVIP ? (
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-indigo-600 text-white text-[11px] font-bold shadow-md">
-                <span>{language === 'ru' ? 'VIP Ранний доступ (Аудит)' : 'VIP Early Access (Audit)'}</span>
+                <span>{language === 'ru' ? 'VIP 48ч Доступ' : 'VIP 48h Access'}</span>
               </span>
             ) : lotStatus === 'processing' ? (
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-md">
-                <span>{language === 'ru' ? `В сделке (этап ${lot.currentStage || 3}/5)` : `In Deal (${lot.currentStage || 3}/5)`}</span>
+                <span>{language === 'ru' ? `В сделке (${lot.currentStage || 3}/5)` : `In Deal (${lot.currentStage || 3}/5)`}</span>
               </span>
             ) : null}
             {lotStatus === 'closed' && (
@@ -60,6 +70,12 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
               <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-md bg-rose-600 text-white text-[11px] font-bold shadow-md animate-pulse">
                 <Flame className="w-3 h-3" />
                 <span>{language === 'ru' ? 'Срочный' : 'Urgent'}</span>
+              </span>
+            )}
+            {(lot.developerAccreditationStatus === 'pending_bank_accreditation' ||
+              lot.tags?.includes('Ожидает аккредитации банков')) && (
+              <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold shadow-xs">
+                <span>Ожидает аккредитации банков</span>
               </span>
             )}
           </div>
@@ -95,13 +111,18 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
       </div>
 
       {/* Content Body */}
-      <div className="p-5 flex-1 flex flex-col space-y-4">
+      <div className="p-5 flex-1 flex flex-col space-y-3.5">
         
-        {/* Unit Code, Developer & District */}
+        {/* Region, Developer, District & Unit Code */}
         <div>
           <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-medium">{lot.developer} • {lot.district}</span>
-            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
+            <span className="font-semibold text-slate-700 inline-flex items-center space-x-1 truncate pr-2">
+              <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span className="truncate">
+                {language === 'ru' ? geo.region.shortLabelRu : geo.region.shortLabelEn} • {lot.district}
+              </span>
+            </span>
+            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
               #{lot.lotCode}
             </span>
           </div>
@@ -109,17 +130,35 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
             {lot.complexName}
           </h3>
           <p className="text-xs text-slate-600 mt-0.5">
-            {lot.areaM2} м² • {lot.rooms === 'studio' ? 'Студия' : `${lot.rooms.replace('-room', '')}-комн.`} • Этаж {lot.floor} из {lot.totalFloors}
+            {lot.developer} • {lot.areaM2} м² •{' '}
+            {lot.rooms === 'studio' ? (language === 'ru' ? 'Студия' : 'Studio') : `${lot.rooms.replace('-room', '')}-комн.`} •{' '}
+            {floorLabel}
           </p>
+
+          {primaryMetro && (
+            <div className="mt-1.5 inline-flex items-center space-x-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200/70 px-2 py-0.5 rounded-md">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: primaryMetro.lineColor }}
+              />
+              <TrainFront className="w-3 h-3 text-slate-400 shrink-0" />
+              <span className="font-medium truncate">{primaryMetro.name}</span>
+              <span className="text-slate-400 shrink-0">({primaryMetro.travelTimeText})</span>
+            </div>
+          )}
         </div>
 
         {/* Cash Box (Light Gray) */}
         <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">{t.common.cashToSeller}</span>
-            {lot.isNegotiable && (
-              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.2 rounded">
+            {lot.isNegotiable ? (
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">
                 {language === 'ru' ? 'Возможен торг' : 'Negotiable'}
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                {language === 'ru' ? '0 ₽ комиссия' : '0% Seller Fee'}
               </span>
             )}
           </div>
@@ -148,6 +187,12 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
         {/* 3-Row Compact Specifications Table */}
         <div className="text-xs space-y-1.5 pt-1 text-slate-600 border-t border-slate-100">
           <div className="flex justify-between">
+            <span className="text-slate-400">{language === 'ru' ? 'Цена м² по ДДУ:' : 'DDU Price / m²:'}</span>
+            <span className="font-bold text-emerald-700">
+              {formatRubles(Math.round(lot.dduContractPrice / Math.max(lot.areaM2, 1)))}/м²
+            </span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-400">{language === 'ru' ? 'Остаток застройщику:' : 'Remaining to Dev:'}</span>
             <span className="font-medium text-slate-800">{formatRubles(lot.remainingInstallmentDebt)}</span>
           </div>
@@ -155,14 +200,10 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
             <span className="text-slate-400">{language === 'ru' ? 'Платеж рассрочки:' : 'Installment payment:'}</span>
             <span className="font-medium text-slate-800">{formatRubles(lot.installmentQuarterlyPayment)} / кв.</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">{language === 'ru' ? 'Срок ввода:' : 'Handover term:'}</span>
-            <span className="font-medium text-slate-800">{lot.deliveryDate}</span>
-          </div>
         </div>
 
         {/* Action Button: Emerald CTA */}
-        <div className="pt-2">
+        <div className="pt-1 mt-auto">
           <Link
             to={`/opportunities/${lot.lotCode}`}
             className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-xs hover:shadow-md"

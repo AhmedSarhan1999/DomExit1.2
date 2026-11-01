@@ -1,29 +1,39 @@
 import { UserProfile } from '../../types';
 import { initialUsers } from '../seedData';
-import { FirebaseAdapter } from '../adapters/FirebaseAdapter';
+import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
 
 const COLLECTION = 'users';
 
 export class UsersRepository {
   static async getAll(): Promise<UserProfile[]> {
-    return FirebaseAdapter.getAllEntities<UserProfile>(COLLECTION, initialUsers);
+    return DatabaseGateway.getAll<UserProfile>(COLLECTION, initialUsers);
   }
 
   static async getById(userId: string): Promise<UserProfile | null> {
+    if (!userId) return null;
+    const direct = await DatabaseGateway.getById<UserProfile>(COLLECTION, userId, initialUsers);
+    if (direct) return direct;
     const all = await this.getAll();
-    return all.find(u => u.id === userId) || null;
+    return all.find((u) => u.id === userId) || null;
+  }
+
+  static async getByClientCode(clientCode: string): Promise<UserProfile | null> {
+    if (!clientCode) return null;
+    const clean = clientCode.trim().toUpperCase();
+    const all = await this.getAll();
+    return all.find((u) => u.clientCode?.trim().toUpperCase() === clean) || null;
   }
 
   static async getByEmail(email: string): Promise<UserProfile | null> {
     if (!email) return null;
     const clean = email.trim().toLowerCase();
     const all = await this.getAll();
-    return all.find(u => u.email?.trim().toLowerCase() === clean) || null;
+    return all.find((u) => u.email?.trim().toLowerCase() === clean) || null;
   }
 
   static async save(user: UserProfile): Promise<UserProfile> {
-    await FirebaseAdapter.saveEntity(COLLECTION, user);
+    await DatabaseGateway.save<UserProfile>(COLLECTION, user);
     return user;
   }
 
@@ -35,23 +45,28 @@ export class UsersRepository {
       email: user.email || '',
       phone: user.phone || '+7 (911) 000-00-00',
       telegram: user.telegram || '',
+      photoURL: user.photoURL,
       role: user.role || 'buyer',
-      roles: (user.roles as any) || [user.role || 'buyer'],
+      roles: (user.roles as UserProfile['roles']) || [(user.role as any) || 'buyer'],
       activeRole: user.activeRole || user.role || 'buyer',
-      isPartnerApproved: user.isPartnerApproved ?? (user.role === 'partner' || user.role === 'owner'),
-      isInvestorApproved: user.isInvestorApproved ?? (user.role === 'investor' || user.role === 'owner'),
+      isPartnerApproved: user.isPartnerApproved ?? (user.role === 'owner'),
+      isInvestorApproved: user.isInvestorApproved ?? (user.role === 'owner'),
       partnerRefCode: user.partnerRefCode || `PARTNER-${Math.floor(1000 + Math.random() * 9000)}`,
+      assignedEmployeeId: user.assignedEmployeeId,
       favorites: user.favorites || [],
       registeredAt: user.registeredAt || new Date().toISOString(),
+      activeDealId: user.activeDealId,
+      investorPackagePreference: user.investorPackagePreference,
+      bankCreditLimit: user.bankCreditLimit,
     };
 
-    await FirebaseAdapter.saveEntity(COLLECTION, newUser);
+    await DatabaseGateway.save<UserProfile>(COLLECTION, newUser);
     return newUser;
   }
 
   static async updateRole(
-    userId: string, 
-    newRole: string, 
+    userId: string,
+    newRole: string,
     operatorName: string = 'Виктор Сергеевич (Владелец)'
   ): Promise<UserProfile | null> {
     const user = await this.getById(userId);
@@ -74,16 +89,16 @@ export class UsersRepository {
     if (newRole === 'owner') {
       user.isPartnerApproved = true;
       user.isInvestorApproved = true;
-      user.roles = ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'] as any;
+      user.roles = ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'];
     }
 
-    await FirebaseAdapter.saveEntity(COLLECTION, user);
+    await DatabaseGateway.save<UserProfile>(COLLECTION, user);
 
     await AuditLogsRepository.addLog({
       operatorName,
       operatorRole: 'owner',
       actionType: 'employee_created_modified',
-      title: `Изменена роль пользователя: ${user.name} (${user.email})`,
+      title: `Изменена роль пользователя: ${user.name} (${user.email || user.clientCode})`,
       description: `Роль изменена с [${oldRole}] на [${newRole}]. Обновлены права доступа в системе.`,
     });
 

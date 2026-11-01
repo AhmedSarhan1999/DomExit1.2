@@ -94,6 +94,7 @@ export const App: React.FC = () => {
 
             {/* Partner Bank Gateway (Mission 6) */}
             <Route path="/bank-portal" element={<BankPortalPage />} />
+            <Route path="/admin/bank-gateway" element={<BankPortalPage />} />
 
             {/* Archive Logs & Decision Journal (Mission 12) */}
             <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />

@@ -1,20 +1,18 @@
-import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
-import { 
-  initialLots, 
-  initialDeals, 
-  initialCandidates, 
-  initialPartners, 
+import { DatabaseGateway } from './DatabaseGateway';
+import {
+  initialLots,
+  initialDeals,
+  initialCandidates,
+  initialPartners,
   initialEmployees,
   initialMarketSettings,
-  initialBankEmployees
+  initialBankEmployees,
+  initialSellerRequests,
 } from './seedData';
-import { Lot, DealTrack, BuyerCandidate, PartnerEntry, Employee } from '../types';
 
 /**
  * Live Database Auto-Seeder & Migration Controller
- * Synchronizes platform state with Firestore on first run.
- * Provides 1-click clean production switch (clearDemoData).
+ * Strictly uses DatabaseGateway (IDatabaseAdapter) — zero direct Firestore imports outside Adapter!
  */
 export class DatabaseInitializer {
   private static isInitialized = false;
@@ -24,105 +22,40 @@ export class DatabaseInitializer {
     this.isInitialized = true;
 
     try {
-      // 1. Synchronize Local Storage with seed defaults if empty
-      const lotCacheKey = 'domexit_fb_lots';
-      if (!localStorage.getItem(lotCacheKey)) {
-        localStorage.setItem(lotCacheKey, JSON.stringify(initialLots));
-      }
-      const dealsCacheKey = 'domexit_fb_deals';
-      if (!localStorage.getItem(dealsCacheKey)) {
-        localStorage.setItem(dealsCacheKey, JSON.stringify(initialDeals));
-      }
-      const candCacheKey = 'domexit_fb_candidates';
-      if (!localStorage.getItem(candCacheKey)) {
-        localStorage.setItem(candCacheKey, JSON.stringify(initialCandidates));
-      }
-      const partCacheKey = 'domexit_fb_partners';
-      if (!localStorage.getItem(partCacheKey)) {
-        localStorage.setItem(partCacheKey, JSON.stringify(initialPartners));
-      }
-      const empCacheKey = 'domexit_fb_employees';
-      if (!localStorage.getItem(empCacheKey)) {
-        localStorage.setItem(empCacheKey, JSON.stringify(initialEmployees));
-      }
-      const marketCacheKey = 'domexit_fb_market_settings';
-      if (!localStorage.getItem(marketCacheKey)) {
-        localStorage.setItem(marketCacheKey, JSON.stringify([initialMarketSettings]));
-      }
-      const bankEmpCacheKey = 'domexit_fb_bank_employees';
-      if (!localStorage.getItem(bankEmpCacheKey)) {
-        localStorage.setItem(bankEmpCacheKey, JSON.stringify(initialBankEmployees));
-      }
-
-      // 2. Synchronize with live Firestore if available
-      if (db && typeof db.type === 'string') {
-        const lotsCol = collection(db, 'lots');
-        const lotSnap = await getDocs(lotsCol);
-
-        if (lotSnap.empty) {
-          console.info('[Live Firebase] Seeding initial 12 lots and deals to Firestore...');
-          const batch = writeBatch(db);
-
-          // Seed lots
-          for (const lot of initialLots) {
-            const lotRef = doc(db, 'lots', lot.id);
-            batch.set(lotRef, lot);
-          }
-
-          // Seed deals
-          for (const deal of initialDeals) {
-            const dealRef = doc(db, 'deals', deal.id);
-            batch.set(dealRef, deal);
-          }
-
-          // Seed candidates
-          for (const cand of initialCandidates) {
-            const candRef = doc(db, 'candidates', cand.id);
-            batch.set(candRef, cand);
-          }
-
-          // Seed partners
-          for (const partner of initialPartners) {
-            const partRef = doc(db, 'partners', partner.id);
-            batch.set(partRef, partner);
-          }
-
-          // Seed employees
-          for (const emp of initialEmployees) {
-            const empRef = doc(db, 'employees', emp.id);
-            batch.set(empRef, emp);
-          }
-
-          await batch.commit();
-          console.info('[Live Firebase] Initial seed successfully committed to Firestore.');
-        }
-      }
+      // Warm up & ensure all canonical collections are hydrated via DatabaseGateway
+      await Promise.all([
+        DatabaseGateway.getAll('lots', initialLots),
+        DatabaseGateway.getAll('deals', initialDeals),
+        DatabaseGateway.getAll('buyer_applications', initialCandidates),
+        DatabaseGateway.getAll('seller_requests', initialSellerRequests),
+        DatabaseGateway.getAll('partner_applications', initialPartners),
+        DatabaseGateway.getAll('employees', initialEmployees),
+        DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
+        DatabaseGateway.getAll('bank_employees', initialBankEmployees),
+      ]);
     } catch (err) {
       console.warn('[DatabaseInitializer] Non-fatal migration check:', err);
     }
   }
 
-  /**
-   * 1-Click Function to Reset or Clear Demo Data for Production Readiness
-   */
   static clearDemoData(): void {
     const keys = [
       'domexit_fb_lots',
       'domexit_fb_deals',
       'domexit_fb_candidates',
+      'domexit_fb_buyer_applications',
+      'domexit_fb_seller_requests',
       'domexit_fb_partners',
-      'domexit_fb_investors',
+      'domexit_fb_partner_applications',
+      'domexit_fb_investor_applications',
+      'domexit_fb_bank_credit_limits',
+      'domexit_fb_documents_vault',
     ];
-    keys.forEach(k => localStorage.removeItem(k));
-    console.info('[DatabaseInitializer] Demo data cleared from local cache.');
+    keys.forEach((k) => localStorage.removeItem(k));
   }
 
   static resetToDemoData(): void {
-    localStorage.setItem('domexit_fb_lots', JSON.stringify(initialLots));
-    localStorage.setItem('domexit_fb_deals', JSON.stringify(initialDeals));
-    localStorage.setItem('domexit_fb_candidates', JSON.stringify(initialCandidates));
-    localStorage.setItem('domexit_fb_partners', JSON.stringify(initialPartners));
-    localStorage.setItem('domexit_fb_employees', JSON.stringify(initialEmployees));
+    this.clearDemoData();
     window.location.reload();
   }
 }

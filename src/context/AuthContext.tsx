@@ -1,21 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  signInWithPopup, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
+import {
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
-  User as FirebaseUser
+  User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, googleProvider, db } from '../dal/firebase';
+import { auth, googleProvider } from '../dal/firebase';
 import { UserProfile, PartnerEntry, InvestorApplication } from '../types';
-import { FirebaseAdapter } from '../dal/adapters/FirebaseAdapter';
+import { UsersRepository } from '../dal/repositories/UsersRepository';
+import { PartnersRepository } from '../dal/repositories/PartnersRepository';
+import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
+import { LotsRepository } from '../dal/repositories/LotsRepository';
 
-export const MASTER_OWNER_EMAILS = [
-  'amaas9499@gmail.com',
-  'ceo@domexit.ru',
-];
+export const MASTER_OWNER_EMAILS = ['amaas9499@gmail.com', 'ceo@domexit.ru'];
 
 export const TEST_STAFF_EMAILS = [
   'amaas9494@gmail.com',
@@ -37,22 +36,31 @@ interface AuthContextType {
   closeAuthModal: () => void;
   loginWithGoogle: () => Promise<UserProfile>;
   loginWithEmail: (email: string, pass: string) => Promise<UserProfile>;
-  registerWithEmail: (email: string, pass: string, name: string, phone: string, role?: 'buyer' | 'seller' | 'partner' | 'investor') => Promise<UserProfile>;
+  registerWithEmail: (
+    email: string,
+    pass: string,
+    name: string,
+    phone: string,
+    role?: 'buyer' | 'seller' | 'partner' | 'investor'
+  ) => Promise<UserProfile>;
   login: (data: Partial<UserProfile>) => Promise<UserProfile>;
   logout: () => Promise<void>;
   toggleFavorite: (lotCode: string) => Promise<void>;
   isFavorite: (lotCode: string) => boolean;
-  switchRole: (role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank') => void;
+  switchRole: (
+    role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank'
+  ) => void;
   upgradeToPartner: (details?: Partial<PartnerEntry>) => Promise<void>;
   upgradeToInvestor: (details?: Partial<InvestorApplication>) => Promise<void>;
-  quickDemoLogin: (role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer') => Promise<UserProfile>;
+  quickDemoLogin: (
+    role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
+  ) => Promise<UserProfile>;
   refreshUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'domexit_current_user_v3';
-const COLLECTION = 'users';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(() => {
@@ -72,67 +80,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authIntentText, setAuthIntentText] = useState<string | undefined>(undefined);
   const [successCallback, setSuccessCallback] = useState<(() => void) | null>(null);
 
-  // Sync with Firebase Auth state changes
+  // Sync with Firebase Auth state changes strictly through UsersRepository (DAL)
   useEffect(() => {
     if (!auth || typeof auth.onAuthStateChanged !== 'function') return;
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
-        await syncUserFromFirebase(fbUser);
+        await syncUserFromAuthProvider(fbUser);
       }
     });
 
     return () => unsubscribe();
   }, []);
 
-  const syncUserFromFirebase = async (fbUser: FirebaseUser): Promise<UserProfile> => {
+  const persistUserState = async (profile: UserProfile): Promise<UserProfile> => {
+    setUser(profile);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+    try {
+      await UsersRepository.save(profile);
+    } catch (err) {
+      console.warn('[AuthContext] UsersRepository save fallback:', err);
+    }
+    return profile;
+  };
+
+  const syncUserFromAuthProvider = async (fbUser: FirebaseUser): Promise<UserProfile> => {
     let profile: UserProfile | null = null;
 
     try {
-      if (db && typeof db.type === 'string') {
-        const userDocRef = doc(db, COLLECTION, fbUser.uid);
-        const userSnap = await getDoc(userDocRef);
-
-        if (userSnap.exists()) {
-          const loaded = userSnap.data() as UserProfile;
-          if (!loaded.clientCode) {
-            loaded.clientCode = `DEX-${Math.floor(100000 + Math.random() * 900000)}`;
-          }
-          profile = loaded;
-        } else {
-          // Initialize fresh profile
-          profile = {
-            id: fbUser.uid,
-            clientCode: `DEX-${Math.floor(100000 + Math.random() * 900000)}`,
-            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Пользователь',
-            email: fbUser.email || '',
-            phone: fbUser.phoneNumber || '+7 (911) 000-00-00',
-            telegram: '',
-            photoURL: fbUser.photoURL || undefined,
-            roles: ['buyer', 'seller'],
-            activeRole: 'buyer',
-            isPartnerApproved: false,
-            isInvestorApproved: false,
-            partnerRefCode: `PARTNER-${Math.floor(1000 + Math.random() * 9000)}`,
-            favorites: [],
-            registeredAt: new Date().toISOString(),
-          };
-          await setDoc(userDocRef, profile);
-        }
-      }
+      profile =
+        (await UsersRepository.getById(fbUser.uid)) ||
+        (fbUser.email ? await UsersRepository.getByEmail(fbUser.email) : null);
     } catch (err) {
-      console.warn('[AuthContext] Firestore sync fallback:', err);
+      console.warn('[AuthContext] DAL lookup fallback:', err);
     }
 
     if (!profile) {
-      // Fallback local profile
       profile = {
         id: fbUser.uid,
         clientCode: `DEX-${Math.floor(100000 + Math.random() * 900000)}`,
         name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Пользователь',
         email: fbUser.email || '',
-        phone: '+7 (911) 234-56-78',
+        phone: fbUser.phoneNumber || '+7 (911) 000-00-00',
+        telegram: '',
+        photoURL: fbUser.photoURL || undefined,
         roles: ['buyer', 'seller'],
         activeRole: 'buyer',
         isPartnerApproved: false,
@@ -141,16 +133,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         favorites: [],
         registeredAt: new Date().toISOString(),
       };
+    } else if (!profile.clientCode) {
+      profile.clientCode = `DEX-${Math.floor(100000 + Math.random() * 900000)}`;
     }
 
-    // Auto-provision Master Owner & Test Staff roles (Mission 1)
     const cleanEmail = (fbUser.email || '').trim().toLowerCase();
-    const isMasterOwner = MASTER_OWNER_EMAILS.some(e => e.toLowerCase() === cleanEmail);
-    const isTestStaff = TEST_STAFF_EMAILS.some(e => e.toLowerCase() === cleanEmail);
+    const isMasterOwner = MASTER_OWNER_EMAILS.some((e) => e.toLowerCase() === cleanEmail);
+    const isTestStaff = TEST_STAFF_EMAILS.some((e) => e.toLowerCase() === cleanEmail);
 
     if (isMasterOwner) {
       profile.role = 'admin';
-      profile.roles = ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'] as any;
+      profile.roles = ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'];
       profile.activeRole = 'owner';
       profile.isPartnerApproved = true;
       profile.isInvestorApproved = true;
@@ -160,7 +153,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else if (isTestStaff) {
       if (!profile.roles || profile.roles.length <= 2) {
-        profile.roles = ['employee', 'buyer', 'seller', 'partner', 'investor'] as any;
+        profile.roles = ['employee', 'buyer', 'seller', 'partner', 'investor'];
         profile.activeRole = profile.activeRole || 'employee';
       }
       profile.assignedEmployeeId = profile.assignedEmployeeId || 'emp-1';
@@ -169,19 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    try {
-      if (db && typeof db.type === 'string') {
-        const userDocRef = doc(db, COLLECTION, fbUser.uid);
-        await setDoc(userDocRef, profile, { merge: true });
-      }
-      await FirebaseAdapter.saveEntity(COLLECTION, profile);
-    } catch (saveErr) {
-      console.warn('[AuthContext] Profile persistence fallback:', saveErr);
-    }
-
-    setUser(profile);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    return profile;
+    return persistUserState(profile);
   };
 
   const openAuthModal = (intentText?: string, callback?: () => void) => {
@@ -202,9 +183,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthError(null);
   };
 
-  /**
-   * Real Google Sign-In with Firebase Auth
-   */
   const loginWithGoogle = async (): Promise<UserProfile> => {
     setLoading(true);
     setAuthError(null);
@@ -213,28 +191,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Firebase Auth is not initialized');
       }
       const result = await signInWithPopup(auth, googleProvider);
-      const profile = await syncUserFromFirebase(result.user);
-      
+      const profile = await syncUserFromAuthProvider(result.user);
+
       if (successCallback) successCallback();
       closeAuthModal();
       return profile;
     } catch (err: any) {
-      console.error('[AuthContext] Google Sign-In Error:', err);
-      // If popup is closed or blocked or has domain config issue, provide graceful error with fallback option
-      const errorMsg = err?.code === 'auth/popup-closed-by-user'
-        ? 'Окно входа было закрыто. Попробуйте снова.'
-        : err?.code === 'auth/unauthorized-domain'
-        ? 'Домен локального тестирования требует настройки в Firebase Console. Выполнен локальный вход.'
-        : (err?.message || 'Ошибка входа через Google');
-      
+      const errorMsg =
+        err?.code === 'auth/popup-closed-by-user'
+          ? 'Окно входа было закрыто. Попробуйте снова.'
+          : err?.code === 'auth/unauthorized-domain'
+          ? 'Домен локального тестирования требует настройки в Firebase Console. Выполнен локальный вход.'
+          : err?.message || 'Ошибка входа через Google';
+
       setAuthError(errorMsg);
 
-      // In case of localhost domain authorization restriction, provide auto-fallback profile
-      if (err?.code === 'auth/unauthorized-domain' || err?.code === 'auth/configuration-not-found') {
+      if (
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.code === 'auth/configuration-not-found'
+      ) {
         const fallbackProfile: UserProfile = {
           id: `google-user-${Date.now()}`,
           clientCode: `DEX-${Math.floor(100000 + Math.random() * 900000)}`,
-          name: 'Google Пользователь (Демо)',
+          name: 'Google Пользователь',
           email: 'google.user@gmail.com',
           phone: '+7 (921) 555-44-33',
           roles: ['buyer', 'seller'],
@@ -245,8 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           favorites: [],
           registeredAt: new Date().toISOString(),
         };
-        setUser(fallbackProfile);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackProfile));
+        await persistUserState(fallbackProfile);
         if (successCallback) successCallback();
         closeAuthModal();
         return fallbackProfile;
@@ -257,9 +235,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  /**
-   * Real Email/Password Login
-   */
   const loginWithEmail = async (email: string, pass: string): Promise<UserProfile> => {
     setLoading(true);
     setAuthError(null);
@@ -268,17 +243,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Firebase Auth is not initialized');
       }
       const cred = await signInWithEmailAndPassword(auth, email, pass);
-      const profile = await syncUserFromFirebase(cred.user);
+      const profile = await syncUserFromAuthProvider(cred.user);
       if (successCallback) successCallback();
       closeAuthModal();
       return profile;
     } catch (err: any) {
-      console.error('[AuthContext] Email login error:', err);
-      const msg = err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential'
-        ? 'Неверный адрес электронной почты или пароль'
-        : err?.code === 'auth/invalid-email'
-        ? 'Некорректный формат email'
-        : (err?.message || 'Ошибка входа по email');
+      const msg =
+        err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential'
+          ? 'Неверный адрес электронной почты или пароль'
+          : err?.code === 'auth/invalid-email'
+          ? 'Некорректный формат email'
+          : err?.message || 'Ошибка входа по email';
       setAuthError(msg);
       throw err;
     } finally {
@@ -286,13 +261,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  /**
-   * Real Email/Password Registration
-   */
   const registerWithEmail = async (
-    email: string, 
-    pass: string, 
-    name: string, 
+    email: string,
+    pass: string,
+    name: string,
     phone: string,
     role: 'buyer' | 'seller' | 'partner' | 'investor' = 'buyer'
   ): Promise<UserProfile> => {
@@ -303,40 +275,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Firebase Auth is not initialized');
       }
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      
+      const clientCode = `DEX-${Math.floor(100000 + Math.random() * 900000)}`;
+      const partnerRefCode = `PARTNER-${Math.floor(1000 + Math.random() * 9000)}`;
+
       const newProfile: UserProfile = {
         id: cred.user.uid,
-        clientCode: `DEX-${Math.floor(100000 + Math.random() * 900000)}`,
+        clientCode,
         name: name.trim() || 'Новый Пользователь',
         email: email.trim(),
         phone: phone.trim() || '+7 (911) 000-00-00',
         telegram: '',
-        roles: [role],
+        roles: role === 'buyer' || role === 'seller' ? ['buyer', 'seller'] : ['buyer', 'seller', role],
         activeRole: role,
-        isPartnerApproved: role === 'partner',
-        isInvestorApproved: role === 'investor',
-        partnerRefCode: `PARTNER-${Math.floor(1000 + Math.random() * 9000)}`,
+        isPartnerApproved: false,
+        isInvestorApproved: false,
+        partnerRefCode,
         favorites: [],
         registeredAt: new Date().toISOString(),
       };
 
-      if (db && typeof db.type === 'string') {
-        await setDoc(doc(db, COLLECTION, cred.user.uid), newProfile);
-      }
+      await persistUserState(newProfile);
 
-      setUser(newProfile);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
+      if (role === 'partner') {
+        await PartnersRepository.add({
+          uid: newProfile.id,
+          userId: newProfile.id,
+          clientCode: newProfile.clientCode,
+          name: newProfile.name,
+          phone: newProfile.phone,
+          email: newProfile.email,
+          referralCode: partnerRefCode,
+          status: 'pending',
+        });
+      } else if (role === 'investor') {
+        await InvestorClubRepository.submit({
+          uid: newProfile.id,
+          userId: newProfile.id,
+          clientCode: newProfile.clientCode,
+          fullName: newProfile.name,
+          countryAndCity: 'Российская Федерация',
+          contactTelegramOrPhone: newProfile.phone,
+          entityType: 'individual',
+          capitalVolume: '15-50m',
+          strategy: 'flipping',
+          targetRegions: ['Санкт-Петербург', 'Москва'],
+          requestedServices: ['Ранний доступ 48 часов'],
+          customProposal: 'Регистрация через портал инвестора',
+          ndaAgreed: true,
+          status: 'pending',
+        });
+      }
 
       if (successCallback) successCallback();
       closeAuthModal();
       return newProfile;
     } catch (err: any) {
-      console.error('[AuthContext] Registration error:', err);
-      const msg = err?.code === 'auth/email-already-in-use'
-        ? 'Этот email уже зарегистрирован. Пожалуйста, выполните вход.'
-        : err?.code === 'auth/weak-password'
-        ? 'Пароль должен содержать не менее 6 символов.'
-        : (err?.message || 'Ошибка регистрации');
+      const msg =
+        err?.code === 'auth/email-already-in-use'
+          ? 'Этот email уже зарегистрирован. Пожалуйста, выполните вход.'
+          : err?.code === 'auth/weak-password'
+          ? 'Пароль должен содержать не менее 6 символов.'
+          : err?.message || 'Ошибка регистрации';
       setAuthError(msg);
       throw err;
     } finally {
@@ -344,13 +343,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  /**
-   * Generic login / update profile
-   */
   const login = async (data: Partial<UserProfile>): Promise<UserProfile> => {
     const updatedUser: UserProfile = {
       id: user?.id || `usr-${Date.now()}`,
-      clientCode: data.clientCode || user?.clientCode || `DEX-${Math.floor(100000 + Math.random() * 900000)}`,
+      clientCode:
+        data.clientCode ||
+        user?.clientCode ||
+        `DEX-${Math.floor(100000 + Math.random() * 900000)}`,
       name: data.name || user?.name || 'Александр В.',
       phone: data.phone || user?.phone || '+7 (911) 234-56-78',
       email: data.email || user?.email || 'alexander@domexit.ru',
@@ -364,16 +363,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       favorites: data.favorites || user?.favorites || [],
       registeredAt: user?.registeredAt || new Date().toISOString(),
       activeDealId: data.activeDealId || user?.activeDealId || 'DEAL-2025-10566',
+      investorPackagePreference:
+        data.investorPackagePreference || user?.investorPackagePreference,
+      bankCreditLimit: data.bankCreditLimit || user?.bankCreditLimit,
     };
 
-    setUser(updatedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-
-    try {
-      await FirebaseAdapter.saveEntity(COLLECTION, updatedUser);
-    } catch (e) {
-      console.warn('Firebase user sync fallback:', e);
-    }
+    await persistUserState(updatedUser);
 
     if (successCallback) {
       successCallback();
@@ -383,10 +378,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return updatedUser;
   };
 
-  /**
-   * 1-Click Quick Demo Login for testing all 7 platform personas (Mission 2.2)
-   * Integrates Firebase Auth with uniform password (DomExit2026!) and Firestore profile sync
-   */
   const quickDemoLogin = async (
     role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
   ): Promise<UserProfile> => {
@@ -402,11 +393,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: 'usr-owner-001',
         clientCode: 'DEX-000001',
         name: 'Виктор Сергеевич (Владелец / CEO)',
-        email: 'amaas9499@gmail.com', // linked to real owner
+        email: 'amaas9499@gmail.com',
         phone: '+7 (812) 900-00-01',
         telegram: '@domexit_owner',
         role: 'admin',
-        roles: ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'] as any,
+        roles: ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'],
         activeRole: 'owner',
         isPartnerApproved: true,
         isInvestorApproved: true,
@@ -419,12 +410,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = {
         id: 'usr-staff-002',
         clientCode: 'DEX-000002',
-        name: 'Алексей Смирнов (Куратор / Тест)',
-        email: 'amaas9494@gmail.com', // linked to real test staff
+        name: 'Алексей Смирнов',
+        email: 'amaas9494@gmail.com',
         phone: '+7 (921) 888-11-22',
         telegram: '@domexit_smirnov',
         role: 'employee',
-        roles: ['employee', 'buyer', 'seller', 'partner', 'investor'] as any,
+        roles: ['employee', 'buyer', 'seller'],
         activeRole: 'employee',
         assignedEmployeeId: 'emp-1',
         isPartnerApproved: false,
@@ -437,12 +428,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = {
         id: 'usr-bank-001',
         clientCode: 'DEX-000004',
-        name: 'Игорь Соколов (Сбербанк Эскроу)',
+        name: 'Игорь Владимирович Соколов (Сбербанк)',
         email: 'bank@domexit.ru',
         phone: '+7 (812) 500-11-00',
         telegram: '@bank_sber_escrow',
         role: 'bank',
-        roles: ['bank', 'employee', 'buyer'] as any,
+        roles: ['bank', 'employee', 'buyer'],
         activeRole: 'bank',
         isPartnerApproved: false,
         isInvestorApproved: false,
@@ -459,7 +450,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phone: '+7 (911) 456-78-90',
         telegram: '@elena_partner',
         role: 'partner',
-        roles: ['partner', 'buyer'] as any,
+        roles: ['partner', 'buyer'],
         activeRole: 'partner',
         isPartnerApproved: true,
         isInvestorApproved: false,
@@ -477,11 +468,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phone: '+7 (921) 777-99-00',
         telegram: '@sergey_capital',
         role: 'investor',
-        roles: ['investor', 'buyer'] as any,
+        roles: ['investor', 'buyer'],
         activeRole: 'investor',
         isPartnerApproved: false,
         isInvestorApproved: true,
-        favorites: ['U-14102', 'U-18290'],
+        favorites: ['U-14102', 'U-10715'],
+        investorPackagePreference: {
+          budgetMillions: 35,
+          selectedPackage: 'flipping',
+          updatedAt: '2026-10-19T12:00:00Z',
+        },
         registeredAt: '2025-03-10T00:00:00Z',
       };
     } else if (role === 'seller') {
@@ -489,12 +485,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = {
         id: 'usr-seller-001',
         clientCode: 'DEX-784105',
-        name: 'Александр Владимирович (Продавец ДДУ)',
+        name: 'Александр Владимирович Б.',
         email: 'seller@domexit.ru',
         phone: '+7 (911) 234-56-78',
         telegram: '@alex_seller',
         role: 'seller',
-        roles: ['seller', 'buyer'] as any,
+        roles: ['seller', 'buyer'],
         activeRole: 'seller',
         isPartnerApproved: false,
         isInvestorApproved: false,
@@ -507,12 +503,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = {
         id: 'usr-buyer-001',
         clientCode: 'DEX-409112',
-        name: 'Иван Петрович (Покупатель 100% Кэш)',
+        name: 'Иван Петрович',
         email: 'client@domexit.ru',
         phone: '+7 (921) 987-65-43',
         telegram: '@ivan_buyer',
         role: 'buyer',
-        roles: ['buyer'] as any,
+        roles: ['buyer'],
         activeRole: 'buyer',
         isPartnerApproved: false,
         isInvestorApproved: false,
@@ -521,39 +517,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // Try authenticating / registering in Firebase Auth with uniform password DomExit2026!
     try {
       if (auth && typeof auth.name === 'string') {
         try {
           const cred = await signInWithEmailAndPassword(auth, demoEmail, DEMO_PASSWORD);
           profile.id = cred.user.uid;
         } catch (authErr: any) {
-          if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
+          if (
+            authErr?.code === 'auth/user-not-found' ||
+            authErr?.code === 'auth/invalid-credential'
+          ) {
             try {
               const cred = await createUserWithEmailAndPassword(auth, demoEmail, DEMO_PASSWORD);
               profile.id = cred.user.uid;
-            } catch (createErr) {
-              console.warn('[AuthContext] Demo user auto-creation notice:', createErr);
+            } catch {
+              // Keep deterministic local profile ID
             }
           }
         }
       }
-    } catch (e) {
-      console.warn('[AuthContext] Demo auth notice:', e);
+    } catch {
+      // Offline / local fallback
     }
 
-    setUser(profile);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    
-    try {
-      if (db && typeof db.type === 'string') {
-        const userDocRef = doc(db, COLLECTION, profile.id);
-        await setDoc(userDocRef, profile, { merge: true });
-      }
-      await FirebaseAdapter.saveEntity(COLLECTION, profile);
-    } catch (e) {
-      console.warn('Demo login save fallback:', e);
-    }
+    await persistUserState(profile);
 
     setLoading(false);
     if (successCallback) successCallback();
@@ -566,8 +553,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (auth && typeof auth.signOut === 'function') {
         await signOut(auth);
       }
-    } catch (err) {
-      console.warn('Firebase logout notice:', err);
+    } catch {
+      // Ignore
     }
     setUser(null);
     setFirebaseUser(null);
@@ -580,90 +567,97 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     const currentFavs = user.favorites || [];
-    const newFavs = currentFavs.includes(lotCode)
-      ? currentFavs.filter(c => c !== lotCode)
+    const isRemoving = currentFavs.includes(lotCode);
+    const newFavs = isRemoving
+      ? currentFavs.filter((c) => c !== lotCode)
       : [...currentFavs, lotCode];
 
     const updatedUser = { ...user, favorites: newFavs };
-    setUser(updatedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-
-    try {
-      await FirebaseAdapter.saveEntity(COLLECTION, updatedUser);
-    } catch (e) {
-      console.warn('Favorite update fallback:', e);
-    }
+    await persistUserState(updatedUser);
+    await LotsRepository.adjustFavoritesCount(lotCode, isRemoving ? -1 : 1);
   };
 
   const isFavorite = (lotCode: string): boolean => {
     return !!(user?.favorites && user.favorites.includes(lotCode));
   };
 
-  const switchRole = (role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank') => {
-    if (!user) {
-      quickDemoLogin(role);
-      return;
-    }
-    const currentRoles = user.roles || [];
-    const newRoles = currentRoles.includes(role as any) ? currentRoles : [...currentRoles, role as any];
-    const updatedUser: UserProfile = { 
-      ...user, 
-      activeRole: role, 
-      roles: newRoles,
-      role: role === 'owner' ? 'admin' : role,
-      isPartnerApproved: role === 'partner' || role === 'owner' ? true : user.isPartnerApproved,
-      isInvestorApproved: role === 'investor' || role === 'owner' ? true : user.isInvestorApproved,
-    };
-
-    if (role === 'owner') {
-      updatedUser.roles = ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'] as any;
-    }
-
-    setUser(updatedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-
-    try {
-      if (db && typeof db.type === 'string') {
-        const userDocRef = doc(db, COLLECTION, updatedUser.id);
-        setDoc(userDocRef, updatedUser, { merge: true });
-      }
-      FirebaseAdapter.saveEntity(COLLECTION, updatedUser);
-    } catch (e) {
-      console.warn('Role switch sync:', e);
-    }
+  const switchRole = (
+    role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank'
+  ) => {
+    // Switching persona via the top Role Switcher loads that distinct persona's canonical account
+    quickDemoLogin(role);
   };
 
   const upgradeToPartner = async (details?: Partial<PartnerEntry>): Promise<void> => {
     if (!user) return;
+    const refCode =
+      details?.referralCode ||
+      user.partnerRefCode ||
+      `DOMEXIT-REF-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const existing = await PartnersRepository.getById(user.id);
+    if (!existing) {
+      await PartnersRepository.add({
+        uid: user.id,
+        userId: user.id,
+        clientCode: user.clientCode,
+        name: details?.name || user.name,
+        organization: details?.organization || 'Независимый брокер / агентство',
+        role: details?.role || 'Ипотечный брокер',
+        category: details?.category || 'mortgage_broker',
+        phone: details?.phone || user.phone,
+        email: details?.email || user.email,
+        referralCode: refCode,
+        status: user.activeRole === 'owner' ? 'approved' : 'pending',
+      });
+    }
+
     const currentRoles = user.roles || [];
     const updatedUser: UserProfile = {
       ...user,
       roles: currentRoles.includes('partner') ? currentRoles : [...currentRoles, 'partner'],
-      isPartnerApproved: true,
-      partnerRefCode: user.partnerRefCode || `PARTNER-${Math.floor(1000 + Math.random() * 9000)}`
+      isPartnerApproved: user.activeRole === 'owner' ? true : user.isPartnerApproved,
+      partnerRefCode: refCode,
     };
-    setUser(updatedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-    await FirebaseAdapter.saveEntity(COLLECTION, updatedUser);
+    await persistUserState(updatedUser);
   };
 
   const upgradeToInvestor = async (details?: Partial<InvestorApplication>): Promise<void> => {
     if (!user) return;
+    const existing = await InvestorClubRepository.getByUser(user.id, user.clientCode);
+    if (!existing) {
+      await InvestorClubRepository.submit({
+        uid: user.id,
+        userId: user.id,
+        clientCode: user.clientCode,
+        fullName: details?.fullName || user.name,
+        companyOrFund: details?.companyOrFund || 'Частный капитал',
+        countryAndCity: details?.countryAndCity || 'Российская Федерация',
+        contactTelegramOrPhone: details?.contactTelegramOrPhone || user.phone,
+        entityType: details?.entityType || 'individual',
+        capitalVolume: details?.capitalVolume || '15-50m',
+        strategy: details?.strategy || 'flipping',
+        targetRegions: details?.targetRegions || ['Санкт-Петербург', 'Москва'],
+        requestedServices: details?.requestedServices || ['Ранний доступ 48 часов'],
+        customProposal: details?.customProposal || 'Заявка из личного кабинета клиента',
+        ndaAgreed: true,
+        status: user.activeRole === 'owner' ? 'approved' : 'pending',
+      });
+    }
+
     const currentRoles = user.roles || [];
     const updatedUser: UserProfile = {
       ...user,
       roles: currentRoles.includes('investor') ? currentRoles : [...currentRoles, 'investor'],
-      isInvestorApproved: true
+      isInvestorApproved: user.activeRole === 'owner' ? true : user.isInvestorApproved,
     };
-    setUser(updatedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-    await FirebaseAdapter.saveEntity(COLLECTION, updatedUser);
+    await persistUserState(updatedUser);
   };
 
   const refreshUserProfile = async (): Promise<void> => {
     if (!user) return;
     try {
-      const live = await FirebaseAdapter.getEntity<UserProfile>(COLLECTION, user.id);
+      const live = await UsersRepository.getById(user.id);
       if (live) {
         setUser(live);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(live));
@@ -711,4 +705,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-

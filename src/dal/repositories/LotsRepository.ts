@@ -1,6 +1,6 @@
 import { Lot } from '../../types';
 import { initialLots } from '../seedData';
-import { FirebaseAdapter } from '../adapters/FirebaseAdapter';
+import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { EmployeesRepository } from './EmployeesRepository';
 
@@ -9,7 +9,11 @@ const COLLECTION = 'lots';
 export class LotsRepository {
   static async getAll(filter?: {
     city?: string;
+    district?: string;
     maxCash?: number;
+    maxMonthly?: number;
+    minDiscount?: number;
+    deliveryYear?: string;
     rooms?: string;
     developer?: string;
     searchQuery?: string;
@@ -17,22 +21,23 @@ export class LotsRepository {
     readyYear?: number;
     status?: 'all' | 'available' | 'processing' | 'closed';
     isVipInvestor?: boolean;
+    includePendingApproval?: boolean;
   }): Promise<Lot[]> {
-    let list = await FirebaseAdapter.getAllEntities<Lot>(COLLECTION, initialLots);
+    let list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
 
     if (filter) {
+      if (!filter.includePendingApproval) {
+        list = list.filter((l) => l.approvalStatus !== 'rejected');
+      }
+
       if (filter.status && filter.status !== 'all') {
         list = list.filter((l) => (l.status || 'available') === filter.status);
 
-        // Mission 5: Separate processing stages between regular users and VIP investors
         if (filter.status === 'processing') {
           if (!filter.isVipInvestor) {
-            // For regular users & public visitors: HIDE stage 1 (audit) and stage 2 (legal verification)
-            // Show only advanced stages: 3 (matching buyers), 4 (bank transfer), 5 (closing)
             list = list.filter((l) => (l.currentStage || 3) >= 3);
           } else {
-            // For VIP accredited investors: show early stage 2 (under audit / pre-market opportunities)
-            list = list.filter((l) => (l.currentStage || 2) >= 2);
+            list = list.filter((l) => (l.currentStage || 2) >= 2 || l.isEarlyAccessVIP);
           }
         }
       }
@@ -40,8 +45,34 @@ export class LotsRepository {
       if (filter.city && filter.city !== 'all') {
         list = list.filter((l) => l.city === filter.city);
       }
+
+      if (filter.district && filter.district !== 'all') {
+        const targetDistrict = filter.district.trim().toLowerCase();
+        list = list.filter((l) => l.district.trim().toLowerCase() === targetDistrict);
+      }
+
       if (filter.maxCash && filter.maxCash > 0) {
         list = list.filter((l) => l.cashPaidBySeller <= filter.maxCash!);
+      }
+      if (filter.maxMonthly && filter.maxMonthly > 0) {
+        list = list.filter((l) => Math.round(l.installmentQuarterlyPayment / 3) <= filter.maxMonthly!);
+      }
+      if (filter.minDiscount && filter.minDiscount > 0) {
+        list = list.filter((l) => {
+          const disc = ((l.todayDeveloperPrice - l.dduContractPrice) / Math.max(l.todayDeveloperPrice, 1)) * 100;
+          return disc >= filter.minDiscount!;
+        });
+      }
+      if (filter.deliveryYear && filter.deliveryYear !== 'all') {
+        if (filter.deliveryYear === 'ready') {
+          list = list.filter((l) => l.deliveryYear <= 2025 || l.deliveryDate.toLowerCase().includes('сдан'));
+        } else if (filter.deliveryYear === '2025') {
+          list = list.filter((l) => l.deliveryYear === 2025);
+        } else if (filter.deliveryYear === '2026') {
+          list = list.filter((l) => l.deliveryYear === 2026);
+        } else if (filter.deliveryYear === '2027+') {
+          list = list.filter((l) => l.deliveryYear >= 2027);
+        }
       }
       if (filter.rooms && filter.rooms !== 'all') {
         list = list.filter((l) => l.rooms === filter.rooms);
@@ -62,17 +93,47 @@ export class LotsRepository {
             l.complexName.toLowerCase().includes(q) ||
             l.developer.toLowerCase().includes(q) ||
             l.district.toLowerCase().includes(q) ||
-            l.lotCode.toLowerCase().includes(q)
+            l.lotCode.toLowerCase().includes(q) ||
+            (l.streetAddress && l.streetAddress.toLowerCase().includes(q))
         );
       }
+    } else {
+      list = list.filter((l) => l.approvalStatus !== 'rejected');
     }
 
     return list;
   }
 
+  static async getSimilarInDistrict(targetLot: Lot, limit = 3): Promise<Lot[]> {
+    const allAvailable = await this.getAll({ status: 'available' });
+    const others = allAvailable.filter((l) => l.lotCode !== targetLot.lotCode);
+
+    const sameDistrict = others.filter(
+      (l) =>
+        l.city === targetLot.city &&
+        l.district.trim().toLowerCase() === targetLot.district.trim().toLowerCase()
+    );
+
+    if (sameDistrict.length >= limit) {
+      return sameDistrict.slice(0, limit);
+    }
+
+    const sameCity = others.filter(
+      (l) =>
+        l.city === targetLot.city &&
+        !sameDistrict.some((sd) => sd.lotCode === l.lotCode)
+    );
+
+    return [...sameDistrict, ...sameCity].slice(0, limit);
+  }
+
   static async getByCode(lotCode: string): Promise<Lot | null> {
-    const list = await FirebaseAdapter.getAllEntities<Lot>(COLLECTION, initialLots);
-    const found = list.find((l) => l.lotCode.toUpperCase() === lotCode.toUpperCase());
+    if (!lotCode) return null;
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    const clean = lotCode.trim().toUpperCase();
+    const found = list.find(
+      (l) => l.lotCode.toUpperCase() === clean || l.id.toUpperCase() === clean
+    );
     return found || null;
   }
 
@@ -80,23 +141,38 @@ export class LotsRepository {
     return this.getByCode(lotCode);
   }
 
+  static async getBySeller(uid: string, clientCode?: string): Promise<Lot[]> {
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    return list.filter(
+      (l) =>
+        (uid && l.sellerUserId === uid) ||
+        (clientCode && l.sellerClientCode?.toUpperCase() === clientCode.toUpperCase())
+    );
+  }
+
   static async getByAssignedEmployee(employeeId: string): Promise<Lot[]> {
-    const list = await this.getAll();
-    return list.filter(l => l.assignedEmployeeId === employeeId);
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    return list.filter((l) => l.assignedEmployeeId === employeeId);
   }
 
   static async assignToEmployee(
-    lotCode: string, 
-    employeeId: string, 
-    employeeName: string
+    lotCode: string,
+    employeeId: string,
+    employeeName: string,
+    operatorName: string = 'Виктор Сергеевич (Владелец / CEO)'
   ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
     lot.assignedEmployeeId = employeeId;
     lot.assignedEmployeeName = employeeName;
     lot.approvalStatus = 'approved';
+    if (!lot.status || lot.status === 'processing') {
+      lot.status = 'available';
+    }
+    if (!lot.currentStage || lot.currentStage < 2) {
+      lot.currentStage = 2;
+    }
 
-    // Synchronize curator profile data onto lot (Mission 14)
     try {
       const emp = await EmployeesRepository.getById(employeeId);
       if (emp) {
@@ -114,15 +190,15 @@ export class LotsRepository {
       // Keep existing curator
     }
 
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
-      operatorName: 'Владелец платформы (CEO)',
+      operatorName,
       operatorRole: 'owner',
-      actionType: 'employee_created_modified',
-      title: `Объект #${lot.lotCode} закреплен за куратором: ${employeeName}`,
-      description: `Назначен персональный куратор ${employeeName} для ведения сделки и связи с покупателем.`,
+      actionType: 'lot_assigned_to_curator',
+      title: `Объект #${lot.lotCode} одобрен и закреплен за куратором: ${employeeName}`,
+      description: `Назначен персональный куратор ${employeeName} (${employeeId}) для правового аудита и ведения сделки.`,
     });
 
     return lot;
@@ -138,8 +214,8 @@ export class LotsRepository {
     whatsapp?: string;
     bio?: string;
   }): Promise<void> {
-    const list = await this.getAll();
-    const matched = list.filter(l => l.assignedEmployeeId === employee.id);
+    const list = await this.getAll({ includePendingApproval: true });
+    const matched = list.filter((l) => l.assignedEmployeeId === employee.id);
     for (const lot of matched) {
       lot.assignedEmployeeName = employee.name;
       lot.curator = {
@@ -151,24 +227,21 @@ export class LotsRepository {
         whatsapp: employee.whatsapp,
         bio: employee.bio,
       };
-      await FirebaseAdapter.saveEntity(COLLECTION, lot);
+      await DatabaseGateway.save<Lot>(COLLECTION, lot);
     }
   }
 
   static async updateStatus(
-    lotCode: string, 
+    lotCode: string,
     status: 'available' | 'processing' | 'closed'
   ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
     lot.status = status;
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
     return lot;
   }
 
-  /**
-   * Request additional docs from seller (Mission 7.1)
-   */
   static async requestAdditionalDocs(
     lotCode: string,
     requestedList: string[],
@@ -194,7 +267,7 @@ export class LotsRepository {
       notes: `Запрошено: ${requestedList.join(', ')}. Комментарий: ${notes}`,
     });
 
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -203,22 +276,70 @@ export class LotsRepository {
       actionType: 'doc_requested',
       title: `Запрошены доп. документы по лоту #${lot.lotCode}`,
       description: `Запрошено: ${requestedList.join(', ')}. Примечание: ${notes}`,
-      metadata: { requestedList }
+      metadata: { requestedList },
     });
 
     return lot;
   }
 
-  /**
-   * Approve legal status with stamp (Mission 7.2)
-   */
+  static async submitRequestedDocBySeller(
+    lotCode: string,
+    docSummary: { name: string; url: string; docId?: string },
+    sellerName: string
+  ): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+
+    const existingReq = lot.additionalDocsRequested || {
+      requestedList: [],
+      notes: '',
+      requestedAt: new Date().toISOString(),
+      status: 'submitted' as const,
+      submittedDocs: [],
+    };
+
+    const submittedDocs = [
+      ...(existingReq.submittedDocs || []),
+      {
+        name: docSummary.name,
+        url: docSummary.url,
+        docId: docSummary.docId,
+        uploadedAt: new Date().toISOString(),
+      },
+    ];
+
+    lot.additionalDocsRequested = {
+      ...existingReq,
+      status: 'submitted',
+      submittedDocs,
+    };
+
+    if (docSummary.docId) {
+      lot.documentIds = Array.from(new Set([...(lot.documentIds || []), docSummary.docId]));
+    }
+
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
+
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName: sellerName,
+      operatorRole: 'client',
+      actionType: 'doc_uploaded',
+      title: `Продавец загрузил запрошенный документ по лоту #${lot.lotCode}`,
+      description: `Загружен файл: ${docSummary.name} в защищенное хранилище S3.`,
+    });
+
+    return lot;
+  }
+
   static async approveLotLegal(lotCode: string, curatorName: string): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
 
     lot.isVerified = true;
     lot.approvalStatus = 'approved';
-    lot.currentStage = 3; // Advance to Matchmaking & Packaging
+    lot.status = lot.status === 'closed' ? 'available' : lot.status || 'available';
+    lot.currentStage = 3;
     if (lot.additionalDocsRequested) {
       lot.additionalDocsRequested.status = 'resolved';
     }
@@ -231,7 +352,7 @@ export class LotsRepository {
       notes: '42 параметра соответствуют стандарту 214-ФЗ. Лот допущен к открытому матчмейкингу.',
     });
 
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -245,14 +366,16 @@ export class LotsRepository {
     return lot;
   }
 
-  /**
-   * Reject lot with high risk (Mission 7.2)
-   */
-  static async rejectLotLegal(lotCode: string, curatorName: string, reason: string): Promise<Lot | null> {
+  static async rejectLotLegal(
+    lotCode: string,
+    reason: string,
+    curatorName: string = 'Куратор DomExit'
+  ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
 
     lot.approvalStatus = 'rejected';
+    lot.rejectionReason = reason;
     lot.status = 'closed';
 
     lot.curatorOperationsLog = lot.curatorOperationsLog || [];
@@ -263,29 +386,26 @@ export class LotsRepository {
       notes: reason,
     });
 
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
       operatorName: curatorName,
       operatorRole: 'curator',
       actionType: 'legal_rejected',
-      title: `Лот #${lot.lotCode} отклонен куратором`,
+      title: `Лот #${lot.lotCode} отклонен (${curatorName})`,
       description: `Причина отклонения: ${reason}`,
     });
 
     return lot;
   }
 
-  /**
-   * Emergency relist of lot (Mission 10.5)
-   */
   static async relistLot(lotCode: string, curatorName: string, reason?: string): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
 
     lot.status = 'available';
-    lot.currentStage = 3; // Open for bids again
+    lot.currentStage = 3;
 
     lot.curatorOperationsLog = lot.curatorOperationsLog || [];
     lot.curatorOperationsLog.unshift({
@@ -295,7 +415,7 @@ export class LotsRepository {
       notes: reason || 'Прежний покупатель не выполнил депонирование средств. Лот возвращен в каталог.',
     });
 
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -309,9 +429,6 @@ export class LotsRepository {
     return lot;
   }
 
-  /**
-   * Update packaging photos and gallery approval (Mission 8.1)
-   */
   static async updatePackagingPhotos(
     lotCode: string,
     curatorName: string,
@@ -322,7 +439,10 @@ export class LotsRepository {
     if (!lot) return null;
 
     lot.approvedGalleryImages = approvedGalleryImages;
-    lot.galleryImages = approvedGalleryImages.length > 0 ? approvedGalleryImages : lot.galleryImages;
+    if (approvedGalleryImages.length > 0) {
+      lot.galleryImages = approvedGalleryImages;
+      lot.imageUrl = approvedGalleryImages[0];
+    }
     if (sellerUploadedPhotos) {
       lot.sellerUploadedPhotos = sellerUploadedPhotos;
     }
@@ -335,7 +455,7 @@ export class LotsRepository {
       notes: `Одобрено ${approvedGalleryImages.length} фотографий для публичного каталога.`,
     });
 
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -350,13 +470,47 @@ export class LotsRepository {
   }
 
   static async update(lot: Lot): Promise<Lot> {
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    return lot;
+  }
+
+  static async save(lot: Lot): Promise<Lot> {
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
     return lot;
   }
 
   static async add(lot: Lot): Promise<Lot> {
-    await FirebaseAdapter.saveEntity(COLLECTION, lot);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    return lot;
+  }
+
+  static async incrementViews(lotCode: string): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+    const baseViews =
+      typeof lot.viewsCount === 'number'
+        ? lot.viewsCount
+        : 110 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 90);
+    lot.viewsCount = baseViews + 1;
+    if (!lot.publishedAt) {
+      lot.publishedAt = '2026-10-28T14:30:00.000Z';
+    }
+    if (typeof lot.favoritesCount !== 'number') {
+      lot.favoritesCount = 12 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
+    }
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    return lot;
+  }
+
+  static async adjustFavoritesCount(lotCode: string, delta: number): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+    const baseFavs =
+      typeof lot.favoritesCount === 'number'
+        ? lot.favoritesCount
+        : 12 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
+    lot.favoritesCount = Math.max(0, baseFavs + delta);
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
     return lot;
   }
 }
-

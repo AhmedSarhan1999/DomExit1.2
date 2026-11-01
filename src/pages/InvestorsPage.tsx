@@ -1,35 +1,44 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
+import { RUSSIAN_REGIONS } from '../data/russianGeography';
+import {
+  formatRussianPhoneInput,
+  isValidRussianPhone,
+  validateTextEntityName,
+} from '../utils/validators';
 import {
   ShieldCheck,
-  TrendingUp,
   Lock,
   CheckCircle2,
-  Building2,
-  Coins,
   Send,
   ArrowRight,
-  Globe,
-  Sparkles,
   Check,
+  AlertCircle,
 } from 'lucide-react';
 
 export const InvestorsPage: React.FC = () => {
   const { language } = useLanguage();
+  const { user, login } = useAuth();
 
   const [step, setStep] = useState<number>(1);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Form State with LocalStorage Auto-Save
-  const [fullName, setFullName] = useState<string>(() => localStorage.getItem('inv_fullName') || '');
+  const [fullName, setFullName] = useState<string>(() => localStorage.getItem('inv_fullName') || user?.name || '');
   const [company, setCompany] = useState<string>(() => localStorage.getItem('inv_company') || '');
   const [locationCity, setLocationCity] = useState<string>(() => localStorage.getItem('inv_city') || 'Санкт-Петербург');
-  const [contactInfo, setContactInfo] = useState<string>(() => localStorage.getItem('inv_contact') || '');
+  const [contactInfo, setContactInfo] = useState<string>(() =>
+    localStorage.getItem('inv_contact') || (user?.phone ? formatRussianPhoneInput(user.phone) : '+7 (')
+  );
   const [entityType, setEntityType] = useState<any>(() => localStorage.getItem('inv_entityType') || 'individual');
   const [capitalVolume, setCapitalVolume] = useState<any>(() => localStorage.getItem('inv_capital') || '15-50m');
   const [strategy, setStrategy] = useState<any>(() => localStorage.getItem('inv_strategy') || 'flipping');
-  const [regions, setRegions] = useState<string[]>(['spb', 'msk']);
+  const [regions, setRegions] = useState<string[]>(['spb', 'msk', 'sochi']);
   const [services, setServices] = useState<string[]>(['buyout_pool']);
   const [targetIRR, setTargetIRR] = useState<string>('28%');
   const [customProposal, setCustomProposal] = useState<string>('');
@@ -54,26 +63,65 @@ export const InvestorsPage: React.FC = () => {
     setServices(services.includes(s) ? services.filter((x) => x !== s) : [...services, s]);
   };
 
-  const handleFinalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ndaAgreed) {
-      alert(language === 'ru' ? 'Пожалуйста, подтвердите согласие с NDA' : 'Please accept NDA terms');
+  const handleStep1Next = () => {
+    setErrorMsg(null);
+    const nameCheck = validateTextEntityName(fullName, 'ФИО инвестора');
+    if (!nameCheck.valid) {
+      setErrorMsg(nameCheck.messageRu || 'Укажите корректное ФИО контактного лица.');
       return;
     }
-    await InvestorClubRepository.submit({
-      fullName,
-      companyOrFund: company,
-      countryAndCity: locationCity,
-      contactTelegramOrPhone: contactInfo,
-      entityType,
-      capitalVolume,
-      strategy,
-      targetRegions: regions,
-      requestedServices: services,
-      customProposal,
-      ndaAgreed,
-    });
-    setIsSubmitted(true);
+    if (!isValidRussianPhone(contactInfo)) {
+      setErrorMsg('Введите контактный телефон РФ в формате +7 (XXX) XXX-XX-XX.');
+      return;
+    }
+    setStep(2);
+  };
+
+  const handleFinalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    if (!ndaAgreed) {
+      setErrorMsg(
+        language === 'ru'
+          ? 'Пожалуйста, подтвердите согласие с соглашением о неразглашении (NDA).'
+          : 'Please accept NDA terms.'
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      let activeUser = user;
+      if (!activeUser) {
+        activeUser = await login({
+          name: fullName.trim(),
+          phone: contactInfo,
+          role: 'buyer',
+        });
+      }
+
+      await InvestorClubRepository.submit({
+        uid: activeUser.id,
+        userId: activeUser.id,
+        clientCode: activeUser.clientCode,
+        fullName: fullName.trim(),
+        companyOrFund: company.trim() || undefined,
+        countryAndCity: locationCity.trim(),
+        contactTelegramOrPhone: contactInfo,
+        entityType,
+        capitalVolume,
+        strategy,
+        targetRegions: regions,
+        requestedServices: services,
+        targetIrr: targetIRR,
+        customProposal,
+        ndaAgreed,
+        status: 'pending',
+      });
+      setIsSubmitted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -163,27 +211,43 @@ export const InvestorsPage: React.FC = () => {
               <span>Работаем под строгим NDA. Данные защищены и сохраняются в браузере автоматически.</span>
             </div>
 
+            {errorMsg && (
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
             {isSubmitted ? (
-              <div className="py-12 text-center space-y-4">
+              <div className="py-10 text-center space-y-4">
                 <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <h3 className="text-2xl font-black text-slate-950">
-                  Анкета аккредитации принята!
+                  Анкета аккредитации зарегистрирована!
                 </h3>
                 <p className="text-xs text-slate-600 max-w-md mx-auto">
-                  Специалист инвестиционного деска DomExit свяжется с вами в течение 30 минут для подписания цифрового NDA и открытия доступа к закрытому пулу переуступок.
+                  Заявка сохранена в реестре VIP-Клуба и направлена Владельцу платформы. Вы можете перейти в Кабинет Инвестора для настройки инвестиционного пакета.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSubmitted(false);
-                    setStep(1);
-                  }}
-                  className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-xs transition-colors"
-                >
-                  Заполнить новую анкету
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Link
+                    to="/portal?tab=investor"
+                    className="px-6 py-3 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 shadow-xs inline-flex items-center space-x-2"
+                  >
+                    <span>Открыть Кабинет Инвестора VIP</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSubmitted(false);
+                      setStep(1);
+                    }}
+                    className="px-5 py-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors"
+                  >
+                    Заполнить новую анкету
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleFinalSubmit} className="space-y-6">
@@ -231,14 +295,14 @@ export const InvestorsPage: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Телефон / Telegram *</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Телефон РФ (+7) *</label>
                         <input
-                          type="text"
+                          type="tel"
                           required
                           value={contactInfo}
-                          onChange={(e) => setContactInfo(e.target.value)}
-                          placeholder="+7 (921) ___-__-__"
-                          className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-emerald-500"
+                          onChange={(e) => setContactInfo(formatRussianPhoneInput(e.target.value))}
+                          placeholder="+7 (921) 000-00-00"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:border-emerald-500"
                         />
                       </div>
                     </div>
@@ -273,7 +337,7 @@ export const InvestorsPage: React.FC = () => {
                     <div className="pt-4 flex justify-end">
                       <button
                         type="button"
-                        onClick={() => setStep(2)}
+                        onClick={handleStep1Next}
                         className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20 flex items-center space-x-2 transition-all"
                       >
                         <span>Далее: Капитал и стратегии</span>
@@ -384,8 +448,7 @@ export const InvestorsPage: React.FC = () => {
 
                     <div className="space-y-2">
                       {[
-                        { id: 'spb', label: 'Санкт-Петербург и Ленинградская область' },
-                        { id: 'msk', label: 'Москва и Московская область' },
+                        ...RUSSIAN_REGIONS.map((r) => ({ id: r.code, label: r.labelRu })),
                         { id: 'mena', label: 'Международные расчеты (ОАЭ / Дубай / AED Desk)' },
                       ].map((reg) => (
                         <label

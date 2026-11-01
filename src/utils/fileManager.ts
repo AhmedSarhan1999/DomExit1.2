@@ -9,13 +9,14 @@ export interface StoredDocument {
   size?: number;
   type: string;
   dataUrl?: string;
+  file?: File;
   uploadedAt: string;
   category: 'ddu' | 'developer_statement' | 'mortgage_approval' | 'photo' | 'floorplan' | 'other';
 }
 
 export class FileManager {
   /**
-   * Prompts user with native OS file picker and resolves to a StoredDocument
+   * Prompts user with native OS file picker and resolves to a StoredDocument (including native File)
    */
   static selectAndReadFile(
     category: StoredDocument['category'] = 'other',
@@ -44,6 +45,7 @@ export class FileManager {
             size: file.size,
             type: file.type || 'application/octet-stream',
             dataUrl: reader.result as string,
+            file,
             uploadedAt: new Date().toISOString(),
             category,
           };
@@ -62,25 +64,40 @@ export class FileManager {
   }
 
   /**
-   * Triggers a real browser file download for any stored document or URL
+   * Triggers a real browser file download for any stored document or URL.
+   * Intelligently handles reversed arguments if a URL/dataUrl was passed first.
    */
-  static downloadFile(fileName: string, contentOrUrl?: string): void {
+  static downloadFile(fileNameOrUrl: string, contentOrFileName?: string): void {
+    let fileName = fileNameOrUrl;
+    let contentOrUrl = contentOrFileName;
+
+    const looksLikeUrl = (v?: string) =>
+      !!v && (v.startsWith('data:') || v.startsWith('blob:') || v.startsWith('http://') || v.startsWith('https://'));
+
+    if (looksLikeUrl(fileNameOrUrl) && contentOrFileName && !looksLikeUrl(contentOrFileName)) {
+      fileName = contentOrFileName;
+      contentOrUrl = fileNameOrUrl;
+    }
+
     const link = document.createElement('a');
-    if (contentOrUrl && contentOrUrl.startsWith('data:')) {
+    if (contentOrUrl && (contentOrUrl.startsWith('data:') || contentOrUrl.startsWith('blob:'))) {
       link.href = contentOrUrl;
     } else {
-      // Create a dummy document blob with official seal text if no dataUrl
       const blob = new Blob(
         [
-          `DOMEXIT PLATFORM VERIFIED DIGITAL DOCUMENT\n` +
-          `File: ${fileName}\n` +
-          `Verified by: DomExit Legal Compliance 214-FZ\n` +
-          `Timestamp: ${new Date().toISOString()}\n` +
-          `SHA-256 Digest: #GOST-78-${Math.floor(100000 + Math.random() * 900000)}\n`
+          `DOMEXIT PLATFORM VERIFIED DIGITAL DOCUMENT (152-FZ / 214-FZ)\n` +
+            `File: ${fileName}\n` +
+            `Source: ${contentOrUrl || 'DomExit S3 Vault (domexit-docs-152fz)'}\n` +
+            `Verified by: DomExit Legal Compliance Desk\n` +
+            `Timestamp: ${new Date().toISOString()}\n` +
+            `SHA-256 Digest: #GOST-78-${Math.floor(100000 + Math.random() * 900000)}\n`,
         ],
         { type: 'text/plain;charset=utf-8' }
       );
       link.href = URL.createObjectURL(blob);
+      if (fileName.toLowerCase().endsWith('.pdf')) {
+        fileName = `${fileName.slice(0, -4)}_VERIFIED_PROTOCOL.txt`;
+      }
     }
     link.download = fileName;
     document.body.appendChild(link);

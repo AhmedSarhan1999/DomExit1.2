@@ -1,670 +1,1238 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Building2, 
-  ShieldCheck, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  UserCheck, 
-  Banknote, 
-  CreditCard, 
-  FileText, 
-  ArrowRight, 
-  Plus, 
-  AlertCircle, 
-  ChevronRight, 
-  Lock, 
-  Coins, 
-  Users, 
-  UserPlus, 
-  Check, 
-  DollarSign, 
-  HelpCircle,
-  ExternalLink,
+import {
+  Landmark,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  FileText,
+  Users,
+  Wallet,
+  Building2,
+  CreditCard,
+  Plus,
+  Lock,
+  Unlock,
+  Award,
   Search,
-  Sparkles
+  ExternalLink,
+  Percent,
+  Eye,
+  FolderOpen,
+  ArrowLeft,
+  Camera,
 } from 'lucide-react';
-import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { formatRubles } from '../utils/formatters';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
-import { BankEmployee, SpecialApprovalRequest, BuyerCreditLimitRequest, DealTrack, Lot } from '../types';
+import { DevelopersRepository, PARTNER_BANKS } from '../dal/repositories/DevelopersRepository';
+import { DatabaseGateway } from '../dal/DatabaseGateway';
+import {
+  AccreditedDeveloper,
+  BankEmployee,
+  BuyerCreditLimitRequest,
+  DealTrack,
+  DeveloperAccreditationRequest,
+  Lot,
+  PartnerBankName,
+  SpecialApprovalRequest,
+} from '../types';
+import { formatRubles } from '../utils/formatters';
+import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 
 export const BankPortalPage: React.FC = () => {
-  const { language } = useLanguage();
   const { user } = useAuth();
 
-  // Active Tab: 1. employees | 2. special_approvals | 3. credit_limits | 4. escrow_closing
-  const [activeTab, setActiveTab] = useState<'employees' | 'special_approvals' | 'credit_limits' | 'escrow_closing'>('credit_limits');
+  const [activeTab, setActiveTab] = useState<
+    'escrow' | 'developer_accreditation' | 'special' | 'credit_limits' | 'staff'
+  >('escrow');
 
-  const [bankEmployees, setBankEmployees] = useState<BankEmployee[]>([]);
-  const [specialApprovals, setSpecialApprovals] = useState<SpecialApprovalRequest[]>([]);
-  const [creditLimits, setCreditLimits] = useState<BuyerCreditLimitRequest[]>([]);
-  const [activeDeals, setActiveDeals] = useState<DealTrack[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [activePartnerBank, setActivePartnerBank] = useState<PartnerBankName>('Сбербанк');
+  const [deals, setDeals] = useState<DealTrack[]>([]);
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [devRequests, setDevRequests] = useState<DeveloperAccreditationRequest[]>([]);
+  const [accreditedDevs, setAccreditedDevs] = useState<AccreditedDeveloper[]>([]);
+  const [specialRequests, setSpecialRequests] = useState<SpecialApprovalRequest[]>([]);
+  const [creditRequests, setCreditRequests] = useState<BuyerCreditLimitRequest[]>([]);
+  const [bankStaff, setBankStaff] = useState<BankEmployee[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal States
-  const [isAddEmpModalOpen, setIsAddEmpModalOpen] = useState(false);
-  const [newEmpName, setNewEmpName] = useState('');
-  const [newEmpEmail, setNewEmpEmail] = useState('');
-  const [newEmpRole, setNewEmpRole] = useState<'officer' | 'escrow_agent' | 'head_manager' | 'chief_manager'>('officer');
-  const [newEmpBank, setNewEmpBank] = useState('Сбербанк');
-  const [newEmpPhone, setNewEmpPhone] = useState('+7 (812) ');
+  // Document Vault Preview Modal
+  const [vaultModalOpen, setVaultModalOpen] = useState(false);
+  const [vaultModalTitle, setVaultModalTitle] = useState('');
+  const [vaultEntityId, setVaultEntityId] = useState('U-10566');
 
-  // Decision Modal for Special Approval
-  const [selectedApproval, setSelectedApproval] = useState<SpecialApprovalRequest | null>(null);
-  const [approvalDecision, setApprovalDecision] = useState<'approved' | 'rejected'>('approved');
-  const [approvalNotes, setApprovalNotes] = useState('');
+  // Credit Limit Decision Modal State
+  const [selectedCreditReq, setSelectedCreditReq] = useState<BuyerCreditLimitRequest | null>(null);
+  const [approvedLimitInput, setApprovedLimitInput] = useState<number>(12500000);
+  const [validUntilInput, setValidUntilInput] = useState<string>('2026-12-31');
+  const [creditDecisionNotes, setCreditDecisionNotes] = useState<string>(
+    'Одобрено по программе замещения ипотечного долга 214-ФЗ'
+  );
 
-  // Decision Modal for Credit Limit
-  const [selectedLimitReq, setSelectedLimitReq] = useState<BuyerCreditLimitRequest | null>(null);
-  const [approvedLimitAmount, setApprovedLimitAmount] = useState<number>(8500000);
-  const [validUntilDate, setValidUntilDate] = useState('2026-12-31');
-  const [limitOfficerNotes, setLimitOfficerNotes] = useState('');
+  // Special Approval Decision Modal State
+  const [selectedSpecialReq, setSelectedSpecialReq] = useState<SpecialApprovalRequest | null>(null);
+  const [specialDecisionNotes, setSpecialDecisionNotes] = useState<string>(
+    'Согласовано кредитным комитетом банка без штрафных санкций'
+  );
+
+  // Developer Accreditation Decision Modal State
+  const [selectedDevReq, setSelectedDevReq] = useState<DeveloperAccreditationRequest | null>(null);
+  const [devDecisionBank, setDevDecisionBank] = useState<PartnerBankName>('Сбербанк');
+  const [devBaseRateInput, setDevBaseRateInput] = useState<number>(19.8);
+  const [devFamilyMortgage6, setDevFamilyMortgage6] = useState<boolean>(true);
+  const [devItMortgage6, setDevItMortgage6] = useState<boolean>(true);
+  const [devMaxPdnPercent, setDevMaxPdnPercent] = useState<40 | 50 | 60>(50);
+  const [devDecisionNotes, setDevDecisionNotes] = useState<string>(
+    'Проектная декларация 214-ФЗ и эскроу-модель соответствуют требованиям банка'
+  );
+
+  // New Bank Staff Modal State
+  const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [newStaffName, setNewStaffName] = useState('');
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffPhone, setNewStaffPhone] = useState('+7 (495) 500-00-00');
+  const [newStaffRole, setNewStaffRole] = useState<BankEmployee['role']>('officer');
+  const [newStaffBank, setNewStaffBank] = useState<string>('Сбербанк');
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
 
   const loadData = async () => {
-    const [emps, specs, limits, deals] = await Promise.all([
-      BankPortalRepository.getAllBankEmployees(),
+    const [dList, lList, devReqList, devAllList, sList, cList, stList] = await Promise.all([
+      DealsRepository.getAll(),
+      LotsRepository.getAll({ includePendingApproval: true }),
+      DevelopersRepository.getAllAccreditationRequests(),
+      DevelopersRepository.getAllDevelopers(),
       BankPortalRepository.getAllSpecialApprovals(),
       BankPortalRepository.getAllCreditLimitRequests(),
-      DealsRepository.getAll(),
+      BankPortalRepository.getAllBankEmployees(),
     ]);
-
-    setBankEmployees(emps);
-    setSpecialApprovals(specs);
-    setCreditLimits(limits);
-    setActiveDeals(deals);
+    setDeals(dList);
+    setLots(lList);
+    setDevRequests(devReqList);
+    setAccreditedDevs(devAllList);
+    setSpecialRequests(sList);
+    setCreditRequests(cList);
+    setBankStaff(stList);
   };
 
   useEffect(() => {
     loadData();
+    const unsub = DatabaseGateway.subscribe(() => {
+      loadData();
+    });
+    return () => unsub();
   }, []);
 
-  const handleAddEmployee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await BankPortalRepository.addBankEmployee({
-      name: newEmpName,
-      email: newEmpEmail,
-      role: newEmpRole,
-      bankName: newEmpBank,
-      phone: newEmpPhone,
+  const currentOfficerName = user?.name || `Офицер СБР (${activePartnerBank})`;
+
+  const openLotDocumentVault = (lotCode: string, title: string, _explicitIds?: string[]) => {
+    setVaultEntityId(lotCode);
+    setVaultModalTitle(title);
+    setVaultModalOpen(true);
+  };
+
+  // 1. Confirm Escrow Deposit (Step 2 of 4-Step Synchronized Escrow)
+  const handleConfirmEscrowDeposit = async (deal: DealTrack) => {
+    const depositAmount =
+      deal.escrowWorkflow?.depositedAmountRub || Math.round(deal.sellerReturnRub * 1.025);
+    const updated = await BankPortalRepository.confirmEscrowDeposit(
+      deal.dealId,
+      currentOfficerName,
+      depositAmount
+    );
+    if (updated) {
+      await loadData();
+      showToast(
+        `Депонирование средств (${formatRubles(
+          updated.escrowWorkflow?.depositedAmountRub || deal.sellerReturnRub
+        )}) подтверждено. Статус синхронизирован в кабинете Покупателя, Продавца и Комнате закрытия куратора.`
+      );
+    }
+  };
+
+  // 2. Confirm Funds Release (Step 4 of 4-Step Synchronized Escrow)
+  const handleConfirmFundsRelease = async (deal: DealTrack) => {
+    const lot = lots.find((l) => l.lotCode === deal.lotCode);
+    const feeRub = lot?.serviceCommissionRub || Math.round(deal.sellerReturnRub * 0.025);
+    const updated = await BankPortalRepository.releaseEscrowFunds(deal.dealId, currentOfficerName);
+    if (updated) {
+      await loadData();
+      showToast(
+        `Аккредитив СБР раскрыт по штампу Росреестра! Транши перечислены: Продавцу (${formatRubles(
+          deal.sellerReturnRub
+        )}), Застройщику/Банку и Комиссия оператора DomExit (${formatRubles(feeRub)}). Сделка закрыта.`
+      );
+    }
+  };
+
+  // 3. Developer Accreditation Decision
+  const handleDecideDeveloperAccreditation = async (decision: 'approved' | 'rejected') => {
+    if (!selectedDevReq) return;
+    await DevelopersRepository.decideAccreditationRequest({
+      requestId: selectedDevReq.id,
+      bankName: devDecisionBank,
+      decision,
+      baseRatePercent: devBaseRateInput,
+      familyMortgage6: devFamilyMortgage6,
+      itMortgage6: devItMortgage6,
+      maxPdnPercent: devMaxPdnPercent,
+      notes: devDecisionNotes,
+      decidedBy: `${currentOfficerName} (${devDecisionBank})`,
     });
-
-    setIsAddEmpModalOpen(false);
-    setNewEmpName('');
-    setNewEmpEmail('');
-    setNotice(language === 'ru' ? 'Сотрудник банка успешно зарегистрирован и активирован!' : 'Bank staff registered!');
-    loadData();
-    setTimeout(() => setNotice(null), 5000);
+    setSelectedDevReq(null);
+    await loadData();
+    showToast(
+      decision === 'approved'
+        ? `Застройщик «${selectedDevReq.developerName}» аккредитован банком ${devDecisionBank} (базовая ставка ${devBaseRateInput}%, ПДН ${devMaxPdnPercent}%) и автоматически включён в единый реестр!`
+        : `Запрос на аккредитацию застройщика «${selectedDevReq.developerName}» отклонён банком ${devDecisionBank}.`
+    );
   };
 
-  const handleToggleEmp = async (id: string) => {
-    await BankPortalRepository.toggleBankEmployeeStatus(id);
-    loadData();
-  };
-
-  const handleDecideApproval = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedApproval) return;
-
+  // 4. Decide Special Approval
+  const handleDecideSpecialApproval = async (status: 'approved' | 'rejected') => {
+    if (!selectedSpecialReq) return;
     await BankPortalRepository.decideSpecialApproval(
-      selectedApproval.id,
-      approvalDecision,
-      approvalNotes || (approvalDecision === 'approved' ? 'Аккредитовано банком на стандартных условиях эскроу' : 'Не соответствует требованиям риска банка'),
-      user?.name || 'Главный менеджер банка'
+      selectedSpecialReq.id,
+      status,
+      specialDecisionNotes,
+      currentOfficerName
     );
-
-    setSelectedApproval(null);
-    setApprovalNotes('');
-    setNotice(
-      language === 'ru'
-        ? `Решение по объекту ${selectedApproval.complexName} зафиксировано в реестре DomExit!`
-        : `Decision recorded for ${selectedApproval.complexName}!`
+    setSelectedSpecialReq(null);
+    await loadData();
+    showToast(
+      status === 'approved'
+        ? `Спецсогласование по лоту #${selectedSpecialReq.lotCode} одобрено банком!`
+        : `Спецсогласование по лоту #${selectedSpecialReq.lotCode} отклонено.`
     );
-    loadData();
-    setTimeout(() => setNotice(null), 5000);
   };
 
-  const handleApproveCreditLimit = async (e: React.FormEvent) => {
+  // 5. Decide Credit Limit
+  const handleDecideCreditLimit = async (status: 'approved' | 'rejected') => {
+    if (!selectedCreditReq) return;
+    if (status === 'approved') {
+      await BankPortalRepository.approveCreditLimit(
+        selectedCreditReq.id,
+        approvedLimitInput,
+        validUntilInput,
+        currentOfficerName,
+        creditDecisionNotes
+      );
+    } else {
+      await BankPortalRepository.rejectCreditLimit(
+        selectedCreditReq.id,
+        currentOfficerName,
+        creditDecisionNotes
+      );
+    }
+    setSelectedCreditReq(null);
+    await loadData();
+    showToast(
+      status === 'approved'
+        ? `Кредитный сертификат на ${formatRubles(approvedLimitInput)} выпущен для ${selectedCreditReq.userName}!`
+        : `Заявка на кредитный лимит для ${selectedCreditReq.userName} отклонена.`
+    );
+  };
+
+  // 6. Add Bank Staff
+  const handleCreateBankStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedLimitReq) return;
-
-    await BankPortalRepository.approveCreditLimit(
-      selectedLimitReq.id,
-      approvedLimitAmount,
-      validUntilDate,
-      user?.name || 'Кредитный офицер банка',
-      limitOfficerNotes || 'Доход и платежеспособность проверены по регламенту 214-ФЗ'
-    );
-
-    setSelectedLimitReq(null);
-    setLimitOfficerNotes('');
-    setNotice(
-      language === 'ru'
-        ? `Официальный цифровой сертификат кредитного лимита для ${selectedLimitReq.userName} выпущен и активирован!`
-        : `Certified credit stamp issued for ${selectedLimitReq.userName}!`
-    );
-    loadData();
-    setTimeout(() => setNotice(null), 5000);
+    if (!newStaffName.trim() || !newStaffEmail.trim()) return;
+    await BankPortalRepository.addBankEmployee({
+      name: newStaffName.trim(),
+      email: newStaffEmail.trim(),
+      phone: newStaffPhone.trim(),
+      role: newStaffRole,
+      bankName: newStaffBank,
+      status: 'active',
+    });
+    setNewStaffName('');
+    setNewStaffEmail('');
+    setShowAddStaffModal(false);
+    await loadData();
+    showToast(`Сотрудник банка ${newStaffName} успешно добавлен.`);
   };
 
-  const handleConfirmEscrowDeposit = async (dealId: string, amount: number) => {
-    await BankPortalRepository.confirmEscrowDeposit(
-      dealId,
-      user?.name || 'Кредитный офицер Сбербанка',
-      amount
-    );
-    setNotice(
-      language === 'ru'
-        ? 'Депонирование средств на аккредитивном счете подтверждено! Сделка переведена на этап подписания.'
-        : 'Escrow deposit confirmed! Proceed to signing.'
-    );
-    loadData();
-    setTimeout(() => setNotice(null), 5000);
+  const handleToggleStaffStatus = async (staffId: string) => {
+    await BankPortalRepository.toggleBankEmployeeStatus(staffId);
+    await loadData();
+    showToast('Статус доступа сотрудника банка обновлен.');
   };
 
-  const handleReleaseEscrowFunds = async (dealId: string) => {
-    await BankPortalRepository.releaseEscrowFunds(
-      dealId,
-      user?.name || 'Кредитный офицер Сбербанка'
-    );
-    setNotice(
-      language === 'ru'
-        ? 'Аккредитив успешно раскрыт! Деньги перечислены продавцу, комиссия 2.5% зачислена, сделка закрыта.'
-        : 'Escrow released! Seller received funds, deal completed.'
-    );
-    loadData();
-    setTimeout(() => setNotice(null), 5000);
-  };
+  const pendingEscrowCount = deals.filter(
+    (d) =>
+      d.escrowWorkflow?.step === 'bank_escrow_deposit' ||
+      d.escrowWorkflow?.step === 'bank_funds_release'
+  ).length;
+  const pendingDevAccCount = devRequests.filter((r) => r.status === 'pending').length;
+  const pendingSpecialCount = specialRequests.filter((s) => s.status === 'pending').length;
+  const pendingCreditCount = creditRequests.filter((c) => c.status === 'pending').length;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
-      
-      {/* Top Header */}
-      <header className="bg-slate-950 border-b border-slate-800 pt-8 pb-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            
-            <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-lg shadow-emerald-950/60">
-                <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center font-bold text-emerald-400">
-                  <Building2 className="w-7 h-7" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center space-x-2.5">
-                  <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                    {language === 'ru' ? 'Партнерский банковский шлюз' : 'Partner Bank Gateway'}
-                  </h1>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider">
-                    Сбер • ВТБ • Альфа
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  {language === 'ru'
-                    ? 'Защищенный операционный контур банков-партнеров: кредитные лимиты, спец-одобрение застройщиков и эскроу-аккредитивы (214-ФЗ).'
-                    : 'Secure partner bank hub: buyer credit limits, developer special approvals, and escrow releases.'}
-                </p>
-              </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
+      {/* Top Institutional Light Banking Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-black shadow-xs">
+              <Landmark className="w-6 h-6" />
             </div>
-
-            <div className="flex items-center space-x-3">
-              <Link
-                to="/admin/dashboard"
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors flex items-center space-x-1.5"
-              >
-                <span>{language === 'ru' ? '← В панель управления' : '← Back to Admin'}</span>
-              </Link>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">
+                  DomExit • Шлюз Банка-Партнёра (214-ФЗ / СБР)
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
+                  LIVE ESCROW GATEWAY
+                </span>
+              </div>
+              <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
+                Кабинет уполномоченного банка: Эскроу, Аккредитация застройщиков и Лимиты
+              </h1>
             </div>
-
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="flex flex-wrap gap-2 border-b border-slate-800 pt-2">
-            
-            <button
-              onClick={() => setActiveTab('credit_limits')}
-              className={`pb-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                activeTab === 'credit_limits'
-                  ? 'border-emerald-500 text-emerald-400'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>{language === 'ru' ? 'Кредитные лимиты покупателей' : 'Buyer Credit Limits'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
-                {creditLimits.filter(l => l.status === 'pending').length}
-              </span>
-            </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Active Partner Bank Switcher */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+              {PARTNER_BANKS.map((bank) => (
+                <button
+                  key={bank}
+                  type="button"
+                  onClick={() => {
+                    setActivePartnerBank(bank);
+                    setDevDecisionBank(bank);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activePartnerBank === bank
+                      ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {bank}
+                </button>
+              ))}
+            </div>
 
-            <button
-              onClick={() => setActiveTab('special_approvals')}
-              className={`pb-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                activeTab === 'special_approvals'
-                  ? 'border-emerald-500 text-emerald-400'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
+            <Link
+              to="/admin/dashboard"
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 transition-colors flex items-center space-x-1.5"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{language === 'ru' ? 'Спец-одобрение объектов (нетиповые)' : 'Special Property Approvals'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono">
-                {specialApprovals.filter(s => s.status === 'pending').length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('escrow_closing')}
-              className={`pb-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                activeTab === 'escrow_closing'
-                  ? 'border-emerald-500 text-emerald-400'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
+              <span>Панель владельца</span>
+            </Link>
+            <Link
+              to="/"
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors flex items-center space-x-1.5 shadow-xs"
             >
-              <Banknote className="w-4 h-4" />
-              <span>{language === 'ru' ? 'Эскроу и Аккредитивы (СБР)' : 'Escrow & SBR Accounts'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[10px] font-mono">
-                {activeDeals.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('employees')}
-              className={`pb-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                activeTab === 'employees'
-                  ? 'border-emerald-500 text-emerald-400'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>{language === 'ru' ? 'Сотрудники банка' : 'Bank Employees'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-mono">
-                {bankEmployees.length}
-              </span>
-            </button>
-
+              <span>На витрину</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       </header>
 
-      {/* Main Body */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-6">
-        
-        {notice && (
-          <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-between shadow-md animate-fade-in">
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-              <span>{notice}</span>
-            </div>
-            <button onClick={() => setNotice(null)} className="text-emerald-400 hover:text-white">✕</button>
-          </div>
-        )}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-emerald-700 text-white px-5 py-4 rounded-2xl shadow-xl border border-emerald-500 flex items-start space-x-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-200 shrink-0 mt-0.5" />
+          <div className="text-xs font-bold leading-relaxed">{toastMessage}</div>
+        </div>
+      )}
 
-        {/* ================= TAB 1: BUYER CREDIT LIMITS ================= */}
-        {activeTab === 'credit_limits' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
+        {/* Top KPI Cards (Light Mode Institutional Style) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+              <span>Ожидают действий СБР</span>
+              <Wallet className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{pendingEscrowCount}</div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Депонирование и раскрытие эскроу
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+              <span>Аккредитация застройщиков</span>
+              <Building2 className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">
+              {pendingDevAccCount}{' '}
+              <span className="text-xs font-bold text-slate-400">
+                / {accreditedDevs.filter((d) => d.isAccredited).length} в реестре
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Заявки новых девелоперов 214-ФЗ
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+              <span>Спецсогласования лотов</span>
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{pendingSpecialCount}</div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Запросы кураторов по уступке ДДУ
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+              <span>Заявки на кредитный лимит</span>
+              <CreditCard className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{pendingCreditCount}</div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Предварительный скоринг покупателей
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
+              <span>Уполномоченные офицеры</span>
+              <Users className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">
+              {bankStaff.filter((s) => s.status === 'active').length}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Сбербанк • ВТБ • Альфа-Банк • ДОМ.РФ
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('escrow')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 cursor-pointer ${
+                activeTab === 'escrow'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Lock className="w-4 h-4" />
+              <span>1. Эскроу и СБР (Синхронизация закрытия)</span>
+              {pendingEscrowCount > 0 && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    activeTab === 'escrow'
+                      ? 'bg-white text-emerald-700'
+                      : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  {pendingEscrowCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('developer_accreditation')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 cursor-pointer ${
+                activeTab === 'developer_accreditation'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>2. Аккредитация девелоперов</span>
+              {pendingDevAccCount > 0 && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    activeTab === 'developer_accreditation'
+                      ? 'bg-white text-emerald-700'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {pendingDevAccCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('special')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 cursor-pointer ${
+                activeTab === 'special'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>3. Спецсогласования объектов</span>
+              {pendingSpecialCount > 0 && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    activeTab === 'special'
+                      ? 'bg-white text-emerald-700'
+                      : 'bg-blue-50 text-blue-700'
+                  }`}
+                >
+                  {pendingSpecialCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('credit_limits')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 cursor-pointer ${
+                activeTab === 'credit_limits'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              <span>4. Кредитные лимиты покупателей</span>
+              {pendingCreditCount > 0 && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    activeTab === 'credit_limits'
+                      ? 'bg-white text-emerald-700'
+                      : 'bg-indigo-50 text-indigo-700'
+                  }`}
+                >
+                  {pendingCreditCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('staff')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 cursor-pointer ${
+                activeTab === 'staff'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>5. Сотрудники банка ({bankStaff.length})</span>
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по коду лота, ФИО, ЖК..."
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600"
+            />
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* TAB 1: ESCROW & SBR 4-STEP REAL-TIME SYNCHRONIZATION      */}
+        {/* ========================================================= */}
+        {activeTab === 'escrow' && (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
               <div>
-                <h2 className="text-lg font-bold text-white">
-                  {language === 'ru' ? 'Заявки на подтверждение кредитного лимита покупателей' : 'Buyer Credit Limit Verification Requests'}
+                <h2 className="text-base font-black text-slate-900">
+                  Единый контур закрытия сделок СБР / Эскроу (Синхронизация 4 шагов)
                 </h2>
-                <p className="text-xs text-slate-400">
-                  {language === 'ru'
-                    ? 'Специалист банка верифицирует доход и выпускает цифровой сертификат лимита (для покупки переуступок).'
-                    : 'Bank officer confirms liquidity and issues certified stamp for lot reservations.'}
+                <p className="text-xs text-slate-500 mt-1">
+                  Шаг 1: Куратор передает пакет в банк → Шаг 2: Банк подтверждает депонирование средств покупателя → Шаг 3: Куратор загружает фото подписания и штамп Росреестра → Шаг 4: Банк раскрывает СБР и выплачивает транши.
                 </p>
               </div>
+              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shrink-0">
+                Real-Time DAL Sync
+              </span>
             </div>
 
-            <div className="bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-900 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-800">
-                  <tr>
-                    <th className="py-3 px-4">Код заявки</th>
-                    <th className="py-3 px-4">Покупатель (DEX-ID)</th>
-                    <th className="py-3 px-4">Банк</th>
-                    <th className="py-3 px-4">Запрошенная сумма</th>
-                    <th className="py-3 px-4">Одобренный лимит</th>
-                    <th className="py-3 px-4">Сертификат</th>
-                    <th className="py-3 px-4 text-right">Действие</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-medium">
-                  {creditLimits.map((req) => (
-                    <tr key={req.id} className="hover:bg-slate-900/60 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-400">{req.id}</td>
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-white">{req.userName}</div>
-                        <div className="text-[11px] font-mono text-indigo-400">{req.clientCode}</div>
-                        <div className="text-[10px] text-slate-500">{req.userPhone}</div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                          {req.bankName}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-slate-300">
-                        {formatRubles(req.requestedAmountRub)}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                        {req.approvedLimitRub ? formatRubles(req.approvedLimitRub) : '—'}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-xs">
-                        {req.certificateNumber ? (
-                          <div>
-                            <span className="text-emerald-400 font-bold">{req.certificateNumber}</span>
-                            <div className="text-[10px] text-slate-500">до {req.validUntil}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 text-[11px]">Ожидает выпуска</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {req.status === 'pending' ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedLimitReq(req);
-                              setApprovedLimitAmount(req.requestedAmountRub);
-                            }}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-                          >
-                            {language === 'ru' ? 'Выдать штамп банка' : 'Issue Bank Stamp'}
-                          </button>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] inline-flex items-center space-x-1">
-                            <Check className="w-3 h-3" />
-                            <span>{language === 'ru' ? 'Одобрено' : 'Approved'}</span>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ================= TAB 2: SPECIAL APPROVAL REQUESTS ================= */}
-        {activeTab === 'special_approvals' && (
-          <div className="space-y-6 animate-fade-in">
-            <div>
-              <h2 className="text-lg font-bold text-white">
-                {language === 'ru' ? 'Запросы спец-одобрения нетиповых объектов и застройщиков' : 'Special Property Accreditation Requests'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {language === 'ru'
-                  ? 'Объекты, не подходящие под стандартные параметры аккредитации (малые подрядчики, индивидуальные рассрочки). Банк изучает риск и подтверждает финансирование.'
-                  : 'Properties from non-standard contractors or unusual installment schedules requiring bank exception approval.'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {specialApprovals.map((req) => (
-                <div key={req.id} className="p-5 rounded-3xl bg-slate-950 border border-slate-800 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded">
-                          #{req.lotCode}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          req.status === 'approved'
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : req.status === 'rejected'
-                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        }`}>
-                          {req.status === 'approved' ? '✓ Спец-одобрение выдано' : req.status === 'rejected' ? '✕ Отклонено' : 'На рассмотрении банка'}
-                        </span>
-                      </div>
-                      <h3 className="font-bold text-sm text-white mt-1.5">{req.complexName}</h3>
-                      <span className="text-xs text-slate-400">{req.developer} • ДДУ {formatRubles(req.contractPriceRub)}</span>
-                    </div>
-
-                    <span className="px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-emerald-400">
-                      {req.bankName}
-                    </span>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/80 text-xs space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                      {language === 'ru' ? 'Обоснование запроса от куратора DomExit:' : 'Curator Justification:'}
-                    </span>
-                    <p className="text-slate-300 leading-relaxed">{req.reason}</p>
-                    <div className="text-[10px] text-slate-500 pt-1">
-                      Запросил: {req.requestedByEmployeeName} • {new Date(req.requestedAt).toLocaleDateString('ru-RU')}
-                    </div>
-                  </div>
-
-                  {req.status === 'pending' ? (
-                    <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedApproval(req);
-                          setApprovalDecision('rejected');
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-rose-300 border border-slate-700 hover:border-rose-500/40 font-bold text-xs transition-colors cursor-pointer"
-                      >
-                        {language === 'ru' ? 'Отклонить' : 'Reject'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedApproval(req);
-                          setApprovalDecision('approved');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-                      >
-                        {language === 'ru' ? 'Выдать спец-одобрение' : 'Grant Special Approval'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl bg-slate-900 text-xs">
-                      <span className="text-slate-400 block text-[10px]">{language === 'ru' ? 'Решение банка:' : 'Bank Decision:'}</span>
-                      <p className="text-slate-200 mt-0.5">{req.decisionNotes}</p>
-                      <span className="text-[10px] text-slate-500 block mt-1">Офицер: {req.decidedBy}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ================= TAB 3: ESCROW & SBR WORKFLOW ================= */}
-        {activeTab === 'escrow_closing' && (
-          <div className="space-y-6 animate-fade-in">
-            <div>
-              <h2 className="text-lg font-bold text-white">
-                {language === 'ru' ? 'Контроль эскроу-аккредитивов и безопасных расчетов (СБР)' : 'Escrow & SBR Safe Settlement Room'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {language === 'ru'
-                  ? 'Контроль депонирования денежных средств покупателя, подтверждение открытия аккредитива и безопасное раскрытие после электронной регистрации в Росреестре.'
-                  : 'Overseeing conditional buyer deposits, escrow opening, and safe fund release after Rosreestr registration.'}
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {activeDeals.map((deal) => {
-                const escrowStep = deal.escrowWorkflow?.step || 'escrow_pending';
-                const deposited = deal.escrowWorkflow?.depositedAmountRub || deal.sellerReturnRub || 2500000;
+            {deals
+              .filter(
+                (d) =>
+                  !searchQuery ||
+                  d.dealId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  d.lotCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  d.lotTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (d.buyerName || '').toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .map((deal) => {
+                const wf = deal.escrowWorkflow;
+                const step = wf?.step || 'curator_review';
+                const lot = lots.find((l) => l.lotCode === deal.lotCode);
+                const feeRub =
+                  wf?.platformFeeRub ||
+                  lot?.serviceCommissionRub ||
+                  Math.round(deal.sellerReturnRub * 0.025);
 
                 return (
-                  <div key={deal.id} className="p-6 rounded-3xl bg-slate-950 border border-slate-800 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div
+                    key={deal.id}
+                    className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5"
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-100 pb-4">
                       <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded">
-                            {deal.id}
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-black">
+                            {deal.dealId}
                           </span>
-                          <span className="font-mono text-xs text-slate-400">Лот: #{deal.lotCode}</span>
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                            Сбербанк Эскроу
+                          <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-bold">
+                            Лот #{deal.lotCode}
+                          </span>
+                          <span className="text-xs text-slate-500 font-semibold">
+                            Банк эскроу: <strong className="text-slate-900">{wf?.bankName || 'ПАО Сбербанк'}</strong>
+                          </span>
+                          <span className="text-xs text-slate-500 font-mono">
+                            Счет СБР: {wf?.escrowAccountNumber || '40817810555000010566'}
                           </span>
                         </div>
-                        <h3 className="font-bold text-base text-white mt-1.5">{deal.complexName || deal.lotTitle}</h3>
-                        <p className="text-xs text-slate-400">
-                          Продавец: {deal.sellerName || deal.clientName} • Покупатель: {deal.buyerName || 'Иван Петрович К.'}
+                        <h3 className="text-lg font-black text-slate-900">
+                          {deal.lotTitle} — {deal.developer}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Продавец: <strong className="text-slate-800">{deal.sellerName || deal.clientName}</strong> •
+                          Покупатель: <strong className="text-slate-800">{deal.buyerName || 'Кандидат согласован'}</strong> •
+                          Куратор DomExit: <strong className="text-emerald-700">{deal.curatorName}</strong>
                         </p>
                       </div>
 
-                      <div className="text-right">
-                        <span className="text-xs text-slate-400 block">{language === 'ru' ? 'Сумма кэша к выплате:' : 'Seller Payout:'}</span>
-                        <span className="text-xl font-black font-mono text-emerald-400">
-                          {formatRubles(deposited)}
-                        </span>
+                      {/* Tranches Breakdown */}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-right">
+                          <div className="text-[10px] text-slate-500 uppercase font-bold">
+                            Транш №1 (Кэш Продавцу 100%)
+                          </div>
+                          <div className="text-sm font-black text-slate-900">
+                            {formatRubles(deal.sellerReturnRub)}
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-right">
+                          <div className="text-[10px] text-slate-500 uppercase font-bold">
+                            Транш №2 (Долг ДДУ Застройщику)
+                          </div>
+                          <div className="text-sm font-black text-slate-700">
+                            {formatRubles(lot?.remainingInstallmentDebt || 0)}
+                          </div>
+                        </div>
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2 text-right">
+                          <div className="text-[10px] text-emerald-700 uppercase font-bold">
+                            Транш №3 (Комиссия DomExit 2.5%)
+                          </div>
+                          <div className="text-sm font-black text-emerald-700">
+                            {formatRubles(feeRub)}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Step progress pills */}
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2">
-                      <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
-                        <div className="flex items-center space-x-1.5 text-emerald-400 font-bold mb-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>1. Проверка куратора</span>
+                    {/* 4-Step Visual Progress Bar */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs">
+                      <div
+                        className={`p-3 rounded-xl border ${
+                          step !== 'curator_review'
+                            ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                            : 'bg-amber-50 border-amber-200 text-amber-900'
+                        }`}
+                      >
+                        <div className="font-black flex items-center justify-between">
+                          <span>Шаг 1. Передача в банк</span>
+                          {step !== 'curator_review' ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Clock className="w-4 h-4 text-amber-600" />
+                          )}
                         </div>
-                        <span className="text-[10px] text-slate-400">Передано в банк</span>
-                      </div>
-
-                      <div className={`p-3 rounded-2xl border text-xs ${
-                        deal.escrowWorkflow?.depositConfirmedAt
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                          : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                      }`}>
-                        <div className="flex items-center space-x-1.5 font-bold mb-1">
-                          {deal.escrowWorkflow?.depositConfirmedAt ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5 animate-pulse" />}
-                          <span>2. Депонирование</span>
+                        <div className="text-[11px] text-slate-600 mt-1">
+                          {step !== 'curator_review'
+                            ? 'Пакет ДДУ передан куратором на открытие СБР'
+                            : 'Ожидает передачи пакета куратором'}
                         </div>
-                        <span className="text-[10px]">
-                          {deal.escrowWorkflow?.depositConfirmedAt ? 'Средства заблокированы' : 'Ожидает подтверждения банка'}
-                        </span>
                       </div>
 
-                      <div className={`p-3 rounded-2xl border text-xs ${
-                        deal.escrowWorkflow?.signingProofPhotos?.length
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
-                      }`}>
-                        <div className="font-bold mb-1">3. Подписание и видео</div>
-                        <span className="text-[10px]">
-                          {deal.escrowWorkflow?.signingProofPhotos?.length ? 'Документы загружены' : 'Ожидает сессии'}
-                        </span>
+                      <div
+                        className={`p-3 rounded-xl border ${
+                          ['signing_photos', 'bank_funds_release', 'deal_finalized'].includes(step)
+                            ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                            : step === 'bank_escrow_deposit'
+                            ? 'bg-blue-50 border-blue-300 text-blue-900 ring-2 ring-blue-500/20'
+                            : 'bg-slate-50 border-slate-200 text-slate-400'
+                        }`}
+                      >
+                        <div className="font-black flex items-center justify-between">
+                          <span>Шаг 2. Депонирование СБР</span>
+                          {['signing_photos', 'bank_funds_release', 'deal_finalized'].includes(step) && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          )}
+                        </div>
+                        <div className="text-[11px] mt-1">
+                          {['signing_photos', 'bank_funds_release', 'deal_finalized'].includes(step)
+                            ? 'Средства надежно заблокированы на эскроу'
+                            : 'Подтверждение блокировки средств банком'}
+                        </div>
                       </div>
 
-                      <div className={`p-3 rounded-2xl border text-xs ${
-                        deal.escrowWorkflow?.fundsReleasedAt
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
-                      }`}>
-                        <div className="font-bold mb-1">4. Раскрытие аккредитива</div>
-                        <span className="text-[10px]">
-                          {deal.escrowWorkflow?.fundsReleasedAt ? 'Деньги выплачены (2.5% комиссия)' : 'Ожидает регистрации'}
-                        </span>
+                      <div
+                        className={`p-3 rounded-xl border ${
+                          ['bank_funds_release', 'deal_finalized'].includes(step)
+                            ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                            : step === 'signing_photos'
+                            ? 'bg-amber-50 border-amber-200 text-amber-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-400'
+                        }`}
+                      >
+                        <div className="font-black flex items-center justify-between">
+                          <span>Шаг 3. Подписание и Росреестр</span>
+                          {['bank_funds_release', 'deal_finalized'].includes(step) && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          )}
+                        </div>
+                        <div className="text-[11px] mt-1">
+                          {['bank_funds_release', 'deal_finalized'].includes(step)
+                            ? 'Фото подписания и штамп Росреестра загружены'
+                            : 'Куратор проводит подписание и УКЭП Росреестр'}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`p-3 rounded-xl border ${
+                          step === 'deal_finalized'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                            : step === 'bank_funds_release'
+                            ? 'bg-emerald-50/60 border-emerald-400 text-emerald-900 ring-2 ring-emerald-500/20'
+                            : 'bg-slate-50 border-slate-200 text-slate-400'
+                        }`}
+                      >
+                        <div className="font-black flex items-center justify-between">
+                          <span>Шаг 4. Раскрытие СБР</span>
+                          {step === 'deal_finalized' && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          )}
+                        </div>
+                        <div className="text-[11px] mt-1">
+                          {step === 'deal_finalized'
+                            ? 'СБР раскрыт, транши выплачены, сделка закрыта'
+                            : 'Выплата траншей Продавцу, Застройщику и DomExit'}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Operational Bank Actions */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
-                      <div className="text-xs text-slate-400 font-mono">
-                        Номер счета эскроу: <strong className="text-slate-200">{deal.escrowWorkflow?.escrowAccountNumber || 'АК-78401/2026-СБЕР'}</strong>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        {!deal.escrowWorkflow?.depositConfirmedAt ? (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmEscrowDeposit(deal.id, deposited)}
-                            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-                          >
-                            {language === 'ru' ? '✓ Подтвердить депонирование средств' : '✓ Confirm Escrow Deposit'}
-                          </button>
-                        ) : !deal.escrowWorkflow?.fundsReleasedAt ? (
-                          <button
-                            type="button"
-                            onClick={() => handleReleaseEscrowFunds(deal.id)}
-                            className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-                          >
-                            {language === 'ru' ? '🔓 Раскрыть аккредитив и выплатить кэш' : '🔓 Release Escrow to Seller'}
-                          </button>
-                        ) : (
-                          <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs">
-                            ✓ Аккредитив закрыт и исполнен
+                    {/* Escrow Action Bar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+                      <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                        {step === 'curator_review' && (
+                          <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 font-bold flex items-center space-x-1.5">
+                            <Clock className="w-4 h-4 text-slate-500" />
+                            <span>Шаг 1: На проверке у куратора (Ожидает передачи в банк)</span>
                           </span>
                         )}
+                        {step === 'bank_escrow_deposit' && (
+                          <span className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 font-bold flex items-center space-x-1.5">
+                            <Lock className="w-4 h-4 text-blue-600" />
+                            <span>Шаг 2: Требуется подтверждение депонирования средств покупателя на СБР</span>
+                          </span>
+                        )}
+                        {step === 'signing_photos' && (
+                          <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 font-bold flex items-center space-x-1.5">
+                            <Camera className="w-4 h-4 text-amber-600" />
+                            <span>Депонирование подтверждено • Ожидаем фото подписания и штамп Росреестра от куратора</span>
+                          </span>
+                        )}
+                        {step === 'bank_funds_release' && (
+                          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold flex items-center space-x-1.5">
+                            <Unlock className="w-4 h-4 text-emerald-600" />
+                            <span>Шаг 4: Штамп Росреестра загружен куратором! Готово к раскрытию СБР и выплате траншей</span>
+                          </span>
+                        )}
+                        {step === 'deal_finalized' && (
+                          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold flex items-center space-x-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Сделка официально закрыта • Все транши СБР перечислены</span>
+                          </span>
+                        )}
+                        {step === 'deal_cancelled' && (
+                          <span className="px-3 py-1.5 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold flex items-center space-x-1.5">
+                            <XCircle className="w-4 h-4 text-red-600" />
+                            <span>Сделка отменена • Лот возвращен в каталог</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openLotDocumentVault(
+                              deal.lotCode,
+                              `Досье сделки ${deal.dealId} (${deal.lotTitle})`
+                            )
+                          }
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          <FolderOpen className="w-4 h-4 text-emerald-600" />
+                          <span>Досье S3 и штамп Росреестра</span>
+                        </button>
+
+                        {(step === 'bank_escrow_deposit' || step === 'curator_review') && (
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmEscrowDeposit(deal)}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
+                          >
+                            <Lock className="w-4 h-4" />
+                            <span>Подтвердить депонирование средств (СБР)</span>
+                          </button>
+                        )}
+
+                        {(step === 'bank_funds_release' || step === 'signing_photos') && (
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmFundsRelease(deal)}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
+                          >
+                            <Unlock className="w-4 h-4" />
+                            <span>Раскрыть СБР и выплатить транши</span>
+                          </button>
+                        )}
+
+                        <Link
+                          to={`/admin/closing/${deal.dealId}`}
+                          className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold transition-colors"
+                        >
+                          Комната закрытия →
+                        </Link>
                       </div>
                     </div>
                   </div>
                 );
               })}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 2: DEVELOPER ACCREDITATION ENGINE                     */}
+        {/* ========================================================= */}
+        {activeTab === 'developer_accreditation' && (
+          <div className="space-y-6">
+            {/* Incoming Developer Accreditation Requests */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-base font-black text-slate-900">
+                    Заявки на аккредитацию новых застройщиков (Developer Accreditation Workflow)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Достаточно одобрения хотя бы одного банка-партнёра, чтобы застройщик автоматически перешёл в статус аккредитованного и появился в фильтрах каталога и форме продавца.
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                  Активный банк: {activePartnerBank}
+                </span>
+              </div>
+
+              {devRequests.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-sm">
+                  Нет новых запросов на аккредитацию застройщиков.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {devRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 text-xs font-black">
+                            ИНН: {req.developerInn}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                            Лот #{req.lotCode}
+                          </span>
+                          {req.status === 'pending' && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
+                              Ожидает аккредитации банков
+                            </span>
+                          )}
+                          {req.status === 'approved' && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                              Аккредитован банками ({req.decisions.filter((d) => d.decision === 'approved').length})
+                            </span>
+                          )}
+                          {req.status === 'rejected' && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 text-xs font-bold">
+                              Отклонен
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-base font-black text-slate-900">
+                          Застройщик: «{req.developerName}» — {req.complexName}
+                        </h3>
+                        <p className="text-xs text-slate-600">
+                          Район: <strong>{req.district}</strong> • Цена по ДДУ:{' '}
+                          <strong>{formatRubles(req.contractPriceRub)}</strong> • Продавец:{' '}
+                          <strong>
+                            {req.sellerName} ({req.sellerClientCode})
+                          </strong>
+                        </p>
+
+                        {req.decisions.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {req.decisions.map((dec) => (
+                              <span
+                                key={dec.bankName}
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                                  dec.decision === 'approved'
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : 'bg-red-50 border-red-200 text-red-700'
+                                }`}
+                              >
+                                {dec.bankName}:{' '}
+                                {dec.decision === 'approved'
+                                  ? `Аккредитован (Базовая ${dec.baseRatePercent}%, ПДН ${dec.maxPdnPercent}%)`
+                                  : 'Отклонен'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openLotDocumentVault(
+                              req.lotCode,
+                              `Документы застройщика «${req.developerName}» (ДДУ, справка об оплате, план)`,
+                              req.documentIds
+                            )
+                          }
+                          className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          <Eye className="w-4 h-4 text-emerald-600" />
+                          <span>Проверить ДДУ и проект</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDevReq(req);
+                            setDevDecisionBank(activePartnerBank);
+                            setDevBaseRateInput(19.8);
+                            setDevFamilyMortgage6(true);
+                            setDevItMortgage6(true);
+                            setDevMaxPdnPercent(50);
+                          }}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-xs cursor-pointer"
+                        >
+                          Принять решение ({activePartnerBank})
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Central Registry of Accredited Russian Developers */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Единый реестр аккредитованных застройщиков РФ ({accreditedDevs.filter((d) => d.isAccredited).length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Ставки и лимиты ПДН каждого банка автоматически подставляются в ипотечный калькулятор на странице объектов этого девелопера.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px]">
+                      <th className="py-3 px-3">Застройщик</th>
+                      <th className="py-3 px-3">ИНН</th>
+                      <th className="py-3 px-3">Аккредитовавшие банки и ставки</th>
+                      <th className="py-3 px-3">Льготные программы</th>
+                      <th className="py-3 px-3">Статус в каталоге</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {accreditedDevs.map((dev) => (
+                      <tr key={dev.id} className="hover:bg-slate-50">
+                        <td className="py-3 px-3 font-black text-slate-900">{dev.name}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{dev.inn}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap gap-1.5">
+                            {dev.bankTerms
+                              .filter((b) => b.isAccredited)
+                              .map((b) => (
+                                <span
+                                  key={b.bankName}
+                                  className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 font-bold text-[11px]"
+                                >
+                                  {b.bankName}: {b.baseRatePercent}% (ПДН {b.maxPdnPercent}%)
+                                </span>
+                              ))}
+                            {dev.bankTerms.filter((b) => b.isAccredited).length === 0 && (
+                              <span className="text-amber-700 font-semibold">
+                                Ожидает решения банков
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap gap-1">
+                            {dev.bankTerms.some((b) => b.familyMortgage6) && (
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                                Семейная 6%
+                              </span>
+                            )}
+                            {dev.bankTerms.some((b) => b.itMortgage6) && (
+                              <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[10px]">
+                                IT-ипотека 6%
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          {dev.isAccredited ? (
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px]">
+                              Аккредитован
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[11px]">
+                              На проверке
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
-        {/* ================= TAB 4: BANK EMPLOYEES MANAGEMENT ================= */}
-        {activeTab === 'employees' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* ========================================================= */}
+        {/* TAB 3: SPECIAL APPROVAL REQUESTS                          */}
+        {/* ========================================================= */}
+        {activeTab === 'special' && (
+          <div className="space-y-4">
+            {specialRequests.map((req) => (
+              <div
+                key={req.id}
+                className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 shadow-xs"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-black">
+                      Лот #{req.lotCode}
+                    </span>
+                    <span className="text-xs text-slate-600 font-semibold">{req.bankName}</span>
+                    {req.status === 'pending' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold">
+                        Ожидает решения банка
+                      </span>
+                    )}
+                    {req.status === 'approved' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                        Согласовано ({req.decidedBy})
+                      </span>
+                    )}
+                    {req.status === 'rejected' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
+                        Отклонено
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    {req.complexName} ({req.developer}) — Цена ДДУ:{' '}
+                    {formatRubles(req.contractPriceRub)}
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    <strong>Основание запроса ({req.requestedByEmployeeName}):</strong> {req.reason}
+                  </p>
+                  {req.decisionNotes && (
+                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
+                      <strong>Резолюция банка:</strong> {req.decisionNotes}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openLotDocumentVault(
+                        req.lotCode,
+                        `Правовое досье лота #${req.lotCode} (${req.complexName})`
+                      )
+                    }
+                    className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-4 h-4 text-emerald-600" />
+                    <span>Документы S3</span>
+                  </button>
+                  {req.status === 'pending' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSpecialReq(req)}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all cursor-pointer"
+                    >
+                      Принять решение
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 4: BUYER CREDIT LIMITS                                */}
+        {/* ========================================================= */}
+        {activeTab === 'credit_limits' && (
+          <div className="space-y-4">
+            {creditRequests.map((req) => (
+              <div
+                key={req.id}
+                className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 shadow-xs"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-black">
+                      Код клиента: {req.clientCode}
+                    </span>
+                    <span className="text-xs text-slate-600 font-semibold">{req.bankName}</span>
+                    {req.status === 'pending' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold">
+                        На скоринге
+                      </span>
+                    )}
+                    {req.status === 'approved' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                        Лимит одобрен: {formatRubles(req.approvedLimitRub || req.requestedAmountRub)}
+                      </span>
+                    )}
+                    {req.status === 'rejected' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
+                        Отказано
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    {req.userName} ({req.userPhone})
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Запрошенный лимит:{' '}
+                    <strong className="text-slate-900">
+                      {formatRubles(req.requestedAmountRub)}
+                    </strong>
+                    {req.certificateNumber && (
+                      <span className="ml-3 text-emerald-700 font-mono">
+                        Сертификат: {req.certificateNumber} (до {req.validUntil})
+                      </span>
+                    )}
+                  </p>
+                  {req.notes && <p className="text-xs text-slate-500">{req.notes}</p>}
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCreditReq(req);
+                      setApprovedLimitInput(req.approvedLimitRub || req.requestedAmountRub);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all cursor-pointer"
+                  >
+                    {req.status === 'pending'
+                      ? 'Выдать кредитный сертификат'
+                      : 'Изменить лимит'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 5: BANK STAFF MANAGEMENT                              */}
+        {/* ========================================================= */}
+        {activeTab === 'staff' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white">
-                  {language === 'ru' ? 'Управление сотрудниками и офицерами банка-партнера' : 'Partner Bank Staff Management'}
+                <h2 className="text-lg font-black text-slate-900">
+                  Управление сотрудниками и офицерами банков-партнёров
                 </h2>
-                <p className="text-xs text-slate-400">
-                  {language === 'ru'
-                    ? 'Главный менеджер банка может выдавать и приостанавливать доступы кредитных офицеров и кураторов эскроу.'
-                    : 'The head manager manages officer permissions, credit certifiers, and escrow operators.'}
+                <p className="text-xs text-slate-500">
+                  Назначение прав подтверждения депонирования средств, аккредитации девелоперов и раскрытия СБР
                 </p>
               </div>
-
               <button
                 type="button"
-                onClick={() => setIsAddEmpModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
+                onClick={() => setShowAddStaffModal(true)}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>{language === 'ru' ? 'Добавить сотрудника банка' : 'Add Bank Officer'}</span>
+                <Plus className="w-4 h-4" />
+                <span>Добавить офицера банка</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {bankEmployees.map((emp) => (
-                <div key={emp.id} className="p-5 rounded-3xl bg-slate-950 border border-slate-800 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="font-bold text-sm text-white">{emp.name}</h3>
-                      <span className="text-xs text-emerald-400 font-mono">{emp.bankName}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {bankStaff.map((staff) => (
+                <div
+                  key={staff.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-xs"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-800 text-xs font-bold">
+                        {staff.bankName}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          staff.status === 'active'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}
+                      >
+                        {staff.status === 'active' ? 'Активен' : 'Приостановлен'}
+                      </span>
                     </div>
-
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      emp.status === 'active'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                    }`}>
-                      {emp.status === 'active' ? 'Активен' : 'Приостановлен'}
+                    <h4 className="text-base font-black text-slate-900">{staff.name}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">{staff.email}</p>
+                    <p className="text-xs text-slate-500">{staff.phone}</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500 font-semibold uppercase">
+                      {staff.role === 'chief_manager'
+                        ? 'Гл. управляющий'
+                        : staff.role === 'head_manager'
+                        ? 'Руководитель дирекции'
+                        : staff.role === 'escrow_agent'
+                        ? 'Агент СБР / Эскроу'
+                        : 'Кредитный офицер'}
                     </span>
-                  </div>
-
-                  <div className="space-y-1 text-xs text-slate-400">
-                    <div>Email: <strong className="text-slate-200">{emp.email}</strong></div>
-                    <div>Телефон: <strong className="text-slate-200 font-mono">{emp.phone}</strong></div>
-                    <div>Роль: <strong className="text-slate-200">
-                      {emp.role === 'head_manager' ? 'Главный менеджер' : emp.role === 'escrow_agent' ? 'Куратор эскроу' : 'Кредитный офицер'}
-                    </strong></div>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-800 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => handleToggleEmp(emp.id)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                      onClick={() => handleToggleStaffStatus(staff.id)}
+                      className="text-xs font-bold text-slate-600 hover:text-slate-900 underline cursor-pointer"
                     >
-                      {emp.status === 'active' ? 'Приостановить доступ' : 'Активировать'}
+                      {staff.status === 'active' ? 'Заблокировать' : 'Активировать'}
                     </button>
                   </div>
                 </div>
@@ -672,235 +1240,379 @@ export const BankPortalPage: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
 
-      </main>
-
-      {/* ================= MODAL: Add Bank Employee ================= */}
-      {isAddEmpModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-700 space-y-5 animate-scale-up text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-white text-base">
-                {language === 'ru' ? 'Регистрация нового офицера банка' : 'Register Bank Officer'}
-              </h3>
-              <button onClick={() => setIsAddEmpModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
-            </div>
-
-            <form onSubmit={handleAddEmployee} className="space-y-4 text-xs">
+      {/* ========================================================= */}
+      {/* MODAL: DEVELOPER ACCREDITATION DECISION                   */}
+      {/* ========================================================= */}
+      {selectedDevReq && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">ФИО сотрудника *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Игорь Владимирович Соколов"
-                  value={newEmpName}
-                  onChange={(e) => setNewEmpName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Корпоративный Email сотрудника *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="sokolov.i@sberbank.ru"
-                  value={newEmpEmail}
-                  onChange={(e) => setNewEmpEmail(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Банк-партнер *</label>
-                <select
-                  value={newEmpBank}
-                  onChange={(e) => setNewEmpBank(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="Сбербанк">Сбербанк (ПАО)</option>
-                  <option value="ВТБ">Банк ВТБ (ПАО)</option>
-                  <option value="Альфа-Банк">Альфа-Банк</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Роль в шлюзе *</label>
-                <select
-                  value={newEmpRole}
-                  onChange={(e) => setNewEmpRole(e.target.value as any)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="officer">Кредитный офицер (Одобрение лимитов)</option>
-                  <option value="escrow_agent">Специалист по эскроу (СБР и раскрытие)</option>
-                  <option value="head_manager">Главный менеджер направления</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Телефон *</label>
-                <input
-                  type="tel"
-                  required
-                  value={newEmpPhone}
-                  onChange={(e) => setNewEmpPhone(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white font-mono focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsAddEmpModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer shadow-md"
-                >
-                  Создать аккаунт
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL: Decide Special Approval ================= */}
-      {selectedApproval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-700 space-y-5 animate-scale-up text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-white text-base">
-                {approvalDecision === 'approved' ? 'Выдача спец-одобрения объекта' : 'Отклонение объекта'}
-              </h3>
-              <button onClick={() => setSelectedApproval(null)} className="text-slate-400 hover:text-white">✕</button>
-            </div>
-
-            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-1">
-              <div className="font-bold text-white">{selectedApproval.complexName}</div>
-              <div className="text-slate-400">{selectedApproval.developer} • {formatRubles(selectedApproval.contractPriceRub)}</div>
-              <p className="text-[11px] text-slate-400 pt-1">{selectedApproval.reason}</p>
-            </div>
-
-            <form onSubmit={handleDecideApproval} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Резолюция кредитного комитета банка *</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder={approvalDecision === 'approved' ? 'Аккредитовано банком на стандартных условиях эскроу-переуступки' : 'Высокий риск застройщика / неполный пакет документов'}
-                  value={approvalNotes}
-                  onChange={(e) => setApprovalNotes(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setSelectedApproval(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className={`px-5 py-2 rounded-xl font-black text-xs cursor-pointer shadow-md ${
-                    approvalDecision === 'approved' ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950' : 'bg-rose-600 hover:bg-rose-500 text-white'
-                  }`}
-                >
-                  {approvalDecision === 'approved' ? 'Утвердить спец-одобрение' : 'Подтвердить отказ'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL: Issue Credit Stamp ================= */}
-      {selectedLimitReq && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-700 space-y-5 animate-scale-up text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <h3 className="font-bold text-white text-base">
-                  {language === 'ru' ? 'Выпуск цифрового штампа лимита' : 'Issue Certified Bank Stamp'}
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                  Аккредитация застройщика в банке-партнёре
+                </span>
+                <h3 className="text-lg font-black text-slate-900 mt-0.5">
+                  «{selectedDevReq.developerName}» (ИНН {selectedDevReq.developerInn})
                 </h3>
+                <p className="text-xs text-slate-500">
+                  Объект: {selectedDevReq.complexName} (Лот #{selectedDevReq.lotCode})
+                </p>
               </div>
-              <button onClick={() => setSelectedLimitReq(null)} className="text-slate-400 hover:text-white">✕</button>
+              <button
+                type="button"
+                onClick={() => setSelectedDevReq(null)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-1">
-              <div className="font-bold text-white">{selectedLimitReq.userName}</div>
-              <div className="font-mono text-indigo-400">{selectedLimitReq.clientCode} • {selectedLimitReq.userPhone}</div>
-              <div className="text-slate-400">Запрошено: {formatRubles(selectedLimitReq.requestedAmountRub)} в {selectedLimitReq.bankName}</div>
-            </div>
-
-            <form onSubmit={handleApproveCreditLimit} className="space-y-4 text-xs">
+            <div className="space-y-4">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">
-                  {language === 'ru' ? 'Окончательный одобренный лимит (₽) *' : 'Approved Credit Limit (₽) *'}
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Банк, принимающий решение об аккредитации:
                 </label>
-                <input
-                  type="number"
-                  required
-                  step={100000}
-                  value={approvedLimitAmount}
-                  onChange={(e) => setApprovedLimitAmount(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-emerald-400 font-mono font-bold text-sm focus:outline-none focus:border-emerald-500"
-                />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {PARTNER_BANKS.map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setDevDecisionBank(b)}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        devDecisionBank === b
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Базовая ставка банка для девелопера (%):
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="35"
+                      value={devBaseRateInput}
+                      onChange={(e) => setDevBaseRateInput(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-black text-slate-900"
+                    />
+                    <Percent className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Норматив ПДН банка (% от дохода):
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([40, 50, 60] as const).map((pdn) => (
+                      <button
+                        key={pdn}
+                        type="button"
+                        onClick={() => setDevMaxPdnPercent(pdn)}
+                        className={`py-2.5 rounded-xl text-xs font-black border ${
+                          devMaxPdnPercent === pdn
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {pdn}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+                <div className="text-xs font-bold text-slate-700">
+                  Доступные льготные программы для объектов застройщика:
+                </div>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <label className="inline-flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={devFamilyMortgage6}
+                      onChange={(e) => setDevFamilyMortgage6(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>Семейная ипотека 6%</span>
+                  </label>
+
+                  <label className="inline-flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={devItMortgage6}
+                      onChange={(e) => setDevItMortgage6(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>IT-ипотека 6%</span>
+                  </label>
+                </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">
-                  {language === 'ru' ? 'Срок действия сертификата *' : 'Validity Date *'}
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={validUntilDate}
-                  onChange={(e) => setValidUntilDate(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">
-                  {language === 'ru' ? 'Служебная отметка офицера *' : 'Officer Notes *'}
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Заключение профильного департамента банка:
                 </label>
                 <textarea
                   rows={2}
-                  value={limitOfficerNotes}
-                  onChange={(e) => setLimitOfficerNotes(e.target.value)}
-                  placeholder="Доход подтвержден по 2-НДФЛ. Лимит зафиксирован для семейной ипотеки и переуступок."
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-emerald-500"
+                  value={devDecisionNotes}
+                  onChange={(e) => setDevDecisionNotes(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900"
                 />
               </div>
+            </div>
 
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setSelectedLimitReq(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer shadow-md"
-                >
-                  Выпустить сертификат
-                </button>
-              </div>
-            </form>
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedDevReq(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecideDeveloperAccreditation('rejected')}
+                className="px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold cursor-pointer"
+              >
+                Отклонить
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecideDeveloperAccreditation('approved')}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer"
+              >
+                Аккредитовать девелопера
+              </button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* MODAL: Credit Limit Decision */}
+      {selectedCreditReq && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-900">
+              Решение по кредитному лимиту: {selectedCreditReq.userName}
+            </h3>
+            <p className="text-xs text-slate-500">
+              Код клиента: {selectedCreditReq.clientCode} • Банк: {selectedCreditReq.bankName}
+            </p>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Одобренная сумма лимита (₽)
+              </label>
+              <input
+                type="number"
+                value={approvedLimitInput}
+                onChange={(e) => setApprovedLimitInput(Number(e.target.value))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Срок действия сертификата
+              </label>
+              <input
+                type="date"
+                value={validUntilInput}
+                onChange={(e) => setValidUntilInput(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Комментарий кредитного инспектора
+              </label>
+              <textarea
+                rows={2}
+                value={creditDecisionNotes}
+                onChange={(e) => setCreditDecisionNotes(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedCreditReq(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecideCreditLimit('rejected')}
+                className="px-4 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold"
+              >
+                Отказать
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecideCreditLimit('approved')}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black"
+              >
+                Одобрить и выпустить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Special Approval Decision */}
+      {selectedSpecialReq && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-900">
+              Спецсогласование лота #{selectedSpecialReq.lotCode}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {selectedSpecialReq.complexName} • {selectedSpecialReq.bankName}
+            </p>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Резолюция банка
+              </label>
+              <textarea
+                rows={3}
+                value={specialDecisionNotes}
+                onChange={(e) => setSpecialDecisionNotes(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedSpecialReq(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecideSpecialApproval('rejected')}
+                className="px-4 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold"
+              >
+                Отклонить
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDecideSpecialApproval('approved')}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black"
+              >
+                Одобрить уступку
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add Bank Staff */}
+      {showAddStaffModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <form
+            onSubmit={handleCreateBankStaff}
+            className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl"
+          >
+            <h3 className="text-lg font-black text-slate-900">Добавить сотрудника банка</h3>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">ФИО и должность</label>
+              <input
+                type="text"
+                required
+                value={newStaffName}
+                onChange={(e) => setNewStaffName(e.target.value)}
+                placeholder="Иванов П.С. (Старший офицер СБР)"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Корпоративный Email
+              </label>
+              <input
+                type="email"
+                required
+                value={newStaffEmail}
+                onChange={(e) => setNewStaffEmail(e.target.value)}
+                placeholder="officer@sberbank.ru"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Банк</label>
+                <select
+                  value={newStaffBank}
+                  onChange={(e) => setNewStaffBank(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900"
+                >
+                  <option value="Сбербанк">ПАО Сбербанк</option>
+                  <option value="ВТБ">Банк ВТБ (ПАО)</option>
+                  <option value="Альфа-Банк">АО Альфа-Банк</option>
+                  <option value="ДОМ.РФ">Банк ДОМ.РФ</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Уровень прав</label>
+                <select
+                  value={newStaffRole}
+                  onChange={(e) => setNewStaffRole(e.target.value as BankEmployee['role'])}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900"
+                >
+                  <option value="chief_manager">Гл. управляющий</option>
+                  <option value="head_manager">Руководитель дирекции</option>
+                  <option value="escrow_agent">Агент СБР / Эскроу</option>
+                  <option value="officer">Кредитный офицер</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddStaffModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black"
+              >
+                Создать учетную запись
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Document Vault S3 Modal */}
+      <DocumentVaultModal
+        isOpen={vaultModalOpen}
+        onClose={() => setVaultModalOpen(false)}
+        entityType="lot"
+        entityId={vaultEntityId}
+        entityTitle={vaultModalTitle}
+        uploadedByUid={user?.id || 'bank-officer'}
+        clientCode={user?.clientCode || 'DEX-BANK'}
+        canReview={true}
+        reviewerName={`${currentOfficerName} (Банк-партнёр)`}
+        onDocumentsChanged={loadData}
+      />
     </div>
   );
 };
+
+export default BankPortalPage;

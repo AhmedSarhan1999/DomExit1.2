@@ -1,21 +1,26 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { Lot } from '../../types';
-import { 
-  ShieldCheck, 
-  CheckCircle2, 
-  Lock, 
-  X, 
-  ArrowRight, 
-  UploadCloud, 
-  FileCheck, 
-  CreditCard, 
-  Banknote, 
-  AlertCircle 
+import { DocumentMetadata, Lot } from '../../types';
+import {
+  ShieldCheck,
+  X,
+  ArrowRight,
+  UploadCloud,
+  FileCheck,
+  CreditCard,
+  Banknote,
+  AlertCircle,
 } from 'lucide-react';
 import { formatRubles } from '../../utils/formatters';
+import {
+  formatRussianPhoneInput,
+  isValidRussianPhone,
+  validateTextEntityName,
+} from '../../utils/validators';
+import { getRegionByCode } from '../../data/russianGeography';
 import { useAuth } from '../../context/AuthContext';
 import { CandidatesRepository } from '../../dal/repositories/CandidatesRepository';
+import { StorageService } from '../../dal/StorageService';
 import { FileManager } from '../../utils/fileManager';
 
 interface BookingModalProps {
@@ -35,35 +40,63 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const { user, login } = useAuth();
 
   const [fullName, setFullName] = useState(user?.name || '');
-  const [contact, setContact] = useState(user?.phone || '+7 ');
+  const [contact, setContact] = useState(user?.phone ? formatRussianPhoneInput(user.phone) : '+7 (');
   const [questions, setQuestions] = useState('');
-  
+
   // Track 1: full_cash vs Track 2: mortgage_substitution
   const [purchaseTrack, setPurchaseTrack] = useState<'full_cash' | 'mortgage_substitution'>('full_cash');
-  const [creditLimitRub, setCreditLimitRub] = useState<number>(lot.remainingInstallmentDebt || 8500000);
-  const [uploadedDoc, setUploadedDoc] = useState<{ name: string; url: string; size: number } | null>(null);
-  
-  const [readiness, setReadiness] = useState<'48h' | '1-2weeks' | 'studying'>('48h');
+  const [creditLimitRub, setCreditLimitRub] = useState<number>(
+    Math.max(lot.remainingInstallmentDebt || 6500000, 3000000)
+  );
+  const [uploadedDocMeta, setUploadedDocMeta] = useState<DocumentMetadata | null>(null);
+  const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
+
+  const [readiness, setReadiness] = useState<'48h' | '1-2weeks'>('48h');
   const [agreementChecked, setAgreementChecked] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (user) {
+      if (!fullName) setFullName(user.name);
+      if (user.phone && contact.length <= 5) setContact(formatRussianPhoneInput(user.phone));
+    }
+  }, [user]);
+
+  useEffect(() => {
+    setCreditLimitRub(Math.max(lot.remainingInstallmentDebt || 6500000, 2000000));
+  }, [lot.lotCode]);
+
   if (!isOpen) return null;
 
-  // Real browser file upload for Bank Pre-Approval Certificate
+  // Real browser file upload stored directly in Yandex S3 Emulator (StorageService)
   const handleUploadBankDoc = async () => {
     try {
-      const file = await FileManager.selectAndReadFile('mortgage_approval', '.pdf,.png,.jpg,.jpeg,.doc,.docx');
-      if (file) {
-        setUploadedDoc({
-          name: file.name,
-          url: file.dataUrl || '',
-          size: file.size || file.sizeBytes,
+      setIsUploadingDoc(true);
+      const selected = await FileManager.selectAndReadFile(
+        purchaseTrack === 'full_cash' ? 'other' : 'mortgage_approval',
+        '.pdf,.png,.jpg,.jpeg,.doc,.docx'
+      );
+      if (selected && selected.file) {
+        const meta = await StorageService.uploadDocument({
+          file: selected.file,
+          category: purchaseTrack === 'full_cash' ? 'buyer_cash_statement' : 'mortgage_approval',
+          categoryLabelRu:
+            purchaseTrack === 'full_cash'
+              ? `Выписка о ликвидности покупателя (#${lot.lotCode})`
+              : `Банковское одобрение ипотеки (#${lot.lotCode})`,
+          entityType: 'buyer_application',
+          entityId: lot.lotCode,
+          uploadedByUid: user?.id || 'guest-buyer',
+          clientCode: user?.clientCode || 'DEX-BUYER',
         });
+        setUploadedDocMeta(meta);
         setErrorMsg(null);
       }
     } catch (err) {
       console.warn('File upload aborted:', err);
+    } finally {
+      setIsUploadingDoc(false);
     }
   };
 
@@ -71,58 +104,99 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     e.preventDefault();
     setErrorMsg(null);
 
-    if (!agreementChecked) {
-      setErrorMsg(language === 'ru' ? 'Пожалуйста, подтвердите согласие с регламентом 214-ФЗ' : 'Please accept 214-FZ terms');
+    const nameCheck = validateTextEntityName(fullName, 'ФИО покупателя');
+    if (!nameCheck.valid) {
+      setErrorMsg(nameCheck.messageRu || 'Укажите корректное ФИО покупателя.');
       return;
     }
 
-    if (purchaseTrack === 'full_cash' && !uploadedDoc) {
+    if (!isValidRussianPhone(contact)) {
       setErrorMsg(
         language === 'ru'
-          ? 'Для трека «100% Кэш» обязательно прикрепите свежую выписку со счета о наличии средств для подтверждения ликвидности.'
+          ? 'Введите корректный российский номер телефона в формате +7 (XXX) XXX-XX-XX.'
+          : 'Enter a valid Russian phone number formatted as +7 (XXX) XXX-XX-XX.'
+      );
+      return;
+    }
+
+    if (!agreementChecked) {
+      setErrorMsg(
+        language === 'ru'
+          ? 'Пожалуйста, подтвердите согласие с регламентом 214-ФЗ'
+          : 'Please accept 214-FZ terms'
+      );
+      return;
+    }
+
+    if (purchaseTrack === 'full_cash' && !uploadedDocMeta) {
+      setErrorMsg(
+        language === 'ru'
+          ? 'Для трека «100% Кэш» прикрепите свежую банковскую выписку о наличии средств.'
           : 'Please upload a recent bank statement confirming liquidity for the 100% Cash track.'
       );
       return;
     }
 
-    if (purchaseTrack === 'mortgage_substitution' && !uploadedDoc) {
-      setErrorMsg(
-        language === 'ru'
-          ? 'Для ипотечного трека обязательно прикрепите скан или фото справки/сертификата об одобрении кредита банком.'
-          : 'Please upload the bank mortgage pre-approval certificate for Track 2.'
-      );
-      return;
+    if (purchaseTrack === 'mortgage_substitution') {
+      if (!uploadedDocMeta) {
+        setErrorMsg(
+          language === 'ru'
+            ? 'Для ипотечного трека прикрепите скан или фото сертификата об одобрении кредита банком.'
+            : 'Please upload the bank mortgage pre-approval certificate.'
+        );
+        return;
+      }
+      if (creditLimitRub < lot.remainingInstallmentDebt) {
+        setErrorMsg(
+          language === 'ru'
+            ? `Одобренный лимит ипотеки не может быть меньше остатка долга застройщику (${formatRubles(
+                lot.remainingInstallmentDebt
+              )}).`
+            : `Approved mortgage limit must cover remaining developer debt (${formatRubles(
+                lot.remainingInstallmentDebt
+              )}).`
+        );
+        return;
+      }
     }
 
     setIsSubmitting(true);
 
     try {
-      // 1. Ensure user is logged in
-      let currentUserId = user?.id;
-      if (!user) {
-        const loggedUser = await login({
-          name: fullName || 'Покупатель ' + lot.lotCode,
-          phone: contact || '+7 (921) 987-65-43',
+      let activeUser = user;
+      if (!activeUser) {
+        activeUser = await login({
+          name: fullName.trim(),
+          phone: contact,
           role: 'buyer',
         });
-        currentUserId = loggedUser.id;
       }
 
-      // 2. Submit candidate bid to CandidatesRepository & Firestore
+      const regionLabel = getRegionByCode(lot.city).shortLabelRu;
+
       await CandidatesRepository.submitBid({
         lotCode: lot.lotCode,
-        userId: currentUserId,
-        name: fullName || user?.name || 'Покупатель ' + lot.lotCode,
-        location: lot.city === 'spb' ? 'Санкт-Петербург' : 'Москва',
+        uid: activeUser.id,
+        userId: activeUser.id,
+        clientCode: activeUser.clientCode,
+        phone: contact,
+        email: activeUser.email,
+        name: fullName.trim(),
+        location: `${regionLabel} • ${lot.district}`,
         buyerTrack: purchaseTrack,
         fundingType: purchaseTrack === 'full_cash' ? 'cash' : 'family-mortgage',
-        availableLiquidity: purchaseTrack === 'full_cash' 
-          ? lot.dduContractPrice 
-          : lot.cashPaidBySeller,
+        availableLiquidity:
+          purchaseTrack === 'full_cash' ? lot.dduContractPrice : lot.cashPaidBySeller,
         creditLimitRub: purchaseTrack === 'mortgage_substitution' ? creditLimitRub : undefined,
-        bankApprovalDocUrl: uploadedDoc?.url,
-        bankApprovalDocName: uploadedDoc?.name,
-        readinessTimeline: readiness === '48h' ? 'Наличные на руках — 48ч' : '1–2 недели',
+        documentId: uploadedDocMeta?.id,
+        bankApprovalDocUrl: uploadedDocMeta?.cloudUrl,
+        bankApprovalDocName: uploadedDocMeta?.name,
+        bankStatementUrl: purchaseTrack === 'full_cash' ? uploadedDocMeta?.cloudUrl : undefined,
+        bankStatementName: purchaseTrack === 'full_cash' ? uploadedDocMeta?.name : undefined,
+        readinessTimeline:
+          readiness === '48h'
+            ? `Готовность к аккредитиву 48ч${questions ? ` • ${questions}` : ''}`
+            : `Выход на сделку 1–2 нед.${questions ? ` • ${questions}` : ''}`,
         status: 'pending',
       });
 
@@ -136,7 +210,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 relative my-8 max-h-[92vh] overflow-y-auto">
         
         {/* Header & Badges */}
@@ -156,6 +230,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
@@ -166,10 +241,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Daily Selection Notice */}
         <div className="p-3.5 bg-sky-50 border border-sky-200 rounded-2xl text-xs text-sky-900 space-y-1">
           <div className="font-bold flex items-center space-x-1.5">
-            <span>📅 Окно приема заявок на сегодня открыто</span>
+            <span>Окно приема заявок открыто • Регистрация в S3-реестре</span>
           </div>
           <p className="text-[11px] text-sky-800/90 leading-relaxed">
-            Все заявки на этот объект направляются напрямую ответственному куратору. Завтра в 10:00 куратор проведет отбор и утвердит покупателя с лучшей подтвержденной платежеспособностью.
+            Заявка фиксируется с вашим персональным кодом клиента ({user?.clientCode || 'DEX-ID'}) и мгновенно поступает в модуль матчмейкинга ответственного куратора.
           </p>
         </div>
 
@@ -182,16 +257,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-5">
           
-          {/* MISSION 5: The Two Purchase Tracks Selector */}
+          {/* The Two Purchase Tracks Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider">
-              {language === 'ru' ? 'Выберите مسار (трек) покупки объекта:' : 'Select Purchase Track:'} *
+              {language === 'ru'
+                ? 'Выберите трек финансирования покупки объекта:'
+                : 'Select Financing Track:'}{' '}
+              *
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               
               {/* Track 1: 100% Cash */}
               <div
-                onClick={() => setPurchaseTrack('full_cash')}
+                onClick={() => {
+                  setPurchaseTrack('full_cash');
+                  setUploadedDocMeta(null);
+                }}
                 className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
                   purchaseTrack === 'full_cash'
                     ? 'border-emerald-500 bg-emerald-50/70 shadow-sm'
@@ -206,17 +287,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-200/80 text-emerald-900">
-                    Быстрый выход
+                    Приоритет №1
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-snug">
-                  Оплата полной стоимости по ДДУ ({formatRubles(lot.dduContractPrice)}) через банковский аккредитив Сбербанка/ВТБ.
+                  Оплата полной стоимости по ДДУ ({formatRubles(lot.dduContractPrice)}) через безотзывный банковский аккредитив.
                 </p>
               </div>
 
               {/* Track 2: Seller Cash + Mortgage Substitution */}
               <div
-                onClick={() => setPurchaseTrack('mortgage_substitution')}
+                onClick={() => {
+                  setPurchaseTrack('mortgage_substitution');
+                  setUploadedDocMeta(null);
+                }}
                 className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
                   purchaseTrack === 'mortgage_substitution'
                     ? 'border-amber-500 bg-amber-50/70 shadow-sm'
@@ -231,53 +315,58 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-200/80 text-amber-900">
-                    Замещение долга
+                    Перевод долга
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-snug">
-                  Кэш продавцу ({formatRubles(lot.cashPaidBySeller)}) + замещение остатка застройщика ({formatRubles(lot.remainingInstallmentDebt)}) ипотекой.
+                  Кэш продавцу ({formatRubles(lot.cashPaidBySeller)}) + замещение остатка девелопера ({formatRubles(lot.remainingInstallmentDebt)}) ипотекой.
                 </p>
               </div>
 
             </div>
           </div>
 
-          {/* Conditional Field for Track 1: 100% Cash (Mandatory Bank Statement) */}
+          {/* Conditional Field for Track 1: 100% Cash */}
           {purchaseTrack === 'full_cash' && (
-            <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-3 animate-fade-in">
+            <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-3">
               <div className="text-xs font-bold text-emerald-950 flex items-center space-x-2">
                 <FileCheck className="w-4 h-4 text-emerald-700" />
-                <span>Обязательное подтверждение доступной ликвидности (100% Кэш)</span>
+                <span>Подтверждение доступной ликвидности (Yandex S3 Vault)</span>
               </div>
               <p className="text-[11px] text-slate-600">
-                Загрузите свежую банковскую выписку со счета или депозита о наличии денежных средств на сумму не менее {formatRubles(lot.dduContractPrice)}.
+                Загрузите свежую банковскую выписку со счета о наличии средств на сумму не менее {formatRubles(lot.dduContractPrice)}.
               </p>
               <div>
                 <button
                   type="button"
                   onClick={handleUploadBankDoc}
-                  className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-emerald-400 hover:border-emerald-500 bg-white hover:bg-emerald-50/50 text-slate-800 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-2xs"
+                  disabled={isUploadingDoc}
+                  className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-emerald-400 hover:border-emerald-500 bg-white hover:bg-emerald-50/50 text-slate-800 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer"
                 >
                   <UploadCloud className="w-4 h-4 text-emerald-600" />
                   <span className="truncate">
-                    {uploadedDoc ? `Прикреплено: ${uploadedDoc.name}` : 'Загрузить свежую выписку со счета (PDF/JPG)'}
+                    {isUploadingDoc
+                      ? 'Шифрование и загрузка в S3...'
+                      : uploadedDocMeta
+                      ? `В сейфе S3: ${uploadedDocMeta.name}`
+                      : 'Загрузить выписку со счета (PDF / JPG / PNG)'}
                   </span>
                 </button>
-                {uploadedDoc && (
+                {uploadedDocMeta && (
                   <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">
-                    ✓ Выписка успешно загружена ({(uploadedDoc.size / 1024).toFixed(1)} КБ)
+                    ✓ Сохранено в защищенном хранилище ({(uploadedDocMeta.sizeBytes / 1024).toFixed(1)} КБ • SHA-256)
                   </span>
                 )}
               </div>
             </div>
           )}
 
-          {/* Conditional Fields for Track 2 (Mandatory Bank Pre-Approval Certificate + Credit Limit) */}
+          {/* Conditional Fields for Track 2 */}
           {purchaseTrack === 'mortgage_substitution' && (
-            <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-4 animate-fade-in">
+            <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-4">
               <div className="text-xs font-bold text-amber-900 flex items-center space-x-2">
                 <FileCheck className="w-4 h-4 text-amber-700" />
-                <span>Обязательное подтверждение кредитоспособности (214-ФЗ)</span>
+                <span>Подтверждение кредитного лимита банка (214-ФЗ)</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -294,28 +383,32 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:border-amber-500 bg-white"
                   />
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Минимум для погашения долга застройщику: {formatRubles(lot.remainingInstallmentDebt)}
+                    Минимум по остатку ДДУ: {formatRubles(lot.remainingInstallmentDebt)}
                   </span>
                 </div>
 
-                {/* Real File Upload Button */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Справка об одобрении банка (PDF/JPG) *
+                    Сертификат одобрения банка (PDF/JPG) *
                   </label>
                   <button
                     type="button"
                     onClick={handleUploadBankDoc}
-                    className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-amber-400 hover:border-amber-500 bg-white hover:bg-amber-50/50 text-slate-800 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-2xs"
+                    disabled={isUploadingDoc}
+                    className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-amber-400 hover:border-amber-500 bg-white hover:bg-amber-50/50 text-slate-800 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer"
                   >
                     <UploadCloud className="w-4 h-4 text-amber-600" />
                     <span className="truncate">
-                      {uploadedDoc ? `Прикреплено: ${uploadedDoc.name}` : 'Загрузить справку из банка'}
+                      {isUploadingDoc
+                        ? 'Шифрование S3...'
+                        : uploadedDocMeta
+                        ? `В сейфе S3: ${uploadedDocMeta.name}`
+                        : 'Загрузить справку банка'}
                     </span>
                   </button>
-                  {uploadedDoc && (
+                  {uploadedDocMeta && (
                     <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">
-                      ✓ Документ успешно загружен ({(uploadedDoc.size / 1024).toFixed(1)} КБ)
+                      ✓ Документ сохранен в S3 ({(uploadedDocMeta.sizeBytes / 1024).toFixed(1)} КБ)
                     </span>
                   )}
                 </div>
@@ -323,16 +416,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
           )}
 
-          {/* Inputs: Full Name & Contact */}
+          {/* Inputs: Full Name & Strict Russian Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                {language === 'ru' ? 'Ваше полное имя *' : 'Full Name *'}
+                {language === 'ru' ? 'Ваше полное ФИО *' : 'Full Name *'}
               </label>
               <input
                 type="text"
                 required
-                placeholder={language === 'ru' ? 'Иван Сергеевич П.' : 'John Doe'}
+                placeholder={language === 'ru' ? 'Смирнов Иван Сергеевич' : 'Ivan Smirnov'}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-emerald-500 bg-slate-50 focus:bg-white"
@@ -340,33 +433,50 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                {language === 'ru' ? 'Номер телефона / Telegram *' : 'Phone / Telegram *'}
+                {language === 'ru' ? 'Телефон РФ (+7) *' : 'Russian Phone (+7) *'}
               </label>
               <input
-                type="text"
+                type="tel"
                 required
-                placeholder="+7 (___) ___-__-__"
+                placeholder="+7 (921) 000-00-00"
                 value={contact}
-                onChange={(e) => setContact(e.target.value)}
+                onChange={(e) => setContact(formatRussianPhoneInput(e.target.value))}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-emerald-500 bg-slate-50 focus:bg-white font-mono"
               />
             </div>
           </div>
 
-          {/* Textarea Questions */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              {language === 'ru'
-                ? 'Дополнительные комментарии или готовность выйти на сделку:'
-                : 'Additional comments or timeline:'}
-            </label>
-            <textarea
-              rows={2}
-              placeholder={language === 'ru' ? 'Например: готов внести депозит на аккредитив завтра, согласовано с банком' : 'e.g. ready to deposit into escrow tomorrow'}
-              value={questions}
-              onChange={(e) => setQuestions(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-emerald-500"
-            />
+          {/* Readiness & Comments */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Срок выхода на сделку:
+              </label>
+              <select
+                value={readiness}
+                onChange={(e) => setReadiness(e.target.value as '48h' | '1-2weeks')}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold bg-white"
+              >
+                <option value="48h">В течение 48 часов</option>
+                <option value="1-2weeks">В течение 1–2 недель</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                {language === 'ru' ? 'Комментарий куратору:' : 'Notes to Curator:'}
+              </label>
+              <input
+                type="text"
+                placeholder={
+                  language === 'ru'
+                    ? 'Готов открыть аккредитив в Сбербанке / ВТБ'
+                    : 'Ready to open escrow L/C'
+                }
+                value={questions}
+                onChange={(e) => setQuestions(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+              />
+            </div>
           </div>
 
           {/* Mandatory Green Acknowledgment */}
@@ -381,13 +491,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               />
               <span className="leading-snug">
                 {language === 'ru'
-                  ? 'Согласен с комиссией сервиса 2.5%, выплачиваемой строго ПОСЛЕ государственной регистрации права в Росреестре (0 ₽ предоплаты). Подтверждаю юридическую проверку и подачу в ежедневное окно отбора.'
+                  ? 'Согласен с сервисным сбором 2.5%, выплачиваемым строго ПОСЛЕ государственной регистрации уступки в Росреестре (0 ₽ предоплаты). Подтверждаю обработку данных по 152-ФЗ.'
                   : 'I agree to the 2.5% service commission paid strictly AFTER state registration in Rosreestr (0 ₽ upfront).'}
               </span>
             </label>
           </div>
 
-          {/* Action Button: Emerald CTA */}
+          {/* Action Button */}
           <button
             type="submit"
             disabled={isSubmitting}
@@ -395,8 +505,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           >
             <span>
               {isSubmitting
-                ? (language === 'ru' ? 'Регистрация предложения...' : 'Submitting Offer...')
-                : (language === 'ru' ? 'Отправить заявку куратору лота ->' : 'Submit Offer to Assigned Curator ->')}
+                ? language === 'ru'
+                  ? 'Регистрация предложения...'
+                  : 'Submitting Offer...'
+                : language === 'ru'
+                ? 'Отправить заявку куратору лота →'
+                : 'Submit Offer to Assigned Curator →'}
             </span>
             <ArrowRight className="w-4 h-4 stroke-[3]" />
           </button>
@@ -407,4 +521,3 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     </div>
   );
 };
-

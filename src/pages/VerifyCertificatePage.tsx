@@ -14,8 +14,6 @@ import {
   Printer,
   Award
 } from 'lucide-react';
-import { UnifiedNavbar } from '../components/layout/UnifiedNavbar';
-import { UnifiedFooter } from '../components/layout/UnifiedFooter';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { Lot } from '../types';
 import { formatRubles } from '../utils/formatters';
@@ -48,9 +46,8 @@ export const VerifyCertificatePage: React.FC = () => {
 
   if (!lot) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
-        <UnifiedNavbar />
-        <div className="max-w-xl mx-auto my-20 p-8 bg-white border border-slate-200 rounded-2xl text-center space-y-4 shadow-sm">
+      <div className="py-16 px-4 bg-slate-50">
+        <div className="max-w-xl mx-auto p-8 bg-white border border-slate-200 rounded-2xl text-center space-y-4 shadow-sm">
           <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto">
             <Lock className="w-8 h-8" />
           </div>
@@ -70,7 +67,6 @@ export const VerifyCertificatePage: React.FC = () => {
             {language === 'ru' ? 'Вернуться в каталог' : 'Back to Catalog'}
           </Link>
         </div>
-        <UnifiedFooter />
       </div>
     );
   }
@@ -141,8 +137,10 @@ export const VerifyCertificatePage: React.FC = () => {
             </div>
 
             <div>
-              <span className="text-xs text-slate-500 font-medium">Характеристики лота</span>
-              <div className="text-base font-bold text-slate-900 mt-0.5">{lot.areaM2} м² • {lot.floor} этаж</div>
+              <span className="text-xs text-slate-500 font-medium">Характеристики лота (152-ФЗ)</span>
+              <div className="text-base font-bold text-slate-900 mt-0.5">
+                {lot.areaM2} м² • {lot.ownerDossier?.hideExactFloor ? `${lot.ownerDossier.floorRangeDisplay} эт.` : `${lot.floor} этаж`}
+              </div>
               <div className="text-xs text-slate-600">Срок сдачи: {lot.deliveryDate}</div>
             </div>
 

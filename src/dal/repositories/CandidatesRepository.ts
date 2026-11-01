@@ -1,42 +1,64 @@
 import { BuyerCandidate } from '../../types';
 import { initialCandidates } from '../seedData';
-import { FirebaseAdapter } from '../adapters/FirebaseAdapter';
+import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
+import { AuditLogsRepository } from './AuditLogsRepository';
 
-const COLLECTION = 'candidates';
+const COLLECTION = 'buyer_applications';
+const LEGACY_COLLECTION = 'candidates';
 const MAX_ACTIVE_BIDS_PER_USER = 3;
 
 export class CandidatesRepository {
   static async getAll(): Promise<BuyerCandidate[]> {
-    return FirebaseAdapter.getAllEntities<BuyerCandidate>(COLLECTION, initialCandidates);
+    const [canonical, legacy] = await Promise.all([
+      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, initialCandidates),
+      DatabaseGateway.getAll<BuyerCandidate>(LEGACY_COLLECTION, []),
+    ]);
+
+    const merged = new Map<string, BuyerCandidate>();
+    for (const item of [...legacy, ...canonical]) {
+      merged.set(item.id, item);
+    }
+
+    return Array.from(merged.values()).sort(
+      (a, b) =>
+        new Date(b.timestamp || b.requestedTimestamp).getTime() -
+        new Date(a.timestamp || a.requestedTimestamp).getTime()
+    );
   }
 
   static async getByLotCode(lotCode: string): Promise<BuyerCandidate[]> {
     const all = await this.getAll();
-    return all.filter((c) => !c.lotCode || c.lotCode.toUpperCase() === lotCode.toUpperCase());
+    const clean = lotCode.trim().toUpperCase();
+    return all.filter((c) => c.lotCode && c.lotCode.toUpperCase() === clean);
   }
 
-  static async getByUserId(userId: string): Promise<BuyerCandidate[]> {
+  static async getByUserId(userId: string, clientCode?: string): Promise<BuyerCandidate[]> {
     const all = await this.getAll();
-    return all.filter((c) => c.userId === userId);
+    return all.filter(
+      (c) =>
+        (userId && (c.uid === userId || c.userId === userId)) ||
+        (clientCode && c.clientCode?.toUpperCase() === clientCode.toUpperCase())
+    );
   }
 
-  /**
-   * Count user's active applications (Mission 9)
-   */
-  static async getActiveBidsCount(userId: string): Promise<number> {
-    const userBids = await this.getByUserId(userId);
+  static async getActiveBidsCount(userId: string, clientCode?: string): Promise<number> {
+    const userBids = await this.getByUserId(userId, clientCode);
     return userBids.filter(
-      (b) => b.status === 'pending' || b.status === 'under_review' || b.status === 'priority_reserved'
+      (b) =>
+        b.status === 'pending' ||
+        b.status === 'under_review' ||
+        b.status === 'priority_reserved'
     ).length;
   }
 
   static async submitBid(data: Partial<BuyerCandidate>): Promise<BuyerCandidate> {
-    const userId = data.userId || 'current-user';
+    const uid = data.uid || data.userId || 'current-user';
+    const clientCode = data.clientCode || 'DEX-000000';
+    const nowIso = new Date().toISOString();
 
-    // Mission 9.1: Enforce maximum 3 active purchase applications
-    const activeCount = await this.getActiveBidsCount(userId);
+    const activeCount = await this.getActiveBidsCount(uid, clientCode);
     if (activeCount >= MAX_ACTIVE_BIDS_PER_USER) {
       throw new Error(
         'Вы достигли лимита активных заявок (максимум 3). Подача новой заявки станет доступна после завершения отбора по одной из текущих заявок.'
@@ -47,120 +69,196 @@ export class CandidatesRepository {
       id: `cand-${Date.now()}`,
       code: `B-${Math.floor(400 + Math.random() * 599)}`,
       lotCode: data.lotCode || 'U-10566',
-      userId: userId,
-      name: data.name || 'Анонимный покупатель',
-      location: data.location || 'Санкт-Петербург',
+      userId: uid,
+      uid,
+      clientCode,
+      phone: data.phone,
+      email: data.email,
+      name: data.name || 'Покупатель DomExit',
+      location: data.location || 'Российская Федерация',
       matchScore: data.buyerTrack === 'full_cash' ? 98 : 94,
-      fundingType: data.fundingType || (data.buyerTrack === 'full_cash' ? 'cash' : 'family-mortgage'),
+      fundingType:
+        data.fundingType || (data.buyerTrack === 'full_cash' ? 'cash' : 'family-mortgage'),
       buyerTrack: data.buyerTrack || 'full_cash',
       creditLimitRub: data.creditLimitRub || 0,
       bankApprovalDocUrl: data.bankApprovalDocUrl,
       bankApprovalDocName: data.bankApprovalDocName,
       bankStatementUrl: data.bankStatementUrl,
       bankStatementName: data.bankStatementName,
+      documentId: data.documentId,
       curatorVerified: false,
-      readinessTimeline: data.buyerTrack === 'full_cash' 
-        ? '100% Кэш через СБР Сбера — 48ч' 
-        : `Ипотека одобрена: лимит ${data.creditLimitRub?.toLocaleString('ru-RU')} ₽`,
-      availableLiquidity: data.availableLiquidity || (data.buyerTrack === 'full_cash' ? 3000000 : 2500000),
-      priorityBadge: data.buyerTrack === 'full_cash' ? 'Кэш 100% + Выписка' : 'Ипотека с документами',
+      isVerifiedByCurator: false,
+      readinessTimeline:
+        data.readinessTimeline ||
+        (data.buyerTrack === 'full_cash'
+          ? '100% Кэш через СБР / Аккредитив — 48ч'
+          : `Ипотека одобрена: лимит ${(data.creditLimitRub || 0).toLocaleString('ru-RU')} ₽`),
+      availableLiquidity:
+        data.availableLiquidity || (data.buyerTrack === 'full_cash' ? 3000000 : 2500000),
+      priorityBadge:
+        data.buyerTrack === 'full_cash'
+          ? 'Кэш 100% + Выписка'
+          : 'Ипотека с банковским одобрением',
       status: 'pending',
-      requestedTimestamp: new Date().toISOString(),
+      requestedTimestamp: nowIso,
+      timestamp: nowIso,
     };
 
-    await FirebaseAdapter.saveEntity(COLLECTION, newBid);
+    await DatabaseGateway.save<BuyerCandidate>(COLLECTION, newBid);
+
+    await AuditLogsRepository.addLog({
+      lotCode: newBid.lotCode,
+      operatorId: uid,
+      operatorName: `${newBid.name} (${clientCode})`,
+      operatorRole: 'client',
+      actionType: 'buyer_bid_submitted',
+      title: `Подана заявка на покупку лота #${newBid.lotCode} (${newBid.code})`,
+      description: `Трек: ${
+        newBid.buyerTrack === 'full_cash' ? '100% собственные средства' : 'Кэш продавцу + Ипотека'
+      }. Доступный кэш: ${newBid.availableLiquidity.toLocaleString('ru-RU')} ₽.`,
+    });
+
     return newBid;
   }
 
-  /**
-   * Verify candidate by curator (Mission 8.2)
-   */
-  static async verifyCandidate(candidateId: string, curatorName: string): Promise<BuyerCandidate | null> {
+  static async verifyCandidate(
+    candidateId: string,
+    curatorName: string
+  ): Promise<BuyerCandidate | null> {
     const list = await this.getAll();
     const candidate = list.find((c) => c.id === candidateId || c.code === candidateId);
     if (!candidate) return null;
 
     candidate.curatorVerified = true;
+    candidate.isVerifiedByCurator = true;
     candidate.curatorVerifiedAt = new Date().toISOString();
     candidate.curatorVerifiedBy = curatorName;
     candidate.status = 'under_review';
 
-    await FirebaseAdapter.saveEntity(COLLECTION, candidate);
+    await DatabaseGateway.save<BuyerCandidate>(COLLECTION, candidate);
+
+    await AuditLogsRepository.addLog({
+      lotCode: candidate.lotCode,
+      operatorName: curatorName,
+      operatorRole: 'curator',
+      actionType: 'buyer_matched',
+      title: `Подтверждена ликвидность покупателя ${candidate.code} (${candidate.name})`,
+      description: `Куратор верифицировал банковские документы кандидата по лоту #${candidate.lotCode}.`,
+    });
+
     return candidate;
   }
 
   /**
-   * Accept Winning Candidate with Auto-Exclusion from other lots (Mission 9.2)
+   * Accepts winning candidate for a lot and automatically withdraws their competing bids on other lots.
+   * Accepts `(lotCode, candidateId)` (and defensively detects reversed arguments if passed).
    */
-  static async acceptCandidate(candidateId: string, lotCode: string): Promise<BuyerCandidate | null> {
+  static async acceptCandidate(
+    lotCodeOrCandId: string,
+    candidateIdOrLotCode: string,
+    curatorName: string = 'Куратор DomExit'
+  ): Promise<BuyerCandidate | null> {
+    const looksLikeCandFirst =
+      lotCodeOrCandId.startsWith('cand-') ||
+      lotCodeOrCandId.startsWith('c-') ||
+      lotCodeOrCandId.startsWith('B-');
+
+    const lotCode = looksLikeCandFirst ? candidateIdOrLotCode : lotCodeOrCandId;
+    const candidateId = looksLikeCandFirst ? lotCodeOrCandId : candidateIdOrLotCode;
+
     const all = await this.getAll();
     let winner: BuyerCandidate | null = null;
 
-    // 1. Find winner and mark on this lot
     for (const c of all) {
-      if ((!c.lotCode || c.lotCode.toUpperCase() === lotCode.toUpperCase()) && (c.id === candidateId || c.code === candidateId)) {
+      if (
+        c.lotCode?.toUpperCase() === lotCode.toUpperCase() &&
+        (c.id === candidateId || c.code === candidateId)
+      ) {
         c.status = 'priority_reserved';
         winner = c;
-        await FirebaseAdapter.saveEntity(COLLECTION, c);
-      } else if (c.lotCode?.toUpperCase() === lotCode.toUpperCase() && c.id !== candidateId && c.code !== candidateId) {
+        await DatabaseGateway.save<BuyerCandidate>(COLLECTION, c);
+      } else if (
+        c.lotCode?.toUpperCase() === lotCode.toUpperCase() &&
+        c.id !== candidateId &&
+        c.code !== candidateId
+      ) {
         c.status = 'declined';
-        await FirebaseAdapter.saveEntity(COLLECTION, c);
+        await DatabaseGateway.save<BuyerCandidate>(COLLECTION, c);
       }
     }
 
-    // 2. Mission 9.2: Automatically cancel winner's active applications on ALL OTHER lots
-    if (winner && winner.userId) {
+    const winnerUid = winner?.uid || winner?.userId;
+    if (winner && winnerUid) {
       for (const otherBid of all) {
+        const otherUid = otherBid.uid || otherBid.userId;
         if (
-          otherBid.userId === winner.userId &&
+          otherUid === winnerUid &&
           otherBid.lotCode?.toUpperCase() !== lotCode.toUpperCase() &&
           (otherBid.status === 'pending' || otherBid.status === 'under_review')
         ) {
           otherBid.status = 'withdrawn_accepted_elsewhere';
-          await FirebaseAdapter.saveEntity(COLLECTION, otherBid);
+          await DatabaseGateway.save<BuyerCandidate>(COLLECTION, otherBid);
         }
       }
     }
 
-    // Update Lot status to 'processing'
     await LotsRepository.updateStatus(lotCode, 'processing');
 
-    // Update Deal stage
-    await DealsRepository.updateStage(lotCode, 'closing_escrow');
+    const deal = await DealsRepository.getById(lotCode);
+    if (deal && winner) {
+      deal.stage = 'closing_escrow';
+      deal.buyerName = winner.name;
+      deal.buyerUserId = winner.uid || winner.userId;
+      deal.buyerClientCode = winner.clientCode;
+      await DealsRepository.update(deal);
+    } else {
+      await DealsRepository.updateStage(lotCode, 'closing_escrow');
+    }
+
+    if (winner) {
+      await AuditLogsRepository.addLog({
+        lotCode,
+        dealId: deal?.dealId,
+        operatorName: curatorName,
+        operatorRole: 'curator',
+        actionType: 'buyer_matched',
+        title: `Победителем отбора по лоту #${lotCode} утвержден ${winner.name} (${winner.code})`,
+        description: `Сделка переведена на этап эскроу/аккредитива. Прочие активные заявки покупателя автоматически отозваны.`,
+      });
+    }
 
     return winner;
   }
 
-  /**
-   * Emergency relist: notify previous candidates when deal is cancelled (Mission 10.5)
-   */
   static async notifyCandidatesForRelisting(lotCode: string): Promise<number> {
     const all = await this.getAll();
-    const lotCandidates = all.filter(c => c.lotCode?.toUpperCase() === lotCode.toUpperCase());
-    
-    // Reset declined candidates to 'pending' if they want to re-compete
+    const lotCandidates = all.filter((c) => c.lotCode?.toUpperCase() === lotCode.toUpperCase());
+
     let count = 0;
     for (const c of lotCandidates) {
       if (c.status === 'declined' || c.status === 'priority_reserved') {
         c.status = 'pending';
-        await FirebaseAdapter.saveEntity(COLLECTION, c);
+        await DatabaseGateway.save<BuyerCandidate>(COLLECTION, c);
         count++;
       }
     }
     return count;
   }
 
-  static async updateStatus(candidateId: string, status: BuyerCandidate['status']): Promise<BuyerCandidate | null> {
+  static async updateStatus(
+    candidateId: string,
+    status: BuyerCandidate['status']
+  ): Promise<BuyerCandidate | null> {
     const list = await this.getAll();
     const item = list.find((c) => c.id === candidateId || c.code === candidateId);
     if (!item) return null;
     item.status = status;
-    await FirebaseAdapter.saveEntity(COLLECTION, item);
+    await DatabaseGateway.save<BuyerCandidate>(COLLECTION, item);
     return item;
   }
 
   static async update(candidate: BuyerCandidate): Promise<BuyerCandidate> {
-    await FirebaseAdapter.saveEntity(COLLECTION, candidate);
+    await DatabaseGateway.save<BuyerCandidate>(COLLECTION, candidate);
     return candidate;
   }
 
@@ -168,4 +266,3 @@ export class CandidatesRepository {
     return this.getByLotCode(lotCode);
   }
 }
-

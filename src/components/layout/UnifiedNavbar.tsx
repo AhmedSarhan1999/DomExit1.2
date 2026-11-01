@@ -73,7 +73,7 @@ export const UnifiedNavbar: React.FC = () => {
       badge: '🤝 Агентство',
       subtitle: language === 'ru' ? 'Рефералы DEX-ID, бонусы 50 000 ₽' : 'Referral tracking & bonuses',
       icon: '🤝',
-      targetPath: '/portal',
+      targetPath: '/portal?tab=partner',
     },
     {
       id: 'investor',
@@ -81,7 +81,7 @@ export const UnifiedNavbar: React.FC = () => {
       badge: '💎 Закрытый пул',
       subtitle: language === 'ru' ? 'Ранний доступ 48ч, флиппинг-пакеты' : 'Early 48h access & syndicates',
       icon: '💎',
-      targetPath: '/portal',
+      targetPath: '/portal?tab=investor',
     },
     {
       id: 'seller',
@@ -89,7 +89,7 @@ export const UnifiedNavbar: React.FC = () => {
       badge: '🏠 Александр В.',
       subtitle: language === 'ru' ? 'Трекер 5 этапов, выплата кэша 100%' : '5-step cession deal tracker',
       icon: '🏠',
-      targetPath: '/client-tracker',
+      targetPath: '/portal?tab=seller',
     },
     {
       id: 'buyer',
@@ -97,7 +97,7 @@ export const UnifiedNavbar: React.FC = () => {
       badge: '🔑 Иван П.',
       subtitle: language === 'ru' ? '3 заявки, ликвидность, подбор лота' : '3 active bids, credit check',
       icon: '🔑',
-      targetPath: '/portal',
+      targetPath: '/portal?tab=buyer',
     },
   ];
 
