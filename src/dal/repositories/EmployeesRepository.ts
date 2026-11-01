@@ -73,4 +73,8 @@ export class EmployeesRepository {
     await DatabaseGateway.save<Employee>(COLLECTION, emp);
     return emp;
   }
+
+  static async delete(employeeId: string): Promise<boolean> {
+    return DatabaseGateway.remove(COLLECTION, employeeId);
+  }
 }

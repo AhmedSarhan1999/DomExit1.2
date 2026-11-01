@@ -683,6 +683,39 @@ class DevelopersRepositoryController {
       hasItMortgage: otherTerms.some((b) => b.itMortgage6),
     };
   }
+
+  async registerDeveloperFromProject(params: {
+    name: string;
+    inn: string;
+    lotCode?: string;
+  }): Promise<AccreditedDeveloper> {
+    const existing = await this.findDeveloperByName(params.name);
+    if (existing) {
+      if (params.inn && (!existing.inn || existing.inn === '7700000000')) {
+        existing.inn = params.inn;
+        await DatabaseGateway.save<AccreditedDeveloper>(DEVELOPERS_COLLECTION, existing);
+      }
+      return existing;
+    }
+
+    const now = new Date().toISOString();
+    const newDev: AccreditedDeveloper = {
+      id: `dev-project-${Date.now()}`,
+      name: params.name.trim(),
+      inn: params.inn.trim(),
+      isAccredited: false, // NOT institutionally accredited for all projects in Tab 2
+      registrationSource: 'project_approval',
+      registrationNote: `Зарегистрирован через индивидуальное одобрение проекта${
+        params.lotCode ? ` (Лот #${params.lotCode})` : ''
+      }`,
+      bankTerms: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await DatabaseGateway.save<AccreditedDeveloper>(DEVELOPERS_COLLECTION, newDev);
+    return newDev;
+  }
 }
 
 export const DevelopersRepository = new DevelopersRepositoryController();

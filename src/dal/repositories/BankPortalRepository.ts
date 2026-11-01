@@ -12,6 +12,7 @@ import { DealsRepository } from './DealsRepository';
 import { LotsRepository } from './LotsRepository';
 import { UsersRepository } from './UsersRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { DevelopersRepository } from './DevelopersRepository';
 
 const PARTNER_BANKS_COLLECTION = 'partner_banks';
 const BANK_EMP_COLLECTION = 'bank_employees';
@@ -110,6 +111,22 @@ export class BankPortalRepository {
     return emp;
   }
 
+  static async updateBankEmployee(
+    id: string,
+    updates: Partial<BankEmployee>
+  ): Promise<BankEmployee | null> {
+    const employees = await this.getAllBankEmployees();
+    const emp = employees.find((e) => e.id === id);
+    if (!emp) return null;
+    Object.assign(emp, updates);
+    await DatabaseGateway.save<BankEmployee>(BANK_EMP_COLLECTION, emp);
+    return emp;
+  }
+
+  static async deleteBankEmployee(id: string): Promise<boolean> {
+    return DatabaseGateway.remove(BANK_EMP_COLLECTION, id);
+  }
+
   static async toggleBankEmployeeStatus(id: string): Promise<BankEmployee | null> {
     const employees = await this.getAllBankEmployees();
     const emp = employees.find((e) => e.id === id);
@@ -129,7 +146,9 @@ export class BankPortalRepository {
         complexName: 'ЖК «Хвойный Квартал» (Корпус 1)',
         projectTitle: 'Индивидуальный проект «Хвойный Квартал»',
         developer: 'ООО «СтройИнвест-Северо-Запад»',
+        developerInn: '7814892011',
         contractorName: 'ООО «СтройИнвест-Северо-Запад»',
+        contractorInn: '7814892011',
         location: 'Санкт-Петербург, Приморский район',
         costPriceRub: 7200000,
         contractPriceRub: 9850000,
@@ -149,7 +168,9 @@ export class BankPortalRepository {
         complexName: 'Коттеджный поселок «Озерный Край»',
         projectTitle: 'Вилла «Озерный Край» (Секция 4Б)',
         developer: 'ООО «СтройИнвест-Северо-Запад»',
+        developerInn: '7814892011',
         contractorName: 'ООО «СтройИнвест-Северо-Запад»',
+        contractorInn: '7814892011',
         location: 'Ленинградская область, Всеволожский район',
         costPriceRub: 10500000,
         contractPriceRub: 14200000,
@@ -169,7 +190,9 @@ export class BankPortalRepository {
         complexName: 'Вилла «Финский Залив»',
         projectTitle: 'Частная резиденция «Финский Залив»',
         developer: 'ИП «Васильев Частный Проект»',
+        developerInn: '781198451203',
         contractorName: 'ИП «Васильев Частный Проект»',
+        contractorInn: '781198451203',
         location: 'Санкт-Петербург, Курортный район, Сестрорецк',
         costPriceRub: 13800000,
         contractPriceRub: 18500000,
@@ -189,7 +212,9 @@ export class BankPortalRepository {
         complexName: 'ЖК «Морская Набережная»',
         projectTitle: 'ЖК «Морская Набережная» (Корпус 8)',
         developer: 'Группа ЛСР',
+        developerInn: '7838001457',
         contractorName: 'Группа ЛСР',
+        contractorInn: '7838001457',
         location: 'Санкт-Петербург, Василеостровский район',
         costPriceRub: 5900000,
         contractPriceRub: 7900000,
@@ -204,6 +229,34 @@ export class BankPortalRepository {
         maxPdnPercent: 50,
       },
     ]);
+  }
+
+  static async addSpecialApproval(
+    data: Partial<SpecialApprovalRequest>
+  ): Promise<SpecialApprovalRequest> {
+    const newReq: SpecialApprovalRequest = {
+      id: data.id || `spec-${Date.now()}`,
+      lotId: data.lotId || `lot-${Date.now()}`,
+      lotCode: data.lotCode || 'U-00000',
+      complexName: data.complexName || 'Объект строительства',
+      developer: data.developer || 'Не указан',
+      developerInn: data.developerInn,
+      contractorName: data.contractorName || data.developer,
+      contractorInn: data.contractorInn || data.developerInn,
+      projectTitle: data.projectTitle || data.complexName,
+      location: data.location || 'Санкт-Петербург и ЛО',
+      costPriceRub: data.costPriceRub || data.contractPriceRub || 5000000,
+      contractPriceRub: data.contractPriceRub || 6000000,
+      requestedByEmployeeId: data.requestedByEmployeeId || 'system',
+      requestedByEmployeeName: data.requestedByEmployeeName || 'Система DomExit',
+      bankName: data.bankName || 'Сбербанк',
+      reason: data.reason || 'Запрос проектного финансирования независимого подрядчика.',
+      requestedAt: data.requestedAt || new Date().toISOString(),
+      status: data.status || 'pending',
+      documentIds: data.documentIds || [],
+    };
+    await DatabaseGateway.save<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, newReq);
+    return newReq;
   }
 
   static async requestSpecialApproval(data: {
@@ -268,8 +321,37 @@ export class BankPortalRepository {
 
     const lot = await LotsRepository.getByCode(req.lotCode);
     if (lot) {
-      lot.specialApprovalStatus = decision;
+      if (decision === 'approved') {
+        lot.specialApprovalStatus = 'approved';
+        lot.developerAccreditationStatus = 'project_approved';
+        lot.approvedBankFinancing = {
+          bankName: req.bankName,
+          approvedRatePercent: approvedRatePercent || 19.9,
+          maxPdnPercent: maxPdnPercent || 50,
+          approvedAt: new Date().toISOString(),
+          decidedBy,
+        };
+        const cleanTags = (lot.tags || []).filter((t) => t !== 'Ожидает аккредитации банков');
+        const finTag = `Финансирование: ${req.bankName} (${approvedRatePercent || 19.9}%)`;
+        if (!cleanTags.includes(finTag)) {
+          cleanTags.push(finTag);
+        }
+        lot.tags = cleanTags;
+      } else {
+        lot.specialApprovalStatus = 'rejected';
+      }
       await LotsRepository.update(lot);
+    }
+
+    // Auto-register developer in Central Platform Directory (Section 3 Requirement)
+    if (decision === 'approved') {
+      const devName = req.contractorName || req.developer;
+      const devInn = req.contractorInn || req.developerInn || '7814892011';
+      await DevelopersRepository.registerDeveloperFromProject({
+        name: devName,
+        inn: devInn,
+        lotCode: req.lotCode,
+      });
     }
 
     await AuditLogsRepository.addLog({
@@ -277,8 +359,8 @@ export class BankPortalRepository {
       operatorName: decidedBy,
       operatorRole: 'bank_officer',
       actionType: 'special_bank_approval_decided',
-      title: `Банк ${req.bankName}: спец-аккредитация лота #${req.lotCode} — ${
-        decision === 'approved' ? 'ОДОБРЕНА' : 'ОТКЛОНЕНА'
+      title: `Банк ${req.bankName}: проектное финансирование лота #${req.lotCode} — ${
+        decision === 'approved' ? 'ОДОБРЕНО' : 'ОТКЛОНЕНО'
       }`,
       description: notes || 'Решение зафиксировано в банковском шлюзе.',
     });

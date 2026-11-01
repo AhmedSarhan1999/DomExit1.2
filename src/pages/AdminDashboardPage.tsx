@@ -56,7 +56,10 @@ import {
   Building2,
   Plus,
   ExternalLink,
+  Loader2,
+  Edit,
 } from 'lucide-react';
+import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../utils/asyncGuard';
 
 export const AdminDashboardPage: React.FC = () => {
   const { user, switchRole } = useAuth();
@@ -144,6 +147,22 @@ export const AdminDashboardPage: React.FC = () => {
   const [newEmpPhone, setNewEmpPhone] = useState<string>('+7 (812) 409-32-00');
   const [newEmpTg, setNewEmpTg] = useState<string>('@domexit_');
   const [newEmpPerms] = useState<string[]>(['legal_audit', 'packaging', 'matchmaker', 'closing']);
+
+  // Edit Employee Modal
+  const [showEditEmpModal, setShowEditEmpModal] = useState<boolean>(false);
+  const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
+  const [editEmpName, setEditEmpName] = useState<string>('');
+  const [editEmpEmail, setEditEmpEmail] = useState<string>('');
+  const [editEmpRole, setEditEmpRole] = useState<string>('');
+  const [editEmpPhone, setEditEmpPhone] = useState<string>('');
+  const [editEmpTg, setEditEmpTg] = useState<string>('');
+  const [editEmpPerms, setEditEmpPerms] = useState<('legal_audit' | 'packaging' | 'matchmaker' | 'closing')[]>([
+    'legal_audit',
+    'packaging',
+    'matchmaker',
+    'closing',
+  ]);
+  const [isSubmittingEmp, setIsSubmittingEmp] = useState<boolean>(false);
 
   // Users & Staff management states
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
@@ -385,9 +404,86 @@ export const AdminDashboardPage: React.FC = () => {
 
   // Toggle employee status
   const handleToggleEmp = async (empId: string) => {
-    await EmployeesRepository.toggleStatus(empId);
-    showToast('Статус доступа сотрудника обновлен.');
-    await loadAllData();
+    try {
+      setIsSubmittingEmp(true);
+      await withAsyncTimeout(EmployeesRepository.toggleStatus(empId), 15000);
+      showToast('Статус доступа сотрудника обновлен.');
+      await loadAllData();
+    } catch (err) {
+      console.error('Toggle employee status error:', err);
+      showError(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingEmp(false);
+    }
+  };
+
+  // Delete employee (Full Staff CRUD)
+  const handleDeleteEmp = async (emp: Employee) => {
+    if (
+      !window.confirm(
+        `Вы уверены, что хотите удалить сотрудника «${emp.name}» (${emp.email})? Это действие необратимо и удалит профиль сотрудника.`
+      )
+    ) {
+      return;
+    }
+    try {
+      setIsSubmittingEmp(true);
+      await withAsyncTimeout(EmployeesRepository.delete(emp.id), 15000);
+      await AuditLogsRepository.addLog({
+        operatorName,
+        operatorRole: 'owner',
+        actionType: 'employee_created_modified',
+        title: `Удален сотрудник: ${emp.name}`,
+        description: `Сотрудник ${emp.name} (${emp.email}) удален из системы.`,
+      });
+      showToast(`Сотрудник «${emp.name}» успешно удален.`);
+      await loadAllData();
+    } catch (err) {
+      console.error('Delete employee error:', err);
+      showError(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingEmp(false);
+    }
+  };
+
+  // Edit employee details (Full Staff CRUD)
+  const handleEditEmployeeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmp || !editEmpName.trim() || !editEmpEmail.trim()) return;
+
+    try {
+      setIsSubmittingEmp(true);
+      await withAsyncTimeout(
+        EmployeesRepository.update({
+          ...editingEmp,
+          name: editEmpName.trim(),
+          email: editEmpEmail.trim(),
+          role: editEmpRole,
+          phone: editEmpPhone.trim(),
+          telegram: editEmpTg.trim(),
+          permissions: editEmpPerms,
+        }),
+        15000
+      );
+
+      await AuditLogsRepository.addLog({
+        operatorName,
+        operatorRole: 'owner',
+        actionType: 'employee_created_modified',
+        title: `Обновлены данные сотрудника: ${editEmpName}`,
+        description: `Email: ${editEmpEmail}, Должность: ${editEmpRole}. Права обновлены.`,
+      });
+
+      setShowEditEmpModal(false);
+      setEditingEmp(null);
+      showToast(`Данные сотрудника «${editEmpName}» успешно сохранены.`);
+      await loadAllData();
+    } catch (err) {
+      console.error('Edit employee error:', err);
+      showError(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingEmp(false);
+    }
   };
 
   // Update user role dynamically
@@ -411,58 +507,72 @@ export const AdminDashboardPage: React.FC = () => {
     e.preventDefault();
     if (!newEmpEmail || !newEmpName) return;
 
-    const createdEmp = await EmployeesRepository.add({
-      email: newEmpEmail,
-      name: newEmpName,
-      role: newEmpRole,
-      phone: newEmpPhone,
-      telegram: newEmpTg,
-      permissions: newEmpPerms,
-      status: 'active',
-      activeLotsCount: 0,
-      closedDealsCount: 0,
-      avgSpeedDays: 8.0,
-    });
+    try {
+      setIsSubmittingEmp(true);
+      const createdEmp = await withAsyncTimeout(
+        EmployeesRepository.add({
+          email: newEmpEmail,
+          name: newEmpName,
+          role: newEmpRole,
+          phone: newEmpPhone,
+          telegram: newEmpTg,
+          permissions: newEmpPerms,
+          status: 'active',
+          activeLotsCount: 0,
+          closedDealsCount: 0,
+          avgSpeedDays: 8.0,
+        }),
+        15000
+      );
 
-    let mappedRole: 'employee' | 'owner' | 'bank' = 'employee';
-    if (
-      newEmpRole.toLowerCase().includes('владелец') ||
-      newEmpRole.toLowerCase().includes('co-owner')
-    ) {
-      mappedRole = 'owner';
-    } else if (newEmpRole.toLowerCase().includes('банк')) {
-      mappedRole = 'bank';
+      let mappedRole: 'employee' | 'owner' | 'bank' = 'employee';
+      if (
+        newEmpRole.toLowerCase().includes('владелец') ||
+        newEmpRole.toLowerCase().includes('co-owner')
+      ) {
+        mappedRole = 'owner';
+      } else if (newEmpRole.toLowerCase().includes('банк')) {
+        mappedRole = 'bank';
+      }
+
+      await withAsyncTimeout(
+        UsersRepository.add({
+          email: newEmpEmail,
+          name: newEmpName,
+          phone: newEmpPhone,
+          telegram: newEmpTg,
+          assignedEmployeeId: createdEmp.id,
+          role: mappedRole === 'owner' ? 'admin' : mappedRole,
+          roles:
+            mappedRole === 'owner'
+              ? ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer']
+              : [mappedRole],
+          activeRole: mappedRole,
+          isPartnerApproved: true,
+          isInvestorApproved: true,
+        }),
+        15000
+      );
+
+      await AuditLogsRepository.addLog({
+        operatorName,
+        operatorRole: 'owner',
+        actionType: 'employee_created_modified',
+        title: `Добавлен новый сотрудник: ${newEmpName}`,
+        description: `Email: ${newEmpEmail}, Должность: ${newEmpRole}. Доступ куратора активирован.`,
+      });
+
+      setShowAddEmpModal(false);
+      setNewEmpEmail('');
+      setNewEmpName('');
+      showToast(`Сотрудник ${newEmpName} (${newEmpEmail}) успешно добавлен в штат.`);
+      await loadAllData();
+    } catch (err) {
+      console.error('Add employee error:', err);
+      showError(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingEmp(false);
     }
-
-    await UsersRepository.add({
-      email: newEmpEmail,
-      name: newEmpName,
-      phone: newEmpPhone,
-      telegram: newEmpTg,
-      assignedEmployeeId: createdEmp.id,
-      role: mappedRole === 'owner' ? 'admin' : mappedRole,
-      roles:
-        mappedRole === 'owner'
-          ? ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer']
-          : [mappedRole],
-      activeRole: mappedRole,
-      isPartnerApproved: true,
-      isInvestorApproved: true,
-    });
-
-    await AuditLogsRepository.addLog({
-      operatorName,
-      operatorRole: 'owner',
-      actionType: 'employee_created_modified',
-      title: `Добавлен новый сотрудник: ${newEmpName}`,
-      description: `Email: ${newEmpEmail}, Должность: ${newEmpRole}. Доступ куратора активирован.`,
-    });
-
-    setShowAddEmpModal(false);
-    setNewEmpEmail('');
-    setNewEmpName('');
-    showToast(`Сотрудник ${newEmpName} (${newEmpEmail}) успешно добавлен в штат.`);
-    await loadAllData();
   };
 
   // Strictly isolated employee collections
@@ -1513,13 +1623,49 @@ export const AdminDashboardPage: React.FC = () => {
                               </span>
                             </td>
                             <td className="py-3 px-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleToggleEmp(emp.id)}
-                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
-                              >
-                                {emp.status === 'active' ? 'Приостановить' : 'Активировать'}
-                              </button>
+                              <div className="flex items-center justify-end space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingEmp(emp);
+                                    setEditEmpName(emp.name);
+                                    setEditEmpEmail(emp.email);
+                                    setEditEmpRole(emp.role);
+                                    setEditEmpPhone(emp.phone);
+                                    setEditEmpTg(emp.telegram || '');
+                                    setEditEmpPerms(
+                                      (emp.permissions as ('legal_audit' | 'packaging' | 'matchmaker' | 'closing')[]) || [
+                                        'legal_audit',
+                                        'packaging',
+                                        'matchmaker',
+                                        'closing',
+                                      ]
+                                    );
+                                    setShowEditEmpModal(true);
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition-colors cursor-pointer"
+                                  title="Редактировать профиль и права"
+                                >
+                                  Редактировать
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSubmittingEmp}
+                                  onClick={() => handleToggleEmp(emp.id)}
+                                  className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  {emp.status === 'active' ? 'Приостановить' : 'Активировать'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSubmittingEmp}
+                                  onClick={() => handleDeleteEmp(emp)}
+                                  className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                                  title="Удалить сотрудника"
+                                >
+                                  Удалить
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -2441,16 +2587,206 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
+                  disabled={isSubmittingEmp}
                   onClick={() => setShowAddEmpModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md cursor-pointer"
+                  disabled={isSubmittingEmp}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md cursor-pointer disabled:opacity-60 flex items-center space-x-2"
                 >
-                  Создать и активировать доступ
+                  {isSubmittingEmp ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Сохранение в базе...</span>
+                    </>
+                  ) : (
+                    <span>Создать и активировать доступ</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4.1 Edit Employee Modal (Full Staff CRUD) */}
+      {showEditEmpModal && editingEmp && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Edit className="w-5 h-5 text-indigo-600" />
+                <span>Редактировать профиль сотрудника</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditEmpModal(false);
+                  setEditingEmp(null);
+                }}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditEmployeeSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Email аккаунта (корпоративный) *:
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editEmpEmail}
+                  onChange={(e) => setEditEmpEmail(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ФИО сотрудника *:</label>
+                <input
+                  type="text"
+                  required
+                  value={editEmpName}
+                  onChange={(e) => setEditEmpName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Должность / Роль *:</label>
+                <select
+                  value={editEmpRole}
+                  onChange={(e) => setEditEmpRole(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold text-slate-800"
+                >
+                  <option value="Куратор по 214-ФЗ">Куратор по 214-ФЗ (Координатор сделок)</option>
+                  <option value="Старший юрист комплаенса">Старший юрист комплаенса (42 проверки)</option>
+                  <option value="Кредитный офицер банка">Кредитный офицер банка-партнера</option>
+                  <option value="Ведущий куратор отдела выходов">Ведущий куратор отдела выходов</option>
+                  <option value="Совладелец (Co-Owner)">Совладелец платформы (Co-Owner)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Телефон РФ *:</label>
+                  <input
+                    type="tel"
+                    required
+                    value={editEmpPhone}
+                    onChange={(e) => setEditEmpPhone(formatRussianPhoneInput(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Telegram:</label>
+                  <input
+                    type="text"
+                    value={editEmpTg}
+                    onChange={(e) => setEditEmpTg(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+                <div className="font-bold text-slate-700">Назначенные модули доступа:</div>
+                <div className="grid grid-cols-2 gap-2 text-slate-700">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpPerms.includes('legal_audit')}
+                      onChange={(e) => {
+                        setEditEmpPerms(
+                          e.target.checked
+                            ? [...editEmpPerms, 'legal_audit']
+                            : editEmpPerms.filter((p) => p !== 'legal_audit')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Юр. комплаенс</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpPerms.includes('packaging')}
+                      onChange={(e) => {
+                        setEditEmpPerms(
+                          e.target.checked
+                            ? [...editEmpPerms, 'packaging']
+                            : editEmpPerms.filter((p) => p !== 'packaging')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Упаковка лотов</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpPerms.includes('matchmaker')}
+                      onChange={(e) => {
+                        setEditEmpPerms(
+                          e.target.checked
+                            ? [...editEmpPerms, 'matchmaker']
+                            : editEmpPerms.filter((p) => p !== 'matchmaker')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Матчмейкинг</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpPerms.includes('closing')}
+                      onChange={(e) => {
+                        setEditEmpPerms(
+                          e.target.checked
+                            ? [...editEmpPerms, 'closing']
+                            : editEmpPerms.filter((p) => p !== 'closing')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Комната закрытия</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isSubmittingEmp}
+                  onClick={() => {
+                    setShowEditEmpModal(false);
+                    setEditingEmp(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEmp}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md cursor-pointer disabled:opacity-60 flex items-center space-x-2"
+                >
+                  {isSubmittingEmp ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Сохранение в базе...</span>
+                    </>
+                  ) : (
+                    <span>Сохранить изменения</span>
+                  )}
                 </button>
               </div>
             </form>

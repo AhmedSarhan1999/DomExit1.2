@@ -7,7 +7,8 @@ import { DealsRepository } from './DealsRepository';
 import { PartnersRepository } from './PartnersRepository';
 import { PartnerRequestsRepository } from './PartnerRequestsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
-import { DevelopersRepository } from './DevelopersRepository';
+import { DevelopersRepository, PARTNER_BANKS } from './DevelopersRepository';
+import { BankPortalRepository } from './BankPortalRepository';
 
 const COLLECTION = 'seller_requests';
 
@@ -239,19 +240,29 @@ export class SellerRequestsRepository {
     await LotsRepository.add(newLot);
 
     if (!isAccreditedDev) {
-      await DevelopersRepository.createAccreditationRequest({
-        developerName: params.developer,
-        developerInn: params.developerInn || '7700000000',
-        lotId,
-        lotCode,
-        complexName: newLot.complexName,
-        city: params.city,
-        district: newLot.district,
-        contractPriceRub: params.contractPriceRub,
-        sellerName: params.sellerName,
-        sellerClientCode: params.clientCode,
-        documentIds: params.documentIds,
-      });
+      // Exclusively route to Tab 3 (Special Object & Project Approval) for partner banks
+      for (const bankName of PARTNER_BANKS) {
+        await BankPortalRepository.addSpecialApproval({
+          lotId,
+          lotCode,
+          complexName: newLot.complexName,
+          developer: params.developer,
+          developerInn: params.developerInn || '7800000000',
+          contractorName: params.developer,
+          contractorInn: params.developerInn || '7800000000',
+          projectTitle: `${newLot.complexName} (${params.rooms}ккв, ${params.areaM2} м²)`,
+          location: `${region.labelRu}, ${newLot.district}`,
+          costPriceRub: params.paidAmountRub,
+          contractPriceRub: params.contractPriceRub,
+          requestedByEmployeeId: params.uid,
+          requestedByEmployeeName: params.sellerName,
+          bankName,
+          reason: `Запрос индивидуального согласования объекта ДДУ и проектной линии эскроу для «${params.developer}» (ИНН ${params.developerInn || 'не указан'}).`,
+          requestedAt: nowIso,
+          status: 'pending',
+          documentIds: params.documentIds,
+        });
+      }
     }
 
     await DealsRepository.addDeal({

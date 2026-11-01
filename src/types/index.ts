@@ -97,7 +97,14 @@ export interface Lot {
   specialApprovalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   specialApprovalBank?: string;
   developerInn?: string;
-  developerAccreditationStatus?: 'accredited' | 'pending_bank_accreditation' | 'rejected';
+  developerAccreditationStatus?: 'accredited' | 'pending_bank_accreditation' | 'project_approved' | 'rejected';
+  approvedBankFinancing?: {
+    bankName: string;
+    approvedRatePercent: number;
+    maxPdnPercent: number;
+    approvedAt: string;
+    decidedBy: string;
+  };
 
   // Telemetry & Engagement Metrics
   publishedAt?: string; // ISO Timestamp or formatted date
@@ -457,8 +464,10 @@ export interface DeveloperBankTerms {
 export interface AccreditedDeveloper {
   id: string;
   name: string; // e.g. 'ПИК', 'Setl Group', 'Самолёт'
-  inn: string; // 10-digit corporate ИНН
+  inn: string; // 10-digit corporate ИНН or 12-digit for ИП
   isAccredited: boolean;
+  registrationSource?: 'institutional' | 'project_approval' | 'seed';
+  registrationNote?: string;
   bankTerms: DeveloperBankTerms[];
   createdAt: string;
   updatedAt: string;
@@ -556,7 +565,9 @@ export interface SpecialApprovalRequest {
   lotCode: string;
   complexName: string;
   developer: string;
+  developerInn?: string;
   contractorName?: string; // Grouping by contractor
+  contractorInn?: string;
   projectTitle?: string;
   location?: string;
   costPriceRub?: number;

@@ -27,7 +27,15 @@ import {
   SlidersHorizontal,
   Layers,
   Lightbulb,
+  Loader2,
+  Edit,
 } from 'lucide-react';
+import {
+  withAsyncTimeout,
+  isValidInn,
+  getInnValidationError,
+  ASYNC_NETWORK_TIMEOUT_MESSAGE,
+} from '../utils/asyncGuard';
 import { useAuth } from '../context/AuthContext';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
@@ -135,6 +143,23 @@ export const BankPortalPage: React.FC = () => {
   const [newStaffPhone, setNewStaffPhone] = useState('+7 (495) 500-00-00');
   const [newStaffRole, setNewStaffRole] = useState<BankEmployee['role']>('officer');
   const [newStaffBank, setNewStaffBank] = useState<string>('Сбербанк');
+  const [newStaffPermissions, setNewStaffPermissions] = useState<BankTabPermission[]>([
+    'escrow',
+    'developer_accreditation',
+    'special',
+    'credit_limits',
+  ]);
+
+  // Edit Bank Staff Modal State (Full Staff CRUD)
+  const [editingStaff, setEditingStaff] = useState<BankEmployee | null>(null);
+  const [editStaffName, setEditStaffName] = useState('');
+  const [editStaffEmail, setEditStaffEmail] = useState('');
+  const [editStaffPhone, setEditStaffPhone] = useState('');
+  const [editStaffRole, setEditStaffRole] = useState<BankEmployee['role']>('officer');
+  const [editStaffPermissions, setEditStaffPermissions] = useState<BankTabPermission[]>([]);
+
+  // Async Action Guard & Double-Submit State
+  const [isSubmittingAction, setIsSubmittingAction] = useState<boolean>(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -180,18 +205,29 @@ export const BankPortalPage: React.FC = () => {
   const handleConfirmEscrowDeposit = async (deal: DealTrack) => {
     const depositAmount =
       deal.escrowWorkflow?.depositedAmountRub || Math.round(deal.sellerReturnRub * 1.025);
-    const updated = await BankPortalRepository.confirmEscrowDeposit(
-      deal.dealId,
-      currentOfficerName,
-      depositAmount
-    );
-    if (updated) {
-      await loadData();
-      showToast(
-        `Депонирование средств (${formatRubles(
-          updated.escrowWorkflow?.depositedAmountRub || deal.sellerReturnRub
-        )}) подтверждено. Статус синхронизирован в кабинете Покупателя, Продавца и Комнате закрытия куратора.`
+    try {
+      setIsSubmittingAction(true);
+      const updated = await withAsyncTimeout(
+        BankPortalRepository.confirmEscrowDeposit(
+          deal.dealId,
+          currentOfficerName,
+          depositAmount
+        ),
+        15000
       );
+      if (updated) {
+        await loadData();
+        showToast(
+          `Депонирование средств (${formatRubles(
+            updated.escrowWorkflow?.depositedAmountRub || deal.sellerReturnRub
+          )}) подтверждено. Статус синхронизирован в кабинете Покупателя, Продавца и Комнате закрытия куратора.`
+        );
+      }
+    } catch (err) {
+      console.error('Confirm escrow deposit error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
@@ -199,83 +235,133 @@ export const BankPortalPage: React.FC = () => {
   const handleConfirmFundsRelease = async (deal: DealTrack) => {
     const lot = lots.find((l) => l.lotCode === deal.lotCode);
     const feeRub = lot?.serviceCommissionRub || Math.round(deal.sellerReturnRub * 0.025);
-    const updated = await BankPortalRepository.releaseEscrowFunds(deal.dealId, currentOfficerName);
-    if (updated) {
-      await loadData();
-      showToast(
-        `Аккредитив СБР раскрыт по штампу Росреестра! Транши перечислены: Продавцу (${formatRubles(
-          deal.sellerReturnRub
-        )}), Застройщику/Банку и Комиссия оператора DomExit (${formatRubles(feeRub)}). Сделка закрыта.`
+    try {
+      setIsSubmittingAction(true);
+      const updated = await withAsyncTimeout(
+        BankPortalRepository.releaseEscrowFunds(deal.dealId, currentOfficerName),
+        15000
       );
+      if (updated) {
+        await loadData();
+        showToast(
+          `Аккредитив СБР раскрыт по штампу Росреестра! Транши перечислены: Продавцу (${formatRubles(
+            deal.sellerReturnRub
+          )}), Застройщику/Банку и Комиссия оператора DomExit (${formatRubles(feeRub)}). Сделка закрыта.`
+        );
+      }
+    } catch (err) {
+      console.error('Release escrow funds error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
   // 3. Developer Accreditation Decision
   const handleDecideDeveloperAccreditation = async (decision: 'approved' | 'rejected') => {
     if (!selectedDevReq) return;
-    await DevelopersRepository.decideAccreditationRequest({
-      requestId: selectedDevReq.id,
-      bankName: devDecisionBank,
-      decision,
-      baseRatePercent: devBaseRateInput,
-      familyMortgage6: devFamilyMortgage6,
-      itMortgage6: devItMortgage6,
-      maxPdnPercent: devMaxPdnPercent,
-      notes: devDecisionNotes,
-      decidedBy: `${currentOfficerName} (${devDecisionBank})`,
-    });
-    setSelectedDevReq(null);
-    await loadData();
-    showToast(
-      decision === 'approved'
-        ? `Застройщик «${selectedDevReq.developerName}» аккредитован банком ${devDecisionBank} (базовая ставка ${devBaseRateInput}%, ПДН ${devMaxPdnPercent}%) и автоматически включён в единый реестр!`
-        : `Запрос на аккредитацию застройщика «${selectedDevReq.developerName}» отклонён банком ${devDecisionBank}.`
-    );
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        DevelopersRepository.decideAccreditationRequest({
+          requestId: selectedDevReq.id,
+          bankName: devDecisionBank,
+          decision,
+          baseRatePercent: devBaseRateInput,
+          familyMortgage6: devFamilyMortgage6,
+          itMortgage6: devItMortgage6,
+          maxPdnPercent: devMaxPdnPercent,
+          notes: devDecisionNotes,
+          decidedBy: `${currentOfficerName} (${devDecisionBank})`,
+        }),
+        15000
+      );
+      const devName = selectedDevReq.developerName;
+      setSelectedDevReq(null);
+      await loadData();
+      showToast(
+        decision === 'approved'
+          ? `Застройщик «${devName}» аккредитован банком ${devDecisionBank} (базовая ставка ${devBaseRateInput}%, ПДН ${devMaxPdnPercent}%) и автоматически включён в единый реестр!`
+          : `Запрос на аккредитацию застройщика «${devName}» отклонён банком ${devDecisionBank}.`
+      );
+    } catch (err) {
+      console.error('Decide accreditation request error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   // 4. Decide Special Approval
   const handleDecideSpecialApproval = async (status: 'approved' | 'rejected') => {
     if (!selectedSpecialReq) return;
-    await BankPortalRepository.decideSpecialApproval(
-      selectedSpecialReq.id,
-      status,
-      specialDecisionNotes,
-      currentOfficerName
-    );
-    setSelectedSpecialReq(null);
-    await loadData();
-    showToast(
-      status === 'approved'
-        ? `Спецсогласование по лоту #${selectedSpecialReq.lotCode} одобрено банком!`
-        : `Спецсогласование по лоту #${selectedSpecialReq.lotCode} отклонено.`
-    );
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        BankPortalRepository.decideSpecialApproval(
+          selectedSpecialReq.id,
+          status,
+          specialDecisionNotes,
+          currentOfficerName
+        ),
+        15000
+      );
+      const lotCode = selectedSpecialReq.lotCode;
+      setSelectedSpecialReq(null);
+      await loadData();
+      showToast(
+        status === 'approved'
+          ? `Спецсогласование по лоту #${lotCode} одобрено банком!`
+          : `Спецсогласование по лоту #${lotCode} отклонено.`
+      );
+    } catch (err) {
+      console.error('Decide special approval error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   // 5. Decide Credit Limit
   const handleDecideCreditLimit = async (status: 'approved' | 'rejected') => {
     if (!selectedCreditReq) return;
-    if (status === 'approved') {
-      await BankPortalRepository.approveCreditLimit(
-        selectedCreditReq.id,
-        approvedLimitInput,
-        validUntilInput,
-        currentOfficerName,
-        creditDecisionNotes
+    try {
+      setIsSubmittingAction(true);
+      if (status === 'approved') {
+        await withAsyncTimeout(
+          BankPortalRepository.approveCreditLimit(
+            selectedCreditReq.id,
+            approvedLimitInput,
+            validUntilInput,
+            currentOfficerName,
+            creditDecisionNotes
+          ),
+          15000
+        );
+      } else {
+        await withAsyncTimeout(
+          BankPortalRepository.rejectCreditLimit(
+            selectedCreditReq.id,
+            currentOfficerName,
+            creditDecisionNotes
+          ),
+          15000
+        );
+      }
+      const userName = selectedCreditReq.userName;
+      setSelectedCreditReq(null);
+      await loadData();
+      showToast(
+        status === 'approved'
+          ? `Кредитный сертификат на ${formatRubles(approvedLimitInput)} выпущен для ${userName}!`
+          : `Заявка на кредитный лимит для ${userName} отклонена.`
       );
-    } else {
-      await BankPortalRepository.rejectCreditLimit(
-        selectedCreditReq.id,
-        currentOfficerName,
-        creditDecisionNotes
-      );
+    } catch (err) {
+      console.error('Decide credit limit error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
     }
-    setSelectedCreditReq(null);
-    await loadData();
-    showToast(
-      status === 'approved'
-        ? `Кредитный сертификат на ${formatRubles(approvedLimitInput)} выпущен для ${selectedCreditReq.userName}!`
-        : `Заявка на кредитный лимит для ${selectedCreditReq.userName} отклонена.`
-    );
   };
 
   const isOwner = user?.role === 'owner' || user?.roles?.includes('owner');
@@ -360,13 +446,36 @@ export const BankPortalPage: React.FC = () => {
     (s) => s.bankName === activePartnerBank || isOwner
   );
 
-  // Grouping special requests by contractor (Task 5)
-  const groupedSpecialByContractor = tenantSpecialRequests.reduce((acc, req) => {
-    const key = req.contractorName || req.developer || 'Независимый подрядчик';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(req);
-    return acc;
-  }, {} as Record<string, SpecialApprovalRequest[]>);
+  // Hierarchical grouping of special requests by Contractor + INN (Task 3 Architecture)
+  const groupedSpecialContractors = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        compositeKey: string;
+        contractorName: string;
+        contractorInn: string;
+        requests: SpecialApprovalRequest[];
+      }
+    > = {};
+
+    tenantSpecialRequests.forEach((req) => {
+      const name = req.contractorName || req.developer || 'Индивидуальный застройщик / Подрядчик';
+      const inn = (req.contractorInn || req.developerInn || '').trim();
+      const compositeKey = `${name}:::${inn}`;
+
+      if (!map[compositeKey]) {
+        map[compositeKey] = {
+          compositeKey,
+          contractorName: name,
+          contractorInn: inn,
+          requests: [],
+        };
+      }
+      map[compositeKey].requests.push(req);
+    });
+
+    return Object.values(map);
+  }, [tenantSpecialRequests]);
 
   // Accredit Developer for Bank
   const handleAccreditDeveloper = async () => {
@@ -375,109 +484,256 @@ export const BankPortalPage: React.FC = () => {
       showToast('Укажите название застройщика.');
       return;
     }
-    await DevelopersRepository.accreditDeveloperForBank({
-      developerName: devName,
-      developerInn: customDevInnToAdd.trim() || undefined,
-      bankName: activePartnerBank,
-      baseRatePercent: addDevBaseRate,
-      familyMortgage6: addDevFamily6,
-      itMortgage6: addDevIt6,
-      maxPdnPercent: addDevMaxPdn,
-      officerName: currentOfficerName,
-    });
-    setShowAddDevModal(false);
-    setSelectedDevToAdd('');
-    setCustomDevNameToAdd('');
-    setCustomDevInnToAdd('');
-    await loadData();
-    showToast(`Застройщик «${devName}» успешно аккредитован банком ${activePartnerBank}!`);
+
+    if (selectedDevToAdd === '__custom__') {
+      const innErr = getInnValidationError(customDevInnToAdd);
+      if (innErr) {
+        showToast(innErr);
+        return;
+      }
+    }
+
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        DevelopersRepository.accreditDeveloperForBank({
+          developerName: devName,
+          developerInn: customDevInnToAdd.trim() || undefined,
+          bankName: activePartnerBank,
+          baseRatePercent: addDevBaseRate,
+          familyMortgage6: addDevFamily6,
+          itMortgage6: addDevIt6,
+          maxPdnPercent: addDevMaxPdn,
+          officerName: currentOfficerName,
+        }),
+        15000
+      );
+
+      setShowAddDevModal(false);
+      setSelectedDevToAdd('');
+      setCustomDevNameToAdd('');
+      setCustomDevInnToAdd('');
+      await loadData();
+      showToast(`Застройщик «${devName}» успешно аккредитован банком ${activePartnerBank}!`);
+    } catch (err) {
+      console.error('Accredit developer error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   // Edit Developer Terms
   const handleSaveDevTerms = async () => {
     if (!editingDev) return;
-    await DevelopersRepository.accreditDeveloperForBank({
-      developerId: editingDev.id,
-      developerName: editingDev.name,
-      developerInn: editingDev.inn,
-      bankName: activePartnerBank,
-      baseRatePercent: editDevBaseRate,
-      familyMortgage6: editDevFamily6,
-      itMortgage6: editDevIt6,
-      maxPdnPercent: editDevMaxPdn,
-      officerName: currentOfficerName,
-    });
-    setEditingDev(null);
-    await loadData();
-    showToast(`Условия банка ${activePartnerBank} для «${editingDev.name}» обновлены.`);
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        DevelopersRepository.accreditDeveloperForBank({
+          developerId: editingDev.id,
+          developerName: editingDev.name,
+          developerInn: editingDev.inn,
+          bankName: activePartnerBank,
+          baseRatePercent: editDevBaseRate,
+          familyMortgage6: editDevFamily6,
+          itMortgage6: editDevIt6,
+          maxPdnPercent: editDevMaxPdn,
+          officerName: currentOfficerName,
+        }),
+        15000
+      );
+      setEditingDev(null);
+      await loadData();
+      showToast(`Условия банка ${activePartnerBank} для «${editingDev.name}» обновлены.`);
+    } catch (err) {
+      console.error('Save dev terms error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   // Revoke Developer Accreditation
   const handleRevokeDeveloperAccreditation = async (dev: AccreditedDeveloper) => {
-    if (window.confirm(`Вы уверены, что хотите исключить застройщика «${dev.name}» из аккредитации банка ${activePartnerBank}?`)) {
-      await DevelopersRepository.removeDeveloperAccreditation(dev.id, activePartnerBank, currentOfficerName);
-      await loadData();
-      showToast(`Застройщик «${dev.name}» исключен из аккредитации банка ${activePartnerBank}.`);
+    if (
+      window.confirm(
+        `Вы уверены, что хотите исключить застройщика «${dev.name}» из аккредитации банка ${activePartnerBank}?`
+      )
+    ) {
+      try {
+        setIsSubmittingAction(true);
+        await withAsyncTimeout(
+          DevelopersRepository.removeDeveloperAccreditation(dev.id, activePartnerBank, currentOfficerName),
+          15000
+        );
+        await loadData();
+        showToast(`Застройщик «${dev.name}» исключен из аккредитации банка ${activePartnerBank}.`);
+      } catch (err) {
+        console.error('Revoke accreditation error:', err);
+        showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+      } finally {
+        setIsSubmittingAction(false);
+      }
     }
   };
 
   // Decide Special Approval with Project Rate & PDN
   const handleDecideProjectSpecialApproval = async (status: 'approved' | 'rejected') => {
     if (!selectedSpecialReq) return;
-    await BankPortalRepository.decideSpecialApproval(
-      selectedSpecialReq.id,
-      status,
-      specialDecisionNotes,
-      currentOfficerName,
-      status === 'approved' ? specialApprovedRate : undefined,
-      status === 'approved' ? specialMaxPdn : undefined
-    );
-    setSelectedSpecialReq(null);
-    await loadData();
-    showToast(
-      status === 'approved'
-        ? `Проект «${selectedSpecialReq.projectTitle || selectedSpecialReq.complexName}» одобрен банком (Ставка ${specialApprovedRate}%, ПДН ${specialMaxPdn}%)!`
-        : `Проект отклонен.`
-    );
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        BankPortalRepository.decideSpecialApproval(
+          selectedSpecialReq.id,
+          status,
+          specialDecisionNotes,
+          currentOfficerName,
+          status === 'approved' ? specialApprovedRate : undefined,
+          status === 'approved' ? specialMaxPdn : undefined
+        ),
+        15000
+      );
+      const title = selectedSpecialReq.projectTitle || selectedSpecialReq.complexName;
+      setSelectedSpecialReq(null);
+      await loadData();
+      showToast(
+        status === 'approved'
+          ? `Проект «${title}» одобрен банком (Ставка ${specialApprovedRate}%, ПДН ${specialMaxPdn}%)!`
+          : `Проект отклонен.`
+      );
+    } catch (err) {
+      console.error('Decide special approval error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   // Toggle staff permission
   const handleToggleStaffPermission = async (staffId: string, perm: BankTabPermission) => {
     const staffMember = bankStaff.find((s) => s.id === staffId);
     if (!staffMember) return;
-    const currentPerms = staffMember.permissions || ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'];
+    const currentPerms =
+      staffMember.permissions || [
+        'escrow',
+        'developer_accreditation',
+        'special',
+        'credit_limits',
+        'staff',
+      ];
     const updatedPerms = currentPerms.includes(perm)
       ? currentPerms.filter((p) => p !== perm)
       : [...currentPerms, perm];
-    await BankPortalRepository.updateBankEmployeePermissions(staffId, updatedPerms);
-    await loadData();
-    showToast(`Права доступа сотрудника [${staffMember.name}] обновлены.`);
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        BankPortalRepository.updateBankEmployeePermissions(staffId, updatedPerms),
+        15000
+      );
+      await loadData();
+      showToast(`Права доступа сотрудника [${staffMember.name}] обновлены.`);
+    } catch (err) {
+      console.error('Toggle staff permission error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
-  // 6. Add Bank Staff
+  // Add Bank Staff (Full Staff CRUD)
   const handleCreateBankStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStaffName.trim() || !newStaffEmail.trim()) return;
-    await BankPortalRepository.addBankEmployee({
-      name: newStaffName.trim(),
-      email: newStaffEmail.trim(),
-      phone: newStaffPhone.trim(),
-      role: newStaffRole,
-      bankName: activePartnerBank,
-      status: 'active',
-      permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits'],
-    });
-    setNewStaffName('');
-    setNewStaffEmail('');
-    setShowAddStaffModal(false);
-    await loadData();
-    showToast(`Сотрудник банка ${newStaffName} успешно добавлен.`);
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        BankPortalRepository.addBankEmployee({
+          name: newStaffName.trim(),
+          email: newStaffEmail.trim(),
+          phone: newStaffPhone.trim(),
+          role: newStaffRole,
+          bankName: activePartnerBank,
+          status: 'active',
+          permissions: newStaffPermissions,
+        }),
+        15000
+      );
+      setNewStaffName('');
+      setNewStaffEmail('');
+      setNewStaffPhone('+7 (495) 500-00-00');
+      setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'credit_limits']);
+      setShowAddStaffModal(false);
+      await loadData();
+      showToast(`Сотрудник банка ${newStaffName} успешно добавлен.`);
+    } catch (err) {
+      console.error('Create bank staff error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Edit Bank Staff (Full Staff CRUD)
+  const handleUpdateBankStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStaff || !editStaffName.trim() || !editStaffEmail.trim()) return;
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(
+        BankPortalRepository.updateBankEmployee(editingStaff.id, {
+          name: editStaffName.trim(),
+          email: editStaffEmail.trim(),
+          phone: editStaffPhone.trim(),
+          role: editStaffRole,
+          permissions: editStaffPermissions,
+        }),
+        15000
+      );
+      setEditingStaff(null);
+      await loadData();
+      showToast(`Данные и права доступа сотрудника «${editStaffName}» успешно обновлены.`);
+    } catch (err) {
+      console.error('Update bank staff error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Delete Bank Staff (Full Staff CRUD)
+  const handleDeleteBankStaff = async (staff: BankEmployee) => {
+    if (
+      !window.confirm(
+        `Вы уверены, что хотите удалить сотрудника банка «${staff.name}» (${staff.email})? Это действие необратимо.`
+      )
+    ) {
+      return;
+    }
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(BankPortalRepository.deleteBankEmployee(staff.id), 15000);
+      await loadData();
+      showToast(`Сотрудник банка «${staff.name}» успешно удален.`);
+    } catch (err) {
+      console.error('Delete bank staff error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   const handleToggleStaffStatus = async (staffId: string) => {
-    await BankPortalRepository.toggleBankEmployeeStatus(staffId);
-    await loadData();
-    showToast('Статус доступа сотрудника банка обновлен.');
+    try {
+      setIsSubmittingAction(true);
+      await withAsyncTimeout(BankPortalRepository.toggleBankEmployeeStatus(staffId), 15000);
+      await loadData();
+      showToast('Статус доступа сотрудника банка обновлен.');
+    } catch (err) {
+      console.error('Toggle staff status error:', err);
+      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
   const pendingEscrowCount = tenantDeals.filter(
@@ -583,17 +839,17 @@ export const BankPortalPage: React.FC = () => {
 
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
-              <span>Аккредитация застройщиков</span>
-              <Building2 className="w-4 h-4 text-amber-600" />
+              <span>Аккредитованные застройщики</span>
+              <Building2 className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-2xl font-black text-slate-900">
-              {pendingDevAccCount}{' '}
+              {tenantAccreditedDevs.length}{' '}
               <span className="text-xs font-bold text-slate-400">
                 / {accreditedDevs.filter((d) => d.isAccredited).length} в реестре
               </span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">
-              Заявки новых девелоперов 214-ФЗ
+              Генеральная аккредитация девелоперов
             </div>
           </div>
 
@@ -673,18 +929,7 @@ export const BankPortalPage: React.FC = () => {
                 }`}
               >
                 <Building2 className="w-4 h-4" />
-                <span>2. Аккредитация девелоперов</span>
-                {pendingDevAccCount > 0 && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                      activeTab === 'developer_accreditation'
-                        ? 'bg-white text-emerald-700'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {pendingDevAccCount}
-                  </span>
-                )}
+                <span>2. Аккредитация девелоперов ({tenantAccreditedDevs.length})</span>
               </button>
             )}
 
@@ -1053,127 +1298,6 @@ export const BankPortalPage: React.FC = () => {
         {/* ========================================================= */}
         {activeTab === 'developer_accreditation' && (
           <div className="space-y-6">
-            {/* Incoming Developer Accreditation Requests */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
-                <div>
-                  <h2 className="text-base font-black text-slate-900">
-                    Заявки на аккредитацию новых застройщиков (Developer Accreditation Workflow)
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Достаточно одобрения хотя бы одного банка-партнёра, чтобы застройщик автоматически перешёл в статус аккредитованного и появился в фильтрах каталога и форме продавца.
-                  </p>
-                </div>
-                <span className="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
-                  Активный банк: {activePartnerBank}
-                </span>
-              </div>
-
-              {devRequests.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm">
-                  Нет новых запросов на аккредитацию застройщиков.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {devRequests.map((req) => (
-                    <div
-                      key={req.id}
-                      className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 text-xs font-black">
-                            ИНН: {req.developerInn}
-                          </span>
-                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
-                            Лот #{req.lotCode}
-                          </span>
-                          {req.status === 'pending' && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
-                              Ожидает аккредитации банков
-                            </span>
-                          )}
-                          {req.status === 'approved' && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
-                              Аккредитован банками ({req.decisions.filter((d) => d.decision === 'approved').length})
-                            </span>
-                          )}
-                          {req.status === 'rejected' && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 text-xs font-bold">
-                              Отклонен
-                            </span>
-                          )}
-                        </div>
-
-                        <h3 className="text-base font-black text-slate-900">
-                          Застройщик: «{req.developerName}» — {req.complexName}
-                        </h3>
-                        <p className="text-xs text-slate-600">
-                          Район: <strong>{req.district}</strong> • Цена по ДДУ:{' '}
-                          <strong>{formatRubles(req.contractPriceRub)}</strong> • Продавец:{' '}
-                          <strong>
-                            {req.sellerName} ({req.sellerClientCode})
-                          </strong>
-                        </p>
-
-                        {req.decisions.length > 0 && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {req.decisions.map((dec) => (
-                              <span
-                                key={dec.bankName}
-                                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
-                                  dec.decision === 'approved'
-                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                                    : 'bg-red-50 border-red-200 text-red-700'
-                                }`}
-                              >
-                                {dec.bankName}:{' '}
-                                {dec.decision === 'approved'
-                                  ? `Аккредитован (Базовая ${dec.baseRatePercent}%, ПДН ${dec.maxPdnPercent}%)`
-                                  : 'Отклонен'}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openLotDocumentVault(
-                              req.lotCode,
-                              `Документы застройщика «${req.developerName}» (ДДУ, справка об оплате, план)`,
-                              req.documentIds
-                            )
-                          }
-                          className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
-                        >
-                          <Eye className="w-4 h-4 text-emerald-600" />
-                          <span>Проверить ДДУ и проект</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedDevReq(req);
-                            setDevDecisionBank(activePartnerBank);
-                            setDevBaseRateInput(19.8);
-                            setDevFamilyMortgage6(true);
-                            setDevItMortgage6(true);
-                            setDevMaxPdnPercent(50);
-                          }}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-xs cursor-pointer"
-                        >
-                          Принять решение ({activePartnerBank})
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Bank's Dedicated Accredited Developers Registry */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -1328,11 +1452,11 @@ export const BankPortalPage: React.FC = () => {
               </div>
               <div className="flex items-center space-x-2 text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
                 <span>Подрядчиков на проверке:</span>
-                <span className="font-black text-slate-900">{Object.keys(groupedSpecialByContractor).length}</span>
+                <span className="font-black text-slate-900">{groupedSpecialContractors.length}</span>
               </div>
             </div>
 
-            {Object.keys(groupedSpecialByContractor).length === 0 ? (
+            {groupedSpecialContractors.length === 0 ? (
               <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
                 <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                 <div className="text-sm font-bold text-slate-700">Нет запросов на спецсогласование</div>
@@ -1341,13 +1465,13 @@ export const BankPortalPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              Object.entries(groupedSpecialByContractor).map(([contractorName, reqs]) => {
-                const isExpanded = expandedContractors[contractorName] ?? true;
-                const pendingCount = reqs.filter((r) => r.status === 'pending').length;
+              groupedSpecialContractors.map((entry) => {
+                const isExpanded = expandedContractors[entry.compositeKey] ?? true;
+                const pendingCount = entry.requests.filter((r) => r.status === 'pending').length;
 
                 return (
                   <div
-                    key={contractorName}
+                    key={entry.compositeKey}
                     className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs transition-all"
                   >
                     {/* Contractor Header */}
@@ -1355,7 +1479,7 @@ export const BankPortalPage: React.FC = () => {
                       onClick={() =>
                         setExpandedContractors((prev) => ({
                           ...prev,
-                          [contractorName]: !isExpanded,
+                          [entry.compositeKey]: !isExpanded,
                         }))
                       }
                       className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70 hover:bg-slate-100/70 border-b border-slate-200 cursor-pointer transition-colors"
@@ -1376,14 +1500,14 @@ export const BankPortalPage: React.FC = () => {
                             )}
                           </div>
                           <h3 className="text-base font-black text-slate-900 mt-0.5">
-                            {contractorName}
+                            Застройщик / Подрядчик: «{entry.contractorName}» | ИНН: {entry.contractorInn || 'не указан'} | ({entry.requests.length} проекта(ов))
                           </h3>
                         </div>
                       </div>
 
                       <div className="flex items-center space-x-3">
                         <span className="text-xs font-bold text-slate-500">
-                          Всего проектов: {reqs.length}
+                          Всего проектов: {entry.requests.length}
                         </span>
                         <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500">
                           {isExpanded ? (
@@ -1398,7 +1522,7 @@ export const BankPortalPage: React.FC = () => {
                     {/* Contractor Projects List */}
                     {isExpanded && (
                       <div className="p-5 space-y-4">
-                        {reqs.map((req) => (
+                        {entry.requests.map((req) => (
                           <div
                             key={req.id}
                             className="border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition-all bg-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 shadow-2xs"
@@ -1468,7 +1592,7 @@ export const BankPortalPage: React.FC = () => {
                                 onClick={() =>
                                   openLotDocumentVault(
                                     req.lotCode,
-                                    `Правовое досье и сметы проекта «${req.projectTitle || req.complexName}» (${contractorName})`
+                                    `Правовое досье и сметы проекта «${req.projectTitle || req.complexName}» (${entry.contractorName})`
                                   )
                                 }
                                 className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-2xs"
@@ -1609,16 +1733,22 @@ export const BankPortalPage: React.FC = () => {
                 </p>
               </div>
 
-              {(isOwner || matchingStaff?.isMasterAdmin) && (
-                <button
-                  type="button"
-                  onClick={() => setShowAddStaffModal(true)}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Добавить офицера банка</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setNewStaffName('');
+                  setNewStaffEmail('');
+                  setNewStaffPhone('+7 (495) 500-00-00');
+                  setNewStaffBank(activePartnerBank);
+                  setNewStaffRole('officer');
+                  setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'credit_limits']);
+                  setShowAddStaffModal(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Добавить сотрудника банка</span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -1724,7 +1854,7 @@ export const BankPortalPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-[11px] text-slate-500 font-semibold uppercase">
                         {staff.role === 'chief_manager'
                           ? 'Гл. управляющий'
@@ -1735,15 +1865,46 @@ export const BankPortalPage: React.FC = () => {
                           : 'Кредитный офицер'}
                       </span>
 
-                      {canManageStaff && (
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <button
                           type="button"
+                          onClick={() => {
+                            setEditingStaff(staff);
+                            setEditStaffName(staff.name);
+                            setEditStaffEmail(staff.email);
+                            setEditStaffPhone(staff.phone || '');
+                            setEditStaffRole(staff.role);
+                            setEditStaffPermissions(
+                              staff.permissions || [
+                                'escrow',
+                                'developer_accreditation',
+                                'special',
+                                'credit_limits',
+                              ]
+                            );
+                          }}
+                          className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer"
+                        >
+                          Редактировать права
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSubmittingAction}
                           onClick={() => handleToggleStaffStatus(staff.id)}
-                          className="text-xs font-bold text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                          className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                         >
                           {staff.status === 'active' ? 'Заблокировать' : 'Активировать'}
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          disabled={isSubmittingAction}
+                          onClick={() => handleDeleteBankStaff(staff)}
+                          className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          title="Удалить сотрудника из системы"
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1958,24 +2119,34 @@ export const BankPortalPage: React.FC = () => {
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => setSelectedCreditReq(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
               >
                 Отмена
               </button>
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => handleDecideCreditLimit('rejected')}
-                className="px-4 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold disabled:opacity-50"
               >
                 Отказать
               </button>
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => handleDecideCreditLimit('approved')}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-1.5"
               >
-                Одобрить и выпустить
+                {isSubmittingAction ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    <span>Выпуск...</span>
+                  </>
+                ) : (
+                  <span>Одобрить и выпустить</span>
+                )}
               </button>
             </div>
           </div>
@@ -2099,24 +2270,34 @@ export const BankPortalPage: React.FC = () => {
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => setSelectedSpecialReq(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
               >
                 Отмена
               </button>
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => handleDecideProjectSpecialApproval('rejected')}
-                className="px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold cursor-pointer disabled:opacity-50"
               >
                 Отклонить
               </button>
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => handleDecideProjectSpecialApproval('approved')}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-2"
               >
-                Одобрить финансирование проекта
+                {isSubmittingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Сохранение в базе...</span>
+                  </>
+                ) : (
+                  <span>Одобрить финансирование проекта</span>
+                )}
               </button>
             </div>
           </div>
@@ -2309,17 +2490,26 @@ export const BankPortalPage: React.FC = () => {
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => setShowAddDevModal(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
               >
                 Отмена
               </button>
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={handleAccreditDeveloper}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-2"
               >
-                Включить в аккредитацию
+                {isSubmittingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Сохранение в базе...</span>
+                  </>
+                ) : (
+                  <span>Включить в аккредитацию</span>
+                )}
               </button>
             </div>
           </div>
@@ -2463,67 +2653,99 @@ export const BankPortalPage: React.FC = () => {
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => setEditingDev(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
               >
                 Отмена
               </button>
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={handleSaveDevTerms}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-2"
               >
-                Сохранить условия
+                {isSubmittingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Сохранение в базе...</span>
+                  </>
+                ) : (
+                  <span>Сохранить условия</span>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: Add Bank Staff */}
+      {/* MODAL: Add Bank Staff (Full Staff CRUD) */}
       {showAddStaffModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <form
             onSubmit={handleCreateBankStaff}
             className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl"
           >
-            <h3 className="text-lg font-black text-slate-900">Добавить сотрудника банка</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-lg font-black text-slate-900">Добавить сотрудника банка</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddStaffModal(false)}
+                className="text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">ФИО и должность</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">ФИО сотрудника *</label>
               <input
                 type="text"
                 required
                 value={newStaffName}
                 onChange={(e) => setNewStaffName(e.target.value)}
-                placeholder="Иванов П.С. (Старший офицер СБР)"
+                placeholder="Иванов Пётр Сергеевич"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900"
               />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Корпоративный Email
-              </label>
-              <input
-                type="email"
-                required
-                value={newStaffEmail}
-                onChange={(e) => setNewStaffEmail(e.target.value)}
-                placeholder="officer@sberbank.ru"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900"
-              />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Корпоративный Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newStaffEmail}
+                  onChange={(e) => setNewStaffEmail(e.target.value)}
+                  placeholder="officer@sberbank.ru"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Телефон РФ *</label>
+                <input
+                  type="tel"
+                  required
+                  value={newStaffPhone}
+                  onChange={(e) => setNewStaffPhone(e.target.value)}
+                  placeholder="+7 (495) 500-00-00"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-mono"
+                />
+              </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Банк</label>
                 <select
-                  value={newStaffBank}
-                  onChange={(e) => setNewStaffBank(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900"
+                  value={activePartnerBank}
+                  disabled
+                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-bold"
                 >
-                  <option value="Сбербанк">ПАО Сбербанк</option>
-                  <option value="ВТБ">Банк ВТБ (ПАО)</option>
-                  <option value="Альфа-Банк">АО Альфа-Банк</option>
-                  <option value="ДОМ.РФ">Банк ДОМ.РФ</option>
+                  <option value={activePartnerBank}>{activePartnerBank}</option>
                 </select>
               </div>
               <div>
@@ -2531,7 +2753,7 @@ export const BankPortalPage: React.FC = () => {
                 <select
                   value={newStaffRole}
                   onChange={(e) => setNewStaffRole(e.target.value as BankEmployee['role'])}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-semibold"
                 >
                   <option value="chief_manager">Гл. управляющий</option>
                   <option value="head_manager">Руководитель дирекции</option>
@@ -2540,19 +2762,269 @@ export const BankPortalPage: React.FC = () => {
                 </select>
               </div>
             </div>
+
+            {/* Granular Permission Checkboxes (4 Tabs) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+              <div className="text-[11px] font-black uppercase text-slate-700 tracking-wider">
+                Доступ к разделам шлюза (Bank RBAC):
+              </div>
+              <div className="space-y-1.5 text-xs text-slate-800">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStaffPermissions.includes('escrow')}
+                    onChange={(e) =>
+                      setNewStaffPermissions(
+                        e.target.checked
+                          ? [...newStaffPermissions, 'escrow']
+                          : newStaffPermissions.filter((p) => p !== 'escrow')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Эскроу и СБР (Синхронизация закрытия)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStaffPermissions.includes('developer_accreditation')}
+                    onChange={(e) =>
+                      setNewStaffPermissions(
+                        e.target.checked
+                          ? [...newStaffPermissions, 'developer_accreditation']
+                          : newStaffPermissions.filter((p) => p !== 'developer_accreditation')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Аккредитация девелоперов</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStaffPermissions.includes('special')}
+                    onChange={(e) =>
+                      setNewStaffPermissions(
+                        e.target.checked
+                          ? [...newStaffPermissions, 'special']
+                          : newStaffPermissions.filter((p) => p !== 'special')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Согласование объектов (Подрядчики)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStaffPermissions.includes('credit_limits')}
+                    onChange={(e) =>
+                      setNewStaffPermissions(
+                        e.target.checked
+                          ? [...newStaffPermissions, 'credit_limits']
+                          : newStaffPermissions.filter((p) => p !== 'credit_limits')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Кредитные лимиты покупателей</span>
+                </label>
+              </div>
+            </div>
+
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
+                disabled={isSubmittingAction}
                 onClick={() => setShowAddStaffModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
               >
                 Отмена
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black"
+                disabled={isSubmittingAction}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-2"
               >
-                Создать учетную запись
+                {isSubmittingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Сохранение в базе...</span>
+                  </>
+                ) : (
+                  <span>Создать учетную запись</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL: Edit Bank Staff Rights & Profile (Full Staff CRUD) */}
+      {editingStaff && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <form
+            onSubmit={handleUpdateBankStaff}
+            className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <Edit className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  Редактировать права сотрудника банка
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStaff(null)}
+                className="text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">ФИО сотрудника *</label>
+              <input
+                type="text"
+                required
+                value={editStaffName}
+                onChange={(e) => setEditStaffName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Корпоративный Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editStaffEmail}
+                  onChange={(e) => setEditStaffEmail(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Телефон РФ *</label>
+                <input
+                  type="tel"
+                  required
+                  value={editStaffPhone}
+                  onChange={(e) => setEditStaffPhone(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Должность / Роль</label>
+              <select
+                value={editStaffRole}
+                onChange={(e) => setEditStaffRole(e.target.value as BankEmployee['role'])}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-semibold"
+              >
+                <option value="chief_manager">Гл. управляющий</option>
+                <option value="head_manager">Руководитель дирекции</option>
+                <option value="escrow_agent">Агент СБР / Эскроу</option>
+                <option value="officer">Кредитный офицер</option>
+              </select>
+            </div>
+
+            {/* Granular Permission Checkboxes (4 Tabs) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+              <div className="text-[11px] font-black uppercase text-slate-700 tracking-wider">
+                Разрешенные разделы шлюза (Bank RBAC):
+              </div>
+              <div className="space-y-1.5 text-xs text-slate-800">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editStaffPermissions.includes('escrow')}
+                    onChange={(e) =>
+                      setEditStaffPermissions(
+                        e.target.checked
+                          ? [...editStaffPermissions, 'escrow']
+                          : editStaffPermissions.filter((p) => p !== 'escrow')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Эскроу и СБР (Синхронизация закрытия)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editStaffPermissions.includes('developer_accreditation')}
+                    onChange={(e) =>
+                      setEditStaffPermissions(
+                        e.target.checked
+                          ? [...editStaffPermissions, 'developer_accreditation']
+                          : editStaffPermissions.filter((p) => p !== 'developer_accreditation')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Аккредитация девелоперов</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editStaffPermissions.includes('special')}
+                    onChange={(e) =>
+                      setEditStaffPermissions(
+                        e.target.checked
+                          ? [...editStaffPermissions, 'special']
+                          : editStaffPermissions.filter((p) => p !== 'special')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Согласование объектов (Подрядчики)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editStaffPermissions.includes('credit_limits')}
+                    onChange={(e) =>
+                      setEditStaffPermissions(
+                        e.target.checked
+                          ? [...editStaffPermissions, 'credit_limits']
+                          : editStaffPermissions.filter((p) => p !== 'credit_limits')
+                      )
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Кредитные лимиты покупателей</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isSubmittingAction}
+                onClick={() => setEditingStaff(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingAction}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-2"
+              >
+                {isSubmittingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Сохранение в базе...</span>
+                  </>
+                ) : (
+                  <span>Сохранить изменения</span>
+                )}
               </button>
             </div>
           </form>

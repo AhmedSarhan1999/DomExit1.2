@@ -23,6 +23,12 @@ import {
   validateSellerFinancials,
   validateTextEntityName,
 } from '../utils/validators';
+import {
+  isValidInn,
+  getInnValidationError,
+  withAsyncTimeout,
+  ASYNC_NETWORK_TIMEOUT_MESSAGE,
+} from '../utils/asyncGuard';
 import { useAuth } from '../context/AuthContext';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
 import {
@@ -38,6 +44,7 @@ import {
   Send,
   HardDrive,
   Eye,
+  Loader2,
   Download,
   MapPin,
 } from 'lucide-react';
@@ -219,6 +226,25 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
+    if (isAddingNewDeveloper) {
+      if (!developerName.trim()) {
+        setStep1Error('Укажите наименование нового застройщика.');
+        return;
+      }
+      if (!isValidInn(developerInn)) {
+        setStep1Error(
+          getInnValidationError(developerInn) ||
+            'Укажите корректный ИНН застройщика (10 цифр для юрлиц или 12 для ИП).'
+        );
+        return;
+      }
+    } else {
+      const matched = accreditedDevelopers.find((d) => d.name === developerName);
+      if (matched && !developerInn) {
+        setDeveloperInn(matched.inn);
+      }
+    }
+
     if (!agreeTerms) {
       setStep1Error(
         language === 'ru'
@@ -288,64 +314,71 @@ export const SellersPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const activeUser = user
-        ? user
-        : await login({
-            name: sellerName.trim(),
-            phone: sellerPhone,
-            roles: ['seller', 'buyer'],
-            activeRole: 'seller',
+      await withAsyncTimeout(
+        (async () => {
+          const activeUser = user
+            ? user
+            : await login({
+                name: sellerName.trim(),
+                phone: sellerPhone,
+                roles: ['seller', 'buyer'],
+                activeRole: 'seller',
+              });
+
+          const result = await SellerRequestsRepository.submitSellerRequest({
+            uid: activeUser.id,
+            clientCode: activeUser.clientCode,
+            draftLotCode,
+            sellerName: sellerName.trim(),
+            sellerPhone,
+            sellerInn: sellerInn.trim(),
+            city: locationRegion,
+            district,
+            complexName: complexName.trim(),
+            developer: developerName.trim(),
+            developerInn: developerInn.trim() || undefined,
+            dduNumber: dduCode.trim(),
+            areaM2: Number(areaM2),
+            rooms,
+            floor: Number(floor),
+            totalFloors: Number(totalFloors),
+            contractPriceRub: contractPrice,
+            paidAmountRub: paidAmount,
+            exitRoute,
+            documentIds: vaultDocs.map((d) => d.id),
+            referredByPartnerCode: partnerRefCode.trim() || undefined,
           });
 
-      const result = await SellerRequestsRepository.submitSellerRequest({
-        uid: activeUser.id,
-        clientCode: activeUser.clientCode,
-        draftLotCode,
-        sellerName: sellerName.trim(),
-        sellerPhone,
-        sellerInn: sellerInn.trim(),
-        city: locationRegion,
-        district,
-        complexName: complexName.trim(),
-        developer: developerName.trim(),
-        developerInn: developerInn.trim() || undefined,
-        dduNumber: dduCode.trim(),
-        areaM2: Number(areaM2),
-        rooms,
-        floor: Number(floor),
-        totalFloors: Number(totalFloors),
-        contractPriceRub: contractPrice,
-        paidAmountRub: paidAmount,
-        exitRoute,
-        documentIds: vaultDocs.map((d) => d.id),
-        referredByPartnerCode: partnerRefCode.trim() || undefined,
-      });
+          if (uploadedPhotos.length > 0) {
+            result.lot.imageUrl = uploadedPhotos[0];
+            result.lot.galleryImages = uploadedPhotos;
+            result.lot.sellerUploadedPhotos = uploadedPhotos;
+            result.lot.approvedGalleryImages = uploadedPhotos.slice(0, 2);
+            if (todayMarketPrice > contractPrice) {
+              result.lot.todayDeveloperPrice = todayMarketPrice;
+            }
+            await LotsRepository.update(result.lot);
+          }
 
-      if (uploadedPhotos.length > 0) {
-        result.lot.imageUrl = uploadedPhotos[0];
-        result.lot.galleryImages = uploadedPhotos;
-        result.lot.sellerUploadedPhotos = uploadedPhotos;
-        result.lot.approvedGalleryImages = uploadedPhotos.slice(0, 2);
-        if (todayMarketPrice > contractPrice) {
-          result.lot.todayDeveloperPrice = todayMarketPrice;
-        }
-        await LotsRepository.update(result.lot);
-      }
+          await login({
+            ...activeUser,
+            name: sellerName.trim(),
+            phone: sellerPhone,
+            roles: activeUser.roles.includes('seller')
+              ? activeUser.roles
+              : [...activeUser.roles, 'seller'],
+            activeRole: 'seller',
+            activeDealId: result.dealId,
+          });
 
-      await login({
-        ...activeUser,
-        name: sellerName.trim(),
-        phone: sellerPhone,
-        roles: activeUser.roles.includes('seller')
-          ? activeUser.roles
-          : [...activeUser.roles, 'seller'],
-        activeRole: 'seller',
-        activeDealId: result.dealId,
-      });
-
-      setCreatedDealId(result.dealId);
-      setCreatedLotCode(result.lot.lotCode);
-      setCurrentStep(4);
+          setCreatedDealId(result.dealId);
+          setCreatedLotCode(result.lot.lotCode);
+          setCurrentStep(4);
+        })(),
+        15000
+      );
+    } catch (err: any) {
+      setStep3Error(err?.message || ASYNC_NETWORK_TIMEOUT_MESSAGE);
     } finally {
       setIsSubmitting(false);
     }
@@ -543,28 +576,9 @@ export const SellersPage: React.FC = () => {
                           }}
                           className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
                         >
-                          {(accreditedDevelopers.length > 0
-                            ? accreditedDevelopers.map((d) => d.name)
-                            : [
-                                'ПИК',
-                                'Самолёт',
-                                'ЛСР',
-                                'Setl Group',
-                                'ФСК',
-                                'Эталон',
-                                'А101',
-                                'Брусника',
-                                'Главстрой',
-                                'RBI',
-                                'КВС',
-                                'ГК Пионер',
-                                'MR Group',
-                                'Sminex',
-                                'Донстрой',
-                              ]
-                          ).map((devName) => (
-                            <option key={devName} value={devName}>
-                              {devName} (Аккредитован банками)
+                          {accreditedDevelopers.map((d) => (
+                            <option key={d.id} value={d.name}>
+                              {d.name} (ИНН {d.inn})
                             </option>
                           ))}
                           <option value="__ADD_NEW__">+ Добавить нового застройщика</option>
@@ -1210,12 +1224,17 @@ export const SellersPage: React.FC = () => {
                   onClick={handleSubmitFinal}
                   className="px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer"
                 >
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>
-                    {isSubmitting
-                      ? 'Сохранение в базу сделок...'
-                      : 'Отправить заявку на аудит (0% комиссии)'}
-                  </span>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Сохранение в базе...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>Отправить заявку на аудит (0% комиссии)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
