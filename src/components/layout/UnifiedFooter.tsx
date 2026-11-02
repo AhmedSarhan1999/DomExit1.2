@@ -98,6 +98,16 @@ export const UnifiedFooter: React.FC = () => {
                   {language === 'ru' ? 'Партнерская сеть (бонус 30 000 ₽)' : 'Partner Network (30,000 ₽ bonus)'}
                 </Link>
               </li>
+              <li>
+                <Link to="/knowledge" className="text-slate-600 hover:text-emerald-600 transition-colors">
+                  {language === 'ru' ? 'База знаний (214-ФЗ, 140-ФЗ)' : 'Legal Knowledge Hub'}
+                </Link>
+              </li>
+              <li>
+                <Link to="/faq" className="text-slate-600 hover:text-emerald-600 transition-colors">
+                  {language === 'ru' ? 'Частые вопросы (FAQ)' : 'FAQ & Legal Answers'}
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -185,6 +195,9 @@ export const UnifiedFooter: React.FC = () => {
               </Link>
               <Link to="/consent-distribution" className="hover:text-emerald-700 underline">
                 Распространение ПД (ст. 10.1)
+              </Link>
+              <Link to="/legal/archive" className="hover:text-emerald-700 underline text-emerald-800 font-bold">
+                Архив редакций (SHA-256)
               </Link>
             </div>
           </div>

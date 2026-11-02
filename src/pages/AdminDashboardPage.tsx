@@ -22,6 +22,8 @@ import {
 } from '../dal/repositories/MarketSettingsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { SecurityIncidentsRepository } from '../dal/repositories/SecurityIncidentsRepository';
+import { LegalPoliciesRepository, CANONICAL_POLICY_NAMES, INITIAL_POLICY_TEXTS } from '../dal/repositories/LegalPoliciesRepository';
+import { computeSha256 } from '../utils/crypto';
 import { useCompanyProfileStore } from '../stores/useCompanyProfileStore';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { maskSensitiveData } from '../utils/dataMasking';
@@ -43,6 +45,8 @@ import {
   SecurityIncidentRecord,
   CompanyLegalProfile,
   PublicChannelsConfig,
+  LegalPolicyType,
+  LegalPolicyVersion,
 } from '../types';
 import {
   CheckCircle2,
@@ -67,6 +71,7 @@ import {
   Edit,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   Copy,
   Send,
   MessageCircle,
@@ -160,7 +165,82 @@ export const AdminDashboardPage: React.FC = () => {
   type OwnerTab = 'overview' | 'sellers' | 'market' | 'banks' | 'legal';
   const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>('overview');
 
-  // Social Channels & Public Links Hub State (Section 2)
+  // Policy Versioning & SHA-256 Cryptographic Registry State (152-FZ)
+  const [legalVersions, setLegalVersions] = useState<LegalPolicyVersion[]>([]);
+  const [selectedNewPolicyType, setSelectedNewPolicyType] = useState<LegalPolicyType>('privacy');
+  const [newPolicyVersionNumber, setNewPolicyVersionNumber] = useState<string>('2.2');
+  const [newPolicyChangeType, setNewPolicyChangeType] = useState<'minor' | 'material'>('material');
+  const [newPolicyChangeSummary, setNewPolicyChangeSummary] = useState<string>('Актуализация формулировок в связи с новыми требованиями Роскомнадзора 2026 г.');
+  const [newPolicyText, setNewPolicyText] = useState<string>(INITIAL_POLICY_TEXTS.privacy || '');
+  const [computedNewPolicySha, setComputedNewPolicySha] = useState<string>('');
+  const [isPublishingPolicy, setIsPublishingPolicy] = useState<boolean>(false);
+  const [policyPublishSuccess, setPolicyPublishSuccess] = useState<boolean>(false);
+
+  // Live recalculate SHA-256 when text changes
+  useEffect(() => {
+    let active = true;
+    computeSha256(newPolicyText).then((hash) => {
+      if (active) setComputedNewPolicySha(hash);
+    });
+    return () => { active = false; };
+  }, [newPolicyText]);
+
+  // When policy type dropdown changes, prefill with existing text
+  const handleSelectPolicyTypeForNewVersion = (pType: LegalPolicyType) => {
+    setSelectedNewPolicyType(pType);
+    const existing = legalVersions.filter((v) => v.policyType === pType && v.isCurrent)[0];
+    if (existing) {
+      setNewPolicyText(existing.fullText);
+      const parts = existing.versionNumber.split('.');
+      if (parts.length === 2) {
+        setNewPolicyVersionNumber(`${parts[0]}.${Number(parts[1]) + 1}`);
+      }
+    } else {
+      setNewPolicyText(INITIAL_POLICY_TEXTS[pType] || '');
+      setNewPolicyVersionNumber('2.2');
+    }
+  };
+
+  const handlePublishNewPolicyVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPolicyText.trim()) return;
+    setIsPublishingPolicy(true);
+    try {
+      await withAsyncTimeout(
+        (async () => {
+          const published = await LegalPoliciesRepository.publishNewVersion({
+            policyType: selectedNewPolicyType,
+            versionNumber: newPolicyVersionNumber,
+            changeType: newPolicyChangeType,
+            changeSummary: newPolicyChangeSummary,
+            fullText: newPolicyText,
+            createdBy: operatorName,
+          });
+
+          await AuditLogsRepository.addLog({
+            operatorName,
+            operatorRole: 'owner',
+            actionType: 'company_profile_updated',
+            title: `Опубликована новая редакция: ${published.policyNameRu} v${published.versionNumber}`,
+            description: `Тип изменений: ${published.changeType === 'material' ? 'Существенные (требуется повторное согласие)' : 'Минорные'}. SHA-256: ${published.sha256Hash}`,
+          });
+
+          const refreshed = await LegalPoliciesRepository.getAllVersions();
+          setLegalVersions(refreshed);
+          setPolicyPublishSuccess(true);
+          showToast(`Редакция v${published.versionNumber} успешно опубликована с хэшем SHA-256!`);
+          setTimeout(() => setPolicyPublishSuccess(false), 4000);
+        })(),
+        15000
+      );
+    } catch (err: any) {
+      showError(err.message || ASYNC_NETWORK_TIMEOUT_MESSAGE);
+    } finally {
+      setIsPublishingPolicy(false);
+    }
+  };
+
+    // Social Channels & Public Links Hub State (Section 2)
   const {
     channels: globalChannels,
     updateChannels: updateGlobalChannels,
@@ -2514,6 +2594,183 @@ export const AdminDashboardPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* POLICY VERSIONING & IMMUTABLE REGISTRY (152-FZ / 38-FZ / SHA-256) */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-black">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-base sm:text-lg font-black text-slate-900">
+                          Реестр версий юридических документов и контрольных сумм SHA-256
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          152-ФЗ / 38-ФЗ Immutable
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Управление жизненным циклом правовых актов платформы. Публикация версий с типом «Материальные изменения» автоматически активирует защитный экран повторного согласия (ConsentGateModal) для пользователей.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    to="/legal/archive"
+                    target="_blank"
+                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center space-x-1.5 shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Открыть публичный архив редакций</span>
+                  </Link>
+                </div>
+
+                {/* Current Active Policies List */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    Текущие действующие редакции документов:
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {legalVersions.filter((v) => v.isCurrent).map((v) => (
+                      <div
+                        key={v.id}
+                        className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 truncate max-w-[180px]">
+                            {v.policyNameRu}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">
+                            v{v.versionNumber}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 line-clamp-2">
+                          {v.changeSummary}
+                        </p>
+                        <div className="text-[10px] font-mono text-slate-400 truncate bg-white p-1.5 rounded border border-slate-200">
+                          SHA-256: {v.sha256Hash}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Дата вступления: {v.effectiveDate}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* New Version Publishing Form */}
+                <form onSubmit={handlePublishNewPolicyVersion} className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-4 text-xs">
+                  <h4 className="font-black text-sm text-slate-900 flex items-center space-x-2">
+                    <Plus className="w-4 h-4 text-emerald-600" />
+                    <span>Опубликовать новую редакцию документа (с вычислением SHA-256)</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Документ *</label>
+                      <select
+                        value={selectedNewPolicyType}
+                        onChange={(e) => handleSelectPolicyTypeForNewVersion(e.target.value as LegalPolicyType)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 font-bold focus:border-emerald-500"
+                      >
+                        <option value="privacy">Политика ПДн (152-ФЗ)</option>
+                        <option value="user_agreement">Пользовательское соглашение</option>
+                        <option value="cookies">Файлы Cookie</option>
+                        <option value="advertising_consent">Реклама (38-ФЗ)</option>
+                        <option value="public_distribution_consent">Распространение (ст. 10.1 152-ФЗ)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Номер версии *</label>
+                      <input
+                        type="text"
+                        value={newPolicyVersionNumber}
+                        onChange={(e) => setNewPolicyVersionNumber(e.target.value)}
+                        placeholder="Например: 2.2"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 font-bold focus:border-emerald-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Характер изменений *</label>
+                      <select
+                        value={newPolicyChangeType}
+                        onChange={(e) => setNewPolicyChangeType(e.target.value as 'minor' | 'material')}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 font-bold focus:border-emerald-500"
+                      >
+                        <option value="material">Существенные (Повторное согласие пользователей)</option>
+                        <option value="minor">Технические (Без блокирующего согласия)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Краткое описание изменений (Changelog) *</label>
+                    <input
+                      type="text"
+                      value={newPolicyChangeSummary}
+                      onChange={(e) => setNewPolicyChangeSummary(e.target.value)}
+                      placeholder="Опишите, какие пункты изменены (для пользователей и Роскомнадзора)..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-emerald-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="font-bold text-slate-700">Полный текст документа *</label>
+                      <span className="text-[11px] font-mono text-emerald-700 font-bold">
+                        Контрольная сумма в реальном времени: {computedNewPolicySha.substring(0, 16)}...
+                      </span>
+                    </div>
+                    <textarea
+                      rows={6}
+                      value={newPolicyText}
+                      onChange={(e) => setNewPolicyText(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-slate-200 bg-white text-slate-900 font-mono text-xs focus:border-emerald-500"
+                      required
+                    />
+                  </div>
+
+                  {/* SHA-256 Calculated Preview */}
+                  <div className="bg-slate-900 text-white p-3 rounded-xl font-mono text-xs flex items-center justify-between">
+                    <span className="text-slate-400">SHA-256 FIPS-180-4:</span>
+                    <span className="text-emerald-400 font-semibold truncate ml-2">
+                      {computedNewPolicySha || 'Вычисление...'}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-end items-center space-x-3 pt-2">
+                    {policyPublishSuccess && (
+                      <span className="text-emerald-600 font-bold text-xs flex items-center space-x-1">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Новая редакция сохранена в неизменяемый реестр!</span>
+                      </span>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={isPublishingPolicy || !newPolicyText.trim()}
+                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
+                    >
+                      {isPublishingPolicy ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Публикация и хэширование...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          <span>Опубликовать редакцию и активировать SHA-256</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
               </div>
 
               {/* Staff, Users & Role Management */}

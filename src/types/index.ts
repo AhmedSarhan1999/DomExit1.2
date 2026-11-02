@@ -735,3 +735,93 @@ export interface PublicChannelsConfig {
   supportEmail: string; // Официальный email
   updatedAt: string;
 }
+
+// SEO Knowledge Hub & Articles
+export type KnowledgeArticleCategory = 'ddu' | 'mortgage' | 'law140' | 'matkapital' | 'general';
+
+export interface TableOfContentsItem {
+  id: string;
+  title: string;
+}
+
+export interface LegalCallout {
+  lawCode: string; // e.g. '214-ФЗ ст. 11', '140-ФЗ ст. 37.1', '256-ФЗ', '152-ФЗ'
+  title: string;
+  description: string;
+  badgeType: 'warning' | 'info' | 'success' | 'danger';
+}
+
+export interface KnowledgeArticle {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: KnowledgeArticleCategory;
+  categoryLabel: string;
+  readTimeMinutes: number;
+  publishedAt: string;
+  updatedAt: string;
+  authorName: string;
+  authorRole: string;
+  authorAvatar?: string;
+  metaTitle: string;
+  metaDescription: string;
+  canonicalUrl: string;
+  keywords: string[];
+  tableOfContents: TableOfContentsItem[];
+  legalCallouts?: LegalCallout[];
+  content: string; // Structured HTML or markdown
+}
+
+// FAQ Items
+export type FaqCategory = 'installments_ddu' | 'mortgage_banks' | 'law140_pledge' | 'matkapital_escrow';
+
+export interface FaqItem {
+  id: string;
+  question: string;
+  answer: string;
+  category: FaqCategory;
+  categoryLabel: string;
+  order: number;
+  relatedArticleSlug?: string;
+  lawReferences?: string[];
+}
+
+// Legal Policy Versioning & Proof of Consent (152-FZ & Roskomnadzor)
+export type LegalPolicyType =
+  | 'privacy'
+  | 'user_agreement'
+  | 'cookies'
+  | 'advertising_consent'
+  | 'public_distribution_consent';
+
+export interface LegalPolicyVersion {
+  id: string;
+  policyType: LegalPolicyType;
+  policyNameRu: string;
+  versionNumber: string; // e.g. "2.1", "2.2"
+  effectiveDate: string; // ISO date string (YYYY-MM-DD)
+  changeType: 'minor' | 'material'; // 'material' triggers ConsentGateModal for users
+  changeSummary: string; // Short changelog summary
+  fullText: string;
+  sha256Hash: string; // Cryptographic SHA-256 hash of the exact legal text
+  isCurrent: boolean;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface ProofOfConsentRecord {
+  id: string;
+  userId: string;
+  clientCode?: string;
+  userFullName?: string;
+  policyType: LegalPolicyType;
+  policyVersion: string;
+  policySha256: string;
+  consentedAt: string; // ISO timestamp
+  ipAddress?: string;
+  userAgent?: string;
+  consentMethod: 'web_form' | 'reconsent_modal' | 'portal_action';
+  isWithdrawn?: boolean;
+  withdrawnAt?: string;
+}

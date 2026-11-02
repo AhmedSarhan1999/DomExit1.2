@@ -245,6 +245,26 @@ export const UnifiedNavbar: React.FC = () => {
             >
               {t.nav.investors}
             </Link>
+            <Link
+              to="/knowledge"
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                isActive('/knowledge') || location.pathname.startsWith('/knowledge/')
+                  ? 'bg-slate-800 text-emerald-400 border border-slate-700'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              {language === 'ru' ? 'База знаний' : 'Knowledge'}
+            </Link>
+            <Link
+              to="/faq"
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                isActive('/faq')
+                  ? 'bg-slate-800 text-emerald-400 border border-slate-700'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              FAQ
+            </Link>
 
             {/* Direct Link to Bank Portal for Bank Partners */}
             {user?.activeRole === 'bank' && (
@@ -532,6 +552,20 @@ export const UnifiedNavbar: React.FC = () => {
             className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
           >
             {t.nav.investors}
+          </Link>
+          <Link
+            to="/knowledge"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            {language === 'ru' ? 'База знаний (214-ФЗ, 140-ФЗ)' : 'Knowledge Base'}
+          </Link>
+          <Link
+            to="/faq"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            {language === 'ru' ? 'Частые вопросы (FAQ)' : 'FAQ'}
           </Link>
 
           {/* Mobile Client Portal Link */}

@@ -38,7 +38,14 @@ import { TermsOfServicePage } from './pages/legal/TermsOfServicePage';
 import { ConsentPdPage } from './pages/legal/ConsentPdPage';
 import { ConsentAdsPage } from './pages/legal/ConsentAdsPage';
 import { ConsentDistributionPage } from './pages/legal/ConsentDistributionPage';
+import { LegalArchivePage } from './pages/legal/LegalArchivePage';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
+import { ConsentGateModal } from './components/compliance/ConsentGateModal';
+
+// SEO Legal Knowledge Hub & FAQ
+import { KnowledgeHubPage } from './pages/knowledge/KnowledgeHubPage';
+import { ArticleDetailPage } from './pages/knowledge/ArticleDetailPage';
+import { FAQPage } from './pages/knowledge/FAQPage';
 
 // Helper component to scroll to top on every route change
 const ScrollToTop: React.FC = () => {
@@ -62,6 +69,7 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <ScrollToTop />
           <CookieConsentBanner />
+          <ConsentGateModal />
           <Routes>
             {/* Public Layout Wrapping Global Header & Footer */}
             <Route element={<PublicLayout />}>
@@ -75,12 +83,18 @@ export const App: React.FC = () => {
               <Route path="/partners" element={<PartnersPublicPage />} />
               <Route path="/verify/:lotCode" element={<VerifyCertificatePage />} />
 
-              {/* Federal 152-FZ & 38-FZ Legal Routes */}
+              {/* SEO Knowledge Center & FAQ */}
+              <Route path="/knowledge" element={<KnowledgeHubPage />} />
+              <Route path="/knowledge/:articleSlug" element={<ArticleDetailPage />} />
+              <Route path="/faq" element={<FAQPage />} />
+
+              {/* Federal 152-FZ & 38-FZ Legal Routes & Transparency Archive */}
               <Route path="/privacy" element={<PrivacyPolicyPage />} />
               <Route path="/terms" element={<TermsOfServicePage />} />
               <Route path="/consent-pd" element={<ConsentPdPage />} />
               <Route path="/consent-ads" element={<ConsentAdsPage />} />
               <Route path="/consent-distribution" element={<ConsentDistributionPage />} />
+              <Route path="/legal/archive" element={<LegalArchivePage />} />
 
               {/* Unified Client Account & Portal */}
               <Route path="/portal" element={<ClientPortalPage />} />
