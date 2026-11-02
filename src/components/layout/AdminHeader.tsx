@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, User, Crown, Briefcase, Building2 } from 'lucide-react';
+import { PlatformModeRepository, PlatformDataMode } from '../../dal/repositories/PlatformModeRepository';
+import { Bell, Crown, Briefcase, Database, ShieldAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface AdminHeaderProps {
@@ -12,8 +13,22 @@ interface AdminHeaderProps {
 export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => {
   const { language, setLanguage } = useLanguage();
   const { user, switchRole } = useAuth();
+  const [platformMode, setPlatformMode] = useState<PlatformDataMode>(PlatformModeRepository.getMode());
 
   const isOwner = user?.activeRole === 'owner';
+
+  useEffect(() => {
+    const handleModeChange = (e: any) => {
+      setPlatformMode(e.detail?.mode || PlatformModeRepository.getMode());
+    };
+    window.addEventListener('domexit:data_mode_changed', handleModeChange);
+    return () => window.removeEventListener('domexit:data_mode_changed', handleModeChange);
+  }, []);
+
+  const handleToggleMode = (newMode: PlatformDataMode) => {
+    PlatformModeRepository.setMode(newMode);
+    setPlatformMode(newMode);
+  };
 
   return (
     <div className="bg-white border-b border-slate-200 px-6 py-4 space-y-2">
@@ -25,9 +40,39 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5 flex-wrap">
+          {/* Platform Data Mode Switcher (Demo / Production) */}
+          <div className="flex items-center bg-slate-900 rounded-xl p-1 border border-slate-700 text-xs shadow-xs">
+            <button
+              type="button"
+              onClick={() => handleToggleMode('demo')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                platformMode === 'demo'
+                  ? 'bg-amber-400 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Переключить в Тестовый режим (Демо-данные)"
+            >
+              <Database className="w-3 h-3" />
+              <span className="hidden sm:inline">Демо</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleMode('production')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                platformMode === 'production'
+                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Переключить в Боевой режим (Чистый запуск)"
+            >
+              <ShieldAlert className="w-3 h-3" />
+              <span className="hidden sm:inline">Боевой запуск</span>
+            </button>
+          </div>
+
           {/* Banking API indicator */}
-          <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
+          <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>Сбер / ВТБ Эскроу API: Онлайн</span>
           </div>
@@ -83,10 +128,8 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
           <Link
             to="/portal"
             className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
-            title="Перейти в личный кабинет"
           >
-            <User className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden md:inline">{user?.name ? user.name.split(' ')[0] : 'Кабинет'}</span>
+            <span>Кабинет</span>
           </Link>
         </div>
       </div>

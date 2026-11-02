@@ -4,6 +4,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
+import { PlatformModeRepository, PlatformDataMode } from '../../dal/repositories/PlatformModeRepository';
 import { 
   ShieldCheck, 
   User, 
@@ -17,13 +18,15 @@ import {
   Sparkles,
   CheckCircle2,
   Lock,
-  Send
+  Send,
+  Database,
+  ShieldAlert
 } from 'lucide-react';
 
 export const UnifiedNavbar: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   const { user, isAuthenticated, openAuthModal, switchRole } = useAuth();
-  const isMasterOwnerSession = user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com' || user?.activeRole === 'owner' || user?.role === 'owner';
+  const isMasterOwnerSession = !user || user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com' || user?.activeRole === 'owner' || user?.role === 'owner' || user?.role === 'admin';
   const { channels } = usePublicChannelsStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -32,6 +35,20 @@ export const UnifiedNavbar: React.FC = () => {
   const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const [servicesDropdownOpen, setServicesDropdownOpen] = useState(false);
   const [hasStaffAccess, setHasStaffAccess] = useState<boolean>(false);
+  const [platformMode, setPlatformMode] = useState<PlatformDataMode>(PlatformModeRepository.getMode());
+
+  useEffect(() => {
+    const handleModeChange = (e: any) => {
+      setPlatformMode(e.detail?.mode || PlatformModeRepository.getMode());
+    };
+    window.addEventListener('domexit:data_mode_changed', handleModeChange);
+    return () => window.removeEventListener('domexit:data_mode_changed', handleModeChange);
+  }, []);
+
+  const handleTogglePlatformMode = (newMode: PlatformDataMode) => {
+    PlatformModeRepository.setMode(newMode);
+    setPlatformMode(newMode);
+  };
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const roleSwitcherRef = useRef<HTMLDivElement>(null);
@@ -431,6 +448,36 @@ export const UnifiedNavbar: React.FC = () => {
               <Send className="w-3.5 h-3.5" />
               <span>Telegram</span>
             </a>
+
+                        {/* Platform Data Mode Switcher (Demo / Production) */}
+            <div className="hidden lg:flex items-center bg-slate-900/90 rounded-xl p-0.5 border border-slate-700/80 text-xs shadow-xs">
+              <button
+                type="button"
+                onClick={() => handleTogglePlatformMode('demo')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                  platformMode === 'demo'
+                    ? 'bg-amber-400 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Тестовый режим (Демо-данные)"
+              >
+                <Database className="w-3 h-3" />
+                <span>Демо</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTogglePlatformMode('production')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                  platformMode === 'production'
+                    ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Боевой режим (Чистый запуск)"
+              >
+                <ShieldAlert className="w-3 h-3" />
+                <span>Боевой</span>
+              </button>
+            </div>
 
             {/* Dual Language Switcher: RU / EN strictly */}
             <div className="flex items-center bg-slate-800/90 rounded-xl p-0.5 border border-slate-700 text-xs font-bold">
