@@ -1,12 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { ShieldCheck, Phone, Mail, MapPin, Send, CheckCircle2, Building2 } from 'lucide-react';
+import { ShieldCheck, Phone, Mail, MapPin, Send, CheckCircle2, Building2, MessageCircle, Bot } from 'lucide-react';
 import { useCompanyProfileStore } from '../../stores/useCompanyProfileStore';
+import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 
 export const UnifiedFooter: React.FC = () => {
   const { language, t } = useLanguage();
   const { profile } = useCompanyProfileStore();
+  const { channels } = usePublicChannelsStore();
 
   return (
     <footer className="bg-[#F8FAFC] border-t border-slate-200 text-slate-700 pt-16 pb-12 transition-colors">
@@ -26,15 +28,41 @@ export const UnifiedFooter: React.FC = () => {
             <p className="text-sm text-slate-600 leading-relaxed">
               {t.footer.legalDescription}
             </p>
-            <div className="pt-1">
+            <div className="pt-1 flex flex-wrap gap-2">
               <a
-                href="https://t.me/domexit_ru"
+                href={channels.telegramChannelUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all"
+                className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold shadow-xs hover:shadow-md transition-all"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5" />
                 <span>{t.footer.tgChannel}</span>
+              </a>
+              <a
+                href={channels.telegramBotUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-xs transition-all"
+              >
+                <Bot className="w-3.5 h-3.5 text-sky-400" />
+                <span>Бот</span>
+              </a>
+              <a
+                href={channels.vkCommunityUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all"
+              >
+                <span className="font-black text-[11px]">VK</span>
+              </a>
+              <a
+                href={channels.maxProfileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>MAX</span>
               </a>
             </div>
           </div>
@@ -98,14 +126,14 @@ export const UnifiedFooter: React.FC = () => {
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center space-x-2 text-slate-900 font-semibold">
                 <Phone className="w-4 h-4 text-emerald-600" />
-                <a href={`tel:${profile.officialPhone.replace(/\D/g, '')}`} className="hover:text-emerald-600 font-mono">
-                  {profile.officialPhone}
+                <a href={`tel:${(channels.hotlinePhone || profile.officialPhone).replace(/\D/g, '')}`} className="hover:text-emerald-600 font-mono">
+                  {channels.hotlinePhone || profile.officialPhone}
                 </a>
               </div>
               <div className="flex items-center space-x-2 text-slate-600">
                 <Mail className="w-4 h-4 text-emerald-600" />
-                <a href={`mailto:${profile.privacyEmail}`} className="hover:text-emerald-600">
-                  {profile.privacyEmail}
+                <a href={`mailto:${channels.supportEmail || profile.privacyEmail}`} className="hover:text-emerald-600">
+                  {channels.supportEmail || profile.privacyEmail}
                 </a>
               </div>
             </div>

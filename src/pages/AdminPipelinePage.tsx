@@ -197,7 +197,7 @@ export const AdminPipelinePage: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md shadow-emerald-600/20"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>+ Создать сделку</span>
+                <span>Создать сделку</span>
               </Link>
             </div>
           </div>

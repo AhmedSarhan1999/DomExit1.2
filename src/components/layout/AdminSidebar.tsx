@@ -96,8 +96,8 @@ export const AdminSidebar: React.FC = () => {
     {
       path: '/admin/partners-bot',
       matchPrefix: '/admin/partners-bot',
-      label: language === 'ru' ? 'Управление Партнерами и TG-бот' : 'Partners & TG Bot Desk',
-      icon: Bot,
+      label: language === 'ru' ? 'Инвесторы VIP и Партнеры' : 'VIP Investors & Partners',
+      icon: Crown,
       roles: ['owner'],
     },
   ];

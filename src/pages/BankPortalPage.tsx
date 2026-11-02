@@ -1329,7 +1329,7 @@ export const BankPortalPage: React.FC = () => {
                   className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center space-x-2 shrink-0 shadow-xs cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>+ Добавить застройщика в аккредитацию</span>
+                  <span>Добавить застройщика в аккредитацию</span>
                 </button>
               </div>
 
@@ -1747,7 +1747,7 @@ export const BankPortalPage: React.FC = () => {
                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs shrink-0"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Добавить сотрудника банка</span>
+                <span>Добавить сотрудника банка</span>
               </button>
             </div>
 

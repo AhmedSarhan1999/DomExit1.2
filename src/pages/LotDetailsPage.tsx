@@ -372,6 +372,7 @@ export const LotDetailsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => toggleFavorite(lot.lotCode)}
+                title="В избранном"
                 className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border font-semibold transition-all cursor-pointer ${
                   favorited
                     ? 'bg-rose-50 border-rose-200 text-rose-700'
@@ -383,9 +384,7 @@ export const LotDetailsPage: React.FC = () => {
                     favorited ? 'fill-rose-500 text-rose-500' : 'text-rose-500'
                   }`}
                 />
-                <span>
-                  В избранном: <strong className="text-slate-900">{favoritesCount}</strong> раз(а)
-                </span>
+                <span className="font-bold text-slate-900">{favoritesCount}</span>
               </button>
             </div>
           </div>
@@ -845,25 +844,6 @@ export const LotDetailsPage: React.FC = () => {
                 complexName={lot.complexName}
                 streetAddress={`${lot.district}, ${geo.streetAddress}`}
               />
-
-              {/* Smart District Filter CTA Button */}
-              <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-xs">
-                  <span className="font-bold text-emerald-950 block">
-                    Интересует именно {lot.district} ({geo.region.shortLabelRu})?
-                  </span>
-                  <span className="text-emerald-800">
-                    В реестре DomExit доступно {sameDistrictCount} проверенных объектов в этой локации.
-                  </span>
-                </div>
-                <Link
-                  to={similarDistrictUrl}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-2 shadow-xs transition-all shrink-0"
-                >
-                  <span>Смотреть похожие лоты в этом районе</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
             </div>
 
           </div>
@@ -999,23 +979,6 @@ export const LotDetailsPage: React.FC = () => {
                   <span>Проверить документы лота (S3 Хранилище)</span>
                 </button>
               </div>
-            </div>
-
-            {/* Smart District Shortcut Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 text-xs space-y-1.5 shadow-sm">
-              <span className="font-bold text-slate-900 block">
-                Локация: {lot.district} ({geo.region.shortLabelRu})
-              </span>
-              <p className="text-slate-500 text-[11px]">
-                Откройте все проверенные предложения переуступок ДДУ в этом районе и сравните экономию за м².
-              </p>
-              <Link
-                to={similarDistrictUrl}
-                className="text-emerald-700 font-bold hover:underline inline-flex items-center space-x-1 pt-1"
-              >
-                <span>Смотреть похожие лоты в этом районе</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
             </div>
 
             {/* Personal Curator Card */}

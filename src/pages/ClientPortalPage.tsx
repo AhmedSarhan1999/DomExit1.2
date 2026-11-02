@@ -154,6 +154,7 @@ export const ClientPortalPage: React.FC = () => {
   const [refPaidAmount, setRefPaidAmount] = useState<number>(2800000);
   const [refDduPrice, setRefDduPrice] = useState<number>(10500000);
   const [partnerError, setPartnerError] = useState<string | null>(null);
+  const [copiedPartnerLink, setCopiedPartnerLink] = useState<boolean>(false);
 
   // Investor Package Builder State
   const [investorAppRecord, setInvestorAppRecord] = useState<InvestorApplication | null>(null);
@@ -1561,6 +1562,56 @@ export const ClientPortalPage: React.FC = () => {
                     Подать заявку на партнерский статус
                   </button>
                 )}
+              </div>
+
+              {/* SMART PARTNER REFERRAL LINK CARD (Section 6) */}
+              <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-white border-2 border-purple-300 rounded-3xl p-6 sm:p-7 shadow-xs space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-black shadow-xs">
+                      <Share2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-900">
+                        Ваша реферальная ссылка для продавцов ДДУ
+                      </h3>
+                      <p className="text-xs text-slate-600">
+                        Автоматическая фиксация вашего партнерского кода при переходе клиента
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-purple-600 text-white text-xs font-black self-start sm:self-auto shadow-xs">
+                    30 000 – 50 000 ₽ / выход
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`https://domexit.ru/sellers?ref=${
+                      user?.partnerRefCode || partnerAppRecord?.referralCode || user?.clientCode || 'DEX-PARTNER-77'
+                    }`}
+                    className="flex-1 bg-white border border-purple-300 text-purple-950 font-mono text-xs px-4 py-3 rounded-xl font-bold select-all focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const refCode = user?.partnerRefCode || partnerAppRecord?.referralCode || user?.clientCode || 'DEX-PARTNER-77';
+                      navigator.clipboard.writeText(`https://domexit.ru/sellers?ref=${refCode}`);
+                      setCopiedPartnerLink(true);
+                      setTimeout(() => setCopiedPartnerLink(false), 2500);
+                    }}
+                    className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shrink-0 shadow-xs"
+                  >
+                    {copiedPartnerLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedPartnerLink ? 'Скопировано!' : 'Копировать ссылку'}</span>
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-purple-900 leading-relaxed">
+                  * Отправляйте эту ссылку клиентам, желающим выйти из ДДУ. При переходе по ссылке ваш партнерский код будет зафиксирован автоматически, гарантируя вам комиссию 30 000 – 50 000 ₽ при закрытии сделки.
+                </p>
               </div>
 
               {/* Refer Distressed Client Form with mandatory DEX-ID & strict financial validation */}

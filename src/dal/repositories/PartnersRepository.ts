@@ -190,4 +190,36 @@ export class PartnersRepository {
       await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
     }
   }
+
+  static async confirmPayout(
+    partnerId: string,
+    payoutAmountRub: number,
+    transactionNumber: string,
+    bankName: string,
+    operatorName: string = 'Виктор Сергеевич (Владелец / CEO)'
+  ): Promise<PartnerEntry | null> {
+    const list = await this.getAll();
+    const partner = list.find((p) => p.id === partnerId);
+    if (!partner) return null;
+
+    const actualAmount = payoutAmountRub > 0 ? payoutAmountRub : partner.pendingBonusesRub || 30000;
+    partner.pendingBonusesRub = Math.max(0, (partner.pendingBonusesRub || 0) - actualAmount);
+    partner.paidBonusesRub = (partner.paidBonusesRub || 0) + actualAmount;
+    partner.lastPayoutAmountRub = actualAmount;
+    partner.lastPayoutDate = new Date().toISOString();
+    partner.lastPayoutTransactionNumber = transactionNumber;
+    partner.lastPayoutBankName = bankName;
+
+    await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'partner_payout_confirmed',
+      title: `Подтверждена выплата комиссии партнеру: ${partner.name}`,
+      description: `Сумма: ${actualAmount.toLocaleString('ru-RU')} ₽. ПП № ${transactionNumber} (${bankName}). Выплачено на реквизиты партнера.`,
+    });
+
+    return partner;
+  }
 }

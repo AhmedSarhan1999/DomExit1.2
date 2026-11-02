@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
 import { 
   ShieldCheck, 
@@ -15,12 +16,14 @@ import {
   Building2,
   Sparkles,
   CheckCircle2,
-  Lock
+  Lock,
+  Send
 } from 'lucide-react';
 
 export const UnifiedNavbar: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   const { user, isAuthenticated, openAuthModal, switchRole } = useAuth();
+  const { channels } = usePublicChannelsStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -393,6 +396,18 @@ export const UnifiedNavbar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Dynamic Telegram Channel Shortcut */}
+            <a
+              href={channels.telegramChannelUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Telegram-канал проверенных лотов"
+              className="hidden xl:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/30 text-sky-300 text-xs font-bold transition-all"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Telegram</span>
+            </a>
 
             {/* Dual Language Switcher: RU / EN strictly */}
             <div className="flex items-center bg-slate-800/90 rounded-xl p-0.5 border border-slate-700 text-xs font-bold">

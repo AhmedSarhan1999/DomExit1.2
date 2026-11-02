@@ -350,6 +350,10 @@ export interface PartnerEntry {
   status?: 'pending' | 'approved' | 'rejected' | 'docs_requested';
   rejectionReason?: string;
   requestedDocsNotes?: string;
+  lastPayoutAmountRub?: number;
+  lastPayoutDate?: string;
+  lastPayoutTransactionNumber?: string;
+  lastPayoutBankName?: string;
 }
 
 export interface Employee {
@@ -632,6 +636,7 @@ export interface AuditLogEntry {
     | 'seller_request_decided'
     | 'partner_application_submitted'
     | 'partner_application_decided'
+    | 'partner_payout_confirmed'
     | 'investor_application_submitted'
     | 'investor_application_decided'
     | 'lot_assigned_to_curator'
@@ -716,5 +721,17 @@ export interface CookieConsentPreferences {
   essential: boolean;
   analytics: boolean;
   marketing: boolean;
+  updatedAt: string;
+}
+
+export interface PublicChannelsConfig {
+  id: string; // 'public_channels'
+  telegramChannelUrl: string; // Telegram-канал лотов
+  telegramBotUrl: string; // Telegram-бот
+  vipClubTelegramUrl: string; // Закрытый VIP-клуб
+  maxProfileUrl: string; // Официальный профиль MAX
+  vkCommunityUrl: string; // VK Сообщество
+  hotlinePhone: string; // Номер горячей линии
+  supportEmail: string; // Официальный email
   updatedAt: string;
 }

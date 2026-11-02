@@ -1,53 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, Download, Plus, CheckCircle2 } from 'lucide-react';
+import { Bell, User, Crown, Briefcase, Building2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { DealsRepository } from '../../dal/repositories/DealsRepository';
-import { FileManager } from '../../utils/fileManager';
 
 interface AdminHeaderProps {
   title: string;
   subtitle?: string;
-  onNewRequest?: () => void;
 }
 
 export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => {
   const { language, setLanguage } = useLanguage();
-  const { user } = useAuth();
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const { user, switchRole } = useAuth();
 
-  const isEmployee = user?.activeRole === 'employee';
-  const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
-
-  const handleExportRegistry = async () => {
-    const deals = isEmployee
-      ? await DealsRepository.getByEmployee(currentEmployeeId)
-      : await DealsRepository.getAll();
-
-    const csvHeader = 'ID Сделки;Код лота;ЖК;Застройщик;Этап;Возврат продавцу (RUB);Дисконт (RUB);Куратор\n';
-    const csvRows = deals
-      .map(
-        (d) =>
-          `${d.dealId};${d.lotCode};"${d.complexName || d.lotTitle}";"${d.developer}";${d.stage};${d.sellerReturnRub};${d.discountRub};"${d.curatorName}"`
-      )
-      .join('\n');
-
-    const content = '\uFEFF' + csvHeader + csvRows;
-    const dataUri = `data:text/csv;charset=utf-8,${encodeURIComponent(content)}`;
-    const dateStamp = new Date().toISOString().slice(0, 10);
-    FileManager.downloadFile(
-      dataUri,
-      `DomExit_Deals_Registry_${isEmployee ? 'Curator' : 'Platform'}_${dateStamp}.csv`
-    );
-
-    setExportNotice(
-      language === 'ru'
-        ? `Выгружен реестр сделок (${deals.length} зап.) в формате CSV (UTF-8)`
-        : `Exported deals registry (${deals.length} rows) as CSV`
-    );
-    setTimeout(() => setExportNotice(null), 4000);
-  };
+  const isOwner = user?.activeRole === 'owner';
 
   return (
     <div className="bg-white border-b border-slate-200 px-6 py-4 space-y-2">
@@ -88,6 +54,21 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
             </button>
           </div>
 
+          {/* Quick Role Switcher */}
+          <button
+            type="button"
+            onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
+            className={`hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+              isOwner
+                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+            }`}
+            title="Быстрое переключение роли (Owner / Curator)"
+          >
+            {isOwner ? <Crown className="w-3.5 h-3.5 text-indigo-600" /> : <Briefcase className="w-3.5 h-3.5 text-emerald-600" />}
+            <span>{isOwner ? 'Режим: Владелец' : 'Режим: Куратор'}</span>
+          </button>
+
           {/* Notification Bell -> Archive Logs */}
           <Link
             to="/admin/archive-logs"
@@ -98,42 +79,17 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
             <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
           </Link>
 
-          {/* Export Report CTA */}
-          <button
-            type="button"
-            onClick={handleExportRegistry}
-            className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{language === 'ru' ? 'Экспорт отчета' : 'Export Report'}</span>
-          </button>
-
-          {/* New Request Action */}
+          {/* Personal Account / Portal Button */}
           <Link
-            to="/sellers"
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+            to="/portal"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+            title="Перейти в личный кабинет"
           >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>{language === 'ru' ? '+ Новая заявка ДДУ' : '+ New DDU Exit'}</span>
+            <User className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden md:inline">{user?.name ? user.name.split(' ')[0] : 'Кабинет'}</span>
           </Link>
         </div>
       </div>
-
-      {exportNotice && (
-        <div className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{exportNotice}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setExportNotice(null)}
-            className="text-emerald-700 hover:text-emerald-950 ml-3 cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      )}
     </div>
   );
 };
