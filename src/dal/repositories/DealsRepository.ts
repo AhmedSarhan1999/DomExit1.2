@@ -10,7 +10,7 @@ const COLLECTION = 'deals';
 
 export class DealsRepository {
   static async getAll(): Promise<DealTrack[]> {
-    let list = await DatabaseGateway.getAll<DealTrack>(COLLECTION, initialDeals);
+    let list = await DatabaseGateway.getAll<DealTrack>(COLLECTION, []);
     if (PlatformModeRepository.isProductionMode()) {
       const seedIds = new Set(initialDeals.map((d) => d.id));
       list = list.filter((d) => !seedIds.has(d.id) && (d as any).isDemo !== true);

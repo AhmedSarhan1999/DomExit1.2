@@ -12,28 +12,7 @@ export class PartnerRequestsRepository {
   }
 
   static async getAll(): Promise<PartnerPreliminaryRequest[]> {
-    const all = await DatabaseGateway.getAll<PartnerPreliminaryRequest>(COLLECTION, [
-      {
-        id: 'pref-seed-1',
-        partnerId: 'usr-partner-001',
-        partnerName: 'Елена Кузнецова (Партнер-брокер)',
-        partnerRefCode: 'PARTNER-SPB-12',
-        clientCode: 'DEX-784105',
-        clientUserId: 'usr-seller-001',
-        clientName: 'Александр Владимирович Б.',
-        clientPhone: '+7 (911) 234-56-78',
-        complexName: 'ЖК «Чистое Небо» (Корпус 12)',
-        developer: 'Setl Group',
-        paidAmountRub: 2485230,
-        contractPriceRub: 10972000,
-        remainingDebtRub: 8486770,
-        notes:
-          'Дольщик не справляется с квартальным платежом 210 000 ₽. Требуется срочный чистый выход 100%.',
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'pending_client',
-      },
-    ]);
+    const all = await DatabaseGateway.getAll<PartnerPreliminaryRequest>(COLLECTION, []);
 
     const now = new Date().toISOString();
     for (const req of all) {

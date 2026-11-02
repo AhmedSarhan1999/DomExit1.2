@@ -78,65 +78,53 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
     const storageKey = `domexit_fb_${collectionName}`;
     const localCached = this.getCache<T>(collectionName);
 
-    // Fetch from live Firestore and merge with local/seed items so newly created or seeded entities are never lost
+    // Fetch from live Firestore
     try {
       if (db && (db as unknown as { app?: unknown }).app) {
         const colRef = collection(db, collectionName);
         const snapshot = await getDocs(colRef);
-        if (!snapshot.empty) {
-          const remoteMap = new Map<string, T>();
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data() as T;
-            if (data && data.id) {
-              remoteMap.set(data.id, data);
-            }
-          });
 
-          // Merge local cached items that may not yet have flushed or additional seed items
-          for (const localItem of localCached) {
-            if (!remoteMap.has(localItem.id)) {
-              remoteMap.set(localItem.id, localItem);
-            }
-          }
-          for (const seedItem of seedFallback) {
-            if (!remoteMap.has(seedItem.id)) {
-              remoteMap.set(seedItem.id, seedItem);
-            }
-          }
-
-          const merged = Array.from(remoteMap.values());
+        // If Firestore collection is empty, then it is genuinely empty/purged! Return []!
+        if (snapshot.empty) {
           try {
-            localStorage.setItem(storageKey, JSON.stringify(merged));
+            localStorage.setItem(storageKey, JSON.stringify([]));
           } catch {}
-          return merged;
+          return [];
         }
+
+        const remoteDocs: T[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as T;
+          if (data && data.id) {
+            remoteDocs.push(data);
+          }
+        });
+
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(remoteDocs));
+        } catch {}
+        return remoteDocs;
       }
-    } catch {
-      // Graceful fallback to local cache or seed data
+    } catch (fbErr) {
+      // Graceful fallback to local cache ONLY if Firestore network request fails
     }
 
     if (localCached.length > 0) {
-      // Ensure any newly added seed lots/entities appear cleanly
-      if (seedFallback.length > 0) {
-        const existingIds = new Set(localCached.map((i) => i.id));
-        const missingSeeds = seedFallback.filter((s) => !existingIds.has(s.id));
-        if (missingSeeds.length > 0) {
-          const combined = [...localCached, ...missingSeeds];
-          try {
-            localStorage.setItem(storageKey, JSON.stringify(combined));
-          } catch {}
-          return combined;
-        }
-      }
       return localCached;
     }
 
-    if (seedFallback.length > 0) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(seedFallback));
-      } catch {}
+    try {
+      if (localStorage.getItem(storageKey) !== null) {
+        return [];
+      }
+    } catch {}
+
+    // Only market_settings can use seed fallback if genuinely first offline load
+    if (collectionName === 'market_settings' && seedFallback.length > 0) {
+      return [...seedFallback];
     }
-    return [...seedFallback];
+
+    return [];
   }
 
   async getEntityById<T extends { id: string }>(

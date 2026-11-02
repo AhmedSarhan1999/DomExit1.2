@@ -658,7 +658,7 @@ export const OpportunitiesPage: React.FC = () => {
                 Каталог лотов формируется
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Ведется юридический аудит первых объектов в Санкт-Петербурге и Москве. Вы можете подать заявку на безопасный выход или оставить заявку на подбор.
+                Каталог лотов формируется — ведется юридический аудит первых объектов в Санкт-Петербурге и Москве по ст. 11 214-ФЗ и 140-ФЗ. Вы можете подать заявку на безопасный выход из ДДУ или оставить заявку на срочный подбор.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -666,15 +666,16 @@ export const OpportunitiesPage: React.FC = () => {
                 to="/sellers"
                 className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center space-x-2"
               >
-                <span>Подать заявку на выход (0% комиссии)</span>
+                <span>Подать заявку на безопасный выход из ДДУ</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
-              <Link
-                to="/buyers"
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs transition-all flex items-center justify-center space-x-2"
+              <button
+                type="button"
+                onClick={() => setIsQuickMatchOpen(true)}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
               >
-                <span>Оставить заявку на подбор</span>
-              </Link>
+                <span>Оставить заявку на срочный подбор</span>
+              </button>
             </div>
           </div>
         ) : lots.length === 0 ? (

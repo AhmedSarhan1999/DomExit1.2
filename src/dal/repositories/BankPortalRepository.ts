@@ -79,7 +79,7 @@ export class BankPortalRepository {
 
   // 1. Bank Employees Management
   static async getAllBankEmployees(): Promise<BankEmployee[]> {
-    return DatabaseGateway.getAll<BankEmployee>(BANK_EMP_COLLECTION, initialBankEmployees);
+    return DatabaseGateway.getAll<BankEmployee>(BANK_EMP_COLLECTION, []);
   }
 
   static async addBankEmployee(data: Partial<BankEmployee>): Promise<BankEmployee> {
@@ -138,97 +138,7 @@ export class BankPortalRepository {
 
   // 2. Special Property & Small Contractor Approval Requests (Task 5)
   static async getAllSpecialApprovals(): Promise<SpecialApprovalRequest[]> {
-    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, [
-      {
-        id: 'spec-contractor-1',
-        lotId: 'lot-contractor-1',
-        lotCode: 'U-CONTRACTOR-1',
-        complexName: 'ЖК «Хвойный Квартал» (Корпус 1)',
-        projectTitle: 'Индивидуальный проект «Хвойный Квартал»',
-        developer: 'ООО «СтройИнвест-Северо-Запад»',
-        developerInn: '7814892011',
-        contractorName: 'ООО «СтройИнвест-Северо-Запад»',
-        contractorInn: '7814892011',
-        location: 'Санкт-Петербург, Приморский район',
-        costPriceRub: 7200000,
-        contractPriceRub: 9850000,
-        requestedByEmployeeId: 'emp-1',
-        requestedByEmployeeName: 'Алексей Смирнов',
-        bankName: 'Сбербанк',
-        reason:
-          'Запрос проектного финансирования и согласования эскроу-аккредитации для независимого подрядчика.',
-        requestedAt: '2026-10-25T11:00:00Z',
-        status: 'pending',
-        documentIds: ['DOC-CONTRACTOR-DDU-01', 'DOC-CONTRACTOR-PLAN-01'],
-      },
-      {
-        id: 'spec-contractor-2',
-        lotId: 'lot-contractor-2',
-        lotCode: 'U-CONTRACTOR-2',
-        complexName: 'Коттеджный поселок «Озерный Край»',
-        projectTitle: 'Вилла «Озерный Край» (Секция 4Б)',
-        developer: 'ООО «СтройИнвест-Северо-Запад»',
-        developerInn: '7814892011',
-        contractorName: 'ООО «СтройИнвест-Северо-Запад»',
-        contractorInn: '7814892011',
-        location: 'Ленинградская область, Всеволожский район',
-        costPriceRub: 10500000,
-        contractPriceRub: 14200000,
-        requestedByEmployeeId: 'emp-1',
-        requestedByEmployeeName: 'Алексей Смирнов',
-        bankName: 'Сбербанк',
-        reason:
-          'Проектная документация индивидуального строительства по эскроу-счетам.',
-        requestedAt: '2026-10-26T14:20:00Z',
-        status: 'pending',
-        documentIds: ['DOC-CONTRACTOR-DDU-02', 'DOC-CONTRACTOR-PLAN-02'],
-      },
-      {
-        id: 'spec-contractor-3',
-        lotId: 'lot-contractor-3',
-        lotCode: 'U-CONTRACTOR-3',
-        complexName: 'Вилла «Финский Залив»',
-        projectTitle: 'Частная резиденция «Финский Залив»',
-        developer: 'ИП «Васильев Частный Проект»',
-        developerInn: '781198451203',
-        contractorName: 'ИП «Васильев Частный Проект»',
-        contractorInn: '781198451203',
-        location: 'Санкт-Петербург, Курортный район, Сестрорецк',
-        costPriceRub: 13800000,
-        contractPriceRub: 18500000,
-        requestedByEmployeeId: 'emp-3',
-        requestedByEmployeeName: 'Дмитрий Васильев',
-        bankName: 'Сбербанк',
-        reason:
-          'Индивидуальный проект премиум-класса с отделкой под ключ.',
-        requestedAt: '2026-10-27T16:00:00Z',
-        status: 'pending',
-        documentIds: ['DOC-CONTRACTOR-DDU-03', 'DOC-CONTRACTOR-PLAN-03'],
-      },
-      {
-        id: 'spec-1',
-        lotId: 'lot-3',
-        lotCode: 'U-10580',
-        complexName: 'ЖК «Морская Набережная»',
-        projectTitle: 'ЖК «Морская Набережная» (Корпус 8)',
-        developer: 'Группа ЛСР',
-        developerInn: '7838001457',
-        contractorName: 'Группа ЛСР',
-        contractorInn: '7838001457',
-        location: 'Санкт-Петербург, Василеостровский район',
-        costPriceRub: 5900000,
-        contractPriceRub: 7900000,
-        requestedByEmployeeId: 'emp-1',
-        requestedByEmployeeName: 'Алексей Смирнов',
-        bankName: 'ВТБ',
-        reason:
-          'Нестандартный график квартальных платежей рассрочки. Запрос специальной аккредитации для эскроу-переуступки.',
-        requestedAt: '2026-10-18T14:30:00Z',
-        status: 'approved',
-        approvedRatePercent: 19.8,
-        maxPdnPercent: 50,
-      },
-    ]);
+    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, []);
   }
 
   static async addSpecialApproval(
@@ -370,28 +280,7 @@ export class BankPortalRepository {
 
   // 3. Buyer Credit Limit Requests & Bank Stamp Certification
   static async getAllCreditLimitRequests(): Promise<BuyerCreditLimitRequest[]> {
-    const list = await DatabaseGateway.getAll<BuyerCreditLimitRequest>(CREDIT_LIMITS_COLLECTION, [
-      {
-        id: 'limit-req-1',
-        userId: 'usr-buyer-001',
-        uid: 'usr-buyer-001',
-        clientCode: 'DEX-409112',
-        userName: 'Иван Петрович (Покупатель)',
-        userPhone: '+7 (921) 987-65-43',
-        userEmail: 'client@domexit.ru',
-        requestedAmountRub: 8500000,
-        approvedLimitRub: 9000000,
-        validUntil: '2026-12-31',
-        bankName: 'Сбербанк',
-        certificateNumber: 'SBER-CREDIT-99214',
-        reviewedBy: 'Игорь Владимирович Соколов (Сбербанк)',
-        requestedAt: '2026-10-15T10:00:00Z',
-        timestamp: '2026-10-15T10:00:00Z',
-        reviewedAt: '2026-10-16T12:00:00Z',
-        status: 'approved',
-        notes: 'Доход подтвержден по 2-НДФЛ. Лимит подтвержден для семейной ипотеки и переуступок.',
-      },
-    ]);
+    const list = await DatabaseGateway.getAll<BuyerCreditLimitRequest>(CREDIT_LIMITS_COLLECTION, []);
 
     return [...list].sort(
       (a, b) =>

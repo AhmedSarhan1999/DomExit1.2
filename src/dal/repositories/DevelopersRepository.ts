@@ -281,7 +281,7 @@ class DevelopersRepositoryController {
   async getAllAccreditationRequests(): Promise<DeveloperAccreditationRequest[]> {
     return DatabaseGateway.getAll<DeveloperAccreditationRequest>(
       ACCREDITATION_REQUESTS_COLLECTION,
-      INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+      []
     );
   }
 

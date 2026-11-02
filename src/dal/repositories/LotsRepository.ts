@@ -24,7 +24,7 @@ export class LotsRepository {
     isVipInvestor?: boolean;
     includePendingApproval?: boolean;
   }): Promise<Lot[]> {
-    let list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    let list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
 
     if (PlatformModeRepository.isProductionMode()) {
       const seedIds = new Set(initialLots.map((l) => l.id));

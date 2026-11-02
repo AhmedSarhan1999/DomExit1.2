@@ -21,21 +21,9 @@ export class DatabaseInitializer {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    try {
-      // Warm up & ensure all canonical collections are hydrated via DatabaseGateway
-      await Promise.all([
-        DatabaseGateway.getAll('lots', initialLots),
-        DatabaseGateway.getAll('deals', initialDeals),
-        DatabaseGateway.getAll('buyer_applications', initialCandidates),
-        DatabaseGateway.getAll('seller_requests', initialSellerRequests),
-        DatabaseGateway.getAll('partner_applications', initialPartners),
-        DatabaseGateway.getAll('employees', initialEmployees),
-        DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
-        DatabaseGateway.getAll('bank_employees', initialBankEmployees),
-      ]);
-    } catch (err) {
-      console.warn('[DatabaseInitializer] Non-fatal migration check:', err);
-    }
+    // Auto-seeding disabled per 152-FZ Anti-Seeding Directive.
+    // Collections remain in zero-state until real lots/deals are approved by Owner.
+    return;
   }
 
   static clearDemoData(): void {

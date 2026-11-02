@@ -85,7 +85,10 @@ import {
   Mail,
   Database,
   Layers,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
+import { DatabasePurgeService, PurgeResult } from '../dal/DatabasePurgeService';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../utils/asyncGuard';
 
 export const AdminDashboardPage: React.FC = () => {
@@ -293,9 +296,11 @@ export const AdminDashboardPage: React.FC = () => {
     mode: 'seller',
   });
 
-  // Add Employee Modal
+  // Platform Mode & Purge States
   const [platformMode, setPlatformMode] = useState<PlatformDataMode>(PlatformModeRepository.getMode());
   const [isTogglingPlatformMode, setIsTogglingPlatformMode] = useState<boolean>(false);
+  const [isPurgingDatabase, setIsPurgingDatabase] = useState<boolean>(false);
+  const [showPurgeConfirmModal, setShowPurgeConfirmModal] = useState<boolean>(false);
   const [newEmpSidebarTabs, setNewEmpSidebarTabs] = useState<SidebarTabId[]>([
     'pipeline',
     'packaging',
@@ -812,6 +817,29 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  const handleRunDatabasePurge = async () => {
+    try {
+      setIsPurgingDatabase(true);
+      const result: PurgeResult = await DatabasePurgeService.runPlatformDatabasePurge();
+      if (result.success) {
+        await PlatformModeRepository.setMode('production');
+        setPlatformMode('production');
+        await loadAllData();
+        setShowPurgeConfirmModal(false);
+        showToast(
+          `База данных успешно очищена! Удалено ${result.totalWiped} объектов из 12 коллекций. Платформа переведена в чистый боевой режим.`
+        );
+      } else {
+        showError(`Ошибка очистки базы: ${result.message}`);
+      }
+    } catch (err: any) {
+      console.error('Database purge error:', err);
+      showError(`Ошибка выполнения операции: ${err?.message || 'Сбой сети'}`);
+    } finally {
+      setIsPurgingDatabase(false);
+    }
+  };
+
   const handleAddEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmpEmail || !newEmpName) return;
@@ -1117,12 +1145,22 @@ export const AdminDashboardPage: React.FC = () => {
                     onClick={() => handleTogglePlatformMode('production')}
                     className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                       platformMode === 'production'
-                        ? 'bg-emerald-50 text-slate-950 shadow-sm'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm'
                         : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                     }`}
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />
                     <span>Боевой режим (Чистый запуск / Production)</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPurgingDatabase}
+                    onClick={() => setShowPurgeConfirmModal(true)}
+                    className="px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer bg-rose-600/90 hover:bg-rose-600 text-white shadow-sm border border-rose-500/50"
+                    title="Полная очистка базы данных и блокировка повторного посева"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Очистить базу данных</span>
                   </button>
                 </div>
               </div>
@@ -4051,7 +4089,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Воронка сделок</span>
+                    <span>Воронка сделок (Канбан)</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4066,7 +4104,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Студия упаковки</span>
+                    <span>Студия упаковки 152-ФЗ</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4081,7 +4119,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Юридический аудит</span>
+                    <span>Юридический аудит (42 пункта)</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4096,7 +4134,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>ИИ-Матчмейкер</span>
+                    <span>Матчмейкер и отбор покупателей</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4111,7 +4149,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Профиль куратора</span>
+                    <span>Мой профиль куратора</span>
                   </label>
                 </div>
               </div>
@@ -4309,7 +4347,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Воронка сделок</span>
+                    <span>Воронка сделок (Канбан)</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4324,7 +4362,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Студия упаковки</span>
+                    <span>Студия упаковки 152-ФЗ</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4339,7 +4377,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Юридический аудит</span>
+                    <span>Юридический аудит (42 пункта)</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4354,7 +4392,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>ИИ-Матчмейкер</span>
+                    <span>Матчмейкер и отбор покупателей</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -4369,7 +4407,7 @@ export const AdminDashboardPage: React.FC = () => {
                       }}
                       className="rounded text-indigo-600"
                     />
-                    <span>Профиль куратора</span>
+                    <span>Мой профиль куратора</span>
                   </label>
                 </div>
               </div>
@@ -4753,6 +4791,99 @@ export const AdminDashboardPage: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Platform Database Complete Purge & Zero-State Modal */}
+      {showPurgeConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-5 border border-rose-200 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between pb-4 border-b border-rose-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                    Подтверждение полной очистки базы данных
+                  </h3>
+                  <span className="text-[11px] font-bold text-rose-600">
+                    Переход в чистый нулевой контур (Production Zero-State)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isPurgingDatabase}
+                onClick={() => setShowPurgeConfirmModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-slate-600 leading-relaxed">
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-medium space-y-1">
+                <div className="font-black text-rose-700 flex items-center space-x-1.5">
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>ВНИМАНИЕ: Необратимая операция очистки</span>
+                </div>
+                <p>
+                  Операция выполнит пакетное удаление всех тестовых и демонстрационных документов из базы Firestore и локального кэша платформы.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="font-bold text-slate-800">Будут выполнены следующие регламентные процедуры:</div>
+                <ul className="space-y-1.5 list-disc list-inside text-[11px] text-slate-700">
+                  <li>
+                    <strong className="text-slate-900">Очистка 12 рабочих коллекций:</strong> <code className="font-mono text-[10px] bg-slate-100 px-1 py-0.5 rounded">deals, lots, seller_requests, buyer_applications, candidates, documents_vault, bank_credit_limits, bank_special_approvals, developer_accreditation_requests, partner_preliminary_requests, audit_logs, user_consents</code>.
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Санация пользователей:</strong> удаление фиктивных аккаунтов, слияние и фиксация канонических учетных записей (Владелец: Ahmed Abdallah DEX-104662, Куратор: Алексей Смирнов DEX-000002, Банк: bank@domexit.ru).
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Аккредитованные застройщики:</strong> сохранение только 6 официальных девелоперов (ПИК, Setl Group, ЛСР, Эталон, ФСК, Самолёт).
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Неизменные параметры:</strong> сохранение ключевой ставки ЦБ РФ (21%), семейной ипотеки (6%) и штрафов застройщиков (15%).
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Блокировка репосева:</strong> постоянный запрет автоматической подгрузки демо-данных.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isPurgingDatabase}
+                onClick={() => setShowPurgeConfirmModal(false)}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={isPurgingDatabase}
+                onClick={handleRunDatabasePurge}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-md cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-60"
+              >
+                {isPurgingDatabase ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Выполняется очистка Firestore...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Подтвердить полную очистку</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

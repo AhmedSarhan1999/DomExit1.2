@@ -102,7 +102,7 @@ export class AuditLogsRepository {
     actionType?: string;
     dateFrom?: string;
   }): Promise<AuditLogEntry[]> {
-    let logs = await DatabaseGateway.getAll<AuditLogEntry>(COLLECTION, initialLogs);
+    let logs = await DatabaseGateway.getAll<AuditLogEntry>(COLLECTION, []);
 
     logs = [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 

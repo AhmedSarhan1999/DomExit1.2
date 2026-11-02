@@ -59,9 +59,7 @@ const ScrollToTop: React.FC = () => {
 };
 
 export const App: React.FC = () => {
-  useEffect(() => {
-    DatabaseInitializer.initLiveDatabase();
-  }, []);
+  // Anti-seeding enforced: mock lots/deals auto-injection disabled.
 
   return (
     <LanguageProvider>
@@ -77,6 +75,8 @@ export const App: React.FC = () => {
               <Route path="/sellers" element={<SellersPage />} />
               <Route path="/opportunities" element={<OpportunitiesPage />} />
               <Route path="/opportunities/:lotCode" element={<LotDetailsPage />} />
+              <Route path="/catalog" element={<OpportunitiesPage />} />
+              <Route path="/catalog/:lotCode" element={<LotDetailsPage />} />
               <Route path="/how-it-works" element={<HowItWorksPage />} />
               <Route path="/story" element={<StoryPage />} />
               <Route path="/investors" element={<InvestorsPage />} />

@@ -12,7 +12,7 @@ const MAX_ACTIVE_BIDS_PER_USER = 3;
 export class CandidatesRepository {
   static async getAll(): Promise<BuyerCandidate[]> {
     const [canonical, legacy] = await Promise.all([
-      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, initialCandidates),
+      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, []),
       DatabaseGateway.getAll<BuyerCandidate>(LEGACY_COLLECTION, []),
     ]);
 

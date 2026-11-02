@@ -26,7 +26,7 @@ import {
 export const UnifiedNavbar: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   const { user, isAuthenticated, openAuthModal, switchRole } = useAuth();
-  const isMasterOwnerSession = !user || user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com' || user?.activeRole === 'owner' || user?.role === 'owner' || user?.role === 'admin';
+  const isMasterOwnerSession = !!user && user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com';
   const { channels } = usePublicChannelsStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,9 +55,9 @@ export const UnifiedNavbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // 7-Role Options (Mission 2.1)
+  // Streamlined 3-Role Switcher (Owner, Employee, Bank) - Strictly for amaas9499@gmail.com
   const roleOptions: Array<{
-    id: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer';
+    id: 'owner' | 'employee' | 'bank';
     title: string;
     badge: string;
     subtitle: string;
@@ -67,58 +67,26 @@ export const UnifiedNavbar: React.FC = () => {
     {
       id: 'owner',
       title: language === 'ru' ? 'Владелец платформы' : 'Platform Owner',
-      badge: '👑 CEO',
-      subtitle: language === 'ru' ? 'Выручка 2.5%, назначения, полный доступ' : 'Revenue, staff & settings',
+      badge: '👑 DEX-104662',
+      subtitle: language === 'ru' ? 'Ahmed Abdallah — Выручка 2.5%, назначения' : 'Ahmed Abdallah — CEO & Platform Settings',
       icon: '👑',
       targetPath: '/admin/dashboard',
     },
     {
       id: 'employee',
       title: language === 'ru' ? 'Сотрудник / Куратор' : 'Curator / Lawyer',
-      badge: '👨‍💼 Алексей С.',
-      subtitle: language === 'ru' ? 'Юр. аудит 42, упаковка 152-ФЗ, отбор' : 'Legal audit & matching',
+      badge: '👨‍💼 DEX-000002',
+      subtitle: language === 'ru' ? 'Алексей Смирнов — Юр. аудит 42, воронка' : 'Alexey Smirnov — Legal audit & pipeline',
       icon: '👨‍💼',
       targetPath: '/admin/dashboard',
     },
     {
       id: 'bank',
       title: language === 'ru' ? 'Банк-партнер' : 'Partner Bank',
-      badge: '🏦 Сбербанк / ВТБ',
+      badge: '🏦 DEX-000003',
       subtitle: language === 'ru' ? 'Кредитные лимиты, эскроу и СБР' : 'Credit limits & escrow',
       icon: '🏦',
       targetPath: '/bank-portal',
-    },
-    {
-      id: 'partner',
-      title: language === 'ru' ? 'Партнер-брокер' : 'Partner Broker',
-      badge: '🤝 Агентство',
-      subtitle: language === 'ru' ? 'Рефералы DEX-ID, бонусы 50 000 ₽' : 'Referral tracking & bonuses',
-      icon: '🤝',
-      targetPath: '/portal?tab=partner',
-    },
-    {
-      id: 'investor',
-      title: language === 'ru' ? 'VIP Инвестор' : 'VIP Investor',
-      badge: '💎 Закрытый пул',
-      subtitle: language === 'ru' ? 'Ранний доступ 48ч, флиппинг-пакеты' : 'Early 48h access & syndicates',
-      icon: '💎',
-      targetPath: '/portal?tab=investor',
-    },
-    {
-      id: 'seller',
-      title: language === 'ru' ? 'Продавец ДДУ' : 'DDU Seller',
-      badge: '🏠 Александр В.',
-      subtitle: language === 'ru' ? 'Трекер 5 этапов, выплата кэша 100%' : '5-step cession deal tracker',
-      icon: '🏠',
-      targetPath: '/portal?tab=seller',
-    },
-    {
-      id: 'buyer',
-      title: language === 'ru' ? 'Покупатель' : 'Buyer',
-      badge: '🔑 Иван П.',
-      subtitle: language === 'ru' ? '3 заявки, ликвидность, подбор лота' : '3 active bids, credit check',
-      icon: '🔑',
-      targetPath: '/portal?tab=buyer',
     },
   ];
 
@@ -449,35 +417,37 @@ export const UnifiedNavbar: React.FC = () => {
               <span>Telegram</span>
             </a>
 
-                        {/* Platform Data Mode Switcher (Demo / Production) */}
-            <div className="hidden lg:flex items-center bg-slate-900/90 rounded-xl p-0.5 border border-slate-700/80 text-xs shadow-xs">
-              <button
-                type="button"
-                onClick={() => handleTogglePlatformMode('demo')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
-                  platformMode === 'demo'
-                    ? 'bg-amber-400 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Тестовый режим (Демо-данные)"
-              >
-                <Database className="w-3 h-3" />
-                <span>Демо</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTogglePlatformMode('production')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
-                  platformMode === 'production'
-                    ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Боевой режим (Чистый запуск)"
-              >
-                <ShieldAlert className="w-3 h-3" />
-                <span>Боевой</span>
-              </button>
-            </div>
+            {/* Platform Data Mode Switcher (Demo / Production) - Strictly for Owner Session */}
+            {isMasterOwnerSession && (
+              <div className="hidden lg:flex items-center bg-slate-900/90 rounded-xl p-0.5 border border-slate-700/80 text-xs shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => handleTogglePlatformMode('demo')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                    platformMode === 'demo'
+                      ? 'bg-amber-400 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Тестовый режим (Демо-данные)"
+                >
+                  <Database className="w-3 h-3" />
+                  <span>Демо</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePlatformMode('production')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                    platformMode === 'production'
+                      ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Боевой режим (Чистый запуск)"
+                >
+                  <ShieldAlert className="w-3 h-3" />
+                  <span>Боевой</span>
+                </button>
+              </div>
+            )}
 
             {/* Dual Language Switcher: RU / EN strictly */}
             <div className="flex items-center bg-slate-800/90 rounded-xl p-0.5 border border-slate-700 text-xs font-bold">

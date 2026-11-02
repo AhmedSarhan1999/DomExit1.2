@@ -391,6 +391,7 @@ export interface UserProfile {
   photoURL?: string;
   roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank_officer' | 'bank'>;
   role?: string;
+  currentRole?: string;
   activeRole?: string;
   isPartnerApproved: boolean;
   isInvestorApproved: boolean;
