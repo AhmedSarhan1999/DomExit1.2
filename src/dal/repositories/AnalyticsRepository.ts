@@ -34,7 +34,7 @@ export class AnalyticsRepository {
               }, 0) / activeLots.length
             ).toFixed(1)
           )
-        : 22.4;
+        : 0;
 
     const escrowDeals = allDeals.filter((d) => d.stage === 'closing_escrow');
     const escrowTotalRub = escrowDeals.reduce((sum, d) => sum + (d.sellerReturnRub || 0), 0);
@@ -69,7 +69,7 @@ export class AnalyticsRepository {
 
     return {
       todayNewRequestsCount,
-      todayNewRequestsGrowth: `+${activeLots.length} активн.`,
+      todayNewRequestsGrowth: activeLots.length > 0 ? `+${activeLots.length} активн.` : '0 активн.',
       todayNewRequestsReturnRub,
       activeLotsCount: activeLots.length,
       activeLotsSpbCount: spbCount,

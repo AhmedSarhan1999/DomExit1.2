@@ -16,6 +16,7 @@ export interface RentalPotentialInfo {
 }
 
 export interface Lot {
+  isDemo?: boolean;
   id: string;
   lotCode: string; // e.g. U-10566, U-14102
   complexName: string; // e.g. ЖК «Чистое Небо», ЖК «Pulse Premier»
@@ -356,6 +357,8 @@ export interface PartnerEntry {
   lastPayoutBankName?: string;
 }
 
+export type SidebarTabId = 'pipeline' | 'packaging' | 'legal_audit' | 'matchmaker' | 'closing' | 'profile';
+
 export interface Employee {
   id: string;
   name: string;
@@ -372,6 +375,7 @@ export interface Employee {
   avgSpeedDays: number;
   status: 'active' | 'suspended';
   permissions: string[];
+  allowedSidebarTabs?: SidebarTabId[];
 }
 
 export interface UserProfile {

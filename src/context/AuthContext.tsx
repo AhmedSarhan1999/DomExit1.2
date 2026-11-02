@@ -148,18 +148,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile.isPartnerApproved = true;
       profile.isInvestorApproved = true;
       profile.partnerRefCode = 'PARTNER-MASTER-OWNER';
-      if (!profile.name || profile.name === 'Пользователь') {
-        profile.name = fbUser.displayName || 'Виктор Сергеевич (Владелец / CEO)';
-      }
+      profile.name = 'Ahmed Abdallah - Владелец / CEO';
     } else if (isTestStaff) {
       if (!profile.roles || profile.roles.length <= 2) {
         profile.roles = ['employee', 'buyer', 'seller', 'partner', 'investor'];
         profile.activeRole = profile.activeRole || 'employee';
       }
       profile.assignedEmployeeId = profile.assignedEmployeeId || 'emp-1';
-      if (!profile.name || profile.name === 'Пользователь') {
-        profile.name = fbUser.displayName || 'Алексей Смирнов (Сотрудник / Тест)';
-      }
+      profile.name = 'Алексей Смирнов (Ведущий куратор)';
+    } else if (cleanEmail === 'bank@domexit.ru') {
+      profile.role = 'bank';
+      profile.activeRole = 'bank';
+      profile.roles = ['bank'];
+      profile.name = 'Игорь Соколов (Банк-партнер Сбербанк)';
     }
 
     return persistUserState(profile);
@@ -388,11 +389,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let profile: UserProfile;
 
     if (role === 'owner') {
-      demoEmail = 'ceo@domexit.ru';
+      demoEmail = 'amaas9499@gmail.com';
       profile = {
         id: 'usr-owner-001',
         clientCode: 'DEX-000001',
-        name: 'Виктор Сергеевич (Владелец / CEO)',
+        name: 'Ahmed Abdallah - Владелец / CEO',
         email: 'amaas9499@gmail.com',
         phone: '+7 (812) 900-00-01',
         telegram: '@domexit_owner',
@@ -406,11 +407,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registeredAt: '2025-01-01T00:00:00Z',
       };
     } else if (role === 'employee') {
-      demoEmail = 'employee@domexit.ru';
+      demoEmail = 'amaas9494@gmail.com';
       profile = {
         id: 'usr-staff-002',
         clientCode: 'DEX-000002',
-        name: 'Алексей Смирнов',
+        name: 'Алексей Смирнов (Ведущий куратор)',
         email: 'amaas9494@gmail.com',
         phone: '+7 (921) 888-11-22',
         telegram: '@domexit_smirnov',
@@ -428,12 +429,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = {
         id: 'usr-bank-001',
         clientCode: 'DEX-000004',
-        name: 'Игорь Владимирович Соколов (Сбербанк)',
+        name: 'Игорь Соколов (Банк-партнер Сбербанк)',
         email: 'bank@domexit.ru',
         phone: '+7 (812) 500-11-00',
         telegram: '@bank_sber_escrow',
         role: 'bank',
-        roles: ['bank', 'employee', 'buyer'],
+        roles: ['bank'],
         activeRole: 'bank',
         isPartnerApproved: false,
         isInvestorApproved: false,

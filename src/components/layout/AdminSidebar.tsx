@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
+import { Employee, SidebarTabId } from '../../types';
 import {
   LayoutDashboard,
   GitPullRequest,
@@ -10,7 +12,6 @@ import {
   Scale,
   Users,
   Building2,
-  Bot,
   Search,
   ExternalLink,
   Menu,
@@ -19,6 +20,7 @@ import {
   Briefcase,
   ArrowRightLeft,
   UserCheck,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const AdminSidebar: React.FC = () => {
@@ -28,23 +30,56 @@ export const AdminSidebar: React.FC = () => {
   const { user, switchRole } = useAuth();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
+  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
 
+  const isMasterOwner = user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com';
   const isEmployee = user?.activeRole === 'employee';
   const isOwner = !isEmployee;
 
-  const allNavItems = [
+  useEffect(() => {
+    let isMounted = true;
+    async function loadEmployee() {
+      if (user?.email) {
+        const emp = await EmployeesRepository.getByEmail(user.email);
+        if (isMounted) setCurrentEmployee(emp);
+      } else if (user?.assignedEmployeeId) {
+        const emp = await EmployeesRepository.getById(user.assignedEmployeeId);
+        if (isMounted) setCurrentEmployee(emp);
+      }
+    }
+    loadEmployee();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.email, user?.assignedEmployeeId]);
+
+  // Allowed tabs for employee (defaults to standard operational tabs if not specified)
+  const allowedTabs: SidebarTabId[] = currentEmployee?.allowedSidebarTabs || [
+    'pipeline',
+    'packaging',
+    'legal_audit',
+    'matchmaker',
+    'profile',
+  ];
+
+  interface NavItem {
+    path: string;
+    matchPrefix: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    tabId?: SidebarTabId | 'dashboard' | 'closing' | 'partners_bot';
+    ownerOnly?: boolean;
+    employeeOnly?: boolean;
+  }
+
+  const allNavItems: NavItem[] = [
     {
       path: '/admin/dashboard',
       matchPrefix: '/admin/dashboard',
-      label: isOwner
-        ? language === 'ru'
-          ? 'Дашборд Владельца'
-          : 'Owner Dashboard'
-        : language === 'ru'
-        ? 'Мои назначенные объекты'
-        : 'My Assigned Lots',
+      label: language === 'ru' ? 'Дашборд Владельца' : 'Owner Dashboard',
       icon: LayoutDashboard,
-      roles: ['owner', 'employee'],
+      tabId: 'dashboard',
+      ownerOnly: true, // Strictly hidden from employees
     },
     {
       path: '/admin/pipeline',
@@ -57,7 +92,7 @@ export const AdminSidebar: React.FC = () => {
         ? 'Моя воронка сделок'
         : 'My Deal Pipeline',
       icon: GitPullRequest,
-      roles: ['owner', 'employee'],
+      tabId: 'pipeline',
     },
     {
       path: '/admin/matchmaker/U-10566',
@@ -67,43 +102,53 @@ export const AdminSidebar: React.FC = () => {
           ? 'ИИ-Матчмейкер (Все лоты)'
           : 'All Lots Matchmaker'
         : language === 'ru'
-        ? 'Матчмейкер (Заявки на мои лоты)'
+        ? 'Матчмейкер (Мои лоты)'
         : 'My Lots Buyer Offers',
       icon: Users,
-      roles: ['owner', 'employee'],
+      tabId: 'matchmaker',
     },
     {
       path: '/admin/packaging/U-10566',
       matchPrefix: '/admin/packaging',
       label: language === 'ru' ? 'Каталог и упаковка 152-ФЗ' : 'Packaging Studio 152-FZ',
       icon: PackageCheck,
-      roles: ['owner', 'employee'],
+      tabId: 'packaging',
     },
     {
       path: '/admin/legal-audit/U-10566',
       matchPrefix: '/admin/legal-audit',
       label: language === 'ru' ? 'Юридический аудит (42 пункта)' : 'Legal Audit (42 Checks)',
       icon: Scale,
-      roles: ['owner', 'employee'],
+      tabId: 'legal_audit',
     },
     {
       path: '/admin/closing/DEAL-2025-10566',
       matchPrefix: '/admin/closing',
       label: language === 'ru' ? 'Сделки в банках (Эскроу)' : 'Bank Escrow Closing',
       icon: Building2,
-      roles: ['owner', 'employee'],
+      tabId: 'closing',
     },
     {
       path: '/admin/partners-bot',
       matchPrefix: '/admin/partners-bot',
       label: language === 'ru' ? 'Инвесторы VIP и Партнеры' : 'VIP Investors & Partners',
       icon: Crown,
-      roles: ['owner'],
+      tabId: 'partners_bot',
+      ownerOnly: true, // Strictly hidden from employees
     },
   ];
 
+  // RBAC Governance: Filter navigation items based on role and allowedSidebarTabs
   const visibleNavItems = allNavItems.filter((item) => {
-    if (isEmployee) return item.roles.includes('employee');
+    if (isEmployee) {
+      if (item.ownerOnly) return false;
+      // If item has a specific tabId in SidebarTabId, check allowedTabs
+      if (item.tabId === 'pipeline' && !allowedTabs.includes('pipeline')) return false;
+      if (item.tabId === 'matchmaker' && !allowedTabs.includes('matchmaker')) return false;
+      if (item.tabId === 'packaging' && !allowedTabs.includes('packaging')) return false;
+      if (item.tabId === 'legal_audit' && !allowedTabs.includes('legal_audit')) return false;
+      return true;
+    }
     return true;
   });
 
@@ -119,13 +164,20 @@ export const AdminSidebar: React.FC = () => {
     } else if (/^DEAL-/i.test(normalized)) {
       navigate(`/admin/closing/${normalized.toUpperCase()}`);
     } else {
-      navigate(`/admin/archive-logs?q=${encodeURIComponent(q)}`);
+      if (!isEmployee) {
+        navigate(`/admin/archive-logs?q=${encodeURIComponent(q)}`);
+      } else {
+        navigate(`/admin/pipeline?q=${encodeURIComponent(q)}`);
+      }
     }
     setMobileDrawerOpen(false);
   };
 
   const displayName =
-    user?.name || (isOwner ? 'Виктор Сергеевич (CEO)' : 'Алексей Смирнов (Куратор)');
+    currentEmployee?.name ||
+    user?.name ||
+    (isOwner ? 'Ahmed Abdallah (CEO)' : 'Алексей Смирнов (Куратор)');
+
   const initials = displayName
     .split(/\s+/)
     .slice(0, 2)
@@ -151,24 +203,27 @@ export const AdminSidebar: React.FC = () => {
       {/* Role Indicator & Mode Switcher */}
       <div className="p-3 bg-slate-50 border-b border-slate-200">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 min-w-0">
             {isOwner ? (
               <Crown className="w-4 h-4 text-indigo-600 shrink-0" />
             ) : (
               <Briefcase className="w-4 h-4 text-emerald-600 shrink-0" />
             )}
             <div className="text-[11px] font-bold truncate">
-              {isOwner ? '👑 Владелец платформы' : '👔 Куратор (Сотрудник)'}
+              {isOwner ? '👑 Владелец платформы' : `👔 Куратор: ${currentEmployee?.id || 'emp-1'}`}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
-            title="Переключить режим роли"
-            className="p-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5" />
-          </button>
+          {/* Role switcher toggle strictly reserved for Master Owner */}
+          {isMasterOwner && (
+            <button
+              type="button"
+              onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
+              title="Переключить тестовый режим роли (Доступно Владельцу)"
+              className="p-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0 ml-1"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         <p className="text-[10px] text-slate-400 mt-1">
           {isOwner
@@ -213,53 +268,61 @@ export const AdminSidebar: React.FC = () => {
           );
         })}
 
-        <div className="pt-4 pb-2 px-3">
-          <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-            {language === 'ru' ? 'Журналы и комплаенс' : 'Logs & Compliance'}
-          </span>
-        </div>
+        {/* Owner-Only Compliance & Audit Logs: Strictly Hidden from Employee */}
+        {!isEmployee && (
+          <>
+            <div className="pt-4 pb-2 px-3">
+              <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                {language === 'ru' ? 'Журналы и комплаенс' : 'Logs & Compliance'}
+              </span>
+            </div>
 
-        {/* Архив сделок и журнал решений */}
-        <Link
-          to="/admin/archive-logs"
-          onClick={() => setMobileDrawerOpen(false)}
-          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-            isActive('/admin/archive-logs')
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <FileText className="w-4 h-4 text-emerald-600" />
-          <span>{language === 'ru' ? 'Архив сделок и журнал решений' : 'Deals Archive & Audit Logs'}</span>
-        </Link>
+            <Link
+              to="/admin/archive-logs"
+              onClick={() => setMobileDrawerOpen(false)}
+              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                isActive('/admin/archive-logs')
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <FileText className="w-4 h-4 text-emerald-600" />
+              <span>{language === 'ru' ? 'Архив сделок и журнал решений' : 'Deals Archive & Audit Logs'}</span>
+            </Link>
+          </>
+        )}
 
-        {/* Мой профиль куратора */}
-        <Link
-          to="/admin/profile"
-          onClick={() => setMobileDrawerOpen(false)}
-          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-            isActive('/admin/profile')
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <UserCheck className="w-4 h-4 text-indigo-600" />
-          <span>{language === 'ru' ? 'Мой профиль куратора' : 'My Curator Profile'}</span>
-        </Link>
+        {/* Employee Curator Profile (If allowed) */}
+        {(!isEmployee || allowedTabs.includes('profile')) && (
+          <Link
+            to="/admin/profile"
+            onClick={() => setMobileDrawerOpen(false)}
+            className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              isActive('/admin/profile')
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <UserCheck className="w-4 h-4 text-indigo-600" />
+            <span>{language === 'ru' ? 'Мой профиль куратора' : 'My Curator Profile'}</span>
+          </Link>
+        )}
 
-        {/* Bank Portal Link */}
-        <Link
-          to="/bank-portal"
-          onClick={() => setMobileDrawerOpen(false)}
-          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-            isActive('/bank-portal')
-              ? 'bg-sky-50 text-sky-800 border border-sky-200/80 shadow-2xs'
-              : 'text-slate-600 hover:text-sky-900 hover:bg-slate-50'
-          }`}
-        >
-          <Building2 className="w-4 h-4 text-sky-600" />
-          <span>{language === 'ru' ? 'Банковский шлюз (Эскроу)' : 'Bank Escrow Gateway'}</span>
-        </Link>
+        {/* Bank Portal Link: Strictly Hidden from Regular Employees */}
+        {!isEmployee && (
+          <Link
+            to="/bank-portal"
+            onClick={() => setMobileDrawerOpen(false)}
+            className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              isActive('/bank-portal')
+                ? 'bg-sky-50 text-sky-800 border border-sky-200/80 shadow-2xs'
+                : 'text-slate-600 hover:text-sky-900 hover:bg-slate-50'
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-sky-600" />
+            <span>{language === 'ru' ? 'Банковский шлюз (Эскроу)' : 'Bank Escrow Gateway'}</span>
+          </Link>
+        )}
       </nav>
 
       {/* Bottom Compliance & Officer Indicator */}
@@ -269,17 +332,20 @@ export const AdminSidebar: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>ЕИСЖС (Наш.дом.рф)</span>
           </span>
-          <span className="text-emerald-700 font-bold">Активна</span>
+          <span className="text-emerald-700 font-bold flex items-center space-x-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Активна</span>
+          </span>
         </div>
 
         <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-200">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-            {initials || (isOwner ? 'ВС' : 'АС')}
+            {initials || (isOwner ? 'AA' : 'АС')}
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-bold text-slate-900 truncate">{displayName}</span>
             <span className="text-[10px] text-emerald-700 truncate">
-              {isOwner ? 'Генеральный директор' : 'Куратор отдела выходов'}
+              {isOwner ? 'Генеральный директор / Владелец' : (currentEmployee?.role || 'Штатный куратор отдела выходов')}
             </span>
           </div>
         </div>

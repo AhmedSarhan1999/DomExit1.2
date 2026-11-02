@@ -30,6 +30,7 @@ export const AdminClosingPage: React.FC = () => {
   const { user } = useAuth();
 
   const [deal, setDeal] = useState<DealTrack | null>(null);
+  const [isAccessDenied, setIsAccessDenied] = useState<boolean>(false);
   const [lot, setLot] = useState<Lot | null>(null);
   const [accessibleDeals, setAccessibleDeals] = useState<DealTrack[]>([]);
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
@@ -289,7 +290,27 @@ export const AdminClosingPage: React.FC = () => {
         )}
 
         <div className="p-6 space-y-6 max-w-[1500px] w-full">
-          {!deal ? (
+          {isAccessDenied ? (
+            <div className="bg-white border border-rose-200 rounded-3xl p-10 text-center space-y-4 max-w-lg mx-auto my-12 shadow-sm animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                Доступ ограничен
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Данный объект не закреплен за вашим профилем куратора. Для получения доступа обратитесь к Владельцу платформы.
+              </p>
+              <div className="pt-2">
+                <Link
+                  to="/admin/pipeline"
+                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors"
+                >
+                  <span>Вернуться в мою воронку</span>
+                </Link>
+              </div>
+            </div>
+          ) : !deal ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2">
               <p className="text-sm font-bold text-slate-800">
                 В вашем контуре пока нет сделок на стадии банковского закрытия

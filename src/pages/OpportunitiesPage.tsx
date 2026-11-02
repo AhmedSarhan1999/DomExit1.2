@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { Lot } from '../types';
@@ -26,6 +26,8 @@ import {
   ChevronLeft,
   ChevronRight,
   PlusCircle,
+  Building2,
+  ArrowRight,
 } from 'lucide-react';
 
 export const OpportunitiesPage: React.FC = () => {
@@ -640,6 +642,40 @@ export const OpportunitiesPage: React.FC = () => {
                 <div className="h-10 bg-slate-200 rounded-xl" />
               </div>
             ))}
+          </div>
+        ) : allRegistryLots.length === 0 ? (
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-8 sm:p-14 text-center space-y-6 my-8 border border-slate-700/80 shadow-2xl relative overflow-hidden animate-fade-in">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <div className="space-y-3 max-w-2xl mx-auto">
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold uppercase tracking-wider inline-flex items-center space-x-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Банковский комплаенс и проверка 214-ФЗ</span>
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                Каталог лотов формируется
+              </h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Ведется юридический аудит первых объектов в Санкт-Петербурге и Москве. Вы можете подать заявку на безопасный выход или оставить заявку на подбор.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <Link
+                to="/sellers"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center space-x-2"
+              >
+                <span>Подать заявку на выход (0% комиссии)</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link
+                to="/buyers"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs transition-all flex items-center justify-center space-x-2"
+              >
+                <span>Оставить заявку на подбор</span>
+              </Link>
+            </div>
           </div>
         ) : lots.length === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 my-8">

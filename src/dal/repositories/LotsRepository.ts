@@ -3,6 +3,7 @@ import { initialLots } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { EmployeesRepository } from './EmployeesRepository';
+import { PlatformModeRepository } from './PlatformModeRepository';
 
 const COLLECTION = 'lots';
 
@@ -24,6 +25,11 @@ export class LotsRepository {
     includePendingApproval?: boolean;
   }): Promise<Lot[]> {
     let list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+
+    if (PlatformModeRepository.isProductionMode()) {
+      const seedIds = new Set(initialLots.map((l) => l.id));
+      list = list.filter((l) => !seedIds.has(l.id) && l.isDemo !== true);
+    }
 
     if (filter) {
       if (!filter.includePendingApproval) {

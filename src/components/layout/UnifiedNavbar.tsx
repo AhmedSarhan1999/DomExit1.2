@@ -23,6 +23,7 @@ import {
 export const UnifiedNavbar: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   const { user, isAuthenticated, openAuthModal, switchRole } = useAuth();
+  const isMasterOwnerSession = user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com' || user?.activeRole === 'owner' || user?.role === 'owner';
   const { channels } = usePublicChannelsStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -362,7 +363,8 @@ export const UnifiedNavbar: React.FC = () => {
           {/* Right: Instant Role Switcher, Direct Actions, Language & Profile */}
           <div className="hidden sm:flex items-center space-x-2.5">
             
-            {/* MISSION 2.1: Instant Account & Role Switcher */}
+            {/* Streamlined Operational Role Switcher: Strictly for Owner Session */}
+            {isMasterOwnerSession && (
             <div className="relative" ref={roleSwitcherRef}>
               <button
                 type="button"
@@ -383,7 +385,7 @@ export const UnifiedNavbar: React.FC = () => {
                 <div className="absolute right-0 top-full mt-2 w-80 bg-slate-900/98 border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in space-y-1 text-slate-100 backdrop-blur-xl">
                   <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 flex items-center justify-between">
                     <span>{language === 'ru' ? 'Сменить аккаунт / Роль:' : 'Switch Account / Role:'}</span>
-                    <span className="text-[10px] text-emerald-400 font-mono">7 ролей</span>
+                    <span className="text-[10px] text-emerald-400 font-mono">3 роли</span>
                   </div>
 
                   <div className="max-h-[380px] overflow-y-auto space-y-1 pt-1">
@@ -416,6 +418,7 @@ export const UnifiedNavbar: React.FC = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Dynamic Telegram Channel Shortcut */}
             <a
@@ -580,11 +583,12 @@ export const UnifiedNavbar: React.FC = () => {
             {language === 'ru' ? 'Личный кабинет' : 'Client Portal'}
           </button>
 
-          {/* Mobile 7-Role Switcher */}
+          {/* Mobile Role Switcher (Strictly for Owner Session) */}
+          {isMasterOwnerSession && (
           <div className="pt-2 border-t border-slate-800 space-y-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase px-3 py-1 flex items-center justify-between">
               <span>{language === 'ru' ? 'Быстрая смена роли:' : 'Quick Role Switch:'}</span>
-              <span className="text-emerald-400 font-mono">7 ролей</span>
+              <span className="text-emerald-400 font-mono">3 роли</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5 pt-1">
               {roleOptions.map((opt) => (
@@ -607,6 +611,7 @@ export const UnifiedNavbar: React.FC = () => {
               ))}
             </div>
           </div>
+          )}
         </div>
       )}
     </header>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { getRegionByCode } from '../data/russianGeography';
@@ -23,6 +23,7 @@ import {
   History,
   AlertCircle,
   HardDrive,
+  ShieldAlert,
 } from 'lucide-react';
 
 export const AdminLegalAuditPage: React.FC = () => {
@@ -36,6 +37,7 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [includePlenum63, setIncludePlenum63] = useState<boolean>(true);
   const [memoCopied, setMemoCopied] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isAccessDenied, setIsAccessDenied] = useState<boolean>(false);
   const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
 
   // Modals
@@ -66,8 +68,19 @@ export const AdminLegalAuditPage: React.FC = () => {
       : await LotsRepository.getAll({ includePendingApproval: true });
 
     setAccessibleLots(pool);
+    setIsAccessDenied(false);
 
     const code = (lotId || 'U-10566').toUpperCase();
+
+    if (isEmployee && lotId) {
+      const globalLot = await LotsRepository.getByCode(code);
+      if (globalLot && globalLot.assignedEmployeeId !== currentEmployeeId) {
+        setIsAccessDenied(true);
+        setLot(null);
+        return;
+      }
+    }
+
     const found =
       pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) || pool[0];
     setLot(found || null);
@@ -242,7 +255,27 @@ export const AdminLegalAuditPage: React.FC = () => {
             </div>
           )}
 
-          {!lot ? (
+          {isAccessDenied ? (
+            <div className="bg-white border border-rose-200 rounded-3xl p-10 text-center space-y-4 max-w-lg mx-auto my-12 shadow-sm animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                Доступ ограничен
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Данный объект не закреплен за вашим профилем куратора. Для получения доступа обратитесь к Владельцу платформы.
+              </p>
+              <div className="pt-2">
+                <Link
+                  to="/admin/pipeline"
+                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors"
+                >
+                  <span>Вернуться в мою воронку</span>
+                </Link>
+              </div>
+            </div>
+          ) : !lot ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2">
               <p className="text-sm font-bold text-slate-800">
                 Нет закрепленных объектов для юридического аудита

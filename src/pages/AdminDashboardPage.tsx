@@ -7,6 +7,7 @@ import { getRegionByCode, getDistrictsForRegion, RUSSIAN_REGIONS } from '../data
 import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { PlatformModeRepository, PlatformDataMode } from '../dal/repositories/PlatformModeRepository';
 import { AnalyticsRepository } from '../dal/repositories/AnalyticsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
@@ -47,6 +48,7 @@ import {
   PublicChannelsConfig,
   LegalPolicyType,
   LegalPolicyVersion,
+  SidebarTabId,
 } from '../types';
 import {
   CheckCircle2,
@@ -81,6 +83,8 @@ import {
   BarChart3,
   Phone,
   Mail,
+  Database,
+  Layers,
 } from 'lucide-react';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../utils/asyncGuard';
 
@@ -290,6 +294,22 @@ export const AdminDashboardPage: React.FC = () => {
   });
 
   // Add Employee Modal
+  const [platformMode, setPlatformMode] = useState<PlatformDataMode>(PlatformModeRepository.getMode());
+  const [isTogglingPlatformMode, setIsTogglingPlatformMode] = useState<boolean>(false);
+  const [newEmpSidebarTabs, setNewEmpSidebarTabs] = useState<SidebarTabId[]>([
+    'pipeline',
+    'packaging',
+    'legal_audit',
+    'matchmaker',
+    'profile',
+  ]);
+  const [editEmpSidebarTabs, setEditEmpSidebarTabs] = useState<SidebarTabId[]>([
+    'pipeline',
+    'packaging',
+    'legal_audit',
+    'matchmaker',
+    'profile',
+  ]);
   const [showAddEmpModal, setShowAddEmpModal] = useState<boolean>(false);
   const [newEmpEmail, setNewEmpEmail] = useState<string>('');
   const [newEmpName, setNewEmpName] = useState<string>('');
@@ -732,6 +752,7 @@ export const AdminDashboardPage: React.FC = () => {
           phone: editEmpPhone.trim(),
           telegram: editEmpTg.trim(),
           permissions: editEmpPerms,
+          allowedSidebarTabs: editEmpSidebarTabs,
         }),
         15000
       );
@@ -773,6 +794,24 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   // Add new employee & auto-register user
+  const handleTogglePlatformMode = async (newMode: PlatformDataMode) => {
+    try {
+      setIsTogglingPlatformMode(true);
+      await PlatformModeRepository.setMode(newMode);
+      setPlatformMode(newMode);
+      await loadAllData();
+      showToast(
+        newMode === 'production'
+          ? 'Активирован Боевой режим (Чистый запуск). Демо-лоты изолированы, счетчики обнулены.'
+          : 'Активирован Тестовый режим. Демонстрационные данные и лоты доступны.'
+      );
+    } catch (err) {
+      console.error('Failed to toggle platform mode:', err);
+    } finally {
+      setIsTogglingPlatformMode(false);
+    }
+  };
+
   const handleAddEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmpEmail || !newEmpName) return;
@@ -787,6 +826,7 @@ export const AdminDashboardPage: React.FC = () => {
           phone: newEmpPhone,
           telegram: newEmpTg,
           permissions: newEmpPerms,
+          allowedSidebarTabs: newEmpSidebarTabs,
           status: 'active',
           activeLotsCount: 0,
           closedDealsCount: 0,
@@ -1032,6 +1072,60 @@ export const AdminDashboardPage: React.FC = () => {
               ========================================================================= */}
               {activeOwnerTab === 'overview' && (
                 <div className="space-y-6">
+              {/* Platform Operation Mode & Zero-State Engine Control Card */}
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-5 border border-slate-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center space-x-2.5">
+                    <div className={`p-1.5 rounded-lg ${platformMode === 'production' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'}`}>
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-sm font-black tracking-wide uppercase">
+                      Режим работы базы данных и запуск платформы
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      platformMode === 'production'
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-amber-400 text-slate-950'
+                    }`}>
+                      {platformMode === 'production' ? 'Боевой режим (Чистый запуск / Production)' : 'Тестовый режим (Демо-данные)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                    {platformMode === 'production'
+                      ? 'В боевом режиме все демонстрационные лоты и сделки изолированы. Каталог переведен в режим чистого старта («Каталог формируется...»), а счетчики обнулены (0 активных лотов, 0 закрытых сделок, 0 ₽ комиссий).'
+                      : 'В тестовом режиме загружены демонстрационные лоты, сделки и сгенерированная статистика для отладки и демонстрации возможностей платформы.'}
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
+                  <button
+                    type="button"
+                    disabled={isTogglingPlatformMode || platformMode === 'demo'}
+                    onClick={() => handleTogglePlatformMode('demo')}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                      platformMode === 'demo'
+                        ? 'bg-amber-400 text-slate-950 shadow-sm'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                    }`}
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                    <span>Тестовый режим (Демо-данные)</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isTogglingPlatformMode || platformMode === 'production'}
+                    onClick={() => handleTogglePlatformMode('production')}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                      platformMode === 'production'
+                        ? 'bg-emerald-50 text-slate-950 shadow-sm'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                    }`}
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Боевой режим (Чистый запуск / Production)</span>
+                  </button>
+                </div>
+              </div>
                   {/* Top 4 Live KPI Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* KPI 1 */}
@@ -2995,6 +3089,7 @@ export const AdminDashboardPage: React.FC = () => {
                                         'closing',
                                       ]
                                     );
+                                    setEditEmpSidebarTabs(emp.allowedSidebarTabs || ['pipeline', 'packaging', 'legal_audit', 'matchmaker', 'profile']);
                                     setShowEditEmpModal(true);
                                   }}
                                   className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition-colors cursor-pointer"
@@ -3940,7 +4035,87 @@ export const AdminDashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+                <div className="font-bold text-slate-700">Разрешенные разделы бокового меню (Sidebar Tabs RBAC):</div>
+                <div className="grid grid-cols-2 gap-2 text-slate-700">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newEmpSidebarTabs.includes('pipeline')}
+                      onChange={(e) => {
+                        setNewEmpSidebarTabs(
+                          e.target.checked
+                            ? [...newEmpSidebarTabs, 'pipeline']
+                            : newEmpSidebarTabs.filter((t) => t !== 'pipeline')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Воронка сделок</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newEmpSidebarTabs.includes('packaging')}
+                      onChange={(e) => {
+                        setNewEmpSidebarTabs(
+                          e.target.checked
+                            ? [...newEmpSidebarTabs, 'packaging']
+                            : newEmpSidebarTabs.filter((t) => t !== 'packaging')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Студия упаковки</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newEmpSidebarTabs.includes('legal_audit')}
+                      onChange={(e) => {
+                        setNewEmpSidebarTabs(
+                          e.target.checked
+                            ? [...newEmpSidebarTabs, 'legal_audit']
+                            : newEmpSidebarTabs.filter((t) => t !== 'legal_audit')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Юридический аудит</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newEmpSidebarTabs.includes('matchmaker')}
+                      onChange={(e) => {
+                        setNewEmpSidebarTabs(
+                          e.target.checked
+                            ? [...newEmpSidebarTabs, 'matchmaker']
+                            : newEmpSidebarTabs.filter((t) => t !== 'matchmaker')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>ИИ-Матчмейкер</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newEmpSidebarTabs.includes('profile')}
+                      onChange={(e) => {
+                        setNewEmpSidebarTabs(
+                          e.target.checked
+                            ? [...newEmpSidebarTabs, 'profile']
+                            : newEmpSidebarTabs.filter((t) => t !== 'profile')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Профиль куратора</span>
+                  </label>
+                </div>
+              </div>
+<div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   disabled={isSubmittingEmp}
@@ -4114,6 +4289,87 @@ export const AdminDashboardPage: React.FC = () => {
                       className="rounded text-indigo-600"
                     />
                     <span>Комната закрытия</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+                <div className="font-bold text-slate-700">Разрешенные разделы бокового меню (Sidebar Tabs RBAC):</div>
+                <div className="grid grid-cols-2 gap-2 text-slate-700">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpSidebarTabs.includes('pipeline')}
+                      onChange={(e) => {
+                        setEditEmpSidebarTabs(
+                          e.target.checked
+                            ? [...editEmpSidebarTabs, 'pipeline']
+                            : editEmpSidebarTabs.filter((t) => t !== 'pipeline')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Воронка сделок</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpSidebarTabs.includes('packaging')}
+                      onChange={(e) => {
+                        setEditEmpSidebarTabs(
+                          e.target.checked
+                            ? [...editEmpSidebarTabs, 'packaging']
+                            : editEmpSidebarTabs.filter((t) => t !== 'packaging')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Студия упаковки</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpSidebarTabs.includes('legal_audit')}
+                      onChange={(e) => {
+                        setEditEmpSidebarTabs(
+                          e.target.checked
+                            ? [...editEmpSidebarTabs, 'legal_audit']
+                            : editEmpSidebarTabs.filter((t) => t !== 'legal_audit')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Юридический аудит</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpSidebarTabs.includes('matchmaker')}
+                      onChange={(e) => {
+                        setEditEmpSidebarTabs(
+                          e.target.checked
+                            ? [...editEmpSidebarTabs, 'matchmaker']
+                            : editEmpSidebarTabs.filter((t) => t !== 'matchmaker')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>ИИ-Матчмейкер</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editEmpSidebarTabs.includes('profile')}
+                      onChange={(e) => {
+                        setEditEmpSidebarTabs(
+                          e.target.checked
+                            ? [...editEmpSidebarTabs, 'profile']
+                            : editEmpSidebarTabs.filter((t) => t !== 'profile')
+                        );
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Профиль куратора</span>
                   </label>
                 </div>
               </div>

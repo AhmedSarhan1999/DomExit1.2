@@ -4,12 +4,18 @@ import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { CandidatesRepository } from './CandidatesRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { PlatformModeRepository } from './PlatformModeRepository';
 
 const COLLECTION = 'deals';
 
 export class DealsRepository {
   static async getAll(): Promise<DealTrack[]> {
-    return DatabaseGateway.getAll<DealTrack>(COLLECTION, initialDeals);
+    let list = await DatabaseGateway.getAll<DealTrack>(COLLECTION, initialDeals);
+    if (PlatformModeRepository.isProductionMode()) {
+      const seedIds = new Set(initialDeals.map((d) => d.id));
+      list = list.filter((d) => !seedIds.has(d.id) && (d as any).isDemo !== true);
+    }
+    return list;
   }
 
   static async getById(dealId: string): Promise<DealTrack | null> {

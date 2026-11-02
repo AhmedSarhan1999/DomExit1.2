@@ -38,6 +38,7 @@ export const AdminPackagingPage: React.FC = () => {
   // Media materials state
   const [sellerPhotos, setSellerPhotos] = useState<string[]>([]);
   const [approvedPhotos, setApprovedPhotos] = useState<string[]>([]);
+  const [isAccessDenied, setIsAccessDenied] = useState<boolean>(false);
 
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
@@ -76,8 +77,19 @@ export const AdminPackagingPage: React.FC = () => {
         : await LotsRepository.getAll({ includePendingApproval: true });
 
       setAccessibleLots(pool);
+      setIsAccessDenied(false);
 
       const code = (lotId || 'U-10566').toUpperCase();
+
+      if (isEmployee && lotId) {
+        const globalLot = await LotsRepository.getByCode(code);
+        if (globalLot && globalLot.assignedEmployeeId !== currentEmployeeId) {
+          setIsAccessDenied(true);
+          setLot(null);
+          return;
+        }
+      }
+
       const matched =
         pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) ||
         pool[0];
@@ -249,7 +261,27 @@ export const AdminPackagingPage: React.FC = () => {
         )}
 
         <div className="p-6 space-y-6 max-w-[1600px] w-full">
-          {!lot ? (
+          {isAccessDenied ? (
+            <div className="bg-white border border-rose-200 rounded-3xl p-10 text-center space-y-4 max-w-lg mx-auto my-12 shadow-sm animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                Доступ ограничен
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Данный объект не закреплен за вашим профилем куратора. Для получения доступа обратитесь к Владельцу платформы.
+              </p>
+              <div className="pt-2">
+                <Link
+                  to="/admin/pipeline"
+                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors"
+                >
+                  <span>Вернуться в мою воронку</span>
+                </Link>
+              </div>
+            </div>
+          ) : !lot ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2">
               <p className="text-sm font-bold text-slate-800">
                 Нет доступных объектов в вашем контуре ответственности

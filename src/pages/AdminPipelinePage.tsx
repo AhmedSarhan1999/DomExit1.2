@@ -8,6 +8,7 @@ import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { DealTrack } from '../types';
 import {
+  GitPullRequest,
   CheckCircle2,
   AlertTriangle,
   Plus,
@@ -202,8 +203,23 @@ export const AdminPipelinePage: React.FC = () => {
             </div>
           </div>
 
-          {/* 5 Interactive Kanban Columns */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
+          {/* 5 Interactive Kanban Columns or Zero-State */}
+          {deals.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 shadow-sm my-6">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                <GitPullRequest className="w-8 h-8 text-slate-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                Нет активных сделок на данном этапе
+              </h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                {isEmployee
+                  ? 'Новые объекты и сделки появятся в вашей рабочей воронке после того, как Владелец платформы одобрит заявки продавцов и закрепит объекты за вами.'
+                  : 'Новые сделки формируются автоматически при поступлении и первичном одобрении входящих заявок продавцов.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
             {columns.map((col) => {
               const colDeals = filteredDeals.filter(
                 (d) =>
@@ -331,6 +347,7 @@ export const AdminPipelinePage: React.FC = () => {
               );
             })}
           </div>
+          )}
         </div>
       </div>
     </div>
