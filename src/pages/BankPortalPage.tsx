@@ -41,7 +41,7 @@ import { useAuth } from '../context/AuthContext';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
-import { DevelopersRepository, PARTNER_BANKS, RUSSIAN_TOP_DEVELOPERS } from '../dal/repositories/DevelopersRepository';
+import { DevelopersRepository, PARTNER_BANKS, formatDeveloperOption } from '../dal/repositories/DevelopersRepository';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import {
   AccreditedDeveloper,
@@ -2495,7 +2495,7 @@ export const BankPortalPage: React.FC = () => {
             <div className="space-y-3.5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Выберите застройщика из каталога или добавьте нового:
+                  Выберите застройщика из единого реестра или добавьте нового:
                 </label>
                 <select
                   value={selectedDevToAdd}
@@ -2505,21 +2505,15 @@ export const BankPortalPage: React.FC = () => {
                     if (val && val !== '__custom__') {
                       const matched = (accreditedDevs || []).find((d) => d.name === val);
                       if (matched?.inn) setCustomDevInnToAdd(matched.inn);
+                      if (matched?.name) setCustomDevNameToAdd(matched.name);
                     }
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-emerald-600"
                 >
-                  <option value="">-- Выберите застройщика из единого реестра --</option>
+                  <option value="">-- Выберите застройщика --</option>
                   {(accreditedDevs || []).map((dev) => (
                     <option key={dev.id} value={dev.name}>
-                      {dev.name} {dev.inn ? `(ИНН ${dev.inn})` : ''} {dev.registered_via_project ? '• через проект' : ''}
-                    </option>
-                  ))}
-                  {RUSSIAN_TOP_DEVELOPERS.filter(
-                    (topName) => !(accreditedDevs || []).some((d) => d.name === topName)
-                  ).map((topName) => (
-                    <option key={topName} value={topName}>
-                      {topName}
+                      {formatDeveloperOption(dev)}
                     </option>
                   ))}
                   <option value="__custom__">+ Добавить нового застройщика (вручную)</option>

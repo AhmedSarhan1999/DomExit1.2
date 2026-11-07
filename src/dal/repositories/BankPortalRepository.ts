@@ -343,6 +343,8 @@ export class BankPortalRepository {
         bankName: req.bankName,
         ratePercent: approvedRatePercent,
         pdnPercent: maxPdnPercent,
+        registrationSource: 'project_approval',
+        registrationNote: `Одобрено проектное финансирование банком ${req.bankName} (Лот #${req.lotCode})`,
       });
     }
 

@@ -5,7 +5,7 @@ import { formatRubles } from '../utils/formatters';
 import { SellerRequestsRepository } from '../dal/repositories/SellerRequestsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
-import { DevelopersRepository } from '../dal/repositories/DevelopersRepository';
+import { DevelopersRepository, formatDeveloperOption, normalizeDeveloperName } from '../dal/repositories/DevelopersRepository';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { SELLER_MANDATORY_DOC_SLOTS, StorageService } from '../dal/StorageService';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
@@ -174,7 +174,7 @@ export const SellersPage: React.FC = () => {
   const clientCode = user?.clientCode || 'DEX-784105';
   const currentUid = user?.id || 'usr-seller-live';
 
-  const handleGoToStep2 = () => {
+  const handleGoToStep2 = async () => {
     setStep1Error(null);
 
     const devCheck = validateTextEntityName(developerName, 'Наименование застройщика');
@@ -255,6 +255,17 @@ export const SellersPage: React.FC = () => {
             'Укажите корректный ИНН застройщика (10 цифр для юрлиц или 12 для ИП).'
         );
         return;
+      }
+      // Instantly register developer in platform directory for live synchronization across bank portals
+      try {
+        await DevelopersRepository.registerDeveloperFromProject({
+          name: developerName.trim(),
+          inn: developerInn.trim() || '7800000000',
+          registrationSource: 'seller_submission',
+          registrationNote: 'Зарегистрирован продавцом через мастер подачи заявки',
+        });
+      } catch (err) {
+        console.warn('[SellersPage] Error auto-registering developer:', err);
       }
     } else {
       const matched = accreditedDevelopers.find((d) => d.name === developerName);
@@ -613,7 +624,7 @@ export const SellersPage: React.FC = () => {
                         >
                           {accreditedDevelopers.map((d) => (
                             <option key={d.id} value={d.name}>
-                              {d.name} (ИНН {d.inn})
+                              {formatDeveloperOption(d)}
                             </option>
                           ))}
                           <option value="__ADD_NEW__">+ Добавить нового застройщика</option>
@@ -626,6 +637,10 @@ export const SellersPage: React.FC = () => {
                               onClick={() => {
                                 setIsAddingNewDeveloper(false);
                                 setDeveloperName(dev);
+                                const matched = accreditedDevelopers.find(
+                                  (d) => d.name === dev || normalizeDeveloperName(d.name) === normalizeDeveloperName(dev)
+                                );
+                                if (matched?.inn) setDeveloperInn(matched.inn);
                               }}
                               className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
                                 developerName === dev

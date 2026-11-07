@@ -246,9 +246,149 @@ export const INITIAL_DEVELOPER_ACCREDITATION_REQUESTS: DeveloperAccreditationReq
 import { normalizeDeveloperName } from '../../utils/formatters';
 export { normalizeDeveloperName };
 
+/**
+ * Standardizes display format for developer selectors: [Name] (ИНН [INN])
+ * Example: "Setl Group (ИНН 7810245481)"
+ */
+export function formatDeveloperOption(dev: { name: string; inn?: string }): string {
+  if (!dev || !dev.name) return '';
+  const cleanInn = dev.inn?.trim();
+  return cleanInn ? `${dev.name} (ИНН ${cleanInn})` : dev.name;
+}
+
+/**
+ * Robust deduplication and attribute merging for developers across all platforms.
+ * Merges records by normalized name (Russian/Latin) or matching corporate INN.
+ * Guarantees zero duplicate entries (e.g. Setl Group) while merging bank terms and preserving valid INNs.
+ */
+export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): AccreditedDeveloper[] {
+  if (!rawList || !Array.isArray(rawList)) return [];
+
+  const mergedList: AccreditedDeveloper[] = [];
+
+  for (const rawItem of rawList) {
+    if (!rawItem || !rawItem.name) continue;
+
+    const cleanName = rawItem.name.trim();
+    const normName = normalizeDeveloperName(cleanName);
+    const cleanInn = (rawItem.inn || '').trim().replace(/\D/g, '');
+    const hasValidInn = cleanInn.length >= 10 && cleanInn !== '7700000000' && cleanInn !== '7800000000';
+
+    // Find if an entry already exists in mergedList with same normalized name OR matching non-dummy INN
+    const existingIndex = mergedList.findIndex((item) => {
+      const itemNormName = normalizeDeveloperName(item.name || '');
+      const itemCleanInn = (item.inn || '').trim().replace(/\D/g, '');
+      const itemHasValidInn = itemCleanInn.length >= 10 && itemCleanInn !== '7700000000' && itemCleanInn !== '7800000000';
+
+      // Match by normalized name
+      if (normName && itemNormName && normName === itemNormName) {
+        return true;
+      }
+
+      // Match by valid INN
+      if (hasValidInn && itemHasValidInn && cleanInn === itemCleanInn) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (existingIndex >= 0) {
+      const existing = mergedList[existingIndex];
+
+      // 1. Prefer valid INN
+      const mergedInn = hasValidInn ? cleanInn : (existing.inn || cleanInn || '7700000000');
+
+      // 2. Canonical name: prefer seed developer name if available, else cleanName
+      const isRawSeed = INITIAL_ACCREDITED_DEVELOPERS.some((s) => s.id === rawItem.id);
+      const isExistingSeed = INITIAL_ACCREDITED_DEVELOPERS.some((s) => s.id === existing.id);
+      let mergedName = existing.name;
+      if (isRawSeed && !isExistingSeed) {
+        mergedName = rawItem.name;
+      } else if (!isExistingSeed && cleanName.length > existing.name.length && !cleanName.includes('__')) {
+        mergedName = cleanName;
+      }
+
+      // 3. Merge bank terms safely
+      const bankTermsMap = new Map<string, DeveloperBankTerms>();
+      for (const t of existing.bankTerms || []) {
+        if (t?.bankName) bankTermsMap.set(t.bankName, { ...t });
+      }
+      for (const t of rawItem.bankTerms || []) {
+        if (!t?.bankName) continue;
+        const current = bankTermsMap.get(t.bankName);
+        if (!current) {
+          bankTermsMap.set(t.bankName, { ...t });
+        } else {
+          // If raw is accredited, prefer accredited
+          if (t.isAccredited && !current.isAccredited) {
+            bankTermsMap.set(t.bankName, { ...t });
+          } else if (t.isAccredited === current.isAccredited) {
+            const rawTime = t.accreditedAt ? new Date(t.accreditedAt).getTime() : 0;
+            const curTime = current.accreditedAt ? new Date(current.accreditedAt).getTime() : 0;
+            if (rawTime > curTime || (t.baseRatePercent && t.baseRatePercent < (current.baseRatePercent || 99))) {
+              bankTermsMap.set(t.bankName, { ...current, ...t });
+            }
+          }
+        }
+      }
+      const mergedBankTerms = Array.from(bankTermsMap.values());
+
+      // 4. Combined accreditation status
+      const mergedIsAccredited = existing.isAccredited || rawItem.isAccredited || mergedBankTerms.some((b) => b.isAccredited);
+
+      // 5. Prefer seed ID or canonical ID
+      const mergedId = isRawSeed ? rawItem.id : existing.id;
+
+      mergedList[existingIndex] = {
+        ...existing,
+        ...rawItem,
+        id: mergedId,
+        name: mergedName,
+        inn: mergedInn,
+        isAccredited: mergedIsAccredited,
+        bankTerms: mergedBankTerms,
+        registered_via_project: existing.registered_via_project || rawItem.registered_via_project,
+        registrationSource: existing.registrationSource || rawItem.registrationSource,
+        registrationNote: existing.registrationNote || rawItem.registrationNote,
+        updatedAt: new Date(Math.max(
+          existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0,
+          rawItem.updatedAt ? new Date(rawItem.updatedAt).getTime() : 0,
+          Date.now()
+        )).toISOString(),
+      };
+    } else {
+      mergedList.push({
+        ...rawItem,
+        name: cleanName,
+        inn: cleanInn || rawItem.inn || '7700000000',
+        bankTerms: Array.isArray(rawItem.bankTerms) ? [...rawItem.bankTerms] : [],
+      });
+    }
+  }
+
+  // Ensure all institutional seed developers are present
+  for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
+    const seedNorm = normalizeDeveloperName(seed.name);
+    const seedCleanInn = seed.inn.trim().replace(/\D/g, '');
+    const alreadyIn = mergedList.some((m) => {
+      const mNorm = normalizeDeveloperName(m.name);
+      const mCleanInn = (m.inn || '').trim().replace(/\D/g, '');
+      return mNorm === seedNorm || (seedCleanInn && mCleanInn === seedCleanInn);
+    });
+    if (!alreadyIn) {
+      mergedList.push({ ...seed });
+    }
+  }
+
+  // Sort alphabetically by Russian collation
+  return mergedList.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+}
+
 class DevelopersRepositoryController {
   async getAllDevelopers(): Promise<AccreditedDeveloper[]> {
-    return DatabaseGateway.getAll<AccreditedDeveloper>(DEVELOPERS_COLLECTION, INITIAL_ACCREDITED_DEVELOPERS);
+    const raw = await DatabaseGateway.getAll<AccreditedDeveloper>(DEVELOPERS_COLLECTION, INITIAL_ACCREDITED_DEVELOPERS);
+    return deduplicateDevelopers(raw);
   }
 
   async getAccreditedDevelopers(): Promise<AccreditedDeveloper[]> {
@@ -854,13 +994,16 @@ class DevelopersRepositoryController {
     bankName?: string;
     ratePercent?: number;
     pdnPercent?: 40 | 50 | 60;
+    registrationSource?: 'institutional' | 'project_approval' | 'seed' | 'seller_submission';
+    registrationNote?: string;
   }): Promise<AccreditedDeveloper> {
     const existing = await this.findDeveloperByName(params.name);
     const now = new Date().toISOString();
     if (existing) {
       let modified = false;
-      if (params.inn && (!existing.inn || existing.inn === '7700000000')) {
-        existing.inn = params.inn;
+      const cleanInn = params.inn?.trim();
+      if (cleanInn && cleanInn !== '7700000000' && cleanInn !== '7800000000' && (!existing.inn || existing.inn === '7700000000' || existing.inn === '7800000000')) {
+        existing.inn = cleanInn;
         modified = true;
       }
       if (!existing.registered_via_project && !existing.isAccredited) {
@@ -878,11 +1021,11 @@ class DevelopersRepositoryController {
     const newDev: AccreditedDeveloper = {
       id: `dev-project-${norm.replace(/[^a-z0-9]/gi, '').toLowerCase() || Date.now()}`,
       name: params.name.trim(),
-      inn: params.inn.trim() || '7814892011',
+      inn: params.inn?.trim() || '7814892011',
       isAccredited: false, // NOT yet institutionally accredited across all projects in Tab 2
       registered_via_project: true,
-      registrationSource: 'project_approval',
-      registrationNote: `Зарегистрирован через индивидуальное одобрение проекта${
+      registrationSource: params.registrationSource || 'project_approval',
+      registrationNote: params.registrationNote || `Зарегистрирован через индивидуальное одобрение проекта${
         params.lotCode ? ` (Лот #${params.lotCode})` : ''
       }${params.bankName ? ` банком ${params.bankName}` : ''}`,
       bankTerms: [],

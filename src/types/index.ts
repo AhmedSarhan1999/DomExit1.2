@@ -480,7 +480,7 @@ export interface AccreditedDeveloper {
   name: string; // e.g. 'ПИК', 'Setl Group', 'Самолёт'
   inn: string; // 10-digit corporate ИНН or 12-digit for ИП
   isAccredited: boolean;
-  registrationSource?: 'institutional' | 'project_approval' | 'seed';
+  registrationSource?: 'institutional' | 'project_approval' | 'seed' | 'seller_submission';
   registered_via_project?: boolean;
   registrationNote?: string;
   bankTerms: DeveloperBankTerms[];
