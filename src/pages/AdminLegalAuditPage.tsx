@@ -58,7 +58,7 @@ export const AdminLegalAuditPage: React.FC = () => {
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
   const curatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Старший юрист)' : 'Виктор Сергеевич (CEO)');
+    user?.name || (isEmployee ? 'Алексей Смирнов (Старший юрист)' : 'Ahmed Abdallah (Владелец / CEO)');
 
   const loadLotData = async () => {
     const pool = isEmployee

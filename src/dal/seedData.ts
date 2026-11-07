@@ -165,6 +165,8 @@ export const initialLots: Lot[] = [
     assignedEmployeeName: 'Алексей Смирнов',
     complexName: 'ЖК «Морская Набережная»',
     developer: 'Группа ЛСР',
+    developerInn: '7838001457',
+    developerAccreditationStatus: 'accredited',
     city: 'spb',
     district: 'Василеостровский район',
     streetAddress: 'Намыв В.О., б-р Александра Грина, д. 5',
@@ -1246,6 +1248,8 @@ export const initialDeals: DealTrack[] = [
     lotTitle: 'ЖК Морская Набережная — 41.8 м²',
     complexName: 'ЖК «Морская Набережная»',
     developer: 'Группа ЛСР',
+    developerInn: '7838001457',
+    developerAccreditationStatus: 'accredited',
     city: 'spb',
     district: 'Василеостровский район',
     route: 'fast_cash',
@@ -1367,7 +1371,7 @@ export const initialMarketSettings = {
   developerPenaltyPercent: 15,
   buyerCommissionPercent: 2.5,
   updatedAt: '2026-10-20T10:00:00Z',
-  updatedBy: 'Виктор Сергеевич (Генеральный директор)',
+  updatedBy: 'Ahmed Abdallah (Генеральный директор)',
 };
 
 export const initialPartnerBanks: PartnerBankEntity[] = [
@@ -1452,7 +1456,7 @@ export const initialBankEmployees: BankEmployee[] = [
     phone: '+7 (812) 500-11-00',
     createdAt: '2025-01-10T10:00:00Z',
     isMasterAdmin: true,
-    permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+    permissions: ['escrow', 'developer_accreditation', 'special', 'staff'],
   },
   {
     id: 'bank-emp-2',
@@ -1464,7 +1468,7 @@ export const initialBankEmployees: BankEmployee[] = [
     phone: '+7 (812) 500-11-01',
     createdAt: '2025-01-15T11:00:00Z',
     isMasterAdmin: false,
-    permissions: ['escrow', 'credit_limits'],
+    permissions: ['escrow', 'special'],
   },
   {
     id: 'bank-emp-3',
@@ -1476,7 +1480,7 @@ export const initialBankEmployees: BankEmployee[] = [
     phone: '+7 (812) 600-22-01',
     createdAt: '2025-02-01T09:30:00Z',
     isMasterAdmin: true,
-    permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+    permissions: ['escrow', 'developer_accreditation', 'special', 'staff'],
   },
   {
     id: 'bank-emp-4',
@@ -1488,7 +1492,7 @@ export const initialBankEmployees: BankEmployee[] = [
     phone: '+7 (812) 700-33-01',
     createdAt: '2025-02-10T10:00:00Z',
     isMasterAdmin: true,
-    permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+    permissions: ['escrow', 'developer_accreditation', 'special', 'staff'],
   },
   {
     id: 'bank-emp-5',
@@ -1500,15 +1504,15 @@ export const initialBankEmployees: BankEmployee[] = [
     phone: '+7 (812) 800-44-01',
     createdAt: '2025-02-15T10:00:00Z',
     isMasterAdmin: true,
-    permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+    permissions: ['escrow', 'developer_accreditation', 'special', 'staff'],
   },
 ];
 
 export const initialUsers: UserProfile[] = [
   {
     id: 'usr-owner-001',
-    clientCode: 'DEX-000001',
-    name: 'Виктор Сергеевич (Владелец / CEO)',
+    clientCode: 'DEX-104662',
+    name: 'Ahmed Abdallah (Владелец / CEO)',
     email: 'amaas9499@gmail.com',
     phone: '+7 (812) 900-00-01',
     telegram: '@domexit_owner',
@@ -1524,7 +1528,7 @@ export const initialUsers: UserProfile[] = [
   {
     id: 'usr-owner-ceo',
     clientCode: 'DEX-000000',
-    name: 'Виктор Сергеевич (CEO Резерв)',
+    name: 'Ahmed Abdallah (CEO Резерв)',
     email: 'ceo@domexit.ru',
     phone: '+7 (812) 900-00-00',
     telegram: '@domexit_ceo',

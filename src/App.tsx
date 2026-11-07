@@ -8,6 +8,7 @@ import { PublicLayout } from './components/layout/PublicLayout';
 import { HomePage } from './pages/HomePage';
 import { SellersPage } from './pages/SellersPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { VipCatalogPage } from './pages/VipCatalogPage';
 import { LotDetailsPage } from './pages/LotDetailsPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { StoryPage } from './pages/StoryPage';
@@ -28,6 +29,7 @@ import { AdminMatchmakerPage } from './pages/AdminMatchmakerPage';
 import { AdminClosingPage } from './pages/AdminClosingPage';
 import { AdminPartnersBotPage } from './pages/AdminPartnersBotPage';
 import { BankPortalPage } from './pages/BankPortalPage';
+import { BankGatewayErrorBoundary } from './components/common/BankGatewayErrorBoundary';
 import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
 import { AdminCuratorProfilePage } from './pages/AdminCuratorProfilePage';
 import { DatabaseInitializer } from './dal/initializer';
@@ -76,6 +78,7 @@ export const App: React.FC = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/sellers" element={<SellersPage />} />
               <Route path="/opportunities" element={<OpportunitiesPage />} />
+              <Route path="/vip-catalog" element={<VipCatalogPage />} />
               <Route path="/opportunities/:lotCode" element={<LotDetailsPage />} />
               <Route path="/how-it-works" element={<HowItWorksPage />} />
               <Route path="/story" element={<StoryPage />} />
@@ -123,8 +126,22 @@ export const App: React.FC = () => {
             <Route path="/admin/partners-bot" element={<AdminPartnersBotPage />} />
 
             {/* Partner Bank Gateway (Mission 6) */}
-            <Route path="/bank-portal" element={<BankPortalPage />} />
-            <Route path="/admin/bank-gateway" element={<BankPortalPage />} />
+            <Route
+              path="/bank-portal"
+              element={
+                <BankGatewayErrorBoundary>
+                  <BankPortalPage />
+                </BankGatewayErrorBoundary>
+              }
+            />
+            <Route
+              path="/admin/bank-gateway"
+              element={
+                <BankGatewayErrorBoundary>
+                  <BankPortalPage />
+                </BankGatewayErrorBoundary>
+              }
+            />
 
             {/* Archive Logs & Decision Journal (Mission 12) */}
             <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />

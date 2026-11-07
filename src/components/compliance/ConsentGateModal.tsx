@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, AlertCircle, CheckCircle2, ArrowRight, Loader2, Lock, FileText } from 'lucide-react';
+import { ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { LegalPoliciesRepository } from '../../dal/repositories/LegalPoliciesRepository';
+import { UsersRepository } from '../../dal/repositories/UsersRepository';
 import { LegalPolicyVersion } from '../../types';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../../utils/asyncGuard';
+
+const CURRENT_POLICY_VERSION = '2026.1';
 
 export const ConsentGateModal: React.FC = () => {
   const { user } = useAuth();
@@ -14,12 +17,18 @@ export const ConsentGateModal: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Immediate synchronous guard: if user or device has already agreed to version 2026.1, suppress modal completely
+  const localAgreedVersion = typeof window !== 'undefined' ? localStorage.getItem('last_agreed_version') : null;
+  const isAlreadyAgreed =
+    localAgreedVersion === CURRENT_POLICY_VERSION || user?.agreedPolicyVersion === CURRENT_POLICY_VERSION;
+
   useEffect(() => {
+    if (isAlreadyAgreed || !user) {
+      setIsOpen(false);
+      return;
+    }
+
     const checkConsents = async () => {
-      if (!user) {
-        setIsOpen(false);
-        return;
-      }
       try {
         const userId = user.id || user.email || user.clientCode || 'anon-client';
         const pending = await LegalPoliciesRepository.checkUserUnconsentedMaterialPolicies(userId);
@@ -35,9 +44,9 @@ export const ConsentGateModal: React.FC = () => {
     };
 
     checkConsents();
-  }, [user]);
+  }, [user, isAlreadyAgreed]);
 
-  if (!isOpen || unconsentedPolicies.length === 0) {
+  if (isAlreadyAgreed || !isOpen || unconsentedPolicies.length === 0) {
     return null;
   }
 
@@ -50,6 +59,8 @@ export const ConsentGateModal: React.FC = () => {
       await withAsyncTimeout(
         (async () => {
           const userId = user.id || user.email || user.clientCode || 'anon-client';
+
+          // 1. Record proof of consent for each policy in vault
           for (const pol of unconsentedPolicies) {
             await LegalPoliciesRepository.recordProofOfConsent({
               userId,
@@ -61,6 +72,13 @@ export const ConsentGateModal: React.FC = () => {
               consentMethod: 'reconsent_modal',
             });
           }
+
+          // 2. Persist consent in user profile in DB and in localStorage
+          await UsersRepository.updateAgreedPolicyVersion(userId, CURRENT_POLICY_VERSION);
+          if (user.id) {
+            user.agreedPolicyVersion = CURRENT_POLICY_VERSION;
+          }
+          localStorage.setItem('last_agreed_version', CURRENT_POLICY_VERSION);
         })(),
         15000,
         ASYNC_NETWORK_TIMEOUT_MESSAGE
@@ -133,7 +151,7 @@ export const ConsentGateModal: React.FC = () => {
                 checked={acceptedCheck}
                 onChange={(e) => setAcceptedCheck(e.target.checked)}
                 disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded text-emerald-600 border-slate-300 focus:ring-emerald-500"
+                className="mt-1 w-4 h-4 rounded text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer"
               />
               <span className="text-xs text-slate-700 leading-relaxed group-hover:text-slate-900 select-none">
                 Я подтверждаю ознакомление с обновленными редакциями документов, согласен с условиями обработки данных в защищенном контуре Yandex Cloud и даю согласие на продолжение работы.
@@ -149,24 +167,26 @@ export const ConsentGateModal: React.FC = () => {
             target="_blank"
             className="text-xs font-bold text-slate-600 hover:text-emerald-700 underline transition-colors"
           >
-            Открыть публичный архив редакций &rarr;
+            Архив и журнал версий
           </Link>
 
           <button
+            type="button"
             onClick={handleAcceptAll}
             disabled={!acceptedCheck || isSubmitting}
-            className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2"
+            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 ${
+              acceptedCheck && !isSubmitting
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Фиксация согласия (SHA-256)...</span>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Фиксация согласия (ГОСТ)...</span>
               </>
             ) : (
-              <>
-                <span>Принять и продолжить</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
+              <span>Принять и продолжить</span>
             )}
           </button>
         </div>

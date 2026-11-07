@@ -57,7 +57,7 @@ export const AdminClosingPage: React.FC = () => {
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
   const operatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор)' : 'Виктор Сергеевич (CEO)');
+    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор)' : 'Ahmed Abdallah (Владелец / CEO)');
 
   const loadDeal = async () => {
     const pool = isEmployee

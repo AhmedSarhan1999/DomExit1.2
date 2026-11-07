@@ -187,7 +187,7 @@ export const AdminPartnersBotPage: React.FC = () => {
       await AuditLogsRepository.addLog({
         lotCode: selectedLot.lotCode,
         operatorId: user?.id || 'owner-1',
-        operatorName: user?.name || 'Виктор Сергеевич (Владелец / CEO)',
+        operatorName: user?.name || 'Ahmed Abdallah (Владелец / CEO)',
         operatorRole: 'owner',
         actionType: 'vip_telegram_broadcast',
         title: `Запущена рассылка по дистресс-лоту #${selectedLot.lotCode} (${selectedLot.complexName})`,
@@ -260,7 +260,7 @@ export const AdminPartnersBotPage: React.FC = () => {
 
           await AuditLogsRepository.addLog({
             operatorId: user?.id || 'owner-1',
-            operatorName: user?.name || 'Виктор Сергеевич (Владелец / CEO)',
+            operatorName: user?.name || 'Ahmed Abdallah (Владелец / CEO)',
             operatorRole: 'owner',
             actionType: 'partner_application_decided',
             title: `Вручную аккредитован B2B-партнер: ${created.name}`,
@@ -302,7 +302,7 @@ export const AdminPartnersBotPage: React.FC = () => {
             Number(payoutAmountRub),
             payoutTxNumber.trim(),
             payoutBankName,
-            user?.name || 'Виктор Сергеевич (Владелец / CEO)'
+            user?.name || 'Ahmed Abdallah (Владелец / CEO)'
           );
 
           if (updated) {

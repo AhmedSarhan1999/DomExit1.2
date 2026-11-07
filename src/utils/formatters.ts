@@ -37,3 +37,58 @@ export function cleanMathText(input: string): string {
     .replace(/\\le/g, '≤')
     .replace(/\$/g, '');
 }
+
+/**
+ * Normalizes developer names across the entire platform.
+ * Strips legal forms (ООО, ПАО, АО, ГК, Группа), quotes, extra spaces,
+ * and canonicalizes major Russian real estate developers.
+ */
+export function normalizeDeveloperName(name: string | undefined | null): string {
+  if (!name) return '';
+  let s = name.toLowerCase().replace(/ё/g, 'е').trim();
+  s = s.replace(/[«»"'`,\.\-\(\)\/]/g, ' ');
+
+  const legalTokens = [
+    'группа компаний',
+    'группа',
+    'девелопмент',
+    'холдинг',
+    'недвижимость',
+    'ооо',
+    'пао',
+    'зао',
+    'оао',
+    'гк',
+    'ск',
+    'ао',
+    'development',
+    'group',
+    'holding',
+  ];
+
+  for (const token of legalTokens) {
+    const regex = new RegExp(`(^|\\s)${token}(\\s|$)`, 'g');
+    s = s.replace(regex, ' ');
+  }
+
+  s = s.replace(/\s+/g, ' ').trim();
+
+  // Canonical mapping for top developers
+  if (s === 'лср' || s.includes('лср')) return 'лср';
+  if (s === 'пик' || s.includes('пик')) return 'пик';
+  if (s === 'самолет' || s.includes('самолет')) return 'самолет';
+  if (s === 'сетл' || s === 'setl' || s.includes('setl') || s.includes('сетл')) return 'setl group';
+  if (s === 'фск' || s.includes('фск')) return 'фск';
+  if (s === 'эталон' || s.includes('эталон')) return 'эталон';
+  if (s === 'а101' || s.includes('а101') || s.includes('a101')) return 'а101';
+  if (s === 'брусника' || s.includes('брусника')) return 'брусника';
+  if (s === 'главстрой' || s.includes('главстрой')) return 'главстрой';
+  if (s === 'rbi' || s === 'рби' || s.includes('rbi') || s.includes('рби')) return 'rbi';
+  if (s === 'квс' || s.includes('квс')) return 'квс';
+  if (s === 'пионер' || s.includes('пионер')) return 'пионер';
+  if (s === 'mr' || s.includes('mr') || s.includes('мр')) return 'mr group';
+  if (s === 'sminex' || s.includes('sminex') || s.includes('смайнекс')) return 'sminex';
+  if (s === 'донстрой' || s.includes('донстрой')) return 'донстрой';
+
+  return s;
+}

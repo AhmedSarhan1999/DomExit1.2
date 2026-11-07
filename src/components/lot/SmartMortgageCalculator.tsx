@@ -3,7 +3,7 @@ import { DeveloperBankTerms, Lot, PartnerBankName } from '../../types';
 import { MarketSettingsRepository } from '../../dal/repositories/MarketSettingsRepository';
 import { DevelopersRepository } from '../../dal/repositories/DevelopersRepository';
 import { DatabaseGateway } from '../../dal/DatabaseGateway';
-import { formatRubles } from '../../utils/formatters';
+import { formatRubles, normalizeDeveloperName } from '../../utils/formatters';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
   Calculator,
@@ -38,21 +38,41 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
   const [termYears, setTermYears] = useState<number>(20);
 
   const loadRatesAndBankTerms = async () => {
-    const [settings, devTerms] = await Promise.all([
+    let [settings, devTerms] = await Promise.all([
       MarketSettingsRepository.getSettings(),
       DevelopersRepository.getBankTermsForDeveloper(lot.developer),
     ]);
     const keyRate = settings?.cbrKeyRatePercent || 21;
     setCbrRate(keyRate);
-    setBankTermsList(devTerms);
 
-    if (devTerms.length > 0) {
+    // Cross-reference lookup with smart normalized developer matching
+    if (!devTerms || devTerms.length === 0) {
+      const allDevs = await DevelopersRepository.getAllDevelopers();
+      const normLotDev = normalizeDeveloperName(lot.developer);
+      const matchedDev = (allDevs || []).find(
+        (d) =>
+          (lot?.developerInn && d.inn && d.inn.trim() === lot.developerInn.trim()) ||
+          (normLotDev && normalizeDeveloperName(d.name) === normLotDev) ||
+          (lot?.developer &&
+            d?.name &&
+            (d.name.toLowerCase().includes(lot.developer.toLowerCase()) ||
+              lot.developer.toLowerCase().includes(d.name.toLowerCase())))
+      );
+      if (matchedDev && matchedDev.bankTerms && matchedDev.bankTerms.length > 0) {
+        devTerms = (matchedDev.bankTerms || []).filter((b) => b?.isAccredited);
+      }
+    }
+
+    setBankTermsList(devTerms || []);
+
+    if (devTerms && devTerms.length > 0) {
       const preferred =
         devTerms.find(
           (b) =>
             (lot.escrowBank === 'Sberbank' && b.bankName === 'Сбербанк') ||
             (lot.escrowBank === 'VTB' && b.bankName === 'ВТБ') ||
-            (lot.escrowBank === 'AlfaBank' && b.bankName === 'Альфа-Банк')
+            (lot.escrowBank === 'AlfaBank' && b.bankName === 'Альфа-Банк') ||
+            (lot.escrowBank === 'DomRF' && b.bankName === 'ДОМ.РФ')
         ) || devTerms[0];
       setSelectedBank(preferred.bankName);
       setInterestRate(preferred.baseRatePercent);
@@ -194,10 +214,13 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
             </span>
           </div>
           {bankTermsList.length > 0 ? (
-            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-              {language === 'ru'
-                ? 'Нажмите на банк для подстановки его ставки и лимита ПДН'
-                : 'Click a bank to load its rate and DTI limit'}
+            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>
+                {language === 'ru'
+                  ? 'Застройщик аккредитован — финансирование доступно сразу'
+                  : 'Developer pre-accredited — instant financing approved'}
+              </span>
             </span>
           ) : null}
         </div>

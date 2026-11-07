@@ -49,7 +49,7 @@ export const AdminMatchmakerPage: React.FC = () => {
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
   const curatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор лота)' : 'Виктор Сергеевич (CEO)');
+    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор лота)' : 'Ahmed Abdallah (Владелец / CEO)');
 
   const loadData = async () => {
     const [lotsData, candData] = await Promise.all([

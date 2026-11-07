@@ -148,8 +148,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile.isPartnerApproved = true;
       profile.isInvestorApproved = true;
       profile.partnerRefCode = 'PARTNER-MASTER-OWNER';
-      if (!profile.name || profile.name === 'Пользователь') {
-        profile.name = fbUser.displayName || 'Виктор Сергеевич (Владелец / CEO)';
+      if (!profile.name || profile.name === 'Пользователь' || profile.name.includes('Виктор')) {
+        profile.name = 'Ahmed Abdallah (Владелец / CEO)';
+      }
+      if (!profile.clientCode || profile.clientCode === 'DEX-000001') {
+        profile.clientCode = 'DEX-104662';
       }
     } else if (isTestStaff) {
       if (!profile.roles || profile.roles.length <= 2) {
@@ -365,7 +368,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activeDealId: data.activeDealId || user?.activeDealId || 'DEAL-2025-10566',
       investorPackagePreference:
         data.investorPackagePreference || user?.investorPackagePreference,
-      bankCreditLimit: data.bankCreditLimit || user?.bankCreditLimit,
     };
 
     await persistUserState(updatedUser);
@@ -391,8 +393,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       demoEmail = 'ceo@domexit.ru';
       profile = {
         id: 'usr-owner-001',
-        clientCode: 'DEX-000001',
-        name: 'Виктор Сергеевич (Владелец / CEO)',
+        clientCode: 'DEX-104662',
+        name: 'Ahmed Abdallah (Владелец / CEO)',
         email: 'amaas9499@gmail.com',
         phone: '+7 (812) 900-00-01',
         telegram: '@domexit_owner',
@@ -558,7 +560,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     setFirebaseUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('domexit_current_user_v3');
+      localStorage.removeItem('domexit_current_user_v2');
+      localStorage.removeItem('domexit_active_role');
+      localStorage.removeItem('last_agreed_version');
+      sessionStorage.clear();
+    } catch {
+      // Ignore
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
   };
 
   const toggleFavorite = async (lotCode: string): Promise<void> => {

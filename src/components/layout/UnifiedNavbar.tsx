@@ -479,7 +479,7 @@ export const UnifiedNavbar: React.FC = () => {
               title={
                 isAuthenticated 
                   ? (language === 'ru' ? `Кабинет: ${user?.name}` : `Cabinet: ${user?.name}`)
-                  : (language === 'ru' ? 'Войти в личный кабинет' : 'Sign in to Cabinet')
+                  : (language === 'ru' ? 'Войти / Вход' : 'Sign In')
               }
               className={`h-9 px-3 rounded-xl border transition-all flex items-center space-x-2 cursor-pointer ${
                 isAuthenticated 
@@ -489,7 +489,7 @@ export const UnifiedNavbar: React.FC = () => {
             >
               <User className={`w-4 h-4 ${isAuthenticated ? 'text-emerald-400' : 'text-slate-400'}`} />
               <span className="text-xs font-bold truncate max-w-[90px]">
-                {isAuthenticated ? user?.name.split(' ')[0] : (language === 'ru' ? 'Кабинет' : 'Portal')}
+                {isAuthenticated ? user?.name.split(' ')[0] : (language === 'ru' ? 'Войти' : 'Sign In')}
               </span>
             </button>
           </div>
@@ -521,49 +521,91 @@ export const UnifiedNavbar: React.FC = () => {
           <Link
             to="/sellers"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2.5 rounded-xl text-sm font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/40"
+            className={`block px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+              isActive('/sellers')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {t.nav.sellers} (0% комиссии)
           </Link>
           <Link
             to="/opportunities"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              isActive('/opportunities')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {t.nav.catalog}
           </Link>
           <Link
+            to="/vip-catalog"
+            onClick={() => setMobileMenuOpen(false)}
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between ${
+              isActive('/vip-catalog')
+                ? 'text-amber-300 bg-amber-950/60 border border-amber-500/40'
+                : 'text-amber-400 hover:bg-slate-800'
+            }`}
+          >
+            <span>Закрытый VIP-каталог (48ч)</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              VIP
+            </span>
+          </Link>
+          <Link
             to="/how-it-works"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              isActive('/how-it-works')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {t.nav.howItWorks}
           </Link>
           <Link
             to="/story"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              isActive('/story')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {t.nav.story}
           </Link>
           <Link
             to="/investors"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              isActive('/investors')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {t.nav.investors}
           </Link>
           <Link
             to="/knowledge"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              isActive('/knowledge') || location.pathname.startsWith('/knowledge/')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {language === 'ru' ? 'База знаний (214-ФЗ, 140-ФЗ)' : 'Knowledge Base'}
           </Link>
           <Link
             to="/faq"
             onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              isActive('/faq')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {language === 'ru' ? 'Частые вопросы (FAQ)' : 'FAQ'}
           </Link>

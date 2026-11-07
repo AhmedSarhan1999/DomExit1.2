@@ -240,14 +240,8 @@ export const INITIAL_DEVELOPER_ACCREDITATION_REQUESTS: DeveloperAccreditationReq
   },
 ];
 
-function normalizeDeveloperName(name: string): string {
-  const trimmed = name.trim().toLowerCase();
-  if (trimmed === 'группа лср' || trimmed === 'лср') return 'лср';
-  if (trimmed === 'гк пик' || trimmed === 'пик') return 'пик';
-  if (trimmed === 'гк самолёт' || trimmed === 'самолет' || trimmed === 'самолёт') return 'самолёт';
-  if (trimmed === 'гк фск' || trimmed === 'фск') return 'фск';
-  return trimmed;
-}
+import { normalizeDeveloperName } from '../../utils/formatters';
+export { normalizeDeveloperName };
 
 class DevelopersRepositoryController {
   async getAllDevelopers(): Promise<AccreditedDeveloper[]> {
@@ -263,19 +257,63 @@ class DevelopersRepositoryController {
     if (!developerName) return null;
     const norm = normalizeDeveloperName(developerName);
     const all = await this.getAllDevelopers();
-    return all.find((d) => normalizeDeveloperName(d.name) === norm) || null;
+    const found = all.find(
+      (d) =>
+        normalizeDeveloperName(d.name) === norm ||
+        (d.inn && developerName.trim() === d.inn.trim()) ||
+        d.id === developerName
+    );
+    if (found) return found;
+
+    // Check seed fallback
+    const seed = INITIAL_ACCREDITED_DEVELOPERS.find(
+      (d) =>
+        normalizeDeveloperName(d.name) === norm ||
+        (d.inn && developerName.trim() === d.inn.trim()) ||
+        d.id === developerName
+    );
+    return seed || null;
   }
 
   async isDeveloperAccredited(developerName: string): Promise<boolean> {
-    const dev = await this.findDeveloperByName(developerName);
-    if (!dev) return false;
-    return dev.isAccredited && dev.bankTerms.some((b) => b.isAccredited);
+    if (!developerName) return false;
+    const terms = await this.getBankTermsForDeveloper(developerName);
+    return terms.length > 0;
   }
 
   async getBankTermsForDeveloper(developerName: string): Promise<DeveloperBankTerms[]> {
-    const dev = await this.findDeveloperByName(developerName);
-    if (!dev) return [];
-    return dev.bankTerms.filter((b) => b.isAccredited);
+    if (!developerName) return [];
+    const norm = normalizeDeveloperName(developerName);
+    const all = await this.getAllDevelopers();
+
+    // 1. Look in loaded developers (Firestore / cache)
+    const dev = all.find(
+      (d) =>
+        normalizeDeveloperName(d.name) === norm ||
+        (d.inn && developerName.trim() === d.inn.trim()) ||
+        d.id === developerName
+    );
+
+    // 2. Look in seed accredited developers
+    const seedDev = INITIAL_ACCREDITED_DEVELOPERS.find(
+      (d) =>
+        normalizeDeveloperName(d.name) === norm ||
+        (d.inn && developerName.trim() === d.inn.trim()) ||
+        d.id === developerName
+    );
+
+    // If dev found has active bankTerms, return them
+    if (dev && dev.bankTerms && dev.bankTerms.length > 0) {
+      const active = dev.bankTerms.filter((b) => b.isAccredited);
+      if (active.length > 0) return active;
+    }
+
+    // Fallback to institutional seed terms for top developers
+    if (seedDev && seedDev.bankTerms && seedDev.bankTerms.length > 0) {
+      return seedDev.bankTerms.filter((b) => b.isAccredited);
+    }
+
+    return [];
   }
 
   async getAllAccreditationRequests(): Promise<DeveloperAccreditationRequest[]> {

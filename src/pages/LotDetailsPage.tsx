@@ -6,6 +6,7 @@ import { Lot, Employee, DistrictYieldConfig } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
+import { DevelopersRepository } from '../dal/repositories/DevelopersRepository';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { resolveLotGeoDetails } from '../data/russianGeography';
 import { formatRubles, formatPercent } from '../utils/formatters';
@@ -57,6 +58,7 @@ export const LotDetailsPage: React.FC = () => {
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   const [bookingSuccessToast, setBookingSuccessToast] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [isDevAccredited, setIsDevAccredited] = useState<boolean>(true);
 
   useEffect(() => {
     const code = lotCode || 'U-10566';
@@ -72,14 +74,16 @@ export const LotDetailsPage: React.FC = () => {
       setLot(data);
 
       if (data) {
-        const [similar, districtMatches, yieldCfg] = await Promise.all([
+        const [similar, districtMatches, yieldCfg, devAccredited] = await Promise.all([
           LotsRepository.getSimilarInDistrict(data, 3),
           LotsRepository.getAll({ city: data.city, district: data.district, status: 'all' }),
           MarketSettingsRepository.getDistrictYieldConfig(data.district),
+          DevelopersRepository.isDeveloperAccredited(data.developer),
         ]);
         setSimilarLots(similar);
         setSameDistrictCount(districtMatches.length);
         setDistrictYield(yieldCfg);
+        setIsDevAccredited(devAccredited);
 
         if (data.assignedEmployeeId) {
           const emp = await EmployeesRepository.getById(data.assignedEmployeeId);
@@ -334,8 +338,12 @@ export const LotDetailsPage: React.FC = () => {
                 </span>
               )}
 
-              {(lot.developerAccreditationStatus === 'pending_bank_accreditation' ||
-                lot.tags?.includes('Ожидает аккредитации банков')) && (
+              {isDevAccredited ? (
+                <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Аккредитован в ТОП-банках (СБР)</span>
+                </span>
+              ) : (
                 <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold">
                   <Building2 className="w-3.5 h-3.5 text-amber-700" />
                   <span>Ожидает аккредитации банков</span>

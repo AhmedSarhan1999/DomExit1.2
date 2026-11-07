@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -53,7 +53,6 @@ import {
   PartnerEntry,
   InvestorApplication,
   PartnerPreliminaryRequest,
-  BuyerCreditLimitRequest,
   Employee,
   SellerExitRequest,
   DocumentMetadata,
@@ -84,16 +83,48 @@ const STAGE_NUM_MAP: Record<DealTrack['stage'], number> = {
 };
 
 export const ClientPortalPage: React.FC = () => {
-  const { user, logout, toggleFavorite, upgradeToPartner, upgradeToInvestor } = useAuth();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, loading: authLoading, logout, toggleFavorite, upgradeToPartner, upgradeToInvestor, openAuthModal } = useAuth();
   const { language } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Strict Enterprise Account Isolation & Role Redirects
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuthenticated || !user) {
+      navigate('/', { replace: true });
+      openAuthModal(
+        language === 'ru'
+          ? 'Войдите в систему для доступа к вашему личному кабинету'
+          : 'Sign in to access your client portal'
+      );
+      return;
+    }
+
+    // Bank accounts must NEVER access consumer /portal
+    if (user.role === 'bank' || user.activeRole === 'bank') {
+      navigate('/admin/bank-gateway', { replace: true });
+      return;
+    }
+
+    // Employee accounts must NEVER access consumer /portal
+    if (user.role === 'employee' || user.activeRole === 'employee') {
+      navigate('/admin/dashboard', { replace: true });
+      return;
+    }
+  }, [user, isAuthenticated, authLoading, navigate, language]);
+
   const resolveDefaultTab = (): PortalTab => {
     const paramTab = searchParams.get('tab') as PortalTab | null;
-    if (paramTab && VALID_TABS.includes(paramTab)) return paramTab;
+    if (paramTab && VALID_TABS.includes(paramTab)) {
+      if (paramTab === 'partner' && !user?.isPartnerApproved) return 'buyer';
+      if (paramTab === 'investor' && !user?.isInvestorApproved) return 'buyer';
+      return paramTab;
+    }
     if (user?.activeRole === 'seller') return 'seller';
-    if (user?.activeRole === 'partner') return 'partner';
-    if (user?.activeRole === 'investor') return 'investor';
+    if (user?.activeRole === 'partner' && user?.isPartnerApproved) return 'partner';
+    if (user?.activeRole === 'investor' && user?.isInvestorApproved) return 'investor';
     return 'buyer';
   };
 
@@ -103,9 +134,11 @@ export const ClientPortalPage: React.FC = () => {
   useEffect(() => {
     const paramTab = searchParams.get('tab') as PortalTab | null;
     if (paramTab && VALID_TABS.includes(paramTab) && paramTab !== activeTab) {
+      if (paramTab === 'partner' && !user?.isPartnerApproved) return;
+      if (paramTab === 'investor' && !user?.isInvestorApproved) return;
       setActiveTab(paramTab);
     }
-  }, [searchParams]);
+  }, [searchParams, user]);
 
   const handleSelectTab = (tab: PortalTab) => {
     setActiveTab(tab);
@@ -119,6 +152,30 @@ export const ClientPortalPage: React.FC = () => {
   const [favoriteLots, setFavoriteLots] = useState<Lot[]>([]);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  const isOwner =
+    user?.role === 'owner' ||
+    user?.role === 'admin' ||
+    user?.activeRole === 'owner' ||
+    user?.roles?.includes('owner') ||
+    user?.email?.toLowerCase() === 'amaas9499@gmail.com' ||
+    user?.email?.toLowerCase() === 'ceo@domexit.ru';
+
+  const displayName =
+    isOwner || user?.name?.includes('Виктор')
+      ? 'Ahmed Abdallah (Владелец / CEO)'
+      : user?.name || (language === 'ru' ? 'Личный кабинет' : 'Client Portal');
+
+  const displayClientCode = isOwner
+    ? user?.clientCode && user.clientCode !== 'DEX-000001'
+      ? user.clientCode
+      : 'DEX-104662'
+    : user?.clientCode || 'DEX-784105';
+
+  const displayInitial =
+    isOwner || user?.name?.includes('Виктор')
+      ? 'A'
+      : user?.name?.charAt(0) || 'К';
 
   // Seller State
   const [sellerLots, setSellerLots] = useState<Lot[]>([]);
@@ -140,15 +197,9 @@ export const ClientPortalPage: React.FC = () => {
   const [completionNotes, setCompletionNotes] = useState<string>('');
   const [completionError, setCompletionError] = useState<string | null>(null);
 
-  // Buyer Bank Credit Limit State
-  const [creditLimitRequest, setCreditLimitRequest] = useState<BuyerCreditLimitRequest | null>(null);
-  const [isCreditLimitModalOpen, setIsCreditLimitModalOpen] = useState<boolean>(false);
-
   // 152-FZ Proof of Consent State
   const [userConsents, setUserConsents] = useState<ProofOfConsentRecord[]>([]);
   const [copiedConsentSha, setCopiedConsentSha] = useState<string | null>(null);
-  const [requestedCreditAmount, setRequestedCreditAmount] = useState<number>(8500000);
-  const [selectedBank, setSelectedBank] = useState<string>('Сбербанк');
   const [curator, setCurator] = useState<Employee | null>(null);
 
   // Partner Referral Form State
@@ -201,7 +252,6 @@ export const ClientPortalPage: React.FC = () => {
       pendingReqs,
       myPartnerReqs,
       myPartnerDeals,
-      myCreditLimits,
       allEmps,
       mySellerLots,
       mySellerDeals,
@@ -217,7 +267,6 @@ export const ClientPortalPage: React.FC = () => {
       PartnerRequestsRepository.getPendingByClientCode(clientCode),
       PartnerRequestsRepository.getByPartner(uid, partnerRefCode),
       partnerRefCode ? DealsRepository.getByPartner(partnerRefCode) : Promise.resolve([]),
-      BankPortalRepository.getCreditLimitsByUser(uid, clientCode),
       EmployeesRepository.getAll(),
       LotsRepository.getBySeller(uid, clientCode),
       DealsRepository.getBySeller(uid, clientCode),
@@ -306,30 +355,6 @@ export const ClientPortalPage: React.FC = () => {
       setCurator(allEmps[0]);
     }
 
-    // Credit limit
-    if (myCreditLimits.length > 0) {
-      setCreditLimitRequest(myCreditLimits[0]);
-    } else if (user?.bankCreditLimit) {
-      setCreditLimitRequest({
-        id: 'user-cached-limit',
-        userId: user.id,
-        uid: user.id,
-        clientCode: user.clientCode || 'DEX-409112',
-        userName: user.name,
-        userPhone: user.phone || '+7 (921) 000-00-00',
-        requestedAmountRub: user.bankCreditLimit.approvedLimitRub,
-        approvedLimitRub: user.bankCreditLimit.approvedLimitRub,
-        validUntil: user.bankCreditLimit.validUntil,
-        bankName: user.bankCreditLimit.bankName,
-        certificateNumber: user.bankCreditLimit.certificateNumber,
-        reviewedBy: 'Кредитный комитет банка-партнера',
-        requestedAt: user.bankCreditLimit.issuedAt,
-        timestamp: user.bankCreditLimit.issuedAt,
-        status: 'approved',
-      });
-    } else {
-      setCreditLimitRequest(null);
-    }
 
     // Favorites
     const favCodes = user?.favorites || [];
@@ -530,26 +555,6 @@ export const ClientPortalPage: React.FC = () => {
     setTimeout(() => setActionNotice(null), 6000);
   };
 
-  const handleRequestCreditLimit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const req = await BankPortalRepository.requestCreditLimit({
-      userId: user?.id || 'user-current',
-      uid: user?.id || 'user-current',
-      clientCode: user?.clientCode || 'DEX-784105',
-      userName: user?.name || 'Клиент DomExit',
-      userPhone: user?.phone || '+7 (921) 000-00-00',
-      userEmail: user?.email,
-      requestedAmountRub: requestedCreditAmount,
-      bankName: selectedBank,
-    });
-
-    setCreditLimitRequest(req);
-    setIsCreditLimitModalOpen(false);
-    setActionNotice(
-      `Запрос на кредитный лимит (${formatRubles(requestedCreditAmount)}) передан в ${selectedBank}. Решение отобразится здесь после ответа банковского офицера.`
-    );
-    setTimeout(() => setActionNotice(null), 6000);
-  };
 
   const handleDownloadBidProof = async (bid: BuyerCandidate) => {
     if (bid.documentId) {
@@ -591,6 +596,25 @@ export const ClientPortalPage: React.FC = () => {
 
   const activeStageNum = activeSellerDeal ? STAGE_NUM_MAP[activeSellerDeal.stage] || 1 : 2;
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (
+    !isAuthenticated ||
+    !user ||
+    user.role === 'bank' ||
+    user.activeRole === 'bank' ||
+    user.role === 'employee' ||
+    user.activeRole === 'employee'
+  ) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       
@@ -602,14 +626,14 @@ export const ClientPortalPage: React.FC = () => {
             <div className="flex items-center space-x-4">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 p-0.5 shadow-md">
                 <div className="w-full h-full bg-emerald-600 rounded-[14px] flex items-center justify-center font-bold text-white text-xl">
-                  {user?.name?.charAt(0) || 'К'}
+                  {displayInitial}
                 </div>
               </div>
 
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-xl sm:text-2xl font-black text-slate-950">
-                    {user?.name || (language === 'ru' ? 'Личный кабинет' : 'Client Portal')}
+                    {displayName}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider">
                     214-ФЗ • 152-ФЗ Верифицирован
@@ -625,12 +649,12 @@ export const ClientPortalPage: React.FC = () => {
                       {language === 'ru' ? 'ID клиента:' : 'Client ID:'}
                     </span>
                     <span className="text-indigo-700 tracking-wide font-black">
-                      {user?.clientCode || 'DEX-784105'}
+                      {displayClientCode}
                     </span>
                     <button
                       type="button"
                       onClick={() => {
-                        const code = user?.clientCode || 'DEX-784105';
+                        const code = displayClientCode;
                         navigator.clipboard?.writeText(code);
                         setCopiedCode(true);
                         setTimeout(() => setCopiedCode(false), 2500);
@@ -717,41 +741,67 @@ export const ClientPortalPage: React.FC = () => {
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => handleSelectTab('partner')}
-              className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                activeTab === 'partner'
-                  ? 'border-purple-600 text-purple-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-purple-600" />
-              <span>{language === 'ru' ? 'Кабинет Партнера' : 'Partner Portal'}</span>
-              {user?.isPartnerApproved && (
+            {/* Partner Tab strictly conditionally rendered */}
+            {Boolean(user?.isPartnerApproved) && (
+              <button
+                type="button"
+                onClick={() => handleSelectTab('partner')}
+                className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeTab === 'partner'
+                    ? 'border-purple-600 text-purple-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-purple-600" />
+                <span>{language === 'ru' ? 'Кабинет Партнера' : 'Partner Portal'}</span>
                 <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
                   PRO
                 </span>
-              )}
-            </button>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => handleSelectTab('investor')}
-              className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                activeTab === 'investor'
-                  ? 'border-amber-600 text-amber-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-amber-600" />
-              <span>{language === 'ru' ? 'Кабинет Инвестора VIP' : 'VIP Investor Portal'}</span>
-              {user?.isInvestorApproved && (
+            {/* VIP Investor Tab strictly conditionally rendered */}
+            {Boolean(user?.isInvestorApproved) && (
+              <button
+                type="button"
+                onClick={() => handleSelectTab('investor')}
+                className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeTab === 'investor'
+                    ? 'border-amber-600 text-amber-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-600" />
+                <span>{language === 'ru' ? 'Кабинет Инвестора VIP' : 'VIP Investor Portal'}</span>
                 <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
                   VIP 48ч
                 </span>
-              )}
-            </button>
+              </button>
+            )}
+          </div>
+
+          {/* VIP Catalog Early Access Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                <Crown className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                  Закрытый VIP-пул объектов (Ранний доступ 48 часов)
+                </div>
+                <div className="text-xs text-slate-300">
+                  Лоты с максимальным дисконтом до -35% от застройщика до их появления в открытом каталоге
+                </div>
+              </div>
+            </div>
+            <Link
+              to="/vip-catalog"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-colors flex items-center space-x-1.5 shrink-0 shadow-sm"
+            >
+              <span>Смотреть VIP-пул</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
         </div>
@@ -829,92 +879,6 @@ export const ClientPortalPage: React.FC = () => {
         {/* ================= TAB 1: BUYER OFFERS VIEW ================= */}
         {activeTab === 'buyer' && (
           <div className="space-y-6">
-            {/* Bank Credit Limit Card */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 text-white border border-emerald-500/30 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                    <span>Банковский кредитный лимит</span>
-                  </span>
-                  {creditLimitRequest?.status === 'approved' && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-black text-[10px]">
-                      ОДОБРЕНО БАНКОМ
-                    </span>
-                  )}
-                  {creditLimitRequest?.status === 'pending' && (
-                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-bold text-[10px]">
-                      НА РАССМОТРЕНИИ БАНКА
-                    </span>
-                  )}
-                  {creditLimitRequest?.status === 'rejected' && (
-                    <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold text-[10px]">
-                      ОТКАЗ ПО ПДН
-                    </span>
-                  )}
-                </div>
-
-                {creditLimitRequest?.status === 'approved' ? (
-                  <div>
-                    <div className="flex flex-wrap items-baseline gap-3">
-                      <span className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-tight">
-                        {formatRubles(creditLimitRequest.approvedLimitRub || 9000000)}
-                      </span>
-                      <span className="text-xs text-slate-300">
-                        ({creditLimitRequest.bankName} • Сертификат {creditLimitRequest.certificateNumber})
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-300 mt-1">
-                      Лимит действителен до {creditLimitRequest.validUntil || '31.12.2026'}. Официальный штамп банка подтверждает вашу кредитоспособность при подаче заявок на цессии.
-                    </p>
-                  </div>
-                ) : creditLimitRequest?.status === 'pending' ? (
-                  <div>
-                    <h3 className="text-base font-bold text-white">
-                      Заявка передана в кредитный департамент ({creditLimitRequest.bankName})
-                    </h3>
-                    <p className="text-xs text-slate-300 mt-0.5">
-                      Запрошенный лимит: {formatRubles(creditLimitRequest.requestedAmountRub)}. Ожидает верификации офицером в Банковском шлюзе (`/bank-portal`).
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <h3 className="text-base font-bold text-white">
-                      Получите предварительный кредитный лимит банка-партнера
-                    </h3>
-                    <p className="text-xs text-slate-300 mt-0.5">
-                      {creditLimitRequest?.rejectionReason
-                        ? `Предыдущее решение банка: ${creditLimitRequest.rejectionReason}`
-                        : 'Сбербанк, ВТБ и Альфа-Банк аккредитуют покупателей DomExit по ускоренному регламенту перевода долга ДДУ.'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="shrink-0">
-                {creditLimitRequest?.status === 'approved' ? (
-                  <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/40 text-right">
-                    <span className="block text-[10px] text-emerald-300 uppercase tracking-wider font-bold">
-                      Статус верификации
-                    </span>
-                    <span className="text-xs font-mono font-bold text-white flex items-center justify-end space-x-1 mt-0.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>100% Доверенный покупатель</span>
-                    </span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsCreditLimitModalOpen(true)}
-                    className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg transition-all flex items-center space-x-2 cursor-pointer"
-                  >
-                    <Banknote className="w-4 h-4" />
-                    <span>Запросить кредитный лимит в банке</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
             {/* Live Buyer Bids List */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -2016,7 +1980,7 @@ export const ClientPortalPage: React.FC = () => {
                 <div className="space-y-1">
                   <div className="font-bold text-xs text-slate-900 flex items-center space-x-1.5">
                     <User className="w-4 h-4 text-emerald-600" />
-                    <span>Прямая линия с руководством: Генеральный директор (CEO) Виктор Сергеевич</span>
+                    <span>Прямая линия с руководством: Генеральный директор (CEO) Ahmed Abdallah</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
                     Структурирование синдицированных пулов от 50 млн ₽ и оптовый выкуп региональных цессий.
@@ -2396,84 +2360,6 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         )}
 
-        {/* ================= MODAL 2: Request Bank Credit Limit ================= */}
-        {isCreditLimitModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-950 text-base">
-                      Запрос официального кредитного лимита
-                    </h3>
-                    <span className="text-xs text-slate-500">
-                      Прямая интеграция со шлюзом банков-партнеров
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCreditLimitModalOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <form onSubmit={handleRequestCreditLimit} className="space-y-4 text-xs">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Банк-партнер *</label>
-                  <select
-                    value={selectedBank}
-                    onChange={(e) => setSelectedBank(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="Сбербанк">ПАО Сбербанк (Эскроу и перевод долга ДДУ)</option>
-                    <option value="ВТБ">Банк ВТБ (ПАО) (Ипотека на уступки 214-ФЗ)</option>
-                    <option value="Альфа-Банк">АО Альфа-Банк (Комбо-лимиты и аккредитивы)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-slate-700 font-bold">Желаемый лимит кредита:</label>
-                    <span className="font-mono font-black text-emerald-700 text-sm">
-                      {formatRubles(requestedCreditAmount)}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={2000000}
-                    max={25000000}
-                    step={500000}
-                    value={requestedCreditAmount}
-                    onChange={(e) => setRequestedCreditAmount(Number(e.target.value))}
-                    className="w-full accent-emerald-600 cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setIsCreditLimitModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-colors cursor-pointer"
-                  >
-                    Отправить в банк на скоринг
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
       </main>
 

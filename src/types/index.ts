@@ -24,7 +24,7 @@ export interface Lot {
   district: string; // e.g. Приморский район, Пресненский район
   streetAddress?: string; // e.g. Комендантский пр., уч. 4
   areaM2: number;
-  rooms: 'studio' | '1-room' | '2-room' | '3-room' | 'euro';
+  rooms: 'studio' | '1-room' | '2-room' | '3-room' | '4-room' | 'euro' | string;
   floor: number;
   totalFloors: number;
   ceilingHeightM?: number; // e.g. 2.78, 3.05
@@ -37,7 +37,7 @@ export interface Lot {
   rentalPotential?: RentalPotentialInfo;
   deliveryDate: string; // e.g. 4 кв. 2026 г.
   deliveryYear: number;
-  finishing: 'clean' | 'whitebox' | 'without';
+  finishing: 'clean' | 'whitebox' | 'without' | 'turnkey' | string;
   imageUrl: string;
   galleryImages: string[];
   constructionReadinessPercent: number; // e.g. 82%
@@ -56,13 +56,17 @@ export interface Lot {
   isUrgentExit: boolean;
   isNegotiable: boolean;
   isFeatured: boolean;
+  isPublished?: boolean;
+  isVipExclusive?: boolean;
+  vipEarlyAccessUntil?: string;
+  transactionType?: 'installment_cession' | 'mortgage_cession' | 'direct_sale_140fz';
   isEarlyAccessVIP?: boolean; // 48-hour VIP Investor early access window
   earlyAccessHoursLeft?: number;
-  escrowBank: 'Sberbank' | 'VTB' | 'AlfaBank';
+  escrowBank: 'Sberbank' | 'VTB' | 'AlfaBank' | string;
   tags: string[];
-  status?: 'available' | 'processing' | 'closed'; // Status in Catalog
+  status?: 'available' | 'processing' | 'closed' | 'draft' | 'vip_exclusive'; // Status in Catalog
   currentStage?: number; // Current deal stage 1-5
-  approvalStatus?: 'approved' | 'pending_owner_approval' | 'rejected';
+  approvalStatus?: 'approved' | 'approved_for_packaging' | 'pending_owner_approval' | 'rejected';
   rejectionReason?: string;
   assignedEmployeeId?: string; // ID of assigned employee
   assignedEmployeeName?: string; // Name of assigned employee
@@ -257,6 +261,8 @@ export interface DealTrack {
   lotCode: string;
   lotTitle: string;
   developer: string;
+  developerInn?: string;
+  developerAccreditationStatus?: string;
   complexName?: string;
   city?: RussianCityCode;
   district?: string;
@@ -390,6 +396,8 @@ export interface UserProfile {
   activeRole?: string;
   isPartnerApproved: boolean;
   isInvestorApproved: boolean;
+  isVipSubscriber?: boolean;
+  agreedPolicyVersion?: string;
   partnerRefCode?: string;
   assignedEmployeeId?: string;
   favorites: string[];
@@ -399,13 +407,6 @@ export interface UserProfile {
     budgetMillions: number;
     selectedPackage: 'flipping' | 'turnkey' | 'syndicate';
     updatedAt: string;
-  };
-  bankCreditLimit?: {
-    approvedLimitRub: number;
-    validUntil: string;
-    certificateNumber: string;
-    bankName: string;
-    issuedAt: string;
   };
 }
 
@@ -548,7 +549,7 @@ export interface PartnerBankEntity {
   };
 }
 
-export type BankTabPermission = 'escrow' | 'developer_accreditation' | 'special' | 'credit_limits' | 'staff';
+export type BankTabPermission = 'escrow' | 'developer_accreditation' | 'special' | 'staff';
 
 export interface BankEmployee {
   id: string;
@@ -588,30 +589,6 @@ export interface SpecialApprovalRequest {
   decisionNotes?: string;
   decidedAt?: string;
   decidedBy?: string;
-}
-
-export interface BuyerCreditLimitRequest {
-  id: string;
-  userId: string;
-  uid?: string;
-  clientCode: string;
-  userName: string;
-  userPhone: string;
-  userEmail?: string;
-  incomeProofType?: string;
-  monthlyIncomeRub?: number;
-  requestedAmountRub: number;
-  approvedLimitRub?: number;
-  validUntil?: string; // YYYY-MM-DD
-  bankName: string;
-  status: 'pending' | 'approved' | 'rejected';
-  certificateNumber?: string;
-  reviewedBy?: string;
-  requestedAt: string;
-  timestamp?: string;
-  reviewedAt?: string;
-  notes?: string;
-  rejectionReason?: string;
 }
 
 // Operations & Decisions Audit Log (Task 7 & 12)

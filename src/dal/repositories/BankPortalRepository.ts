@@ -1,7 +1,6 @@
 import {
   BankEmployee,
   SpecialApprovalRequest,
-  BuyerCreditLimitRequest,
   DealTrack,
   PartnerBankEntity,
   BankTabPermission,
@@ -17,7 +16,6 @@ import { DevelopersRepository } from './DevelopersRepository';
 const PARTNER_BANKS_COLLECTION = 'partner_banks';
 const BANK_EMP_COLLECTION = 'bank_employees';
 const SPECIAL_APPROVAL_COLLECTION = 'bank_special_approvals';
-const CREDIT_LIMITS_COLLECTION = 'bank_credit_limits';
 
 export class BankPortalRepository {
   // 0. Partner Banks Management (Task 7)
@@ -63,11 +61,11 @@ export class BankPortalRepository {
       bankName: data.name,
       phone: data.contactPhone || '+7 (800) 500-00-00',
       isMasterAdmin: true,
-      permissions: ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+      permissions: ['escrow', 'developer_accreditation', 'special', 'staff'],
     });
 
     await AuditLogsRepository.addLog({
-      operatorName: 'Виктор Сергеевич (Владелец / CEO)',
+      operatorName: 'Ahmed Abdallah (Владелец / CEO)',
       operatorRole: 'owner',
       actionType: 'market_settings_updated',
       title: `Подключен новый банк-партнер: ${newBank.name}`,
@@ -75,6 +73,70 @@ export class BankPortalRepository {
     });
 
     return newBank;
+  }
+
+  static async updatePartnerBank(
+    id: string,
+    updates: Partial<PartnerBankEntity>,
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
+  ): Promise<PartnerBankEntity | null> {
+    const bank = await DatabaseGateway.getById<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, id, initialPartnerBanks);
+    if (!bank) return null;
+    const updated: PartnerBankEntity = {
+      ...bank,
+      ...updates,
+      name: updates.name ? updates.name.trim() : bank.name,
+      masterAdminEmail: updates.masterAdminEmail ? updates.masterAdminEmail.trim() : bank.masterAdminEmail,
+    };
+    await DatabaseGateway.save<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, updated);
+
+    // If masterAdminEmail or name changed, update bank employees
+    const staff = await this.getAllBankEmployees();
+    const matchingChief = staff.find((s) => s.bankName === bank.name || s.email.toLowerCase() === bank.masterAdminEmail.toLowerCase());
+    if (matchingChief) {
+      if (updates.name) matchingChief.bankName = updates.name.trim();
+      if (updates.masterAdminEmail) matchingChief.email = updates.masterAdminEmail.trim();
+      if (updates.contactPhone) matchingChief.phone = updates.contactPhone;
+      if (updates.contactPerson) matchingChief.name = `${updates.contactPerson} (${updated.name})`;
+      await DatabaseGateway.save<BankEmployee>(BANK_EMP_COLLECTION, matchingChief);
+    }
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'market_settings_updated',
+      title: `Обновлены параметры банка-партнера: ${updated.name}`,
+      description: `Изменены реквизиты и параметры доступа для ${updated.masterAdminEmail}.`,
+    });
+    return updated;
+  }
+
+  static async deletePartnerBank(
+    id: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
+  ): Promise<boolean> {
+    const bank = await DatabaseGateway.getById<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, id, initialPartnerBanks);
+    if (!bank) return false;
+
+    // Remove bank entity
+    await DatabaseGateway.remove(PARTNER_BANKS_COLLECTION, id);
+
+    // Deactivate/remove associated bank employees
+    const staff = await this.getAllBankEmployees();
+    for (const emp of staff) {
+      if (emp.bankName === bank.name || emp.email.toLowerCase() === bank.masterAdminEmail.toLowerCase()) {
+        await DatabaseGateway.remove(BANK_EMP_COLLECTION, emp.id);
+      }
+    }
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'security_incident_reported',
+      title: `Банк-партнер «${bank.name}» удален из контура платформы`,
+      description: `Удалены права доступа для ${bank.masterAdminEmail} и всех привязанных офицеров.`,
+    });
+    return true;
   }
 
   // 1. Bank Employees Management
@@ -93,7 +155,7 @@ export class BankPortalRepository {
       phone: data.phone || '+7 (812) 500-00-00',
       createdAt: new Date().toISOString(),
       isMasterAdmin: data.isMasterAdmin ?? false,
-      permissions: data.permissions || ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff'],
+      permissions: data.permissions || ['escrow', 'developer_accreditation', 'special', 'staff'],
     };
     await DatabaseGateway.save<BankEmployee>(BANK_EMP_COLLECTION, newEmp);
     return newEmp;
@@ -138,97 +200,7 @@ export class BankPortalRepository {
 
   // 2. Special Property & Small Contractor Approval Requests (Task 5)
   static async getAllSpecialApprovals(): Promise<SpecialApprovalRequest[]> {
-    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, [
-      {
-        id: 'spec-contractor-1',
-        lotId: 'lot-contractor-1',
-        lotCode: 'U-CONTRACTOR-1',
-        complexName: 'ЖК «Хвойный Квартал» (Корпус 1)',
-        projectTitle: 'Индивидуальный проект «Хвойный Квартал»',
-        developer: 'ООО «СтройИнвест-Северо-Запад»',
-        developerInn: '7814892011',
-        contractorName: 'ООО «СтройИнвест-Северо-Запад»',
-        contractorInn: '7814892011',
-        location: 'Санкт-Петербург, Приморский район',
-        costPriceRub: 7200000,
-        contractPriceRub: 9850000,
-        requestedByEmployeeId: 'emp-1',
-        requestedByEmployeeName: 'Алексей Смирнов',
-        bankName: 'Сбербанк',
-        reason:
-          'Запрос проектного финансирования и согласования эскроу-аккредитации для независимого подрядчика.',
-        requestedAt: '2026-10-25T11:00:00Z',
-        status: 'pending',
-        documentIds: ['DOC-CONTRACTOR-DDU-01', 'DOC-CONTRACTOR-PLAN-01'],
-      },
-      {
-        id: 'spec-contractor-2',
-        lotId: 'lot-contractor-2',
-        lotCode: 'U-CONTRACTOR-2',
-        complexName: 'Коттеджный поселок «Озерный Край»',
-        projectTitle: 'Вилла «Озерный Край» (Секция 4Б)',
-        developer: 'ООО «СтройИнвест-Северо-Запад»',
-        developerInn: '7814892011',
-        contractorName: 'ООО «СтройИнвест-Северо-Запад»',
-        contractorInn: '7814892011',
-        location: 'Ленинградская область, Всеволожский район',
-        costPriceRub: 10500000,
-        contractPriceRub: 14200000,
-        requestedByEmployeeId: 'emp-1',
-        requestedByEmployeeName: 'Алексей Смирнов',
-        bankName: 'Сбербанк',
-        reason:
-          'Проектная документация индивидуального строительства по эскроу-счетам.',
-        requestedAt: '2026-10-26T14:20:00Z',
-        status: 'pending',
-        documentIds: ['DOC-CONTRACTOR-DDU-02', 'DOC-CONTRACTOR-PLAN-02'],
-      },
-      {
-        id: 'spec-contractor-3',
-        lotId: 'lot-contractor-3',
-        lotCode: 'U-CONTRACTOR-3',
-        complexName: 'Вилла «Финский Залив»',
-        projectTitle: 'Частная резиденция «Финский Залив»',
-        developer: 'ИП «Васильев Частный Проект»',
-        developerInn: '781198451203',
-        contractorName: 'ИП «Васильев Частный Проект»',
-        contractorInn: '781198451203',
-        location: 'Санкт-Петербург, Курортный район, Сестрорецк',
-        costPriceRub: 13800000,
-        contractPriceRub: 18500000,
-        requestedByEmployeeId: 'emp-3',
-        requestedByEmployeeName: 'Дмитрий Васильев',
-        bankName: 'Сбербанк',
-        reason:
-          'Индивидуальный проект премиум-класса с отделкой под ключ.',
-        requestedAt: '2026-10-27T16:00:00Z',
-        status: 'pending',
-        documentIds: ['DOC-CONTRACTOR-DDU-03', 'DOC-CONTRACTOR-PLAN-03'],
-      },
-      {
-        id: 'spec-1',
-        lotId: 'lot-3',
-        lotCode: 'U-10580',
-        complexName: 'ЖК «Морская Набережная»',
-        projectTitle: 'ЖК «Морская Набережная» (Корпус 8)',
-        developer: 'Группа ЛСР',
-        developerInn: '7838001457',
-        contractorName: 'Группа ЛСР',
-        contractorInn: '7838001457',
-        location: 'Санкт-Петербург, Василеостровский район',
-        costPriceRub: 5900000,
-        contractPriceRub: 7900000,
-        requestedByEmployeeId: 'emp-1',
-        requestedByEmployeeName: 'Алексей Смирнов',
-        bankName: 'ВТБ',
-        reason:
-          'Нестандартный график квартальных платежей рассрочки. Запрос специальной аккредитации для эскроу-переуступки.',
-        requestedAt: '2026-10-18T14:30:00Z',
-        status: 'approved',
-        approvedRatePercent: 19.8,
-        maxPdnPercent: 50,
-      },
-    ]);
+    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, []);
   }
 
   static async addSpecialApproval(
@@ -368,172 +340,14 @@ export class BankPortalRepository {
     return req;
   }
 
-  // 3. Buyer Credit Limit Requests & Bank Stamp Certification
-  static async getAllCreditLimitRequests(): Promise<BuyerCreditLimitRequest[]> {
-    const list = await DatabaseGateway.getAll<BuyerCreditLimitRequest>(CREDIT_LIMITS_COLLECTION, [
-      {
-        id: 'limit-req-1',
-        userId: 'usr-buyer-001',
-        uid: 'usr-buyer-001',
-        clientCode: 'DEX-409112',
-        userName: 'Иван Петрович (Покупатель)',
-        userPhone: '+7 (921) 987-65-43',
-        userEmail: 'client@domexit.ru',
-        requestedAmountRub: 8500000,
-        approvedLimitRub: 9000000,
-        validUntil: '2026-12-31',
-        bankName: 'Сбербанк',
-        certificateNumber: 'SBER-CREDIT-99214',
-        reviewedBy: 'Игорь Владимирович Соколов (Сбербанк)',
-        requestedAt: '2026-10-15T10:00:00Z',
-        timestamp: '2026-10-15T10:00:00Z',
-        reviewedAt: '2026-10-16T12:00:00Z',
-        status: 'approved',
-        notes: 'Доход подтвержден по 2-НДФЛ. Лимит подтвержден для семейной ипотеки и переуступок.',
-      },
-    ]);
-
-    return [...list].sort(
-      (a, b) =>
-        new Date(b.timestamp || b.requestedAt).getTime() -
-        new Date(a.timestamp || a.requestedAt).getTime()
-    );
-  }
-
-  static async getCreditLimitsByUser(
-    userId: string,
-    clientCode?: string
-  ): Promise<BuyerCreditLimitRequest[]> {
-    const all = await this.getAllCreditLimitRequests();
-    return all.filter(
-      (r) =>
-        (userId && (r.uid === userId || r.userId === userId)) ||
-        (clientCode && r.clientCode?.toUpperCase() === clientCode.toUpperCase())
-    );
-  }
-
-  static async requestCreditLimit(data: {
-    userId: string;
-    uid?: string;
-    clientCode: string;
-    userName: string;
-    userPhone: string;
-    userEmail?: string;
-    monthlyIncomeRub?: number;
-    requestedAmountRub: number;
-    bankName: string;
-  }): Promise<BuyerCreditLimitRequest> {
-    const nowIso = new Date().toISOString();
-    const uid = data.uid || data.userId;
-    const newReq: BuyerCreditLimitRequest = {
-      id: `limit-req-${Date.now()}`,
-      ...data,
-      userId: uid,
-      uid,
-      requestedAt: nowIso,
-      timestamp: nowIso,
-      status: 'pending',
-    };
-    await DatabaseGateway.save<BuyerCreditLimitRequest>(CREDIT_LIMITS_COLLECTION, newReq);
-
-    await AuditLogsRepository.addLog({
-      operatorId: uid,
-      operatorName: `${data.userName} (${data.clientCode})`,
-      operatorRole: 'client',
-      actionType: 'credit_limit_granted',
-      title: `Подан запрос на ипотечный лимит в ${data.bankName}: ${data.requestedAmountRub.toLocaleString('ru-RU')} ₽`,
-      description: `Клиент запросил предварительное банковское одобрение в контуре DomExit.`,
-    });
-
-    return newReq;
-  }
-
-  static async approveCreditLimit(
-    requestId: string,
-    approvedLimitRub: number,
-    validUntil: string,
-    reviewedBy: string,
-    notes?: string
-  ): Promise<BuyerCreditLimitRequest | null> {
-    const list = await this.getAllCreditLimitRequests();
-    const item = list.find((r) => r.id === requestId);
-    if (!item) return null;
-
-    item.status = 'approved';
-    item.approvedLimitRub = approvedLimitRub;
-    item.validUntil = validUntil;
-    item.reviewedBy = reviewedBy;
-    item.reviewedAt = new Date().toISOString();
-    item.certificateNumber = `${item.bankName.toUpperCase().replace(/[^A-ZА-Я0-9]/g, '')}-STAMP-${Math.floor(
-      10000 + Math.random() * 90000
-    )}`;
-    item.notes = notes;
-
-    await DatabaseGateway.save<BuyerCreditLimitRequest>(CREDIT_LIMITS_COLLECTION, item);
-
-    try {
-      const user =
-        (await UsersRepository.getById(item.uid || item.userId)) ||
-        (await UsersRepository.getByClientCode(item.clientCode));
-      if (user) {
-        user.bankCreditLimit = {
-          approvedLimitRub,
-          validUntil,
-          certificateNumber: item.certificateNumber,
-          bankName: item.bankName,
-          issuedAt: new Date().toISOString(),
-        };
-        await UsersRepository.save(user);
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    await AuditLogsRepository.addLog({
-      operatorName: reviewedBy,
-      operatorRole: 'bank_officer',
-      actionType: 'credit_limit_granted',
-      title: `Утвержден кредитный лимит ${approvedLimitRub.toLocaleString('ru-RU')} ₽ для ${item.userName} (${item.clientCode})`,
-      description: `Сертификат № ${item.certificateNumber} действителен до ${validUntil}.`,
-    });
-
-    return item;
-  }
-
-  static async rejectCreditLimit(
-    requestId: string,
-    reviewedBy: string,
-    notes?: string
-  ): Promise<BuyerCreditLimitRequest | null> {
-    const list = await this.getAllCreditLimitRequests();
-    const item = list.find((r) => r.id === requestId);
-    if (!item) return null;
-
-    item.status = 'rejected';
-    item.reviewedBy = reviewedBy;
-    item.reviewedAt = new Date().toISOString();
-    item.notes = notes || 'Отказ по нормативу долговой нагрузки ПДН > 50%';
-    item.rejectionReason = item.notes;
-    await DatabaseGateway.save<BuyerCreditLimitRequest>(CREDIT_LIMITS_COLLECTION, item);
-
-    await AuditLogsRepository.addLog({
-      operatorName: reviewedBy,
-      operatorRole: 'bank_officer',
-      actionType: 'credit_limit_granted',
-      title: `Отклонен запрос кредитного лимита (${item.userName})`,
-      description: item.notes,
-    });
-
-    return item;
-  }
-
-  // 4. Escrow & Deal Coordination (delegating strictly to DealsRepository for 100% synchronization)
+  // 3. Escrow & Deal Coordination (delegating strictly to DealsRepository for 100% synchronization)
   static async confirmEscrowDeposit(
     dealId: string,
     officerName: string,
-    depositedAmount: number
+    depositedAmount: number,
+    bankName?: string
   ): Promise<DealTrack | null> {
-    return DealsRepository.confirmBankDeposit(dealId, officerName, undefined, depositedAmount);
+    return DealsRepository.confirmBankDeposit(dealId, officerName, undefined, depositedAmount, bankName);
   }
 
   static async releaseEscrowFunds(

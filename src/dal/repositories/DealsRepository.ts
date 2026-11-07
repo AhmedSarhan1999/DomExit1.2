@@ -118,21 +118,24 @@ export class DealsRepository {
     dealId: string,
     bankOfficerName: string,
     escrowAccount?: string,
-    amount?: number
+    amount?: number,
+    bankName?: string
   ): Promise<DealTrack | null> {
     const deal = await this.getById(dealId);
     if (!deal) return null;
 
+    const resolvedBank = bankName || deal.escrowWorkflow?.bankName || 'ПАО Сбербанк';
     deal.escrowWorkflow = deal.escrowWorkflow || {
       step: 'signing_photos',
-      bankName: 'ПАО Сбербанк',
-      escrowAccountNumber: escrowAccount || 'АК-78401/2026-СБЕР',
+      bankName: resolvedBank,
+      escrowAccountNumber: escrowAccount || `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-${resolvedBank.replace(/[^A-Za-zА-Яа-я0-9]/g, '').slice(0, 4).toUpperCase()}`,
       depositedAmountRub: amount || Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
     deal.escrowWorkflow.step = 'signing_photos';
     deal.escrowWorkflow.depositConfirmedAt = new Date().toISOString();
+    if (bankName) deal.escrowWorkflow.bankName = bankName;
     if (escrowAccount) deal.escrowWorkflow.escrowAccountNumber = escrowAccount;
     if (amount) deal.escrowWorkflow.depositedAmountRub = amount;
 

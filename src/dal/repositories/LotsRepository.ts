@@ -27,7 +27,19 @@ export class LotsRepository {
 
     if (filter) {
       if (!filter.includePendingApproval) {
-        list = list.filter((l) => l.approvalStatus !== 'rejected');
+        list = list.filter((l) => {
+          if (l.approvalStatus === 'rejected' || l.approvalStatus === 'pending_owner_approval' || l.approvalStatus === 'approved_for_packaging') {
+            return false;
+          }
+          if (l.status === 'draft') return false;
+          if (l.isPublished === false) return false;
+          // Hide VIP exclusive lots from public catalog for 48h
+          if (l.isVipExclusive) {
+            const isWithin48h = l.vipEarlyAccessUntil ? new Date(l.vipEarlyAccessUntil).getTime() > Date.now() : true;
+            if (isWithin48h) return false;
+          }
+          return true;
+        });
       }
 
       if (filter.status && filter.status !== 'all') {
@@ -155,23 +167,29 @@ export class LotsRepository {
     return list.filter((l) => l.assignedEmployeeId === employeeId);
   }
 
+  static async getVipLots(): Promise<Lot[]> {
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    return list.filter((l) => {
+      if (l.approvalStatus === 'rejected' || l.status === 'draft') return false;
+      const isWithin48h = l.vipEarlyAccessUntil ? new Date(l.vipEarlyAccessUntil).getTime() > Date.now() : true;
+      return l.isVipExclusive ? isWithin48h : (l.isEarlyAccessVIP || false);
+    });
+  }
+
   static async assignToEmployee(
     lotCode: string,
     employeeId: string,
     employeeName: string,
-    operatorName: string = 'Виктор Сергеевич (Владелец / CEO)'
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
   ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
     lot.assignedEmployeeId = employeeId;
     lot.assignedEmployeeName = employeeName;
-    lot.approvalStatus = 'approved';
-    if (!lot.status || lot.status === 'processing') {
-      lot.status = 'available';
-    }
-    if (!lot.currentStage || lot.currentStage < 2) {
-      lot.currentStage = 2;
-    }
+    lot.approvalStatus = 'approved_for_packaging';
+    lot.status = 'draft';
+    lot.isPublished = false;
+    lot.currentStage = 2;
 
     try {
       const emp = await EmployeesRepository.getById(employeeId);
@@ -202,6 +220,68 @@ export class LotsRepository {
     });
 
     return lot;
+  }
+
+  static async publishToOpenCatalog(
+    lotCode: string,
+    operatorName: string,
+    additionalUpdates?: Partial<Lot>
+  ): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+    const updated: Lot = {
+      ...lot,
+      ...additionalUpdates,
+      status: 'available',
+      approvalStatus: 'approved',
+      isPublished: true,
+      isVipExclusive: false,
+      currentStage: 3,
+      publishedAt: new Date().toISOString(),
+    };
+    await DatabaseGateway.save<Lot>(COLLECTION, updated);
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName,
+      operatorRole: 'curator',
+      actionType: 'packaging_published',
+      title: `Лот #${lot.lotCode} опубликован в открытом каталоге DomExit`,
+      description: `Объект упакован по 152-ФЗ и открыт для публичных покупателей.`,
+    });
+    return updated;
+  }
+
+  static async publishToVipCatalog(
+    lotCode: string,
+    operatorName: string,
+    additionalUpdates?: Partial<Lot>
+  ): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+    const vipExpires = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+    const updated: Lot = {
+      ...lot,
+      ...additionalUpdates,
+      status: 'available',
+      approvalStatus: 'approved',
+      isPublished: false,
+      isVipExclusive: true,
+      isEarlyAccessVIP: true,
+      earlyAccessHoursLeft: 48,
+      vipEarlyAccessUntil: vipExpires,
+      currentStage: 3,
+      publishedAt: new Date().toISOString(),
+    };
+    await DatabaseGateway.save<Lot>(COLLECTION, updated);
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName,
+      operatorRole: 'curator',
+      actionType: 'vip_telegram_broadcast',
+      title: `Лот #${lot.lotCode} опубликован в закрытом VIP-каталоге (ранний доступ 48 часов)`,
+      description: `Объект доступен только резидентам VIP-клуба до ${new Date(vipExpires).toLocaleString('ru-RU')}.`,
+    });
+    return updated;
   }
 
   static async updateCuratorProfileForAssignedLots(employee: {

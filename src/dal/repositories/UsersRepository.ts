@@ -57,7 +57,6 @@ export class UsersRepository {
       registeredAt: user.registeredAt || new Date().toISOString(),
       activeDealId: user.activeDealId,
       investorPackagePreference: user.investorPackagePreference,
-      bankCreditLimit: user.bankCreditLimit,
     };
 
     await DatabaseGateway.save<UserProfile>(COLLECTION, newUser);
@@ -67,7 +66,7 @@ export class UsersRepository {
   static async updateRole(
     userId: string,
     newRole: string,
-    operatorName: string = 'Виктор Сергеевич (Владелец)'
+    operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<UserProfile | null> {
     const user = await this.getById(userId);
     if (!user) return null;
@@ -102,6 +101,14 @@ export class UsersRepository {
       description: `Роль изменена с [${oldRole}] на [${newRole}]. Обновлены права доступа в системе.`,
     });
 
+    return user;
+  }
+
+  static async updateAgreedPolicyVersion(userId: string, version: string = '2026.1'): Promise<UserProfile | null> {
+    const user = await this.getById(userId);
+    if (!user) return null;
+    user.agreedPolicyVersion = version;
+    await DatabaseGateway.save<UserProfile>(COLLECTION, user);
     return user;
   }
 }

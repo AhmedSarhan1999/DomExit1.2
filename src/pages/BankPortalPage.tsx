@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Landmark,
   ShieldCheck,
+  ShieldAlert,
   CheckCircle2,
   XCircle,
   Clock,
@@ -10,7 +11,6 @@ import {
   Users,
   Wallet,
   Building2,
-  CreditCard,
   Plus,
   Lock,
   Unlock,
@@ -29,6 +29,7 @@ import {
   Lightbulb,
   Loader2,
   Edit,
+  FileCheck,
 } from 'lucide-react';
 import {
   withAsyncTimeout,
@@ -45,48 +46,47 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 import {
   AccreditedDeveloper,
   BankEmployee,
-  BuyerCreditLimitRequest,
   DealTrack,
   DeveloperAccreditationRequest,
   DeveloperBankTerms,
   Lot,
   PartnerBankName,
+  PartnerBankEntity,
   SpecialApprovalRequest,
   BankTabPermission,
 } from '../types';
 import { formatRubles } from '../utils/formatters';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { BankGatewayErrorBoundary } from '../components/common/BankGatewayErrorBoundary';
 
 export const BankPortalPage: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const bankIdParam = searchParams.get('bankId') || searchParams.get('bank');
 
   const [activeTab, setActiveTab] = useState<
-    'escrow' | 'developer_accreditation' | 'special' | 'credit_limits' | 'staff'
+    'escrow' | 'developer_accreditation' | 'special' | 'staff'
   >('escrow');
 
   const [activePartnerBank, setActivePartnerBank] = useState<PartnerBankName>('Сбербанк');
+  const [partnerBanksList, setPartnerBanksList] = useState<PartnerBankEntity[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [deals, setDeals] = useState<DealTrack[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
   const [devRequests, setDevRequests] = useState<DeveloperAccreditationRequest[]>([]);
   const [accreditedDevs, setAccreditedDevs] = useState<AccreditedDeveloper[]>([]);
   const [specialRequests, setSpecialRequests] = useState<SpecialApprovalRequest[]>([]);
-  const [creditRequests, setCreditRequests] = useState<BuyerCreditLimitRequest[]>([]);
   const [bankStaff, setBankStaff] = useState<BankEmployee[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [escrowFilter, setEscrowFilter] = useState<
+    'all_active' | 'pending_deposit' | 'awaiting_curator' | 'ready_for_release' | 'archived'
+  >('all_active');
 
   // Document Vault Preview Modal
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [vaultModalTitle, setVaultModalTitle] = useState('');
   const [vaultEntityId, setVaultEntityId] = useState('U-10566');
-
-  // Credit Limit Decision Modal State
-  const [selectedCreditReq, setSelectedCreditReq] = useState<BuyerCreditLimitRequest | null>(null);
-  const [approvedLimitInput, setApprovedLimitInput] = useState<number>(12500000);
-  const [validUntilInput, setValidUntilInput] = useState<string>('2026-12-31');
-  const [creditDecisionNotes, setCreditDecisionNotes] = useState<string>(
-    'Одобрено по программе замещения ипотечного долга 214-ФЗ'
-  );
 
   // Special Approval Decision Modal State (Task 5: Per-Project Granular Approval)
   const [selectedSpecialReq, setSelectedSpecialReq] = useState<SpecialApprovalRequest | null>(null);
@@ -147,7 +147,7 @@ export const BankPortalPage: React.FC = () => {
     'escrow',
     'developer_accreditation',
     'special',
-    'credit_limits',
+    'staff',
   ]);
 
   // Edit Bank Staff Modal State (Full Staff CRUD)
@@ -167,22 +167,48 @@ export const BankPortalPage: React.FC = () => {
   };
 
   const loadData = async () => {
-    const [dList, lList, devReqList, devAllList, sList, cList, stList] = await Promise.all([
-      DealsRepository.getAll(),
-      LotsRepository.getAll({ includePendingApproval: true }),
-      DevelopersRepository.getAllAccreditationRequests(),
-      DevelopersRepository.getAllDevelopers(),
-      BankPortalRepository.getAllSpecialApprovals(),
-      BankPortalRepository.getAllCreditLimitRequests(),
-      BankPortalRepository.getAllBankEmployees(),
-    ]);
-    setDeals(dList);
-    setLots(lList);
-    setDevRequests(devReqList);
-    setAccreditedDevs(devAllList);
-    setSpecialRequests(sList);
-    setCreditRequests(cList);
-    setBankStaff(stList);
+    try {
+      const [dList, lList, devReqList, devAllList, sList, stList, pbList] = await Promise.all([
+        DealsRepository.getAll(),
+        LotsRepository.getAll({ includePendingApproval: true }),
+        DevelopersRepository.getAllAccreditationRequests(),
+        DevelopersRepository.getAllDevelopers(),
+        BankPortalRepository.getAllSpecialApprovals(),
+        BankPortalRepository.getAllBankEmployees(),
+        BankPortalRepository.getAllPartnerBanks(),
+      ]);
+      setDeals(dList || []);
+      setLots(lList || []);
+      setDevRequests(devReqList || []);
+      setAccreditedDevs(devAllList || []);
+      setSpecialRequests(sList || []);
+      setBankStaff(stList || []);
+      setPartnerBanksList(pbList || []);
+
+      // Safe Active Bank Resolution
+      if (bankIdParam) {
+        const found = (pbList || []).find(
+          (b) => b?.id === bankIdParam || b?.name?.toLowerCase() === bankIdParam.toLowerCase()
+        );
+        if (found) {
+          setActivePartnerBank(found.name as PartnerBankName);
+          setDevDecisionBank(found.name as PartnerBankName);
+        }
+      } else if (!isOwner && userBankName) {
+        setActivePartnerBank(userBankName as PartnerBankName);
+        setDevDecisionBank(userBankName as PartnerBankName);
+      } else if (isOwner && pbList && pbList.length > 0) {
+        const exists = pbList.some((b) => b?.name === activePartnerBank);
+        if (!exists && pbList[0]?.name) {
+          setActivePartnerBank(pbList[0].name as PartnerBankName);
+          setDevDecisionBank(pbList[0].name as PartnerBankName);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading bank portal data:', err);
+    } finally {
+      setIsLoadingData(false);
+    }
   };
 
   useEffect(() => {
@@ -211,7 +237,8 @@ export const BankPortalPage: React.FC = () => {
         BankPortalRepository.confirmEscrowDeposit(
           deal.dealId,
           currentOfficerName,
-          depositAmount
+          depositAmount,
+          activePartnerBank
         ),
         15000
       );
@@ -322,70 +349,46 @@ export const BankPortalPage: React.FC = () => {
     }
   };
 
-  // 5. Decide Credit Limit
-  const handleDecideCreditLimit = async (status: 'approved' | 'rejected') => {
-    if (!selectedCreditReq) return;
-    try {
-      setIsSubmittingAction(true);
-      if (status === 'approved') {
-        await withAsyncTimeout(
-          BankPortalRepository.approveCreditLimit(
-            selectedCreditReq.id,
-            approvedLimitInput,
-            validUntilInput,
-            currentOfficerName,
-            creditDecisionNotes
-          ),
-          15000
-        );
-      } else {
-        await withAsyncTimeout(
-          BankPortalRepository.rejectCreditLimit(
-            selectedCreditReq.id,
-            currentOfficerName,
-            creditDecisionNotes
-          ),
-          15000
-        );
-      }
-      const userName = selectedCreditReq.userName;
-      setSelectedCreditReq(null);
-      await loadData();
-      showToast(
-        status === 'approved'
-          ? `Кредитный сертификат на ${formatRubles(approvedLimitInput)} выпущен для ${userName}!`
-          : `Заявка на кредитный лимит для ${userName} отклонена.`
-      );
-    } catch (err) {
-      console.error('Decide credit limit error:', err);
-      showToast(ASYNC_NETWORK_TIMEOUT_MESSAGE);
-    } finally {
-      setIsSubmittingAction(false);
-    }
-  };
 
-  const isOwner = user?.role === 'owner' || user?.roles?.includes('owner');
-  const matchingStaff = bankStaff.find(
-    (s) => s.email.toLowerCase() === (user?.email || '').toLowerCase()
+  const isOwner =
+    user?.role === 'owner' ||
+    user?.activeRole === 'owner' ||
+    user?.role === 'admin' ||
+    user?.roles?.includes('owner') ||
+    user?.email?.toLowerCase().trim() === 'amaas9499@gmail.com';
+
+  const matchingStaff = (bankStaff || []).find(
+    (s) => s?.email && s.email.toLowerCase() === (user?.email || '').toLowerCase()
   );
-  const userBankName = user?.bankName || user?.bankCreditLimit?.bankName || matchingStaff?.bankName;
+  const userBankName = user?.bankName || matchingStaff?.bankName;
+  const isBankRole = user?.role === 'bank' || user?.activeRole === 'bank';
+  const hasNoBankAssigned = !isOwner && isBankRole && !userBankName && !matchingStaff;
 
-  // Strict Bank Tenant Isolation
+  // Strict Bank Tenant Isolation & Sovereign Preview
   useEffect(() => {
-    if (!isOwner && userBankName) {
+    if (bankIdParam) {
+      BankPortalRepository.getAllPartnerBanks().then((banks) => {
+        const found = (banks || []).find(
+          (b) => b?.id === bankIdParam || b?.name?.toLowerCase() === bankIdParam.toLowerCase()
+        );
+        if (found) {
+          setActivePartnerBank(found.name as PartnerBankName);
+          setDevDecisionBank(found.name as PartnerBankName);
+        }
+      });
+    } else if (!isOwner && userBankName) {
       setActivePartnerBank(userBankName as PartnerBankName);
       setDevDecisionBank(userBankName as PartnerBankName);
     }
-  }, [isOwner, userBankName]);
+  }, [isOwner, userBankName, bankIdParam]);
 
   const userPermissions: BankTabPermission[] = useMemo(() => {
     return isOwner
-      ? ['escrow', 'developer_accreditation', 'special', 'credit_limits', 'staff']
+      ? ['escrow', 'developer_accreditation', 'special', 'staff']
       : (matchingStaff?.permissions || [
           'escrow',
           'developer_accreditation',
           'special',
-          'credit_limits',
           'staff',
         ]);
   }, [isOwner, matchingStaff?.permissions]);
@@ -420,31 +423,118 @@ export const BankPortalPage: React.FC = () => {
     if (userPermissions.length > 0 && !userPermissions.includes(activeTab)) {
       setActiveTab(userPermissions[0]);
     }
-  }, [userPermissions, activeTab]);
+  }, [userPermissions]);
 
-  // Filtered collections strictly for activePartnerBank
-  const tenantDeals = deals.filter(
-    (d) =>
-      !d.escrowWorkflow?.bankName ||
-      d.escrowWorkflow?.bankName === activePartnerBank ||
-      d.escrowWorkflow?.bankName.includes(activePartnerBank)
+  const isBankMatch = (dealBankName?: string, lotEscrowBank?: string, targetBank?: PartnerBankName) => {
+    if (!targetBank) return true;
+    if (!dealBankName && !lotEscrowBank) return true;
+
+    if (dealBankName) {
+      if (dealBankName === targetBank || dealBankName.includes(targetBank)) return true;
+      if (targetBank === 'Сбербанк' && (dealBankName.includes('Сбер') || dealBankName.includes('Sber'))) return true;
+      if (targetBank === 'ВТБ' && (dealBankName.includes('ВТБ') || dealBankName.includes('VTB'))) return true;
+      if (targetBank === 'Альфа-Банк' && (dealBankName.includes('Альфа') || dealBankName.includes('Alfa'))) return true;
+      if (targetBank === 'ДОМ.РФ' && (dealBankName.includes('ДОМ.РФ') || dealBankName.includes('Дом.РФ') || dealBankName.includes('DomRF'))) return true;
+      if ((targetBank as string) === 'Совкомбанк' && dealBankName.includes('Совком')) return true;
+      if ((targetBank as string) === 'Т-Банк' && (dealBankName.includes('Т-Банк') || dealBankName.includes('Тинькофф'))) return true;
+    }
+
+    if (lotEscrowBank) {
+      if (targetBank === 'Сбербанк' && (lotEscrowBank === 'Sberbank' || lotEscrowBank.includes('Сбер'))) return true;
+      if (targetBank === 'ВТБ' && (lotEscrowBank === 'VTB' || lotEscrowBank.includes('ВТБ'))) return true;
+      if (targetBank === 'Альфа-Банк' && (lotEscrowBank === 'AlfaBank' || lotEscrowBank.includes('Альфа'))) return true;
+      if (targetBank === 'ДОМ.РФ' && (lotEscrowBank === 'DomRF' || lotEscrowBank.includes('ДОМ.РФ'))) return true;
+    }
+
+    return false;
+  };
+
+  // Filtered collections strictly for activePartnerBank (Fortified against undefined/empty states)
+  const tenantDeals = useMemo(() => {
+    return (deals || []).filter((d) => {
+      if (!d) return false;
+      const lot = (lots || []).find((l) => l.lotCode === d.lotCode);
+      const matches = isBankMatch(d.escrowWorkflow?.bankName, lot?.escrowBank, activePartnerBank);
+      return isOwner ? (matches || !d.escrowWorkflow?.bankName) : matches;
+    });
+  }, [deals, lots, activePartnerBank, isOwner]);
+
+  const activeEscrowDealsCount = useMemo(() => {
+    return (tenantDeals || []).filter(
+      (d) => d?.escrowWorkflow?.step !== 'deal_finalized' && d?.escrowWorkflow?.step !== 'deal_cancelled'
+    ).length;
+  }, [tenantDeals]);
+
+  const pendingDepositDealsCount = useMemo(() => {
+    return (tenantDeals || []).filter(
+      (d) =>
+        !d?.escrowWorkflow?.step ||
+        d.escrowWorkflow.step === 'bank_escrow_deposit' ||
+        d.escrowWorkflow.step === 'curator_review'
+    ).length;
+  }, [tenantDeals]);
+
+  const awaitingCuratorDealsCount = useMemo(() => {
+    return (tenantDeals || []).filter(
+      (d) => d?.escrowWorkflow?.step === 'signing_photos'
+    ).length;
+  }, [tenantDeals]);
+
+  const readyForReleaseDealsCount = useMemo(() => {
+    return (tenantDeals || []).filter(
+      (d) =>
+        d?.escrowWorkflow?.step === 'bank_funds_release' ||
+        Boolean(d?.escrowWorkflow?.rosreestrStampDocUrl && d?.escrowWorkflow?.step === 'signing_photos')
+    ).length;
+  }, [tenantDeals]);
+
+  const archivedEscrowDealsCount = useMemo(() => {
+    return (tenantDeals || []).filter(
+      (d) => d?.escrowWorkflow?.step === 'deal_finalized' || d?.escrowWorkflow?.step === 'deal_cancelled'
+    ).length;
+  }, [tenantDeals]);
+
+  const tenantAccreditedDevs = (accreditedDevs || []).filter((d) =>
+    (d?.bankTerms || []).some((b) => b?.bankName === activePartnerBank && b?.isAccredited)
   );
 
-  const tenantAccreditedDevs = accreditedDevs.filter((d) =>
-    d.bankTerms.some((b) => b.bankName === activePartnerBank && b.isAccredited)
+  const tenantSpecialRequests = (specialRequests || []).filter(
+    (s) => s?.bankName === activePartnerBank || !s?.bankName
   );
 
-  const tenantSpecialRequests = specialRequests.filter(
-    (s) => s.bankName === activePartnerBank || !s.bankName
+  const tenantBankStaff = (bankStaff || []).filter(
+    (s) => s?.bankName === activePartnerBank || isOwner
   );
 
-  const tenantCreditRequests = creditRequests.filter(
-    (c) => c.bankName === activePartnerBank || !c.bankName
-  );
+  // Filtered Deals for Tab 1 with safe lowercasing & persistent lifecycle status view
+  const filteredDeals = useMemo(() => {
+    return (tenantDeals || []).filter((d) => {
+      if (!d) return false;
+      const step = d.escrowWorkflow?.step || 'curator_review';
+      const hasRosreestr = Boolean(d.escrowWorkflow?.rosreestrStampDocUrl);
 
-  const tenantBankStaff = bankStaff.filter(
-    (s) => s.bankName === activePartnerBank || isOwner
-  );
+      if (escrowFilter === 'all_active') {
+        if (step === 'deal_finalized' || step === 'deal_cancelled') return false;
+      } else if (escrowFilter === 'pending_deposit') {
+        if (step !== 'bank_escrow_deposit' && step !== 'curator_review') return false;
+      } else if (escrowFilter === 'awaiting_curator') {
+        if (step !== 'signing_photos' || hasRosreestr) return false;
+      } else if (escrowFilter === 'ready_for_release') {
+        if (step !== 'bank_funds_release' && !hasRosreestr) return false;
+      } else if (escrowFilter === 'archived') {
+        if (step !== 'deal_finalized' && step !== 'deal_cancelled') return false;
+      }
+
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        (d.dealId && d.dealId.toLowerCase().includes(q)) ||
+        (d.lotCode && d.lotCode.toLowerCase().includes(q)) ||
+        (d.lotTitle && d.lotTitle.toLowerCase().includes(q)) ||
+        (d.buyerName && d.buyerName.toLowerCase().includes(q))
+      );
+    });
+  }, [tenantDeals, escrowFilter, searchQuery]);
 
   // Hierarchical grouping of special requests by Contractor + INN (Task 3 Architecture)
   const groupedSpecialContractors = useMemo(() => {
@@ -458,7 +548,8 @@ export const BankPortalPage: React.FC = () => {
       }
     > = {};
 
-    tenantSpecialRequests.forEach((req) => {
+    (tenantSpecialRequests || []).forEach((req) => {
+      if (!req) return;
       const name = req.contractorName || req.developer || 'Индивидуальный застройщик / Подрядчик';
       const inn = (req.contractorInn || req.developerInn || '').trim();
       const compositeKey = `${name}:::${inn}`;
@@ -618,7 +709,6 @@ export const BankPortalPage: React.FC = () => {
         'escrow',
         'developer_accreditation',
         'special',
-        'credit_limits',
         'staff',
       ];
     const updatedPerms = currentPerms.includes(perm)
@@ -661,7 +751,7 @@ export const BankPortalPage: React.FC = () => {
       setNewStaffName('');
       setNewStaffEmail('');
       setNewStaffPhone('+7 (495) 500-00-00');
-      setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'credit_limits']);
+      setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'staff']);
       setShowAddStaffModal(false);
       await loadData();
       showToast(`Сотрудник банка ${newStaffName} успешно добавлен.`);
@@ -736,14 +826,67 @@ export const BankPortalPage: React.FC = () => {
     }
   };
 
-  const pendingEscrowCount = tenantDeals.filter(
+  const pendingEscrowCount = (tenantDeals || []).filter(
     (d) =>
-      d.escrowWorkflow?.step === 'bank_escrow_deposit' ||
-      d.escrowWorkflow?.step === 'bank_funds_release'
+      !d?.escrowWorkflow?.step ||
+      d?.escrowWorkflow?.step === 'bank_escrow_deposit' ||
+      d?.escrowWorkflow?.step === 'curator_review' ||
+      d?.escrowWorkflow?.step === 'bank_funds_release'
   ).length;
-  const pendingDevAccCount = devRequests.filter((r) => r.status === 'pending').length;
-  const pendingSpecialCount = tenantSpecialRequests.filter((s) => s.status === 'pending').length;
-  const pendingCreditCount = tenantCreditRequests.filter((c) => c.status === 'pending').length;
+  const pendingDevAccCount = (devRequests || []).filter((r) => r?.status === 'pending').length;
+  const pendingSpecialCount = (tenantSpecialRequests || []).filter((s) => s?.status === 'pending').length;
+
+  if (hasNoBankAssigned) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-amber-200 rounded-3xl p-8 shadow-lg text-center space-y-4">
+          <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-amber-600">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h2 className="text-lg font-black text-slate-900">
+            Учетная запись не привязана к банку-партнеру. Обратитесь к администратору
+          </h2>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Для доступа к шлюзу банка ваша учетная запись ({user?.email || 'не указан'}) должна быть закреплена за одним из банков-партнеров платформы.
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/"
+              className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors"
+            >
+              Вернуться на главную
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isLoadingData && isOwner && partnerBanksList.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 shadow-lg text-center space-y-4">
+          <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-emerald-600">
+            <Landmark className="w-8 h-8" />
+          </div>
+          <h2 className="text-lg font-black text-slate-900">
+            Нет зарегистрированных банков-партнеров. Добавьте первый банк в Дашборде Владельца
+          </h2>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            В системе не найдено ни одного банка-партнера. Перейдите в дашборд владельца, чтобы добавить банк и настроить интеграцию.
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/admin/dashboard"
+              className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+            >
+              Перейти в Дашборд Владельца
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
@@ -764,7 +907,7 @@ export const BankPortalPage: React.FC = () => {
                 </span>
               </div>
               <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                Кабинет банка {activePartnerBank}: СБР, Аккредитация и Лимиты
+                Кабинет банка {activePartnerBank}: СБР и Аккредитация
               </h1>
             </div>
           </div>
@@ -783,7 +926,10 @@ export const BankPortalPage: React.FC = () => {
                   }}
                   className="bg-white text-emerald-800 font-black text-xs px-2.5 py-1 rounded-lg border border-slate-200 focus:outline-none cursor-pointer"
                 >
-                  {PARTNER_BANKS.map((b) => (
+                  {(partnerBanksList && partnerBanksList.length > 0
+                    ? partnerBanksList.map((b) => b.name as PartnerBankName)
+                    : PARTNER_BANKS
+                  ).map((b) => (
                     <option key={b} value={b}>
                       {b} (Режим Владельца)
                     </option>
@@ -825,7 +971,7 @@ export const BankPortalPage: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
         {/* Top KPI Cards (Light Mode Institutional Style) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
               <span>Ожидают действий СБР</span>
@@ -845,7 +991,7 @@ export const BankPortalPage: React.FC = () => {
             <div className="text-2xl font-black text-slate-900">
               {tenantAccreditedDevs.length}{' '}
               <span className="text-xs font-bold text-slate-400">
-                / {accreditedDevs.filter((d) => d.isAccredited).length} в реестре
+                / {(accreditedDevs || []).filter((d) => d?.isAccredited).length} в реестре
               </span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">
@@ -866,22 +1012,11 @@ export const BankPortalPage: React.FC = () => {
 
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
-              <span>Заявки на кредитный лимит</span>
-              <CreditCard className="w-4 h-4 text-indigo-600" />
-            </div>
-            <div className="text-2xl font-black text-slate-900">{pendingCreditCount}</div>
-            <div className="text-[11px] text-slate-500 mt-1">
-              Предварительный скоринг покупателей
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2">
               <span>Уполномоченные офицеры</span>
               <Users className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-2xl font-black text-slate-900">
-              {bankStaff.filter((s) => s.status === 'active').length}
+              {(bankStaff || []).filter((s) => s?.status === 'active').length}
             </div>
             <div className="text-[11px] text-slate-500 mt-1">
               Сбербанк • ВТБ • Альфа-Банк • ДОМ.РФ
@@ -959,32 +1094,6 @@ export const BankPortalPage: React.FC = () => {
               </button>
             )}
 
-            {userPermissions.includes('credit_limits') && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('credit_limits')}
-                className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeTab === 'credit_limits'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <Award className="w-4 h-4" />
-                <span>4. Кредитные лимиты покупателей</span>
-                {pendingCreditCount > 0 && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                      activeTab === 'credit_limits'
-                        ? 'bg-white text-emerald-700'
-                        : 'bg-indigo-50 text-indigo-700'
-                    }`}
-                  >
-                    {pendingCreditCount}
-                  </span>
-                )}
-              </button>
-            )}
-
             {userPermissions.includes('staff') && (
               <button
                 type="button"
@@ -996,7 +1105,7 @@ export const BankPortalPage: React.FC = () => {
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>5. Сотрудники банка ({tenantBankStaff.length})</span>
+                <span>4. Сотрудники банка ({tenantBankStaff.length})</span>
               </button>
             )}
           </div>
@@ -1013,42 +1122,110 @@ export const BankPortalPage: React.FC = () => {
           </div>
         </div>
 
-        {/* ========================================================= */}
-        {/* TAB 1: ESCROW & SBR 4-STEP REAL-TIME SYNCHRONIZATION      */}
-        {/* ========================================================= */}
-        {activeTab === 'escrow' && (
-          <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
-              <div>
-                <h2 className="text-base font-black text-slate-900">
-                  Единый контур закрытия сделок СБР / Эскроу (Синхронизация 4 шагов)
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Шаг 1: Куратор передает пакет в банк → Шаг 2: Банк подтверждает депонирование средств покупателя → Шаг 3: Куратор загружает фото подписания и штамп Росреестра → Шаг 4: Банк раскрывает СБР и выплачивает транши.
-                </p>
-              </div>
-              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shrink-0">
-                Real-Time DAL Sync
-              </span>
-            </div>
+        {/* Loading Spinner or Active Tab Content */}
+        {isLoadingData ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-16 shadow-xs flex flex-col items-center justify-center space-y-4">
+            <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+            <div className="text-sm font-bold text-slate-700">Загрузка данных банковского шлюза...</div>
+            <div className="text-xs text-slate-400">Синхронизация с реестром банков-партнеров и эскроу-счетов</div>
+          </div>
+        ) : (
+          <>
+            {/* ========================================================= */}
+            {/* TAB 1: ESCROW & SBR 4-STEP REAL-TIME SYNCHRONIZATION      */}
+            {/* ========================================================= */}
+            {activeTab === 'escrow' && (
+              <div className="space-y-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                  <div>
+                    <h2 className="text-base font-black text-slate-900">
+                      Единый контур закрытия сделок СБР / Эскроу (Синхронизация 4 шагов)
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Шаг 1: Куратор передает пакет в банк → Шаг 2: Банк подтверждает депонирование средств покупателя → Шаг 3: Куратор загружает фото подписания и штамп Росреестра → Шаг 4: Банк раскрывает СБР и выплачивает транши.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shrink-0">
+                    Real-Time DAL Sync
+                  </span>
+                </div>
 
-            {deals
-              .filter(
-                (d) =>
-                  !searchQuery ||
-                  d.dealId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  d.lotCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  d.lotTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  (d.buyerName || '').toLowerCase().includes(searchQuery.toLowerCase())
-              )
-              .map((deal) => {
-                const wf = deal.escrowWorkflow;
-                const step = wf?.step || 'curator_review';
-                const lot = lots.find((l) => l.lotCode === deal.lotCode);
-                const feeRub =
-                  wf?.platformFeeRub ||
-                  lot?.serviceCommissionRub ||
-                  Math.round(deal.sellerReturnRub * 0.025);
+                {/* Persistent Lifecycle Filter Bar (Mission: Lifecycle Control Protocol) */}
+                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setEscrowFilter('all_active')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      escrowFilter === 'all_active'
+                        ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Все сделки в работе ({activeEscrowDealsCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEscrowFilter('pending_deposit')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      escrowFilter === 'pending_deposit'
+                        ? 'bg-white text-blue-900 shadow-xs border border-blue-200'
+                        : 'text-slate-600 hover:text-blue-900'
+                    }`}
+                  >
+                    Ожидают депонирования (Шаг 2) ({pendingDepositDealsCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEscrowFilter('awaiting_curator')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      escrowFilter === 'awaiting_curator'
+                        ? 'bg-white text-amber-900 shadow-xs border border-amber-200'
+                        : 'text-slate-600 hover:text-amber-900'
+                    }`}
+                  >
+                    На регистрации у куратора (Шаг 3) ({awaitingCuratorDealsCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEscrowFilter('ready_for_release')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      escrowFilter === 'ready_for_release'
+                        ? 'bg-white text-emerald-900 shadow-xs border border-emerald-200'
+                        : 'text-slate-600 hover:text-emerald-900'
+                    }`}
+                  >
+                    Готовы к выплате (Шаг 4) ({readyForReleaseDealsCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEscrowFilter('archived')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                      escrowFilter === 'archived'
+                        ? 'bg-white text-slate-700 shadow-xs border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Закрытые сделки (Архив СБР) ({archivedEscrowDealsCount})
+                  </button>
+                </div>
+
+                {filteredDeals.length === 0 ? (
+                  <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
+                    <Lock className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <div className="text-sm font-bold text-slate-700">Нет данных для отображения в данном разделе</div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      Сделки с эскроу для банка {activePartnerBank} не найдены
+                    </div>
+                  </div>
+                ) : (
+                  filteredDeals.map((deal) => {
+                    const wf = deal.escrowWorkflow;
+                    const step = wf?.step || 'curator_review';
+                    const lot = (lots || []).find((l) => l?.lotCode === deal.lotCode);
+                    const feeRub =
+                      wf?.platformFeeRub ||
+                      lot?.serviceCommissionRub ||
+                      Math.round((deal.sellerReturnRub || 0) * 0.025);
 
                 return (
                   <div
@@ -1217,14 +1394,14 @@ export const BankPortalPage: React.FC = () => {
                           </span>
                         )}
                         {step === 'signing_photos' && (
-                          <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 font-bold flex items-center space-x-1.5">
-                            <Camera className="w-4 h-4 text-amber-600" />
-                            <span>Депонирование подтверждено • Ожидаем фото подписания и штамп Росреестра от куратора</span>
+                          <span className="px-3.5 py-2 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 font-bold flex items-center space-x-2 text-xs">
+                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Средства надежно заблокированы на эскроу • Куратор проводит подписание и регистрацию в Росреестре</span>
                           </span>
                         )}
                         {step === 'bank_funds_release' && (
-                          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold flex items-center space-x-1.5">
-                            <Unlock className="w-4 h-4 text-emerald-600" />
+                          <span className="px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 font-bold flex items-center space-x-2 text-xs">
+                            <Unlock className="w-4 h-4 text-emerald-600 shrink-0" />
                             <span>Шаг 4: Штамп Росреестра загружен куратором! Готово к раскрытию СБР и выплате траншей</span>
                           </span>
                         )}
@@ -1268,15 +1445,49 @@ export const BankPortalPage: React.FC = () => {
                           </button>
                         )}
 
-                        {(step === 'bank_funds_release' || step === 'signing_photos') && (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmFundsRelease(deal)}
-                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
-                          >
-                            <Unlock className="w-4 h-4" />
-                            <span>Раскрыть СБР и выплатить транши</span>
-                          </button>
+                        {/* Step 3: Hard Gating Guard — Disabled button while curator conducts signing and registration */}
+                        {step === 'signing_photos' && !wf?.rosreestrStampDocUrl && (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              type="button"
+                              disabled={true}
+                              title="Ожидаем фото подписания и штамп Росреестра от куратора"
+                              className="px-4 py-2.5 rounded-xl bg-slate-200 text-slate-400 text-xs font-bold border border-slate-300 flex items-center space-x-2 cursor-not-allowed shadow-none"
+                            >
+                              <Lock className="w-4 h-4 text-slate-400" />
+                              <span>Раскрыть СБР и выплатить транши</span>
+                            </button>
+                            <span className="text-[11px] text-slate-400 italic">
+                              (Ожидаем штамп Росреестра)
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Step 4: Gated release unlocked ONLY after curator uploaded Rosreestr stamp doc and signing proofs */}
+                        {(step === 'bank_funds_release' || (step === 'signing_photos' && Boolean(wf?.rosreestrStampDocUrl))) && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openLotDocumentVault(
+                                  deal.lotCode,
+                                  `Штамп Росреестра и досье сделки ${deal.dealId}`
+                                )
+                              }
+                              className="px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                            >
+                              <FileCheck className="w-4 h-4 text-indigo-700" />
+                              <span>Просмотреть штамп Росреестра и документы (S3 Хранилище)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmFundsRelease(deal)}
+                              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-md flex items-center space-x-2 cursor-pointer ring-2 ring-emerald-500/20"
+                            >
+                              <Unlock className="w-4 h-4" />
+                              <span>Раскрыть СБР и выплатить транши</span>
+                            </button>
+                          </div>
                         )}
 
                         <Link
@@ -1289,7 +1500,7 @@ export const BankPortalPage: React.FC = () => {
                     </div>
                   </div>
                 );
-              })}
+              }))}
           </div>
         )}
 
@@ -1337,7 +1548,7 @@ export const BankPortalPage: React.FC = () => {
                 <div className="border border-dashed border-slate-300 rounded-2xl p-10 text-center text-slate-500">
                   <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                   <div className="text-sm font-bold text-slate-700">
-                    Нет аккредитованных застройщиков в банке {activePartnerBank}
+                    Нет данных для отображения в данном разделе
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
                     Нажмите «+ Добавить застройщика в аккредитацию», чтобы аккредитовать девелопера и настроить базовые ставки
@@ -1346,8 +1557,8 @@ export const BankPortalPage: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {tenantAccreditedDevs.map((dev) => {
-                    const terms = dev.bankTerms.find(
-                      (b) => b.bankName === activePartnerBank && b.isAccredited
+                    const terms = (dev?.bankTerms || []).find(
+                      (b) => b?.bankName === activePartnerBank && b?.isAccredited
                     );
                     return (
                       <div
@@ -1459,7 +1670,7 @@ export const BankPortalPage: React.FC = () => {
             {groupedSpecialContractors.length === 0 ? (
               <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
                 <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                <div className="text-sm font-bold text-slate-700">Нет запросов на спецсогласование</div>
+                <div className="text-sm font-bold text-slate-700">Нет данных для отображения в данном разделе</div>
                 <div className="text-xs text-slate-400 mt-1">
                   Все проекты подрядчиков для банка {activePartnerBank} согласованы
                 </div>
@@ -1467,7 +1678,7 @@ export const BankPortalPage: React.FC = () => {
             ) : (
               groupedSpecialContractors.map((entry) => {
                 const isExpanded = expandedContractors[entry.compositeKey] ?? true;
-                const pendingCount = entry.requests.filter((r) => r.status === 'pending').length;
+                const pendingCount = (entry.requests || []).filter((r) => r?.status === 'pending').length;
 
                 return (
                   <div
@@ -1522,7 +1733,7 @@ export const BankPortalPage: React.FC = () => {
                     {/* Contractor Projects List */}
                     {isExpanded && (
                       <div className="p-5 space-y-4">
-                        {entry.requests.map((req) => (
+                        {(entry.requests || []).map((req) => (
                           <div
                             key={req.id}
                             className="border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition-all bg-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 shadow-2xs"
@@ -1643,75 +1854,7 @@ export const BankPortalPage: React.FC = () => {
         )}
 
         {/* ========================================================= */}
-        {/* TAB 4: BUYER CREDIT LIMITS                                */}
-        {/* ========================================================= */}
-        {activeTab === 'credit_limits' && (
-          <div className="space-y-4">
-            {creditRequests.map((req) => (
-              <div
-                key={req.id}
-                className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 shadow-xs"
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-black">
-                      Код клиента: {req.clientCode}
-                    </span>
-                    <span className="text-xs text-slate-600 font-semibold">{req.bankName}</span>
-                    {req.status === 'pending' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold">
-                        На скоринге
-                      </span>
-                    )}
-                    {req.status === 'approved' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
-                        Лимит одобрен: {formatRubles(req.approvedLimitRub || req.requestedAmountRub)}
-                      </span>
-                    )}
-                    {req.status === 'rejected' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
-                        Отказано
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900">
-                    {req.userName} ({req.userPhone})
-                  </h3>
-                  <p className="text-xs text-slate-600">
-                    Запрошенный лимит:{' '}
-                    <strong className="text-slate-900">
-                      {formatRubles(req.requestedAmountRub)}
-                    </strong>
-                    {req.certificateNumber && (
-                      <span className="ml-3 text-emerald-700 font-mono">
-                        Сертификат: {req.certificateNumber} (до {req.validUntil})
-                      </span>
-                    )}
-                  </p>
-                  {req.notes && <p className="text-xs text-slate-500">{req.notes}</p>}
-                </div>
-
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCreditReq(req);
-                      setApprovedLimitInput(req.approvedLimitRub || req.requestedAmountRub);
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all cursor-pointer"
-                  >
-                    {req.status === 'pending'
-                      ? 'Выдать кредитный сертификат'
-                      : 'Изменить лимит'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* TAB 5: BANK STAFF MANAGEMENT & RBAC                       */}
+        {/* TAB 4: BANK STAFF MANAGEMENT & RBAC                       */}
         {/* ========================================================= */}
         {activeTab === 'staff' && (
           <div className="space-y-6">
@@ -1729,7 +1872,7 @@ export const BankPortalPage: React.FC = () => {
                   Управление офицерами банка и ролевая модель (Bank RBAC)
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Назначение гранулярных прав: подтверждение депонирования СБР, аккредитация девелоперов, спецсогласование смет и кредитный скоринг
+                  Назначение гранулярных прав: подтверждение депонирования СБР, аккредитация девелоперов и спецсогласование смет
                 </p>
               </div>
 
@@ -1741,7 +1884,7 @@ export const BankPortalPage: React.FC = () => {
                   setNewStaffPhone('+7 (495) 500-00-00');
                   setNewStaffBank(activePartnerBank);
                   setNewStaffRole('officer');
-                  setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'credit_limits']);
+                  setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'staff']);
                   setShowAddStaffModal(true);
                 }}
                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs shrink-0"
@@ -1752,165 +1895,166 @@ export const BankPortalPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {tenantBankStaff.map((staff) => {
-                const perms = staff.permissions || [
-                  'escrow',
-                  'developer_accreditation',
-                  'special',
-                  'credit_limits',
-                ];
-                const canManageStaff = isOwner || (matchingStaff?.isMasterAdmin && staff.id !== matchingStaff.id);
-
-                return (
-                  <div
-                    key={staff.id}
-                    className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-xs hover:border-slate-300 transition-all space-y-4"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-800 text-xs font-bold">
-                            {staff.bankName}
-                          </span>
-                          {staff.isMasterAdmin && (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black">
-                              Master Admin
-                            </span>
-                          )}
-                        </div>
-
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            staff.status === 'active'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-red-50 text-red-700 border border-red-200'
-                          }`}
-                        >
-                          {staff.status === 'active' ? 'Активен' : 'Приостановлен'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h4 className="text-base font-black text-slate-900">{staff.name}</h4>
-                        <p className="text-xs text-slate-500 mt-0.5 font-mono">{staff.email}</p>
-                        <p className="text-xs text-slate-500">{staff.phone}</p>
-                      </div>
-
-                      {/* Granular Bank RBAC Permissions */}
-                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
-                        <div className="text-[11px] font-black uppercase text-slate-600 tracking-wider">
-                          Функциональные права (RBAC):
-                        </div>
-
-                        <div className="space-y-1.5 pt-0.5">
-                          <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              disabled={!canManageStaff}
-                              checked={perms.includes('escrow')}
-                              onChange={() => handleToggleStaffPermission(staff.id, 'escrow')}
-                              className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                            />
-                            <span className="font-semibold">Управление СБР и Эскроу</span>
-                          </label>
-
-                          <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              disabled={!canManageStaff}
-                              checked={perms.includes('developer_accreditation')}
-                              onChange={() =>
-                                handleToggleStaffPermission(staff.id, 'developer_accreditation')
-                              }
-                              className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                            />
-                            <span className="font-semibold">Аккредитация девелоперов</span>
-                          </label>
-
-                          <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              disabled={!canManageStaff}
-                              checked={perms.includes('special')}
-                              onChange={() => handleToggleStaffPermission(staff.id, 'special')}
-                              className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                            />
-                            <span className="font-semibold">Финансирование подрядчиков</span>
-                          </label>
-
-                          <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              disabled={!canManageStaff}
-                              checked={perms.includes('credit_limits')}
-                              onChange={() =>
-                                handleToggleStaffPermission(staff.id, 'credit_limits')
-                              }
-                              className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                            />
-                            <span className="font-semibold">Кредитные лимиты покупателей</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-[11px] text-slate-500 font-semibold uppercase">
-                        {staff.role === 'chief_manager'
-                          ? 'Гл. управляющий'
-                          : staff.role === 'head_manager'
-                          ? 'Руководитель дирекции'
-                          : staff.role === 'escrow_agent'
-                          ? 'Агент СБР / Эскроу'
-                          : 'Кредитный офицер'}
-                      </span>
-
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingStaff(staff);
-                            setEditStaffName(staff.name);
-                            setEditStaffEmail(staff.email);
-                            setEditStaffPhone(staff.phone || '');
-                            setEditStaffRole(staff.role);
-                            setEditStaffPermissions(
-                              staff.permissions || [
-                                'escrow',
-                                'developer_accreditation',
-                                'special',
-                                'credit_limits',
-                              ]
-                            );
-                          }}
-                          className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer"
-                        >
-                          Редактировать права
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSubmittingAction}
-                          onClick={() => handleToggleStaffStatus(staff.id)}
-                          className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {staff.status === 'active' ? 'Заблокировать' : 'Активировать'}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSubmittingAction}
-                          onClick={() => handleDeleteBankStaff(staff)}
-                          className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                          title="Удалить сотрудника из системы"
-                        >
-                          Удалить
-                        </button>
-                      </div>
-                    </div>
+              {(tenantBankStaff || []).length === 0 ? (
+                <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500 col-span-full">
+                  <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <div className="text-sm font-bold text-slate-700">
+                    Нет данных для отображения в данном разделе
                   </div>
-                );
-              })}
+                  <div className="text-xs text-slate-400 mt-1">
+                    Сотрудники для банка {activePartnerBank} еще не добавлены
+                  </div>
+                </div>
+              ) : (
+                (tenantBankStaff || []).map((staff) => {
+                  const perms = staff.permissions || [
+                    'escrow',
+                    'developer_accreditation',
+                    'special',
+                    'staff',
+                  ];
+                  const canManageStaff = isOwner || (matchingStaff?.isMasterAdmin && staff.id !== matchingStaff.id);
+
+                  return (
+                    <div
+                      key={staff.id}
+                      className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-xs hover:border-slate-300 transition-all space-y-4"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-800 text-xs font-bold">
+                              {staff.bankName}
+                            </span>
+                            {staff.isMasterAdmin && (
+                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black">
+                                Master Admin
+                              </span>
+                            )}
+                          </div>
+
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              staff.status === 'active'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}
+                          >
+                            {staff.status === 'active' ? 'Активен' : 'Приостановлен'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-black text-slate-900">{staff.name}</h4>
+                          <p className="text-xs text-slate-500 mt-0.5 font-mono">{staff.email}</p>
+                          <p className="text-xs text-slate-500">{staff.phone}</p>
+                        </div>
+
+                        {/* Granular Bank RBAC Permissions */}
+                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+                          <div className="text-[11px] font-black uppercase text-slate-600 tracking-wider">
+                            Функциональные права (RBAC):
+                          </div>
+
+                          <div className="space-y-1.5 pt-0.5">
+                            <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                disabled={!canManageStaff}
+                                checked={perms.includes('escrow')}
+                                onChange={() => handleToggleStaffPermission(staff.id, 'escrow')}
+                                className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                              />
+                              <span className="font-semibold">Управление СБР и Эскроу</span>
+                            </label>
+
+                            <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                disabled={!canManageStaff}
+                                checked={perms.includes('developer_accreditation')}
+                                onChange={() =>
+                                  handleToggleStaffPermission(staff.id, 'developer_accreditation')
+                                }
+                                className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                              />
+                              <span className="font-semibold">Аккредитация девелоперов</span>
+                            </label>
+
+                            <label className="flex items-center space-x-2 text-xs text-slate-800 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                disabled={!canManageStaff}
+                                checked={perms.includes('special')}
+                                onChange={() => handleToggleStaffPermission(staff.id, 'special')}
+                                className="rounded text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                              />
+                              <span className="font-semibold">Финансирование подрядчиков</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] text-slate-500 font-semibold uppercase">
+                          {staff.role === 'chief_manager'
+                            ? 'Гл. управляющий'
+                            : staff.role === 'head_manager'
+                            ? 'Руководитель дирекции'
+                            : staff.role === 'escrow_agent'
+                            ? 'Агент СБР / Эскроу'
+                            : 'Кредитный офицер'}
+                        </span>
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingStaff(staff);
+                              setEditStaffName(staff.name);
+                              setEditStaffEmail(staff.email);
+                              setEditStaffPhone(staff.phone || '');
+                              setEditStaffRole(staff.role);
+                              setEditStaffPermissions(
+                                staff.permissions || [
+                                  'escrow',
+                                  'developer_accreditation',
+                                  'special',
+                                  'staff',
+                                ]
+                              );
+                            }}
+                            className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all cursor-pointer"
+                          >
+                            Редактировать права
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSubmittingAction}
+                            onClick={() => handleToggleStaffStatus(staff.id)}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            {staff.status === 'active' ? 'Заблокировать' : 'Активировать'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSubmittingAction}
+                            onClick={() => handleDeleteBankStaff(staff)}
+                            className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                            title="Удалить сотрудника из системы"
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -2073,85 +2217,6 @@ export const BankPortalPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Credit Limit Decision */}
-      {selectedCreditReq && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-lg font-black text-slate-900">
-              Решение по кредитному лимиту: {selectedCreditReq.userName}
-            </h3>
-            <p className="text-xs text-slate-500">
-              Код клиента: {selectedCreditReq.clientCode} • Банк: {selectedCreditReq.bankName}
-            </p>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Одобренная сумма лимита (₽)
-              </label>
-              <input
-                type="number"
-                value={approvedLimitInput}
-                onChange={(e) => setApprovedLimitInput(Number(e.target.value))}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Срок действия сертификата
-              </label>
-              <input
-                type="date"
-                value={validUntilInput}
-                onChange={(e) => setValidUntilInput(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Комментарий кредитного инспектора
-              </label>
-              <textarea
-                rows={2}
-                value={creditDecisionNotes}
-                onChange={(e) => setCreditDecisionNotes(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                disabled={isSubmittingAction}
-                onClick={() => setSelectedCreditReq(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-50"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                disabled={isSubmittingAction}
-                onClick={() => handleDecideCreditLimit('rejected')}
-                className="px-4 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold disabled:opacity-50"
-              >
-                Отказать
-              </button>
-              <button
-                type="button"
-                disabled={isSubmittingAction}
-                onClick={() => handleDecideCreditLimit('approved')}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer disabled:opacity-60 flex items-center space-x-1.5"
-              >
-                {isSubmittingAction ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                    <span>Выпуск...</span>
-                  </>
-                ) : (
-                  <span>Одобрить и выпустить</span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODAL: Special Approval Decision (Task 5: Project Financing Approval) */}
       {selectedSpecialReq && (
@@ -2814,21 +2879,6 @@ export const BankPortalPage: React.FC = () => {
                   />
                   <span>Согласование объектов (Подрядчики)</span>
                 </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newStaffPermissions.includes('credit_limits')}
-                    onChange={(e) =>
-                      setNewStaffPermissions(
-                        e.target.checked
-                          ? [...newStaffPermissions, 'credit_limits']
-                          : newStaffPermissions.filter((p) => p !== 'credit_limits')
-                      )
-                    }
-                    className="rounded text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>Кредитные лимиты покупателей</span>
-                </label>
               </div>
             </div>
 
@@ -2984,21 +3034,6 @@ export const BankPortalPage: React.FC = () => {
                     className="rounded text-emerald-600 focus:ring-emerald-500"
                   />
                   <span>Согласование объектов (Подрядчики)</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editStaffPermissions.includes('credit_limits')}
-                    onChange={(e) =>
-                      setEditStaffPermissions(
-                        e.target.checked
-                          ? [...editStaffPermissions, 'credit_limits']
-                          : editStaffPermissions.filter((p) => p !== 'credit_limits')
-                      )
-                    }
-                    className="rounded text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>Кредитные лимиты покупателей</span>
                 </label>
               </div>
             </div>
