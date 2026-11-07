@@ -5,7 +5,7 @@ import {
   PartnerBankEntity,
   BankTabPermission,
 } from '../../types';
-import { initialBankEmployees, initialPartnerBanks } from '../seedData';
+import { initialBankEmployees, initialPartnerBanks, initialSpecialApprovals } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { DealsRepository } from './DealsRepository';
 import { LotsRepository } from './LotsRepository';
@@ -200,7 +200,7 @@ export class BankPortalRepository {
 
   // 2. Special Property & Small Contractor Approval Requests (Task 5)
   static async getAllSpecialApprovals(): Promise<SpecialApprovalRequest[]> {
-    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, []);
+    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, initialSpecialApprovals);
   }
 
   static async addSpecialApproval(
@@ -294,17 +294,34 @@ export class BankPortalRepository {
     const lot = await LotsRepository.getByCode(req.lotCode);
     if (lot) {
       if (decision === 'approved') {
+        const approvedRate = approvedRatePercent || 19.9;
+        const approvedPdn = maxPdnPercent || 50;
         lot.specialApprovalStatus = 'approved';
         lot.developerAccreditationStatus = 'project_approved';
         lot.approvedBankFinancing = {
           bankName: req.bankName,
-          approvedRatePercent: approvedRatePercent || 19.9,
-          maxPdnPercent: maxPdnPercent || 50,
+          approvedRatePercent: approvedRate,
+          maxPdnPercent: approvedPdn,
           approvedAt: new Date().toISOString(),
           decidedBy,
+          notes,
         };
+
+        const existingApprovals = (lot.approvedFinancingBanks || []).filter(
+          (b) => b.bankName !== req.bankName
+        );
+        existingApprovals.push({
+          bankName: req.bankName,
+          approvedRatePercent: approvedRate,
+          maxPdnPercent: approvedPdn,
+          approvedAt: new Date().toISOString(),
+          decidedBy,
+          notes,
+        });
+        lot.approvedFinancingBanks = existingApprovals;
+
         const cleanTags = (lot.tags || []).filter((t) => t !== 'Ожидает аккредитации банков');
-        const finTag = `Финансирование: ${req.bankName} (${approvedRatePercent || 19.9}%)`;
+        const finTag = `Финансирование: ${req.bankName} (${approvedRate}%)`;
         if (!cleanTags.includes(finTag)) {
           cleanTags.push(finTag);
         }
@@ -323,6 +340,9 @@ export class BankPortalRepository {
         name: devName,
         inn: devInn,
         lotCode: req.lotCode,
+        bankName: req.bankName,
+        ratePercent: approvedRatePercent,
+        pdnPercent: maxPdnPercent,
       });
     }
 

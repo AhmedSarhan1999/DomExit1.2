@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DeveloperBankTerms, Lot, PartnerBankName } from '../../types';
+import { Lot, PartnerBankName, ResolvedBankFinancing } from '../../types';
 import { MarketSettingsRepository } from '../../dal/repositories/MarketSettingsRepository';
 import { DevelopersRepository } from '../../dal/repositories/DevelopersRepository';
 import { DatabaseGateway } from '../../dal/DatabaseGateway';
@@ -29,8 +29,8 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
   const { language } = useLanguage();
 
   const [cbrRate, setCbrRate] = useState<number>(21);
-  const [bankTermsList, setBankTermsList] = useState<DeveloperBankTerms[]>([]);
-  const [selectedBank, setSelectedBank] = useState<PartnerBankName | null>(null);
+  const [bankTermsList, setBankTermsList] = useState<ResolvedBankFinancing[]>([]);
+  const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [interestRate, setInterestRate] = useState<number>(19.5);
   const [ratePreset, setRatePreset] = useState<'base' | 'family' | 'it' | 'custom'>('base');
   const [pdnPercent, setPdnPercent] = useState<40 | 50 | 60>(50);
@@ -38,42 +38,24 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
   const [termYears, setTermYears] = useState<number>(20);
 
   const loadRatesAndBankTerms = async () => {
-    let [settings, devTerms] = await Promise.all([
+    const [settings, financingList] = await Promise.all([
       MarketSettingsRepository.getSettings(),
-      DevelopersRepository.getBankTermsForDeveloper(lot.developer),
+      DevelopersRepository.resolvePropertyFinancing(lot),
     ]);
     const keyRate = settings?.cbrKeyRatePercent || 21;
     setCbrRate(keyRate);
 
-    // Cross-reference lookup with smart normalized developer matching
-    if (!devTerms || devTerms.length === 0) {
-      const allDevs = await DevelopersRepository.getAllDevelopers();
-      const normLotDev = normalizeDeveloperName(lot.developer);
-      const matchedDev = (allDevs || []).find(
-        (d) =>
-          (lot?.developerInn && d.inn && d.inn.trim() === lot.developerInn.trim()) ||
-          (normLotDev && normalizeDeveloperName(d.name) === normLotDev) ||
-          (lot?.developer &&
-            d?.name &&
-            (d.name.toLowerCase().includes(lot.developer.toLowerCase()) ||
-              lot.developer.toLowerCase().includes(d.name.toLowerCase())))
-      );
-      if (matchedDev && matchedDev.bankTerms && matchedDev.bankTerms.length > 0) {
-        devTerms = (matchedDev.bankTerms || []).filter((b) => b?.isAccredited);
-      }
-    }
+    setBankTermsList(financingList || []);
 
-    setBankTermsList(devTerms || []);
-
-    if (devTerms && devTerms.length > 0) {
+    if (financingList && financingList.length > 0) {
       const preferred =
-        devTerms.find(
+        financingList.find(
           (b) =>
             (lot.escrowBank === 'Sberbank' && b.bankName === 'Сбербанк') ||
             (lot.escrowBank === 'VTB' && b.bankName === 'ВТБ') ||
             (lot.escrowBank === 'AlfaBank' && b.bankName === 'Альфа-Банк') ||
             (lot.escrowBank === 'DomRF' && b.bankName === 'ДОМ.РФ')
-        ) || devTerms[0];
+        ) || financingList[0];
       setSelectedBank(preferred.bankName);
       setInterestRate(preferred.baseRatePercent);
       setPdnPercent(preferred.maxPdnPercent || 50);
@@ -89,13 +71,20 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
   useEffect(() => {
     loadRatesAndBankTerms();
     const unsub = DatabaseGateway.subscribe((col) => {
-      if (!col || col === 'developers' || col === 'developer_accreditation_requests' || col === 'market_settings') {
+      if (
+        !col ||
+        col === 'developers' ||
+        col === 'developer_accreditation_requests' ||
+        col === 'bank_special_approvals' ||
+        col === 'lots' ||
+        col === 'market_settings'
+      ) {
         loadRatesAndBankTerms();
       }
     });
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lot.developer, lot.lotCode]);
+  }, [lot.developer, lot.lotCode, lot.approvedBankFinancing, lot.approvedFinancingBanks]);
 
   // Reset extraDownpayment when switching between lots
   useEffect(() => {
@@ -107,7 +96,7 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
     return bankTermsList.find((b) => b.bankName === selectedBank) || null;
   }, [bankTermsList, selectedBank]);
 
-  const handleSelectBank = (term: DeveloperBankTerms) => {
+  const handleSelectBank = (term: ResolvedBankFinancing) => {
     setSelectedBank(term.bankName);
     setPdnPercent(term.maxPdnPercent || 50);
     if (ratePreset === 'family' && term.familyMortgage6) {
@@ -257,6 +246,15 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
                     Базовая: <strong className="text-slate-900">{term.baseRatePercent}%</strong>
                   </div>
                   <div className="flex items-center gap-1 mt-1 flex-wrap">
+                    {term.source === 'project' ? (
+                      <span className="text-[9px] font-bold bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded">
+                        Проектная линия
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded">
+                        Аккредитован
+                      </span>
+                    )}
                     {term.familyMortgage6 && (
                       <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded">
                         Семейная 6%

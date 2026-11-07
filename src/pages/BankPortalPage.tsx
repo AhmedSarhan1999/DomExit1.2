@@ -243,6 +243,9 @@ export const BankPortalPage: React.FC = () => {
         15000
       );
       if (updated) {
+        if (escrowFilter === 'pending_deposit') {
+          setEscrowFilter('awaiting_curator');
+        }
         await loadData();
         showToast(
           `Депонирование средств (${formatRubles(
@@ -498,6 +501,13 @@ export const BankPortalPage: React.FC = () => {
     (d?.bankTerms || []).some((b) => b?.bankName === activePartnerBank && b?.isAccredited)
   );
 
+  const pendingAccreditationDevs = (accreditedDevs || []).filter((d) => {
+    const isAccreditedByThisBank = (d?.bankTerms || []).some(
+      (b) => b?.bankName === activePartnerBank && b?.isAccredited
+    );
+    return !isAccreditedByThisBank;
+  });
+
   const tenantSpecialRequests = (specialRequests || []).filter(
     (s) => s?.bankName === activePartnerBank || !s?.bankName
   );
@@ -586,10 +596,13 @@ export const BankPortalPage: React.FC = () => {
 
     try {
       setIsSubmittingAction(true);
+      const matchedExisting = (accreditedDevs || []).find((d) => d.name === devName);
+      const effectiveInn = customDevInnToAdd.trim() || matchedExisting?.inn || undefined;
+
       await withAsyncTimeout(
         DevelopersRepository.accreditDeveloperForBank({
           developerName: devName,
-          developerInn: customDevInnToAdd.trim() || undefined,
+          developerInn: effectiveInn,
           bankName: activePartnerBank,
           baseRatePercent: addDevBaseRate,
           familyMortgage6: addDevFamily6,
@@ -1644,6 +1657,94 @@ export const BankPortalPage: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Platform Registry: Developers Available for Bank Accreditation (Rule 1 & Rule 2) */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Единый реестр платформы DomExit
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700">
+                      {pendingAccreditationDevs.length} девелоперов
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 mt-1">
+                    Застройщики, доступные для аккредитации в {activePartnerBank}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Девелоперы, зарегистрированные через согласование проектов (Шаг 3) или добавленные в систему. Нажмите «Аккредитовать», чтобы подключить генеральные ставки банка.
+                  </p>
+                </div>
+              </div>
+
+              {pendingAccreditationDevs.length === 0 ? (
+                <div className="text-xs text-slate-400 italic py-6 text-center border border-dashed border-slate-200 rounded-xl">
+                  Все застройщики из реестра платформы уже аккредитованы в {activePartnerBank}.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pendingAccreditationDevs.map((dev) => {
+                    const isViaProject =
+                      dev.registered_via_project || dev.registrationSource === 'project_approval';
+                    return (
+                      <div
+                        key={dev.id}
+                        className="border border-slate-200 rounded-2xl p-4 bg-slate-50/70 hover:bg-white hover:border-slate-300 transition-all flex flex-col justify-between space-y-3"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isViaProject
+                                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                                  : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {isViaProject ? '✓ Одобрение проекта (Таб 3)' : 'Каталог платформы'}
+                            </span>
+                            {dev.inn && (
+                              <span className="text-[11px] font-mono text-slate-500">
+                                ИНН {dev.inn}
+                              </span>
+                            )}
+                          </div>
+
+                          <h4 className="text-base font-black text-slate-900 leading-snug">
+                            {dev.name}
+                          </h4>
+
+                          {dev.registrationNote && (
+                            <p className="text-[11px] text-slate-500 line-clamp-2">
+                              {dev.registrationNote}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDevToAdd(dev.name);
+                            setCustomDevNameToAdd(dev.name);
+                            setCustomDevInnToAdd(dev.inn || '');
+                            setAddDevBaseRate(19.8);
+                            setAddDevMaxPdn(50);
+                            setAddDevFamily6(true);
+                            setAddDevIt6(true);
+                            setShowAddDevModal(true);
+                          }}
+                          className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Аккредитовать в {activePartnerBank}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -2398,16 +2499,30 @@ export const BankPortalPage: React.FC = () => {
                 </label>
                 <select
                   value={selectedDevToAdd}
-                  onChange={(e) => setSelectedDevToAdd(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedDevToAdd(val);
+                    if (val && val !== '__custom__') {
+                      const matched = (accreditedDevs || []).find((d) => d.name === val);
+                      if (matched?.inn) setCustomDevInnToAdd(matched.inn);
+                    }
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-emerald-600"
                 >
-                  <option value="">-- Выберите застройщика --</option>
-                  {RUSSIAN_TOP_DEVELOPERS.map((devName: string) => (
-                    <option key={devName} value={devName}>
-                      {devName}
+                  <option value="">-- Выберите застройщика из единого реестра --</option>
+                  {(accreditedDevs || []).map((dev) => (
+                    <option key={dev.id} value={dev.name}>
+                      {dev.name} {dev.inn ? `(ИНН ${dev.inn})` : ''} {dev.registered_via_project ? '• через проект' : ''}
                     </option>
                   ))}
-                  <option value="__custom__">+ Добавить нового застройщика</option>
+                  {RUSSIAN_TOP_DEVELOPERS.filter(
+                    (topName) => !(accreditedDevs || []).some((d) => d.name === topName)
+                  ).map((topName) => (
+                    <option key={topName} value={topName}>
+                      {topName}
+                    </option>
+                  ))}
+                  <option value="__custom__">+ Добавить нового застройщика (вручную)</option>
                 </select>
               </div>
 

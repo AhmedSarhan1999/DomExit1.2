@@ -9,6 +9,7 @@ import {
   SellerExitRequest,
   PartnerBankEntity,
   BankEmployee,
+  SpecialApprovalRequest,
 } from '../types';
 
 export const initialLots: Lot[] = [
@@ -1654,5 +1655,46 @@ export const initialUsers: UserProfile[] = [
     isInvestorApproved: false,
     favorites: ['U-10566'],
     registeredAt: '2025-03-15T00:00:00Z',
+  },
+];
+
+export const initialSpecialApprovals: SpecialApprovalRequest[] = [
+  {
+    id: 'spec-001',
+    lotId: 'lot-5',
+    lotCode: 'U-10492',
+    complexName: 'ЖК «Приморский Квартал»',
+    developer: 'ООО СК Мегалит',
+    developerInn: '7814892011',
+    contractorName: 'ООО СК Мегалит',
+    contractorInn: '7814892011',
+    projectTitle: 'ЖК «Приморский Квартал» (Корпус 12)',
+    location: 'г. Санкт-Петербург, Приморский район',
+    contractPriceRub: 9800000,
+    requestedByEmployeeId: 'emp-1',
+    requestedByEmployeeName: 'Алексей Смирнов',
+    bankName: 'Сбербанк',
+    reason: 'Запрос индивидуального проектного финансирования под эскроу-счет (СБР) для регионального застройщика Мегалит',
+    requestedAt: '2026-10-25T12:00:00.000Z',
+    status: 'pending',
+  },
+  {
+    id: 'spec-002',
+    lotId: 'lot-7',
+    lotCode: 'U-10840',
+    complexName: 'ЖК «Смоленский Дом»',
+    developer: 'ГК Смоленск-Девелопмент',
+    developerInn: '6732014490',
+    contractorName: 'ГК Смоленск-Девелопмент',
+    contractorInn: '6732014490',
+    projectTitle: 'ЖК «Смоленский Дом»',
+    location: 'г. Москва, Смоленский бульвар',
+    contractPriceRub: 22500000,
+    requestedByEmployeeId: 'emp-2',
+    requestedByEmployeeName: 'Ольга Романова',
+    bankName: 'ВТБ',
+    reason: 'Индивидуальная кредитная линия для закрытия сделки уступки прав требования',
+    requestedAt: '2026-10-27T14:30:00.000Z',
+    status: 'pending',
   },
 ];

@@ -108,7 +108,16 @@ export interface Lot {
     maxPdnPercent: number;
     approvedAt: string;
     decidedBy: string;
+    notes?: string;
   };
+  approvedFinancingBanks?: Array<{
+    bankName: string;
+    approvedRatePercent: number;
+    maxPdnPercent: number;
+    approvedAt: string;
+    decidedBy?: string;
+    notes?: string;
+  }>;
 
   // Telemetry & Engagement Metrics
   publishedAt?: string; // ISO Timestamp or formatted date
@@ -472,10 +481,24 @@ export interface AccreditedDeveloper {
   inn: string; // 10-digit corporate ИНН or 12-digit for ИП
   isAccredited: boolean;
   registrationSource?: 'institutional' | 'project_approval' | 'seed';
+  registered_via_project?: boolean;
   registrationNote?: string;
   bankTerms: DeveloperBankTerms[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ResolvedBankFinancing {
+  bankName: PartnerBankName | string;
+  baseRatePercent: number;
+  maxPdnPercent: 40 | 50 | 60;
+  familyMortgage6: boolean;
+  itMortgage6: boolean;
+  source: 'developer' | 'project';
+  isAccredited: boolean;
+  sourceLabel: string; // 'Генеральная аккредитация девелопера' | 'Проектное финансирование объекта'
+  accreditedAt?: string;
+  decidedBy?: string;
 }
 
 export interface DeveloperAccreditationRequest {

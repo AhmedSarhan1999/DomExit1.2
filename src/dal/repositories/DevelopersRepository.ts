@@ -4,6 +4,9 @@ import {
   DeveloperBankTerms,
   PartnerBankName,
   RussianCityCode,
+  ResolvedBankFinancing,
+  Lot,
+  SpecialApprovalRequest,
 } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
@@ -314,6 +317,128 @@ class DevelopersRepositoryController {
     }
 
     return [];
+  }
+
+  /**
+   * Dual-Source Bank Financing Resolver with Precedence Hierarchy (Rule 2 & Rule 3)
+   * Merges:
+   * 1. Institutional Developer Accreditation (Tab 2)
+   * 2. Individual Project / Lot Financing Approvals (Tab 3)
+   * Developer accreditation terms strictly override individual lot terms if bank appears in both.
+   */
+  async resolvePropertyFinancing(lot: Lot): Promise<ResolvedBankFinancing[]> {
+    if (!lot) return [];
+
+    // Source 1: Institutional Developer Accreditation terms
+    const devTerms = await this.getBankTermsForDeveloper(lot.developer);
+
+    // Source 2: Individual project / lot financing approvals
+    const projectApprovals: Array<{
+      bankName: string;
+      approvedRatePercent: number;
+      maxPdnPercent: 40 | 50 | 60;
+      approvedAt?: string;
+      decidedBy?: string;
+      notes?: string;
+    }> = [];
+
+    // From lot.approvedFinancingBanks
+    if (lot.approvedFinancingBanks && lot.approvedFinancingBanks.length > 0) {
+      for (const b of lot.approvedFinancingBanks) {
+        if (b?.bankName) {
+          projectApprovals.push({
+            bankName: b.bankName,
+            approvedRatePercent: b.approvedRatePercent || 19.9,
+            maxPdnPercent: (b.maxPdnPercent as 40 | 50 | 60) || 50,
+            approvedAt: b.approvedAt,
+            decidedBy: b.decidedBy,
+            notes: b.notes,
+          });
+        }
+      }
+    }
+
+    // From lot.approvedBankFinancing
+    if (lot.approvedBankFinancing?.bankName) {
+      const exists = projectApprovals.some((p) => p.bankName === lot.approvedBankFinancing?.bankName);
+      if (!exists) {
+        projectApprovals.push({
+          bankName: lot.approvedBankFinancing.bankName,
+          approvedRatePercent: lot.approvedBankFinancing.approvedRatePercent || 19.9,
+          maxPdnPercent: (lot.approvedBankFinancing.maxPdnPercent as 40 | 50 | 60) || 50,
+          approvedAt: lot.approvedBankFinancing.approvedAt,
+          decidedBy: lot.approvedBankFinancing.decidedBy,
+          notes: lot.approvedBankFinancing.notes,
+        });
+      }
+    }
+
+    // Also check bank_special_approvals collection for this lotCode with status === 'approved'
+    try {
+      const allSpecial = await DatabaseGateway.getAll<SpecialApprovalRequest>('bank_special_approvals', []);
+      const lotSpecialApproved = (allSpecial || []).filter(
+        (s) => s?.lotCode === lot.lotCode && s?.status === 'approved' && s?.bankName
+      );
+      for (const s of lotSpecialApproved) {
+        const exists = projectApprovals.some((p) => p.bankName === s.bankName);
+        if (!exists) {
+          projectApprovals.push({
+            bankName: s.bankName,
+            approvedRatePercent: s.approvedRatePercent || 19.9,
+            maxPdnPercent: (s.maxPdnPercent as 40 | 50 | 60) || 50,
+            approvedAt: s.decidedAt,
+            decidedBy: s.decidedBy,
+            notes: s.decisionNotes,
+          });
+        }
+      }
+    } catch {
+      // Safe fallback if collection is temporarily empty
+    }
+
+    // Rule 3: Precedence Hierarchy (Developer Terms Override Lot Terms)
+    const resultMap = new Map<string, ResolvedBankFinancing>();
+
+    // 1. Add individual project approvals
+    for (const p of projectApprovals) {
+      resultMap.set(p.bankName, {
+        bankName: p.bankName,
+        baseRatePercent: p.approvedRatePercent,
+        maxPdnPercent: p.maxPdnPercent,
+        familyMortgage6: true,
+        itMortgage6: true,
+        source: 'project',
+        isAccredited: true,
+        sourceLabel: 'Проектное финансирование объекта',
+        accreditedAt: p.approvedAt,
+        decidedBy: p.decidedBy,
+      });
+    }
+
+    // 2. Overlay Developer Accreditation terms (strictly overrides project terms if bank is in both)
+    for (const d of devTerms) {
+      if (d?.bankName && d.isAccredited) {
+        resultMap.set(d.bankName, {
+          bankName: d.bankName,
+          baseRatePercent: d.baseRatePercent,
+          maxPdnPercent: d.maxPdnPercent || 50,
+          familyMortgage6: !!d.familyMortgage6,
+          itMortgage6: !!d.itMortgage6,
+          source: 'developer',
+          isAccredited: true,
+          sourceLabel: 'Генеральная аккредитация девелопера',
+          accreditedAt: d.accreditedAt,
+          decidedBy: d.accreditedBy,
+        });
+      }
+    }
+
+    return Array.from(resultMap.values());
+  }
+
+  async isLotFinancingApproved(lot: Lot): Promise<boolean> {
+    const list = await this.resolvePropertyFinancing(lot);
+    return list.length > 0;
   }
 
   async getAllAccreditationRequests(): Promise<DeveloperAccreditationRequest[]> {
@@ -726,26 +851,40 @@ class DevelopersRepositoryController {
     name: string;
     inn: string;
     lotCode?: string;
+    bankName?: string;
+    ratePercent?: number;
+    pdnPercent?: 40 | 50 | 60;
   }): Promise<AccreditedDeveloper> {
     const existing = await this.findDeveloperByName(params.name);
+    const now = new Date().toISOString();
     if (existing) {
+      let modified = false;
       if (params.inn && (!existing.inn || existing.inn === '7700000000')) {
         existing.inn = params.inn;
+        modified = true;
+      }
+      if (!existing.registered_via_project && !existing.isAccredited) {
+        existing.registered_via_project = true;
+        modified = true;
+      }
+      if (modified) {
+        existing.updatedAt = now;
         await DatabaseGateway.save<AccreditedDeveloper>(DEVELOPERS_COLLECTION, existing);
       }
       return existing;
     }
 
-    const now = new Date().toISOString();
+    const norm = normalizeDeveloperName(params.name);
     const newDev: AccreditedDeveloper = {
-      id: `dev-project-${Date.now()}`,
+      id: `dev-project-${norm.replace(/[^a-z0-9]/gi, '').toLowerCase() || Date.now()}`,
       name: params.name.trim(),
-      inn: params.inn.trim(),
-      isAccredited: false, // NOT institutionally accredited for all projects in Tab 2
+      inn: params.inn.trim() || '7814892011',
+      isAccredited: false, // NOT yet institutionally accredited across all projects in Tab 2
+      registered_via_project: true,
       registrationSource: 'project_approval',
       registrationNote: `Зарегистрирован через индивидуальное одобрение проекта${
         params.lotCode ? ` (Лот #${params.lotCode})` : ''
-      }`,
+      }${params.bankName ? ` банком ${params.bankName}` : ''}`,
       bankTerms: [],
       createdAt: now,
       updatedAt: now,

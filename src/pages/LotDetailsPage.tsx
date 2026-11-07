@@ -74,16 +74,16 @@ export const LotDetailsPage: React.FC = () => {
       setLot(data);
 
       if (data) {
-        const [similar, districtMatches, yieldCfg, devAccredited] = await Promise.all([
+        const [similar, districtMatches, yieldCfg, financingList] = await Promise.all([
           LotsRepository.getSimilarInDistrict(data, 3),
           LotsRepository.getAll({ city: data.city, district: data.district, status: 'all' }),
           MarketSettingsRepository.getDistrictYieldConfig(data.district),
-          DevelopersRepository.isDeveloperAccredited(data.developer),
+          DevelopersRepository.resolvePropertyFinancing(data),
         ]);
         setSimilarLots(similar);
         setSameDistrictCount(districtMatches.length);
         setDistrictYield(yieldCfg);
-        setIsDevAccredited(devAccredited);
+        setIsDevAccredited(financingList.length > 0);
 
         if (data.assignedEmployeeId) {
           const emp = await EmployeesRepository.getById(data.assignedEmployeeId);
@@ -106,7 +106,14 @@ export const LotDetailsPage: React.FC = () => {
     fetchLot(true);
 
     const unsub = DatabaseGateway.subscribe((col) => {
-      if (!col || col === 'lots' || col === 'market_settings' || col === 'developers') {
+      if (
+        !col ||
+        col === 'lots' ||
+        col === 'market_settings' ||
+        col === 'developers' ||
+        col === 'bank_special_approvals' ||
+        col === 'developer_accreditation_requests'
+      ) {
         fetchLot(false);
       }
     });
