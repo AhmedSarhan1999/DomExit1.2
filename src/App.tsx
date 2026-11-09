@@ -28,6 +28,9 @@ import { AdminLegalAuditPage } from './pages/AdminLegalAuditPage';
 import { AdminMatchmakerPage } from './pages/AdminMatchmakerPage';
 import { AdminClosingPage } from './pages/AdminClosingPage';
 import { AdminPartnersBotPage } from './pages/AdminPartnersBotPage';
+import { AdminInvestorsPage } from './pages/AdminInvestorsPage';
+import { AdminBrokersPage } from './pages/AdminBrokersPage';
+import { initReferralTracker } from './utils/referralTracker';
 import { BankPortalPage } from './pages/BankPortalPage';
 import { BankGatewayErrorBoundary } from './components/common/BankGatewayErrorBoundary';
 import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
@@ -123,7 +126,9 @@ export const App: React.FC = () => {
             <Route path="/admin/closing" element={<Navigate to="/admin/closing/DEAL-2025-10566" replace />} />
             <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
             
-            <Route path="/admin/partners-bot" element={<AdminPartnersBotPage />} />
+            <Route path="/admin/investors" element={<AdminInvestorsPage />} />
+            <Route path="/admin/brokers" element={<AdminBrokersPage />} />
+            <Route path="/admin/partners-bot" element={<Navigate to="/admin/brokers" replace />} />
 
             {/* Partner Bank Gateway (Mission 6) */}
             <Route

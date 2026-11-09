@@ -9,6 +9,7 @@ import {
   Clock,
   FileText,
   Users,
+  User,
   Wallet,
   Building2,
   Plus,
@@ -20,6 +21,7 @@ import {
   Percent,
   Eye,
   FolderOpen,
+  MessageSquare,
   ArrowLeft,
   Camera,
   ChevronDown,
@@ -57,6 +59,8 @@ import {
 } from '../types';
 import { formatRubles } from '../utils/formatters';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { UserProfileModal } from '../components/profile/UserProfileModal';
+import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal';
 import { BankGatewayErrorBoundary } from '../components/common/BankGatewayErrorBoundary';
 
 export const BankPortalPage: React.FC = () => {
@@ -78,7 +82,19 @@ export const BankPortalPage: React.FC = () => {
   const [specialRequests, setSpecialRequests] = useState<SpecialApprovalRequest[]>([]);
   const [bankStaff, setBankStaff] = useState<BankEmployee[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [escrowSearchQuery, setEscrowSearchQuery] = useState('');
+  const [devSearchQuery, setDevSearchQuery] = useState('');
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [activeEscrowChatDeal, setActiveEscrowChatDeal] = useState<{
+    dealId: string;
+    dealStage?: string;
+    lotCode?: string;
+    lotTitle?: string;
+    bankName?: string;
+    buyerName?: string;
+  } | null>(null);
   const [escrowFilter, setEscrowFilter] = useState<
     'all_active' | 'pending_deposit' | 'awaiting_curator' | 'ready_for_release' | 'archived'
   >('all_active');
@@ -501,12 +517,20 @@ export const BankPortalPage: React.FC = () => {
     (d?.bankTerms || []).some((b) => b?.bankName === activePartnerBank && b?.isAccredited)
   );
 
-  const pendingAccreditationDevs = (accreditedDevs || []).filter((d) => {
-    const isAccreditedByThisBank = (d?.bankTerms || []).some(
-      (b) => b?.bankName === activePartnerBank && b?.isAccredited
+  const pendingAccreditationDevs = useMemo(() => {
+    const list = (accreditedDevs || []).filter((d) => {
+      const isAccreditedByThisBank = (d?.bankTerms || []).some(
+        (b) => b?.bankName === activePartnerBank && b?.isAccredited
+      );
+      return !isAccreditedByThisBank;
+    });
+    if (!devSearchQuery.trim()) return list;
+    const q = devSearchQuery.toLowerCase().trim();
+    return list.filter((dev) =>
+      (dev.name && dev.name.toLowerCase().includes(q)) ||
+      (dev.inn && dev.inn.toLowerCase().includes(q))
     );
-    return !isAccreditedByThisBank;
-  });
+  }, [accreditedDevs, activePartnerBank, devSearchQuery]);
 
   const tenantSpecialRequests = (specialRequests || []).filter(
     (s) => s?.bankName === activePartnerBank || !s?.bankName
@@ -516,35 +540,11 @@ export const BankPortalPage: React.FC = () => {
     (s) => s?.bankName === activePartnerBank || isOwner
   );
 
-  // Filtered Deals for Tab 1 with safe lowercasing & persistent lifecycle status view
-  const filteredDeals = useMemo(() => {
-    return (tenantDeals || []).filter((d) => {
-      if (!d) return false;
-      const step = d.escrowWorkflow?.step || 'curator_review';
-      const hasRosreestr = Boolean(d.escrowWorkflow?.rosreestrStampDocUrl);
-
-      if (escrowFilter === 'all_active') {
-        if (step === 'deal_finalized' || step === 'deal_cancelled') return false;
-      } else if (escrowFilter === 'pending_deposit') {
-        if (step !== 'bank_escrow_deposit' && step !== 'curator_review') return false;
-      } else if (escrowFilter === 'awaiting_curator') {
-        if (step !== 'signing_photos' || hasRosreestr) return false;
-      } else if (escrowFilter === 'ready_for_release') {
-        if (step !== 'bank_funds_release' && !hasRosreestr) return false;
-      } else if (escrowFilter === 'archived') {
-        if (step !== 'deal_finalized' && step !== 'deal_cancelled') return false;
-      }
-
-      if (!searchQuery) return true;
-      const q = searchQuery.toLowerCase();
-      return (
-        (d.dealId && d.dealId.toLowerCase().includes(q)) ||
-        (d.lotCode && d.lotCode.toLowerCase().includes(q)) ||
-        (d.lotTitle && d.lotTitle.toLowerCase().includes(q)) ||
-        (d.buyerName && d.buyerName.toLowerCase().includes(q))
-      );
-    });
-  }, [tenantDeals, escrowFilter, searchQuery]);
+  const activeEscrowDeals = useMemo(() => {
+    return (tenantDeals || []).filter(
+      (d) => d?.escrowWorkflow?.step !== 'deal_finalized' && d?.escrowWorkflow?.step !== 'deal_cancelled'
+    );
+  }, [tenantDeals]);
 
   // Hierarchical grouping of special requests by Contractor + INN (Task 3 Architecture)
   const groupedSpecialContractors = useMemo(() => {
@@ -577,6 +577,74 @@ export const BankPortalPage: React.FC = () => {
 
     return Object.values(map);
   }, [tenantSpecialRequests]);
+
+  // Filtered Deals for Tab 1 with safe lowercasing & scoped search
+  const filteredDeals = useMemo(() => {
+    return (tenantDeals || []).filter((d) => {
+      if (!d) return false;
+      const step = d.escrowWorkflow?.step || 'curator_review';
+      const hasRosreestr = Boolean(d.escrowWorkflow?.rosreestrStampDocUrl);
+
+      if (escrowFilter === 'all_active') {
+        if (step === 'deal_finalized' || step === 'deal_cancelled') return false;
+      } else if (escrowFilter === 'pending_deposit') {
+        if (step !== 'bank_escrow_deposit' && step !== 'curator_review') return false;
+      } else if (escrowFilter === 'awaiting_curator') {
+        if (step !== 'signing_photos' || hasRosreestr) return false;
+      } else if (escrowFilter === 'ready_for_release') {
+        if (step !== 'bank_funds_release' && !hasRosreestr) return false;
+      } else if (escrowFilter === 'archived') {
+        if (step !== 'deal_finalized' && step !== 'deal_cancelled') return false;
+      }
+
+      if (!escrowSearchQuery) return true;
+      const q = escrowSearchQuery.toLowerCase().trim();
+      return (
+        (d.dealId && d.dealId.toLowerCase().includes(q)) ||
+        (d.lotCode && d.lotCode.toLowerCase().includes(q)) ||
+        (d.lotTitle && d.lotTitle.toLowerCase().includes(q)) ||
+        (d.buyerName && d.buyerName.toLowerCase().includes(q)) ||
+        (d.developer && d.developer.toLowerCase().includes(q)) ||
+        Boolean(d.escrowWorkflow?.bankName && d.escrowWorkflow.bankName.toLowerCase().includes(q))
+      );
+    });
+  }, [tenantDeals, escrowFilter, escrowSearchQuery]);
+
+  const filteredAccreditedDevs = useMemo(() => {
+    if (!devSearchQuery.trim()) return tenantAccreditedDevs;
+    const q = devSearchQuery.toLowerCase().trim();
+    return tenantAccreditedDevs.filter((dev) =>
+      (dev.name && dev.name.toLowerCase().includes(q)) ||
+      (dev.inn && dev.inn.toLowerCase().includes(q))
+    );
+  }, [tenantAccreditedDevs, devSearchQuery]);
+
+  const filteredGroupedSpecialContractors = useMemo(() => {
+    if (!projectSearchQuery.trim()) return groupedSpecialContractors;
+    const q = projectSearchQuery.toLowerCase().trim();
+    return groupedSpecialContractors.filter((group) => {
+      const matchContractor =
+        (group.contractorName && group.contractorName.toLowerCase().includes(q)) ||
+        (group.contractorInn && group.contractorInn.toLowerCase().includes(q));
+      if (matchContractor) return true;
+      return (group.requests || []).some(
+        (r) =>
+          (r.complexName && r.complexName.toLowerCase().includes(q)) ||
+          (r.developer && r.developer.toLowerCase().includes(q)) ||
+          (r.lotCode && r.lotCode.toLowerCase().includes(q))
+      );
+    });
+  }, [groupedSpecialContractors, projectSearchQuery]);
+
+  const filteredBankStaff = useMemo(() => {
+    if (!staffSearchQuery.trim()) return tenantBankStaff;
+    const q = staffSearchQuery.toLowerCase().trim();
+    return tenantBankStaff.filter((st) =>
+      (st.name && st.name.toLowerCase().includes(q)) ||
+      (st.email && st.email.toLowerCase().includes(q)) ||
+      (st.role && st.role.toLowerCase().includes(q))
+    );
+  }, [tenantBankStaff, staffSearchQuery]);
 
   // Accredit Developer for Bank
   const handleAccreditDeveloper = async () => {
@@ -963,13 +1031,17 @@ export const BankPortalPage: React.FC = () => {
               <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
               <span>Панель владельца</span>
             </Link>
-            <Link
-              to="/"
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors flex items-center space-x-1.5 shadow-xs"
+
+            <button
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer"
+              title="Профиль и безопасность сотрудника"
             >
-              <span>На витрину</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </Link>
+              <User className="w-3.5 h-3.5 text-slate-600" />
+              <span>Профиль</span>
+            </button>
+
           </div>
         </div>
       </header>
@@ -1051,7 +1123,7 @@ export const BankPortalPage: React.FC = () => {
                 }`}
               >
                 <Lock className="w-4 h-4" />
-                <span>1. Эскроу и СБР (Синхронизация закрытия)</span>
+                <span>1. Эскроу и СБР ({activeEscrowDeals.length})</span>
                 {pendingEscrowCount > 0 && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
@@ -1092,7 +1164,7 @@ export const BankPortalPage: React.FC = () => {
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                <span>3. Согласование объектов (Подрядчики)</span>
+                <span>3. Согласование объектов ({tenantSpecialRequests.length})</span>
                 {pendingSpecialCount > 0 && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
@@ -1123,24 +1195,51 @@ export const BankPortalPage: React.FC = () => {
             )}
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Поиск по коду лота, ФИО, ЖК..."
-              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600"
-            />
-          </div>
+
         </div>
 
-        {/* Loading Spinner or Active Tab Content */}
+        {/* Loading Skeleton Screen or Active Tab Content */}
         {isLoadingData ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-16 shadow-xs flex flex-col items-center justify-center space-y-4">
-            <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-            <div className="text-sm font-bold text-slate-700">Загрузка данных банковского шлюза...</div>
-            <div className="text-xs text-slate-400">Синхронизация с реестром банков-партнеров и эскроу-счетов</div>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3 animate-pulse"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-24 bg-slate-200 rounded-md" />
+                    <div className="w-8 h-8 rounded-xl bg-slate-100" />
+                  </div>
+                  <div className="h-8 w-16 bg-slate-200 rounded-lg" />
+                  <div className="h-3 w-32 bg-slate-100 rounded-md" />
+                </div>
+              ))}
+            </div>
+            <div className="h-14 bg-slate-200/60 rounded-2xl animate-pulse" />
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                <div className="h-5 w-48 bg-slate-200 rounded-md animate-pulse" />
+                <div className="h-4 w-28 bg-slate-100 rounded-md animate-pulse" />
+              </div>
+              {[1, 2, 3].map((r) => (
+                <div
+                  key={r}
+                  className="p-5 rounded-2xl border border-slate-100 bg-slate-50/50 space-y-3 animate-pulse"
+                >
+                  <div className="flex justify-between">
+                    <div className="h-4 w-40 bg-slate-200 rounded-md" />
+                    <div className="h-4 w-20 bg-slate-200 rounded-md" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2">
+                    <div className="h-3 bg-slate-200/80 rounded-md" />
+                    <div className="h-3 bg-slate-200/80 rounded-md" />
+                    <div className="h-3 bg-slate-200/80 rounded-md" />
+                    <div className="h-3 bg-slate-200/80 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -1158,13 +1257,12 @@ export const BankPortalPage: React.FC = () => {
                       Шаг 1: Куратор передает пакет в банк → Шаг 2: Банк подтверждает депонирование средств покупателя → Шаг 3: Куратор загружает фото подписания и штамп Росреестра → Шаг 4: Банк раскрывает СБР и выплачивает транши.
                     </p>
                   </div>
-                  <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shrink-0">
-                    Real-Time DAL Sync
-                  </span>
+
                 </div>
 
-                {/* Persistent Lifecycle Filter Bar (Mission: Lifecycle Control Protocol) */}
-                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+                {/* Persistent Lifecycle Filter Bar with Scoped Search */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-2 bg-slate-100 rounded-2xl border border-slate-200">
+                  <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setEscrowFilter('all_active')}
@@ -1220,15 +1318,33 @@ export const BankPortalPage: React.FC = () => {
                   >
                     Закрытые сделки (Архив СБР) ({archivedEscrowDealsCount})
                   </button>
+                  </div>
+
+                  <div className="relative w-full md:w-80 shrink-0">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={escrowSearchQuery}
+                      onChange={(e) => setEscrowSearchQuery(e.target.value)}
+                      placeholder="Поиск по сделке, коду лота, ФИО, ЖК..."
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                    />
+                  </div>
                 </div>
 
                 {filteredDeals.length === 0 ? (
-                  <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
-                    <Lock className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                    <div className="text-sm font-bold text-slate-700">Нет данных для отображения в данном разделе</div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      Сделки с эскроу для банка {activePartnerBank} не найдены
+                  <div className="bg-slate-50/60 border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mx-auto shadow-2xs">
+                      <Lock className="w-6 h-6" />
                     </div>
+                    <h3 className="text-sm font-bold text-slate-800">
+                      {escrowSearchQuery ? 'Сделок по заданному запросу не найдено' : 'Нет активных сделок в данном статусе'}
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      {escrowSearchQuery
+                        ? 'Попробуйте изменить поисковый запрос (номер сделки, код лота, ФИО, ЖК)'
+                        : `Сделки с эскроу для банка ${activePartnerBank} появятся здесь автоматически после инициализации куратором DomExit`}
+                    </p>
                   </div>
                 ) : (
                   filteredDeals.map((deal) => {
@@ -1435,6 +1551,24 @@ export const BankPortalPage: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2.5">
                         <button
                           type="button"
+                          onClick={() => {
+                            setActiveEscrowChatDeal({
+                              dealId: deal.dealId,
+                              dealStage: step,
+                              lotCode: deal.lotCode,
+                              lotTitle: deal.lotTitle,
+                              bankName: wf?.bankName || activePartnerBank,
+                              buyerName: deal.buyerName,
+                            });
+                          }}
+                          className="px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                        >
+                          <MessageSquare className="w-4 h-4 text-indigo-600" />
+                          <span>Шлюз связи с покупателем</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() =>
                             openLotDocumentVault(
                               deal.lotCode,
@@ -1542,34 +1676,51 @@ export const BankPortalPage: React.FC = () => {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedDevToAdd('');
-                    setCustomDevNameToAdd('');
-                    setCustomDevInnToAdd('');
-                    setShowAddDevModal(true);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center space-x-2 shrink-0 shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Добавить застройщика в аккредитацию</span>
-                </button>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={devSearchQuery}
+                      onChange={(e) => setDevSearchQuery(e.target.value)}
+                      placeholder="Поиск по названию застройщика, ИНН..."
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDevToAdd('');
+                      setCustomDevNameToAdd('');
+                      setCustomDevInnToAdd('');
+                      setShowAddDevModal(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center space-x-2 shrink-0 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Добавить застройщика в аккредитацию</span>
+                  </button>
+                </div>
               </div>
 
-              {tenantAccreditedDevs.length === 0 ? (
-                <div className="border border-dashed border-slate-300 rounded-2xl p-10 text-center text-slate-500">
-                  <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                  <div className="text-sm font-bold text-slate-700">
-                    Нет данных для отображения в данном разделе
+              {filteredAccreditedDevs.length === 0 ? (
+                <div className="bg-slate-50/60 border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mx-auto shadow-2xs">
+                    <Building2 className="w-6 h-6" />
                   </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    Нажмите «+ Добавить застройщика в аккредитацию», чтобы аккредитовать девелопера и настроить базовые ставки
-                  </div>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    {devSearchQuery ? 'Застройщиков по заданному запросу не найдено' : 'Нет аккредитованных застройщиков для банка'}
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    {devSearchQuery
+                      ? 'Проверьте правильность написания названия или ИНН'
+                      : 'Нажмите «+ Добавить застройщика в аккредитацию», чтобы аккредитовать девелопера и настроить базовые ставки'}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {tenantAccreditedDevs.map((dev) => {
+                  {filteredAccreditedDevs.map((dev) => {
                     const terms = (dev?.bankTerms || []).find(
                       (b) => b?.bankName === activePartnerBank && b?.isAccredited
                     );
@@ -1762,22 +1913,41 @@ export const BankPortalPage: React.FC = () => {
                   Индивидуальный кредитный андеррайтинг, проверка смет в S3 Document Vault и назначение проектных ставок
                 </p>
               </div>
-              <div className="flex items-center space-x-2 text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-                <span>Подрядчиков на проверке:</span>
-                <span className="font-black text-slate-900">{groupedSpecialContractors.length}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={projectSearchQuery}
+                    onChange={(e) => setProjectSearchQuery(e.target.value)}
+                    placeholder="Поиск по подрядчику, ЖК, городу или ИНН..."
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2 text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl shrink-0">
+                  <span>Подрядчиков на проверке:</span>
+                  <span className="font-black text-slate-900">{groupedSpecialContractors.length}</span>
+                </div>
               </div>
             </div>
 
-            {groupedSpecialContractors.length === 0 ? (
-              <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
-                <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                <div className="text-sm font-bold text-slate-700">Нет данных для отображения в данном разделе</div>
-                <div className="text-xs text-slate-400 mt-1">
-                  Все проекты подрядчиков для банка {activePartnerBank} согласованы
+            {filteredGroupedSpecialContractors.length === 0 ? (
+              <div className="bg-slate-50/60 border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mx-auto shadow-2xs">
+                  <FileText className="w-6 h-6" />
                 </div>
+                <h3 className="text-sm font-bold text-slate-800">
+                  {projectSearchQuery ? 'Объектов по заданному запросу не найдено' : 'Нет объектов на согласовании'}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  {projectSearchQuery
+                    ? 'Проверьте название ЖК, город или ИНН подрядчика'
+                    : `Все проекты подрядчиков для банка ${activePartnerBank} согласованы`}
+                </p>
               </div>
             ) : (
-              groupedSpecialContractors.map((entry) => {
+              filteredGroupedSpecialContractors.map((entry) => {
                 const isExpanded = expandedContractors[entry.compositeKey] ?? true;
                 const pendingCount = (entry.requests || []).filter((r) => r?.status === 'pending').length;
 
@@ -1977,37 +2147,54 @@ export const BankPortalPage: React.FC = () => {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setNewStaffName('');
-                  setNewStaffEmail('');
-                  setNewStaffPhone('+7 (495) 500-00-00');
-                  setNewStaffBank(activePartnerBank);
-                  setNewStaffRole('officer');
-                  setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'staff']);
-                  setShowAddStaffModal(true);
-                }}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Добавить сотрудника банка</span>
-              </button>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={staffSearchQuery}
+                    onChange={(e) => setStaffSearchQuery(e.target.value)}
+                    placeholder="Поиск сотрудника по имени, email..."
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewStaffName('');
+                    setNewStaffEmail('');
+                    setNewStaffPhone('+7 (495) 500-00-00');
+                    setNewStaffBank(activePartnerBank);
+                    setNewStaffRole('officer');
+                    setNewStaffPermissions(['escrow', 'developer_accreditation', 'special', 'staff']);
+                    setShowAddStaffModal(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center space-x-2 cursor-pointer shadow-xs shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Добавить сотрудника банка</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {(tenantBankStaff || []).length === 0 ? (
-                <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500 col-span-full">
-                  <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                  <div className="text-sm font-bold text-slate-700">
-                    Нет данных для отображения в данном разделе
+              {filteredBankStaff.length === 0 ? (
+                <div className="bg-slate-50/60 border border-slate-200 rounded-2xl p-12 text-center space-y-3 col-span-full">
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mx-auto shadow-2xs">
+                    <Users className="w-6 h-6" />
                   </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    Сотрудники для банка {activePartnerBank} еще не добавлены
-                  </div>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    {staffSearchQuery ? 'Сотрудников по заданному запросу не найдено' : 'Список сотрудников банка пуст'}
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    {staffSearchQuery
+                      ? 'Проверьте правильность написания имени или email'
+                      : `Сотрудники для банка ${activePartnerBank} еще не добавлены`}
+                  </p>
                 </div>
               ) : (
-                (tenantBankStaff || []).map((staff) => {
+                filteredBankStaff.map((staff) => {
                   const perms = staff.permissions || [
                     'escrow',
                     'developer_accreditation',
@@ -3187,6 +3374,27 @@ export const BankPortalPage: React.FC = () => {
         canReview={true}
         reviewerName={`${currentOfficerName} (Банк-партнёр)`}
         onDocumentsChanged={loadData}
+      />
+
+      {/* Escrow Coordination Desk (Encrypted Chat Bridge) */}
+      {activeEscrowChatDeal && (
+        <EscrowBridgeChatModal
+          isOpen={true}
+          onClose={() => setActiveEscrowChatDeal(null)}
+          dealId={activeEscrowChatDeal.dealId}
+          dealStage={activeEscrowChatDeal.dealStage}
+          lotCode={activeEscrowChatDeal.lotCode}
+          lotTitle={activeEscrowChatDeal.lotTitle}
+          bankName={activeEscrowChatDeal.bankName}
+          buyerName={activeEscrowChatDeal.buyerName}
+          currentRole={isOwner ? 'curator' : 'bank_officer'}
+          currentUserName={currentOfficerName}
+        />
+      )}
+
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
       />
     </div>
   );

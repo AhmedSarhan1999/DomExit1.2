@@ -6,6 +6,10 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
+  updateProfile,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
 } from 'firebase/auth';
 import { auth, googleProvider } from '../dal/firebase';
 import { UserProfile, PartnerEntry, InvestorApplication } from '../types';
@@ -56,6 +60,10 @@ interface AuthContextType {
     role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
   ) => Promise<UserProfile>;
   refreshUserProfile: () => Promise<void>;
+  updateUserProfile: (
+    data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL'>>
+  ) => Promise<UserProfile>;
+  updateUserPassword: (currentPass: string, newPass: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -668,6 +676,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await persistUserState(updatedUser);
   };
 
+  const updateUserProfile = async (
+    data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL'>>
+  ): Promise<UserProfile> => {
+    if (!user) throw new Error('Пользователь не авторизован');
+    const updated: UserProfile = {
+      ...user,
+      ...data,
+    };
+    await persistUserState(updated);
+
+    if (firebaseUser) {
+      try {
+        
+        await updateProfile(firebaseUser, {
+          displayName: data.name ?? user.name,
+          photoURL: data.photoURL ?? user.photoURL,
+        });
+      } catch (err) {
+        console.warn('Firebase profile sync fallback:', err);
+      }
+    }
+    return updated;
+  };
+
+  const updateUserPassword = async (currentPass: string, newPass: string): Promise<void> => {
+    if (!user) throw new Error('Пользователь не авторизован');
+    if (!newPass || newPass.length < 8) {
+      throw new Error('Пароль должен содержать не менее 8 символов');
+    }
+    if (firebaseUser && firebaseUser.email) {
+      try {
+        
+        if (currentPass) {
+          const cred = EmailAuthProvider.credential(firebaseUser.email, currentPass);
+          await reauthenticateWithCredential(firebaseUser, cred);
+        }
+        await updatePassword(firebaseUser, newPass);
+      } catch (err: any) {
+        if (err?.code === 'auth/wrong-password') {
+          throw new Error('Неверно указан текущий пароль');
+        } else if (err?.code === 'auth/requires-recent-login') {
+          throw new Error('Срок сессии истек. Пожалуйста, выполните повторный вход.');
+        }
+        throw new Error(err?.message || 'Не удалось обновить пароль');
+      }
+    }
+  };
+
   const refreshUserProfile = async (): Promise<void> => {
     if (!user) return;
     try {
@@ -705,6 +761,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         upgradeToInvestor,
         quickDemoLogin,
         refreshUserProfile,
+        updateUserProfile,
+        updateUserPassword,
       }}
     >
       {children}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatRubles } from '../utils/formatters';
+import { getStoredReferralCode, setStoredReferralCode } from '../utils/referralTracker';
 import { SellerRequestsRepository } from '../dal/repositories/SellerRequestsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
@@ -104,6 +105,13 @@ export const SellersPage: React.FC = () => {
       const cleanRef = refParam.trim().toUpperCase();
       setPartnerRefCode(cleanRef);
       setIsPartnerLocked(true);
+      setStoredReferralCode(cleanRef);
+    } else {
+      const stored = getStoredReferralCode();
+      if (stored) {
+        setPartnerRefCode(stored);
+        setIsPartnerLocked(true);
+      }
     }
   }, [searchParams]);
 

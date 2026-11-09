@@ -53,6 +53,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [uploadedDocMeta, setUploadedDocMeta] = useState<DocumentMetadata | null>(null);
   const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
 
+  const [selectedBank, setSelectedBank] = useState<string>('Сбербанк');
   const [readiness, setReadiness] = useState<'48h' | '1-2weeks'>('48h');
   const [buyerConsents, setBuyerConsents] = useState<ConsentState>({
     pdProcessing: false,
@@ -189,6 +190,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         email: activeUser.email,
         name: fullName.trim(),
         location: `${regionLabel} • ${lot.district}`,
+        selectedBank: selectedBank,
         buyerTrack: purchaseTrack,
         fundingType: purchaseTrack === 'full_cash' ? 'cash' : 'family-mortgage',
         availableLiquidity:
@@ -458,6 +460,28 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-emerald-500 bg-slate-50 focus:bg-white font-mono"
               />
             </div>
+          </div>
+
+          {/* Mandatory Bank Selection */}
+          <div>
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Эскроу-банк для проведения взаиморасчетов (214-ФЗ) *</span>
+              <span className="text-[10px] text-emerald-700 font-bold lowercase">обязательный выбор</span>
+            </label>
+            <select
+              value={selectedBank}
+              onChange={(e) => setSelectedBank(e.target.value)}
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold bg-white focus:outline-none focus:border-emerald-500 shadow-xs"
+            >
+              <option value="Сбербанк">Сбербанк (ПАО «Сбербанк России»)</option>
+              <option value="ВТБ">Банк ВТБ (ПАО)</option>
+              <option value="Альфа-Банк">АО «АЛЬФА-БАНК»</option>
+              <option value="ДОМ.РФ">АО «Банк ДОМ.РФ»</option>
+            </select>
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Заявка и будущая сделка будут маршрутизированы в защищенный контур выбранного уполномоченного банка.
+            </span>
           </div>
 
           {/* Readiness & Comments */}

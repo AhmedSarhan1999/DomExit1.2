@@ -235,36 +235,6 @@ export const UnifiedNavbar: React.FC = () => {
             >
               {t.nav.story}
             </Link>
-            <Link
-              to="/investors"
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                isActive('/investors')
-                  ? 'bg-slate-800 text-emerald-400 border border-slate-700'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              {t.nav.investors}
-            </Link>
-            <Link
-              to="/knowledge"
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                isActive('/knowledge') || location.pathname.startsWith('/knowledge/')
-                  ? 'bg-slate-800 text-emerald-400 border border-slate-700'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              {language === 'ru' ? 'База знаний' : 'Knowledge'}
-            </Link>
-            <Link
-              to="/faq"
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                isActive('/faq')
-                  ? 'bg-slate-800 text-emerald-400 border border-slate-700'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              FAQ
-            </Link>
 
             {/* Direct Link to Bank Portal for Bank Partners */}
             {user?.activeRole === 'bank' && (
@@ -575,39 +545,6 @@ export const UnifiedNavbar: React.FC = () => {
             }`}
           >
             {t.nav.story}
-          </Link>
-          <Link
-            to="/investors"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-              isActive('/investors')
-                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
-                : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            {t.nav.investors}
-          </Link>
-          <Link
-            to="/knowledge"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-              isActive('/knowledge') || location.pathname.startsWith('/knowledge/')
-                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
-                : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            {language === 'ru' ? 'База знаний (214-ФЗ, 140-ФЗ)' : 'Knowledge Base'}
-          </Link>
-          <Link
-            to="/faq"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-              isActive('/faq')
-                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
-                : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            {language === 'ru' ? 'Частые вопросы (FAQ)' : 'FAQ'}
           </Link>
 
           {/* Mobile Client Portal Link */}

@@ -414,7 +414,12 @@ export class LotsRepository {
     return lot;
   }
 
-  static async approveLotLegal(lotCode: string, curatorName: string): Promise<Lot | null> {
+  static async approveLotLegal(
+    lotCode: string,
+    curatorName: string,
+    customAntiBankruptcyIndex?: number,
+    checkpoints?: any[]
+  ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
 
@@ -422,6 +427,12 @@ export class LotsRepository {
     lot.approvalStatus = 'approved';
     lot.status = lot.status === 'closed' ? 'available' : lot.status || 'available';
     lot.currentStage = 3;
+    if (customAntiBankruptcyIndex !== undefined) {
+      lot.legalPassport.antiBankruptcyIndex = customAntiBankruptcyIndex;
+    }
+    if (checkpoints) {
+      lot.legalAuditCheckpoints = checkpoints;
+    }
     if (lot.additionalDocsRequested) {
       lot.additionalDocsRequested.status = 'resolved';
     }
@@ -431,7 +442,7 @@ export class LotsRepository {
       timestamp: new Date().toISOString(),
       curatorName,
       action: 'Утвержден правовой аудит — Выдан штамп «Документы проверены»',
-      notes: '42 параметра соответствуют стандарту 214-ФЗ. Лот допущен к открытому матчмейкингу.',
+      notes: `Итоговый индекс юридической чистоты: ${lot.legalPassport.antiBankruptcyIndex}%. 42 параметра соответствуют стандарту 214-ФЗ. Лот допущен к открытому матчмейкингу.`,
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
@@ -442,7 +453,7 @@ export class LotsRepository {
       operatorRole: 'curator',
       actionType: 'legal_approved',
       title: `Штамп «Документы проверены» выдан по лоту #${lot.lotCode}`,
-      description: 'Все 42 проверки пройдены без рисков, антибанкротный индекс подтвержден.',
+      description: `Антибанкротный индекс: ${lot.legalPassport.antiBankruptcyIndex}%. Все 4 ключевых чекпоинта верифицированы.`,
     });
 
     return lot;

@@ -75,6 +75,7 @@ export class CandidatesRepository {
       phone: data.phone,
       email: data.email,
       name: data.name || 'Покупатель DomExit',
+      selectedBank: data.selectedBank || 'Сбербанк',
       location: data.location || 'Российская Федерация',
       matchScore: data.buyerTrack === 'full_cash' ? 98 : 94,
       fundingType:
@@ -210,6 +211,20 @@ export class CandidatesRepository {
       deal.buyerName = winner.name;
       deal.buyerUserId = winner.uid || winner.userId;
       deal.buyerClientCode = winner.clientCode;
+      const chosenBank = winner.selectedBank || deal.escrowWorkflow?.bankName || 'Сбербанк';
+      deal.bankName = chosenBank;
+      if (!deal.escrowWorkflow) {
+        deal.escrowWorkflow = {
+          step: 'curator_review',
+          bankName: chosenBank,
+          escrowAccountNumber: `40817810${Math.floor(100000000000 + Math.random() * 900000000000)}`,
+          depositedAmountRub: deal.sellerReturnRub || 2500000,
+          signingProofPhotos: [],
+          signingProofVideos: [],
+        };
+      } else {
+        deal.escrowWorkflow.bankName = chosenBank;
+      }
       await DealsRepository.update(deal);
     } else {
       await DealsRepository.updateStage(lotCode, 'closing_escrow');

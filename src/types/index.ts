@@ -139,6 +139,8 @@ export interface Lot {
     rosreestrEsignSpeedHours: number; // 48
   };
 
+  legalAuditCheckpoints?: LegalAuditCheckpoint[];
+
   // Masked owner dossier (152-ФЗ)
   ownerDossier: {
     fullNameMasked: string; // Александр Владимирович Б.
@@ -232,7 +234,38 @@ export interface SellerExitRequest {
   referredByPartnerCode?: string;
 }
 
+export interface LegalAuditCheckpoint {
+  id: 'efrsb' | 'fssp' | 'courts' | 'ddu_sfr';
+  title: string;
+  shortLabel: string;
+  weightPercent: number; // efrsb: 25, fssp: 15, courts: 15, ddu_sfr: 45
+  portalUrl: string;
+  score: number; // 1 to 10
+  status: 'clean' | 'attention' | 'critical';
+  notes: string;
+  proofDocUrl?: string;
+  proofDocName?: string;
+  evaluated: boolean;
+  verifiedAt?: string;
+  verifiedBy?: string;
+}
+
+export interface EscrowChatMessage {
+  id: string;
+  dealId: string;
+  senderRole: 'buyer' | 'bank_officer' | 'curator';
+  senderName: string;
+  senderUid?: string;
+  text: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentType?: 'statement' | 'wire_receipt' | 'requisites' | 'document';
+  timestamp: string;
+  isEncryptedNotice?: boolean;
+}
+
 export interface BuyerCandidate {
+  selectedBank?: string; // 'Сбербанк' | 'ВТБ' | 'Альфа-Банк' | 'ДОМ.РФ'
   id: string;
   code: string; // e.g. B-409
   lotCode?: string; // lot code applied for (e.g. U-10566)
@@ -266,6 +299,7 @@ export interface BuyerCandidate {
 
 export interface DealTrack {
   id: string;
+  bankName?: string;
   dealId: string; // e.g. DEAL-2025-10566
   lotCode: string;
   lotTitle: string;

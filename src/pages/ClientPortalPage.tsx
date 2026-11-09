@@ -24,6 +24,7 @@ import {
   Upload,
   FolderLock,
   ExternalLink,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -46,6 +47,7 @@ import { LegalPoliciesRepository, CANONICAL_POLICY_NAMES } from '../dal/reposito
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { UserProfileModal } from '../components/profile/UserProfileModal';
 import {
   DealTrack,
   BuyerCandidate,
@@ -59,10 +61,11 @@ import {
   ProofOfConsentRecord,
 } from '../types';
 import { FileManager } from '../utils/fileManager';
+import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal';
 
-type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'investor' | 'consents';
+type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'consents';
 
-const VALID_TABS: PortalTab[] = ['buyer', 'seller', 'favorites', 'partner', 'investor', 'consents'];
+const VALID_TABS: PortalTab[] = ['buyer', 'seller', 'favorites', 'partner', 'consents'];
 
 const STAGE_LABEL_RU: Record<DealTrack['stage'], string> = {
   initial_audit: '1. Первичный комплаенс',
@@ -119,23 +122,29 @@ export const ClientPortalPage: React.FC = () => {
     const paramTab = searchParams.get('tab') as PortalTab | null;
     if (paramTab && VALID_TABS.includes(paramTab)) {
       if (paramTab === 'partner' && !user?.isPartnerApproved) return 'buyer';
-      if (paramTab === 'investor' && !user?.isInvestorApproved) return 'buyer';
       return paramTab;
     }
     if (user?.activeRole === 'seller') return 'seller';
     if (user?.activeRole === 'partner' && user?.isPartnerApproved) return 'partner';
-    if (user?.activeRole === 'investor' && user?.isInvestorApproved) return 'investor';
     return 'buyer';
   };
 
   const [activeTab, setActiveTab] = useState<PortalTab>(resolveDefaultTab);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [activeEscrowChatDeal, setActiveEscrowChatDeal] = useState<{
+    dealId: string;
+    dealStage?: string;
+    lotCode?: string;
+    lotTitle?: string;
+    bankName?: string;
+    buyerName?: string;
+  } | null>(null);
 
   // Sync URL ?tab= changes (e.g. from UnifiedNavbar role switcher)
   useEffect(() => {
     const paramTab = searchParams.get('tab') as PortalTab | null;
     if (paramTab && VALID_TABS.includes(paramTab) && paramTab !== activeTab) {
       if (paramTab === 'partner' && !user?.isPartnerApproved) return;
-      if (paramTab === 'investor' && !user?.isInvestorApproved) return;
       setActiveTab(paramTab);
     }
   }, [searchParams, user]);
@@ -624,10 +633,22 @@ export const ClientPortalPage: React.FC = () => {
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 p-0.5 shadow-md">
-                <div className="w-full h-full bg-emerald-600 rounded-[14px] flex items-center justify-center font-bold text-white text-xl">
-                  {displayInitial}
-                </div>
+              <div
+                onClick={() => setIsProfileModalOpen(true)}
+                className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 p-0.5 shadow-md cursor-pointer hover:opacity-90 transition-opacity"
+                title="Редактировать профиль и аватар"
+              >
+                {user?.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={displayName}
+                    className="w-full h-full object-cover rounded-[14px]"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-emerald-600 rounded-[14px] flex items-center justify-center font-bold text-white text-xl">
+                    {displayInitial}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -681,6 +702,15 @@ export const ClientPortalPage: React.FC = () => {
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span>Yandex S3 / Эскроу: Активен</span>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setIsProfileModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+              >
+                <User className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{language === 'ru' ? 'Мой профиль и безопасность' : 'Profile & Security'}</span>
+              </button>
 
               <button
                 type="button"
@@ -760,24 +790,7 @@ export const ClientPortalPage: React.FC = () => {
               </button>
             )}
 
-            {/* VIP Investor Tab strictly conditionally rendered */}
-            {Boolean(user?.isInvestorApproved) && (
-              <button
-                type="button"
-                onClick={() => handleSelectTab('investor')}
-                className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeTab === 'investor'
-                    ? 'border-amber-600 text-amber-700'
-                    : 'border-transparent text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-600" />
-                <span>{language === 'ru' ? 'Кабинет Инвестора VIP' : 'VIP Investor Portal'}</span>
-                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                  VIP 48ч
-                </span>
-              </button>
-            )}
+
           </div>
 
           {/* VIP Catalog Early Access Banner */}
@@ -1040,12 +1053,31 @@ export const ClientPortalPage: React.FC = () => {
                                       'Шаг 4 завершён: Аккредитив СБР раскрыт, транши выплачены • Сделка официально закрыта!'}
                                   </span>
                                 </div>
-                                <Link
-                                  to={`/opportunities/${bid.lotCode || 'U-10566'}`}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
-                                >
-                                  Паспорт лота →
-                                </Link>
+                                <div className="flex items-center space-x-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveEscrowChatDeal({
+                                        dealId: linkedDeal?.dealId || `DEAL-2025-${bid.lotCode || '10566'}`,
+                                        dealStage: wfStep,
+                                        lotCode: bid.lotCode || 'U-10566',
+                                        lotTitle: allLots.find((l) => l.lotCode === bid.lotCode)?.complexName || 'ЖК',
+                                        bankName: linkedDeal?.bankName || linkedDeal?.escrowWorkflow?.bankName || (bid as any).selectedBank || 'Сбербанк',
+                                        buyerName: user?.name || bid.name,
+                                      });
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                                  >
+                                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Чат с банком по эскроу</span>
+                                  </button>
+                                  <Link
+                                    to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
+                                  >
+                                    Паспорт лота →
+                                  </Link>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1871,207 +1903,6 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         )}
 
-        {/* ================= TAB 5: VIP INVESTOR PORTAL VIEW ================= */}
-        {activeTab === 'investor' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
-              
-              {/* Investor VIP Header */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1">
-                      <Crown className="w-3 h-3 text-amber-700" />
-                      <span>
-                        {user?.isInvestorApproved || investorAppRecord?.status === 'approved'
-                          ? 'Аккредитованный VIP Инвестор DomExit'
-                          : investorAppRecord?.status === 'pending'
-                          ? 'Анкета инвестора на рассмотрении Владельца'
-                          : 'Закрытый клуб инвесторов'}
-                      </span>
-                    </span>
-                  </div>
-                  <h2 className="text-xl font-black text-slate-950 tracking-tight mt-1">
-                    Закрытый пул «Ранний доступ 48 часов» и пакетные стратегии
-                  </h2>
-                  {investorAppRecord?.requestedDocsNotes && (
-                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl mt-1.5">
-                      Запрос IR-деска: {investorAppRecord.requestedDocsNotes}
-                    </p>
-                  )}
-                </div>
-
-                {!user?.isInvestorApproved && !investorAppRecord && (
-                  <button
-                    type="button"
-                    onClick={() => upgradeToInvestor()}
-                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs cursor-pointer"
-                  >
-                    Подать заявку в VIP-Клуб
-                  </button>
-                )}
-              </div>
-
-              {/* 48-Hour Early Access Units Desk (Dynamic from live repository) */}
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-                    <Clock className="w-4 h-4 text-amber-600" />
-                    <span>
-                      Лоты в режиме «Ранний доступ 48 часов» ({vipEarlyAccessLots.length} объектов):
-                    </span>
-                  </h3>
-                  <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                    Приоритетный перехват до общего рынка
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(vipEarlyAccessLots.length > 0 ? vipEarlyAccessLots : allLots.slice(0, 2)).map(
-                    (lot) => {
-                      const discPct =
-                        lot.todayDeveloperPrice > 0
-                          ? ((lot.todayDeveloperPrice - lot.dduContractPrice) /
-                              lot.todayDeveloperPrice) *
-                            100
-                          : 22;
-                      return (
-                        <div
-                          key={lot.id}
-                          className="p-4 rounded-2xl border-2 border-amber-300 bg-amber-50/30 space-y-3"
-                        >
-                          <div className="flex justify-between items-start gap-2">
-                            <div>
-                              <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-bold text-[10px] uppercase">
-                                Осталось {lot.earlyAccessHoursLeft || 36} ч. • #{lot.lotCode}
-                              </span>
-                              <h4 className="font-bold text-sm text-slate-900 mt-1">
-                                {lot.complexName}
-                              </h4>
-                              <span className="text-xs text-slate-500">
-                                {lot.district} • {lot.developer} • {lot.areaM2} м²
-                              </span>
-                            </div>
-                            <span className="font-mono font-bold text-emerald-700 text-sm shrink-0">
-                              {formatRubles(lot.cashPaidBySeller)}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between pt-2 border-t border-amber-200 text-xs">
-                            <span className="text-slate-700">
-                              Дисконт к застройщику:{' '}
-                              <strong className="text-emerald-700">-{formatPercent(discPct)}</strong>
-                            </span>
-                            <Link
-                              to={`/opportunities/${lot.lotCode}`}
-                              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs"
-                            >
-                              Открыть паспорт лота →
-                            </Link>
-                          </div>
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              </div>
-
-              {/* Direct Communication Channel with Leadership */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="font-bold text-xs text-slate-900 flex items-center space-x-1.5">
-                    <User className="w-4 h-4 text-emerald-600" />
-                    <span>Прямая линия с руководством: Генеральный директор (CEO) Ahmed Abdallah</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Структурирование синдицированных пулов от 50 млн ₽ и оптовый выкуп региональных цессий.
-                  </p>
-                </div>
-                <a
-                  href="https://t.me/domexit_ru"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shrink-0"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Прямой канал IR Desk</span>
-                </a>
-              </div>
-
-              {/* Interactive Budget & Investment Package Builder (Persisted Live via DAL) */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-                    <Sliders className="w-4 h-4 text-indigo-600" />
-                    <span>Интерактивный конструктор инвестиционного мандата:</span>
-                  </h3>
-                  <div className="flex items-center space-x-2">
-                    {packageSavedToast && (
-                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
-                        ✓ Сохранено в профиле
-                      </span>
-                    )}
-                    <span className="font-mono font-black text-indigo-700 text-sm">
-                      Капитал: {investorBudgetMillions} 000 000 ₽
-                    </span>
-                  </div>
-                </div>
-
-                <input
-                  type="range"
-                  min={10}
-                  max={150}
-                  step={5}
-                  value={investorBudgetMillions}
-                  onChange={(e) =>
-                    handleSaveInvestorPackage(Number(e.target.value), selectedPackage)
-                  }
-                  className="w-full accent-indigo-600 cursor-pointer"
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                  {[
-                    {
-                      id: 'flipping' as const,
-                      title: 'Пакет «Оптовый флиппинг»',
-                      desc: 'Выкуп пула из 2–4 ликвидных квартир с дисконтом 22–28% и реализация перед вводом корпуса.',
-                      irr: 'Целевая доходность: 32% годовых',
-                    },
-                    {
-                      id: 'turnkey' as const,
-                      title: 'Пакет «Под ключ + Аренда»',
-                      desc: 'Выкуп цессии + чистовая меблировка + передача в арендное управление с первого дня выдачи ключей.',
-                      irr: 'Целевая доходность: 19% годовых',
-                    },
-                    {
-                      id: 'syndicate' as const,
-                      title: 'Пакет «Синдицированный пул»',
-                      desc: 'Совместное финансирование крупных лотов бизнес/премиум класса в Москве, СПб и Сочи по 214-ФЗ.',
-                      irr: 'Фиксированный ориентир: 24% годовых',
-                    },
-                  ].map((pkg) => (
-                    <div
-                      key={pkg.id}
-                      onClick={() => handleSaveInvestorPackage(investorBudgetMillions, pkg.id)}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-2 ${
-                        selectedPackage === pkg.id
-                          ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <span className="font-bold text-xs text-slate-900 block">{pkg.title}</span>
-                      <p className="text-[11px] text-slate-600 leading-snug">{pkg.desc}</p>
-                      <div className="text-xs font-mono font-bold text-indigo-700 pt-1">
-                        {pkg.irr}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
         {/* ================= TAB 6: 152-FZ PROOF OF CONSENTS ARCHIVE ================= */}
         {activeTab === 'consents' && (
           <div className="space-y-6">
@@ -2379,6 +2210,27 @@ export const ClientPortalPage: React.FC = () => {
           onDocumentsChanged={(updated) => setSellerVaultDocs(updated)}
         />
       )}
+
+      {/* Escrow Bridge Chat Modal */}
+      {activeEscrowChatDeal && (
+        <EscrowBridgeChatModal
+          isOpen={true}
+          onClose={() => setActiveEscrowChatDeal(null)}
+          dealId={activeEscrowChatDeal.dealId}
+          dealStage={activeEscrowChatDeal.dealStage}
+          lotCode={activeEscrowChatDeal.lotCode}
+          lotTitle={activeEscrowChatDeal.lotTitle}
+          bankName={activeEscrowChatDeal.bankName}
+          buyerName={activeEscrowChatDeal.buyerName}
+          currentRole="buyer"
+          currentUserName={user?.name}
+        />
+      )}
+
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </div>
   );
 };
