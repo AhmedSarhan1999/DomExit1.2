@@ -56,6 +56,7 @@ interface AuthContextType {
   ) => void;
   upgradeToPartner: (details?: Partial<PartnerEntry>) => Promise<void>;
   upgradeToInvestor: (details?: Partial<InvestorApplication>) => Promise<void>;
+  activateVipSubscription: () => Promise<void>;
   quickDemoLogin: (
     role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
   ) => Promise<UserProfile>;
@@ -676,6 +677,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await persistUserState(updatedUser);
   };
 
+  const activateVipSubscription = async (): Promise<void> => {
+    if (!user) return;
+    const updatedUser: UserProfile = {
+      ...user,
+      isVipSubscriber: true,
+    };
+    await persistUserState(updatedUser);
+  };
+
   const updateUserProfile = async (
     data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL'>>
   ): Promise<UserProfile> => {
@@ -759,6 +769,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchRole,
         upgradeToPartner,
         upgradeToInvestor,
+        activateVipSubscription,
         quickDemoLogin,
         refreshUserProfile,
         updateUserProfile,

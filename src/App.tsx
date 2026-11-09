@@ -28,7 +28,6 @@ import { AdminLegalAuditPage } from './pages/AdminLegalAuditPage';
 import { AdminMatchmakerPage } from './pages/AdminMatchmakerPage';
 import { AdminClosingPage } from './pages/AdminClosingPage';
 import { AdminPartnersBotPage } from './pages/AdminPartnersBotPage';
-import { AdminInvestorsPage } from './pages/AdminInvestorsPage';
 import { AdminBrokersPage } from './pages/AdminBrokersPage';
 import { initReferralTracker } from './utils/referralTracker';
 import { BankPortalPage } from './pages/BankPortalPage';
@@ -85,7 +84,7 @@ export const App: React.FC = () => {
               <Route path="/opportunities/:lotCode" element={<LotDetailsPage />} />
               <Route path="/how-it-works" element={<HowItWorksPage />} />
               <Route path="/story" element={<StoryPage />} />
-              <Route path="/investors" element={<InvestorsPage />} />
+              <Route path="/investors" element={<Navigate to="/vip-catalog" replace />} />
               <Route path="/partners" element={<PartnersPublicPage />} />
               <Route path="/verify/:lotCode" element={<VerifyCertificatePage />} />
 
@@ -126,7 +125,7 @@ export const App: React.FC = () => {
             <Route path="/admin/closing" element={<Navigate to="/admin/closing/DEAL-2025-10566" replace />} />
             <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
             
-            <Route path="/admin/investors" element={<AdminInvestorsPage />} />
+            <Route path="/admin/investors" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/brokers" element={<AdminBrokersPage />} />
             <Route path="/admin/partners-bot" element={<Navigate to="/admin/brokers" replace />} />
 

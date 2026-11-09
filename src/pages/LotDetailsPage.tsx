@@ -566,10 +566,10 @@ export const LotDetailsPage: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 block">
-                      ИНВЕСТИЦИОННАЯ АНАЛИТИКА ЛОКАЦИИ
+                      АНАЛИТИКА ЛОКАЦИИ И СТОИМОСТИ ЖИЛЬЯ
                     </span>
                     <h3 className="text-lg sm:text-xl font-black text-slate-950">
-                      Арендный и доходный потенциал локации ({lot.district})
+                      Арендный потенциал и рыночная оценка локации ({lot.district})
                     </h3>
                   </div>
                 </div>
@@ -1183,7 +1183,7 @@ export const LotDetailsPage: React.FC = () => {
         }}
       />
 
-      {/* S3 Cloud Document Vault Modal (Read-only public inspection for buyers/investors) */}
+      {/* S3 Cloud Document Vault Modal (Read-only public inspection for buyers) */}
       <DocumentVaultModal
         isOpen={isVaultModalOpen}
         onClose={() => setIsVaultModalOpen(false)}

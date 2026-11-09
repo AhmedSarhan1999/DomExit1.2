@@ -37,9 +37,9 @@ export const UnifiedNavbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // 7-Role Options (Mission 2.1)
+  // 3 Core Operational Roles (Owner, Employee, Partner Bank)
   const roleOptions: Array<{
-    id: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer';
+    id: 'owner' | 'employee' | 'bank';
     title: string;
     badge: string;
     subtitle: string;
@@ -69,38 +69,6 @@ export const UnifiedNavbar: React.FC = () => {
       subtitle: language === 'ru' ? 'Кредитные лимиты, эскроу и СБР' : 'Credit limits & escrow',
       icon: '🏦',
       targetPath: '/bank-portal',
-    },
-    {
-      id: 'partner',
-      title: language === 'ru' ? 'Партнер-брокер' : 'Partner Broker',
-      badge: '🤝 Агентство',
-      subtitle: language === 'ru' ? 'Рефералы DEX-ID, бонусы 50 000 ₽' : 'Referral tracking & bonuses',
-      icon: '🤝',
-      targetPath: '/portal?tab=partner',
-    },
-    {
-      id: 'investor',
-      title: language === 'ru' ? 'VIP Инвестор' : 'VIP Investor',
-      badge: '💎 Закрытый пул',
-      subtitle: language === 'ru' ? 'Ранний доступ 48ч, флиппинг-пакеты' : 'Early 48h access & syndicates',
-      icon: '💎',
-      targetPath: '/portal?tab=investor',
-    },
-    {
-      id: 'seller',
-      title: language === 'ru' ? 'Продавец ДДУ' : 'DDU Seller',
-      badge: '🏠 Александр В.',
-      subtitle: language === 'ru' ? 'Трекер 5 этапов, выплата кэша 100%' : '5-step cession deal tracker',
-      icon: '🏠',
-      targetPath: '/portal?tab=seller',
-    },
-    {
-      id: 'buyer',
-      title: language === 'ru' ? 'Покупатель' : 'Buyer',
-      badge: '🔑 Иван П.',
-      subtitle: language === 'ru' ? '3 заявки, ликвидность, подбор лота' : '3 active bids, credit check',
-      icon: '🔑',
-      targetPath: '/portal?tab=buyer',
     },
   ];
 
@@ -353,7 +321,7 @@ export const UnifiedNavbar: React.FC = () => {
                 <div className="absolute right-0 top-full mt-2 w-80 bg-slate-900/98 border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in space-y-1 text-slate-100 backdrop-blur-xl">
                   <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 flex items-center justify-between">
                     <span>{language === 'ru' ? 'Сменить аккаунт / Роль:' : 'Switch Account / Role:'}</span>
-                    <span className="text-[10px] text-emerald-400 font-mono">7 ролей</span>
+                    <span className="text-[10px] text-emerald-400 font-mono">3 роли</span>
                   </div>
 
                   <div className="max-h-[380px] overflow-y-auto space-y-1 pt-1">
@@ -563,7 +531,7 @@ export const UnifiedNavbar: React.FC = () => {
           <div className="pt-2 border-t border-slate-800 space-y-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase px-3 py-1 flex items-center justify-between">
               <span>{language === 'ru' ? 'Быстрая смена роли:' : 'Quick Role Switch:'}</span>
-              <span className="text-emerald-400 font-mono">7 ролей</span>
+              <span className="text-emerald-400 font-mono">3 роли</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5 pt-1">
               {roleOptions.map((opt) => (

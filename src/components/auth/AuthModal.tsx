@@ -35,7 +35,7 @@ export const AuthModal: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('+7 ');
-  const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller' | 'partner' | 'investor'>('buyer');
+  const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller' | 'partner'>('buyer');
   const [localError, setLocalError] = useState<string | null>(null);
 
   if (!isAuthModalOpen) return null;
@@ -223,13 +223,13 @@ export const AuthModal: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     {language === 'ru' ? 'Основной статус:' : 'Initial Account Role:'}
                   </label>
-                  <div className="grid grid-cols-4 gap-1 text-[11px] font-semibold">
+                  <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
                     <button
                       type="button"
                       onClick={() => setSelectedRole('buyer')}
-                      className={`py-1.5 rounded-lg border text-center transition-all ${
+                      className={`py-2 rounded-xl border text-center transition-all ${
                         selectedRole === 'buyer'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold shadow-xs'
                           : 'border-slate-200 text-slate-600'
                       }`}
                     >
@@ -238,9 +238,9 @@ export const AuthModal: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedRole('seller')}
-                      className={`py-1.5 rounded-lg border text-center transition-all ${
+                      className={`py-2 rounded-xl border text-center transition-all ${
                         selectedRole === 'seller'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold shadow-xs'
                           : 'border-slate-200 text-slate-600'
                       }`}
                     >
@@ -249,24 +249,13 @@ export const AuthModal: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedRole('partner')}
-                      className={`py-1.5 rounded-lg border text-center transition-all ${
+                      className={`py-2 rounded-xl border text-center transition-all ${
                         selectedRole === 'partner'
-                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-bold shadow-xs'
                           : 'border-slate-200 text-slate-600'
                       }`}
                     >
                       Партнер
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('investor')}
-                      className={`py-1.5 rounded-lg border text-center transition-all ${
-                        selectedRole === 'investor'
-                          ? 'border-amber-500 bg-amber-50 text-amber-900 font-bold'
-                          : 'border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      Инвестор
                     </button>
                   </div>
                 </div>
@@ -396,20 +385,6 @@ export const AuthModal: React.FC = () => {
                 <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Бонусы</span>
               </button>
 
-              {/* 5. Investor */}
-              <button
-                type="button"
-                onClick={() => quickDemoLogin('investor')}
-                disabled={loading}
-                className="p-2 rounded-xl bg-white hover:bg-amber-50/80 text-slate-800 hover:text-amber-950 border border-slate-200 hover:border-amber-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div className="font-bold text-[11px] text-amber-900">💎 VIP Инвестор</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">investor@domexit.ru</div>
-                </div>
-                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Ранний 48ч</span>
-              </button>
-
               {/* 6. Seller */}
               <button
                 type="button"
@@ -429,7 +404,7 @@ export const AuthModal: React.FC = () => {
                 type="button"
                 onClick={() => quickDemoLogin('buyer')}
                 disabled={loading}
-                className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 border border-slate-200 hover:border-slate-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer sm:col-span-2"
+                className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 border border-slate-200 hover:border-slate-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
               >
                 <div>
                   <div className="font-bold text-[11px] text-slate-900">🔑 Покупатель (100% Кэш / Ипотека)</div>

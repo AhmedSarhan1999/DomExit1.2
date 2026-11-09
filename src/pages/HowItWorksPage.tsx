@@ -65,7 +65,7 @@ export const HowItWorksPage: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {language === 'ru' ? 'Инвестору / Покупателю Скидка до 30%' : 'For Buyers (Up to -30%)'}
+              {language === 'ru' ? 'Покупателю: честная цена до -30%' : 'For Real Homebuyers (Up to -30%)'}
             </button>
           </div>
 
@@ -87,7 +87,7 @@ export const HowItWorksPage: React.FC = () => {
                 {language === 'ru' ? 'Срок подбора покупателя' : 'Matching Timeframe'}
               </span>
               <span className="text-[11px] text-slate-500 mt-0.5 block">
-                {language === 'ru' ? 'Через закрытый пул инвесторов' : 'Via private investor pool'}
+                {language === 'ru' ? 'Через закрытую базу покупателей' : 'Via private buyer network'}
               </span>
             </div>
 
@@ -208,8 +208,8 @@ export const HowItWorksPage: React.FC = () => {
                     </h4>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
                       {language === 'ru'
-                        ? 'Публикация в закрытом VIP Telegram-клубе инвесторов с гандикапом 48 часов. Фиксация брони с подтвержденным кэшем.'
-                        : 'Broadcast to VIP TG investor club with 48h head start. Verified cash reservations.'}
+                        ? 'Публикация в закрытом клубе раннего доступа с гандикапом 48 часов. Фиксация брони покупателя с подтвержденным финансированием.'
+                        : 'Priority broadcast to 48h early access club. Verified reservation with partner bank financing.'}
                     </p>
                   </div>
                 </div>
@@ -245,7 +245,7 @@ export const HowItWorksPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Buyer / Investor Path (5 numbered steps) */}
+          {/* Right Column: Buyer Path (5 numbered steps) */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm flex flex-col justify-between space-y-6">
             <div className="space-y-6">
               
@@ -253,7 +253,7 @@ export const HowItWorksPage: React.FC = () => {
                 <div className="flex items-center space-x-2">
                   <span className="w-3 h-3 rounded-full bg-emerald-600" />
                   <h3 className="text-lg font-black text-slate-900">
-                    {language === 'ru' ? 'Путь инвестора / Покупателя' : 'Buyer / Investor Path'}
+                    {language === 'ru' ? 'Путь покупателя квартиры' : 'Buyer Journey'}
                   </h3>
                 </div>
                 <span className="px-2.5 py-1 rounded-full bg-sky-100 text-sky-800 text-[11px] font-bold">

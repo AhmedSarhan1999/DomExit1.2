@@ -94,13 +94,6 @@ export const AdminSidebar: React.FC = () => {
       roles: ['owner', 'employee'],
     },
     {
-      path: '/admin/investors',
-      matchPrefix: '/admin/investors',
-      label: language === 'ru' ? 'Инвесторы VIP (B2B фонды)' : 'VIP Investors & B2B Funds',
-      icon: Briefcase,
-      roles: ['owner'],
-    },
-    {
       path: '/admin/brokers',
       matchPrefix: '/admin/brokers',
       label: language === 'ru' ? 'Сеть брокеров и агентов' : 'Brokers & Agent Network',

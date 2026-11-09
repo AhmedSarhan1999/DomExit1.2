@@ -89,7 +89,7 @@ export const UnifiedFooter: React.FC = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/investors" className="text-slate-600 hover:text-emerald-600 transition-colors">
+                <Link to="/vip-catalog" className="text-slate-600 hover:text-emerald-600 transition-colors">
                   {t.footer.investPools}
                 </Link>
               </li>

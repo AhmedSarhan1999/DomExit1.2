@@ -101,8 +101,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     employee: 'Куратор сделок (DomExit)',
     bank: 'Офицер банка-партнера',
     buyer: 'Покупатель / Дольщик',
-    seller: 'Продавец ДДУ / Инвестор',
-    investor: 'Резидент VIP-Инвестклуба',
+    seller: 'Продавец ДДУ',
+    investor: 'Резидент VIP раннего доступа (48ч)',
     partner: 'Аккредитованный партнер',
     admin: 'Системный администратор',
   };

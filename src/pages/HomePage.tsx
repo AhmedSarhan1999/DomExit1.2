@@ -397,7 +397,7 @@ export const HomePage: React.FC = () => {
                   <td className="py-4 px-6 text-emerald-950 bg-[#ECFDF5]">
                     <div className="flex items-start space-x-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span className="font-semibold">{language === 'ru' ? '7–14 рабочих дней через аккредитованный пул инвесторов' : '7–14 business days via accredited investor pool'}</span>
+                      <span className="font-semibold">{language === 'ru' ? '7–14 рабочих дней через закрытую базу покупателей и клуб раннего доступа' : '7–14 business days via private buyer network and early-access club'}</span>
                     </div>
                   </td>
                 </tr>
