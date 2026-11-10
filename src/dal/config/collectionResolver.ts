@@ -15,6 +15,7 @@ export const ISOLATED_COLLECTIONS: readonly string[] = [
   'audit_logs',
   'partner_preliminary_requests',
   'escrow_bridge_chats',
+  'bank_special_approvals',
 ];
 
 /**

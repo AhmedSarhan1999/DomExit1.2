@@ -34,6 +34,7 @@ import { BankPortalPage } from './pages/BankPortalPage';
 import { BankGatewayErrorBoundary } from './components/common/BankGatewayErrorBoundary';
 import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
 import { AdminCuratorProfilePage } from './pages/AdminCuratorProfilePage';
+import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { DatabaseInitializer } from './dal/initializer';
 
 // Federal Law 152-FZ & 38-FZ Legal Pages
@@ -108,26 +109,34 @@ export const App: React.FC = () => {
               <Route path="/client/tracker/:dealId" element={<ClientTrackerPage />} />
             </Route>
 
-            {/* Admin, Compliance & Pipeline Operations */}
-            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-            <Route path="/admin/pipeline" element={<AdminPipelinePage />} />
-            
-            <Route path="/admin/packaging" element={<Navigate to="/admin/packaging/lot-1" replace />} />
-            <Route path="/admin/packaging/:lotId" element={<AdminPackagingPage />} />
-            
-            <Route path="/admin/legal-audit" element={<Navigate to="/admin/legal-audit/lot-1" replace />} />
-            <Route path="/admin/legal-audit/:lotId" element={<AdminLegalAuditPage />} />
-            
-            <Route path="/admin/matchmaker" element={<Navigate to="/admin/matchmaker/lot-1" replace />} />
-            <Route path="/admin/matchmaker/:lotId" element={<AdminMatchmakerPage />} />
-            
-            <Route path="/admin/closing" element={<Navigate to="/admin/closing/DEAL-2025-10566" replace />} />
-            <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
-            
-            <Route path="/admin/investors" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/brokers" element={<AdminBrokersPage />} />
-            <Route path="/admin/partners-bot" element={<Navigate to="/admin/brokers" replace />} />
+            {/* Admin, Compliance & Pipeline Operations (Protected by AdminRouteGuard) */}
+            <Route element={<AdminRouteGuard />}>
+              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+              <Route path="/admin/pipeline" element={<AdminPipelinePage />} />
+              
+              <Route path="/admin/packaging" element={<Navigate to="/admin/packaging/lot-1" replace />} />
+              <Route path="/admin/packaging/:lotId" element={<AdminPackagingPage />} />
+              
+              <Route path="/admin/legal-audit" element={<Navigate to="/admin/legal-audit/lot-1" replace />} />
+              <Route path="/admin/legal-audit/:lotId" element={<AdminLegalAuditPage />} />
+              
+              <Route path="/admin/matchmaker" element={<Navigate to="/admin/matchmaker/lot-1" replace />} />
+              <Route path="/admin/matchmaker/:lotId" element={<AdminMatchmakerPage />} />
+              
+              <Route path="/admin/closing" element={<Navigate to="/admin/closing/DEAL-2025-10566" replace />} />
+              <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
+              
+              <Route path="/admin/investors" element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="/admin/brokers" element={<AdminBrokersPage />} />
+              <Route path="/admin/partners-bot" element={<Navigate to="/admin/brokers" replace />} />
+
+              {/* Archive Logs & Decision Journal (Mission 12) */}
+              <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />
+
+              {/* Curator Professional Profile (Mission 14) */}
+              <Route path="/admin/profile" element={<AdminCuratorProfilePage />} />
+            </Route>
 
             {/* Partner Bank Gateway (Mission 6) */}
             <Route
@@ -146,12 +155,6 @@ export const App: React.FC = () => {
                 </BankGatewayErrorBoundary>
               }
             />
-
-            {/* Archive Logs & Decision Journal (Mission 12) */}
-            <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />
-
-            {/* Curator Professional Profile (Mission 14) */}
-            <Route path="/admin/profile" element={<AdminCuratorProfilePage />} />
 
             {/* Catch-all Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

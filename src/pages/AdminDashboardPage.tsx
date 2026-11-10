@@ -350,8 +350,15 @@ export const AdminDashboardPage: React.FC = () => {
   const [staffTab, setStaffTab] = useState<'users' | 'employees'>('users');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
-  const isEmployee = user?.activeRole === 'employee';
-  const isOwner = !isEmployee;
+  const isEmployee = Boolean(user && user.activeRole === 'employee');
+  const isOwner = Boolean(
+    user &&
+      (user.activeRole === 'owner' ||
+        user.activeRole === 'admin' ||
+        user.role === 'owner' ||
+        user.role === 'admin' ||
+        user.email === 'amaas9499@gmail.com')
+  );
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
   const operatorName =
     user?.name || (isOwner ? 'Ahmed Abdallah (Владелец / CEO)' : 'Алексей Смирнов (Куратор)');

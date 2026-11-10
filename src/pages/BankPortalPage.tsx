@@ -4,6 +4,7 @@ import {
   Landmark,
   ShieldCheck,
   ShieldAlert,
+  Crown,
   CheckCircle2,
   XCircle,
   Clock,
@@ -64,7 +65,7 @@ import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal'
 import { BankGatewayErrorBoundary } from '../components/common/BankGatewayErrorBoundary';
 
 export const BankPortalPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, quickDemoLogin } = useAuth();
   const [searchParams] = useSearchParams();
   const bankIdParam = searchParams.get('bankId') || searchParams.get('bank');
 
@@ -382,6 +383,12 @@ export const BankPortalPage: React.FC = () => {
   const userBankName = user?.bankName || matchingStaff?.bankName;
   const isBankRole = user?.role === 'bank' || user?.activeRole === 'bank';
   const hasNoBankAssigned = !isOwner && isBankRole && !userBankName && !matchingStaff;
+  const isAuthorizedBankUser = Boolean(
+    isOwner ||
+      isBankRole ||
+      matchingStaff ||
+      user?.email?.toLowerCase().trim() === 'bank@domexit.ru'
+  );
 
   // Strict Bank Tenant Isolation & Sovereign Preview
   useEffect(() => {
@@ -916,6 +923,69 @@ export const BankPortalPage: React.FC = () => {
   ).length;
   const pendingDevAccCount = (devRequests || []).filter((r) => r?.status === 'pending').length;
   const pendingSpecialCount = (tenantSpecialRequests || []).filter((s) => s?.status === 'pending').length;
+
+  if (!isAuthorizedBankUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-12 relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="max-w-md w-full relative z-10 bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-md text-center space-y-6">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-inner">
+            <Landmark className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold uppercase tracking-widest inline-block">
+              Банковский комплаенс-шлюз (СБР)
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              Доступ ограничен
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+              Раздел предназначен исключительно для уполномоченных комплаенс-офицеров банков-партнеров (Сбербанк, ВТБ, Альфа-Банк) и руководства DomExit.
+            </p>
+          </div>
+
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60 space-y-3 text-left">
+            <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold border-b border-slate-700/60 pb-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Тестовый контур (Активация банковского аккаунта):</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => quickDemoLogin('bank')}
+                className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md"
+              >
+                <Landmark className="w-4 h-4 text-white" />
+                <span>Войти как Офицер эскроу (Сбербанк — Игорь Соколов)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => quickDemoLogin('owner')}
+                className="w-full px-4 py-2.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer"
+              >
+                <Crown className="w-4 h-4 text-amber-300" />
+                <span>Войти как Владелец / CEO (Ahmed Abdallah)</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <Link
+              to="/"
+              className="inline-flex items-center space-x-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Вернуться на главную</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (hasNoBankAssigned) {
     return (

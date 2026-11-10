@@ -29,8 +29,15 @@ export const AdminSidebar: React.FC = () => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
 
-  const isEmployee = user?.activeRole === 'employee';
-  const isOwner = !isEmployee;
+  const isEmployee = Boolean(user && user.activeRole === 'employee');
+  const isOwner = Boolean(
+    user &&
+      (user.activeRole === 'owner' ||
+        user.activeRole === 'admin' ||
+        user.role === 'owner' ||
+        user.role === 'admin' ||
+        user.email === 'amaas9499@gmail.com')
+  );
 
   const allNavItems = [
     {
