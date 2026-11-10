@@ -63,9 +63,12 @@ import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { UserProfileModal } from '../components/profile/UserProfileModal';
 import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal';
 import { BankGatewayErrorBoundary } from '../components/common/BankGatewayErrorBoundary';
+import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
 export const BankPortalPage: React.FC = () => {
-  const { user, quickDemoLogin } = useAuth();
+  const { user, quickDemoLogin, openAuthModal } = useAuth();
+  const { isProduction } = useEnvironmentStore();
+  const showTestSwitchers = !isProduction;
   const [searchParams] = useSearchParams();
   const bankIdParam = searchParams.get('bankId') || searchParams.get('bank');
 
@@ -946,32 +949,45 @@ export const BankPortalPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60 space-y-3 text-left">
-            <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold border-b border-slate-700/60 pb-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Тестовый контур (Активация банковского аккаунта):</span>
-            </div>
+          {showTestSwitchers ? (
+            <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60 space-y-3 text-left">
+              <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold border-b border-slate-700/60 pb-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Тестовый контур (Активация банковского аккаунта):</span>
+              </div>
 
-            <div className="grid grid-cols-1 gap-2 pt-1">
+              <div className="grid grid-cols-1 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => quickDemoLogin('bank')}
+                  className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md"
+                >
+                  <Landmark className="w-4 h-4 text-white" />
+                  <span>Войти как Офицер эскроу (Сбербанк — Игорь Соколов)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => quickDemoLogin('owner')}
+                  className="w-full px-4 py-2.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                >
+                  <Crown className="w-4 h-4 text-amber-300" />
+                  <span>Войти как Владелец / CEO (Ahmed Abdallah)</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="pt-2">
               <button
                 type="button"
-                onClick={() => quickDemoLogin('bank')}
-                className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md"
+                onClick={() => openAuthModal('Авторизуйтесь для доступа к банковскому шлюзу')}
+                className="w-full px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-lg transition-all cursor-pointer"
               >
                 <Landmark className="w-4 h-4 text-white" />
-                <span>Войти как Офицер эскроу (Сбербанк — Игорь Соколов)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickDemoLogin('owner')}
-                className="w-full px-4 py-2.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer"
-              >
-                <Crown className="w-4 h-4 text-amber-300" />
-                <span>Войти как Владелец / CEO (Ahmed Abdallah)</span>
+                <span>Войти с учетной записью сотрудника банка</span>
               </button>
             </div>
-          </div>
+          )}
 
           <div>
             <Link

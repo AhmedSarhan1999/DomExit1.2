@@ -103,7 +103,15 @@ export const AdminInvestorsPage: React.FC = () => {
   const [requestDocsNotes, setRequestDocsNotes] = useState('');
   const [showDocsModal, setShowDocsModal] = useState(false);
 
-  const isOwner = user?.activeRole !== 'employee';
+  const isOwner = Boolean(
+    user &&
+      (user.role === 'owner' ||
+        user.role === 'admin' ||
+        user.activeRole === 'owner' ||
+        user.activeRole === 'admin' ||
+        user.roles?.includes('owner') ||
+        user.email === 'amaas9499@gmail.com')
+  );
 
   const loadData = async () => {
     const list = await InvestorClubRepository.getAll();

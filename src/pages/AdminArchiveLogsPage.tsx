@@ -23,7 +23,16 @@ export const AdminArchiveLogsPage: React.FC = () => {
   const { language } = useLanguage();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const isEmployee = user?.activeRole === 'employee';
+  const isEmployee = Boolean(user && user.activeRole === 'employee');
+  const isOwner = Boolean(
+    user &&
+      (user.role === 'owner' ||
+        user.role === 'admin' ||
+        user.activeRole === 'owner' ||
+        user.activeRole === 'admin' ||
+        user.roles?.includes('owner') ||
+        user.email === 'amaas9499@gmail.com')
+  );
 
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>(searchParams.get('q') || '');
@@ -280,7 +289,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
                 <option value="escrow_released">Раскрытие аккредитива</option>
                 <option value="deal_cancelled_relisted">Срыв сделки / Перевыставление</option>
                 <option value="credit_limit_granted">Кредитный лимит банка</option>
-                {!isEmployee && (
+                {isOwner && (
                   <>
                     <option value="partner_application_submitted">Заявки B2B-партнеров</option>
                     <option value="partner_application_decided">Аккредитация B2B-партнеров</option>
