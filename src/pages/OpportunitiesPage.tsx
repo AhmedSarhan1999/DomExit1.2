@@ -4,6 +4,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { Lot } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { RUSSIAN_REGIONS, getDistrictsForRegion, getRegionByCode } from '../data/russianGeography';
 import { LotCard } from '../components/catalog/LotCard';
 import { CatalogMapView } from '../components/catalog/CatalogMapView';
@@ -128,6 +129,10 @@ export const OpportunitiesPage: React.FC = () => {
 
   useEffect(() => {
     loadLots();
+    const unsub = DatabaseGateway.subscribe(() => {
+      loadLots();
+    });
+    return unsub;
   }, [user]);
 
   const handleCityChange = (nextCity: string) => {
@@ -204,11 +209,16 @@ export const OpportunitiesPage: React.FC = () => {
     const processingCount = allRegistryLots.filter((l) => l.status === 'processing').length;
     const closedCount = allRegistryLots.filter((l) => l.status === 'closed').length;
     const totalVolumeRub = allRegistryLots.reduce((acc, l) => acc + (l.dduContractPrice || 0), 0);
-    const maxSavingsPct = allRegistryLots.reduce((max, l) => {
-      if (!l.todayDeveloperPrice) return max;
-      const pct = Math.round(((l.todayDeveloperPrice - l.dduContractPrice) / l.todayDeveloperPrice) * 100);
-      return pct > max ? pct : max;
-    }, 28);
+    const maxSavingsPct =
+      allRegistryLots.length > 0
+        ? allRegistryLots.reduce((max, l) => {
+            if (!l.todayDeveloperPrice) return max;
+            const pct = Math.round(
+              ((l.todayDeveloperPrice - l.dduContractPrice) / l.todayDeveloperPrice) * 100
+            );
+            return pct > max ? pct : max;
+          }, 0)
+        : 0;
     return {
       totalCount,
       availableCount,
@@ -648,27 +658,63 @@ export const OpportunitiesPage: React.FC = () => {
             ))}
           </div>
         ) : lots.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 my-8">
-            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-              <Search className="w-8 h-8" />
+          allRegistryLots.length === 0 ? (
+            <div className="bg-white rounded-3xl border-2 border-emerald-500/20 p-10 sm:p-14 text-center space-y-6 my-8 shadow-xs">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-xs">
+                <ShieldCheck className="w-8 h-8" />
+              </div>
+              <div className="max-w-xl mx-auto space-y-2">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 uppercase tracking-wider">
+                  ПЕРВИЧНЫЙ РЕЕСТР ПЕРЕУСТУПОК 214-ФЗ
+                </span>
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+                  Каталог лотов формируется
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  Каталог лотов формируется — ведется юридический аудит первых объектов по 214-ФЗ и 140-ФЗ. Вы можете подать заявку на безопасный выход из ДДУ или запросить подбор встречного лота.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <Link
+                  to="/sellers"
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-emerald-600/20 transition-all inline-flex items-center justify-center gap-2"
+                >
+                  <Building className="w-4 h-4" />
+                  <span>Подать заявку на безопасный выход</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickMatchOpen(true)}
+                  className="w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Запросить подбор встречного лота</span>
+                </button>
+              </div>
             </div>
-            <h3 className="text-lg font-bold text-slate-900">
-              {language === 'ru' ? 'По заданным параметрам лоты не найдены' : 'No lots found matching criteria'}
-            </h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {language === 'ru'
-                ? 'Попробуйте выбрать другой район/регион, увеличить лимит наличных или сбросить фильтры поиска.'
-                : 'Try selecting another district/region, increasing your cash budget, or resetting filters.'}
-            </p>
-            <button
-              type="button"
-              onClick={handleResetAll}
-              className="px-5 py-2.5 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl shadow-md inline-flex items-center space-x-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>{language === 'ru' ? 'Сбросить все фильтры' : 'Reset All Filters'}</span>
-            </button>
-          </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 my-8">
+              <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                <Search className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">
+                {language === 'ru' ? 'По заданным критериям лоты не найдены' : 'No lots found matching criteria'}
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                {language === 'ru'
+                  ? 'Попробуйте выбрать другой район/регион, увеличить лимит наличных или сбросить фильтры поиска.'
+                  : 'Try selecting another district/region, increasing your cash budget, or resetting filters.'}
+              </p>
+              <button
+                type="button"
+                onClick={handleResetAll}
+                className="px-5 py-2.5 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl shadow-md inline-flex items-center space-x-2 cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>{language === 'ru' ? 'Сбросить все фильтры' : 'Reset All Filters'}</span>
+              </button>
+            </div>
+          )
         ) : viewMode === 'map' ? (
           <div className="py-2">
             <CatalogMapView

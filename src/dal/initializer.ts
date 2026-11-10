@@ -9,6 +9,8 @@ import {
   initialBankEmployees,
   initialSellerRequests,
 } from './seedData';
+import { migrateToSandbox } from './scripts/migrateToSandbox';
+import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
 /**
  * Live Database Auto-Seeder & Migration Controller
@@ -22,12 +24,17 @@ export class DatabaseInitializer {
     this.isInitialized = true;
 
     try {
-      // Warm up & ensure all canonical collections are hydrated via DatabaseGateway
+      // 1. Run dual-environment sandbox migration
+      await migrateToSandbox();
+
+      const isProd = useEnvironmentStore.getState().isProduction;
+
+      // 2. Warm up collections: if in production, isolated collections pass [] so they remain empty!
       await Promise.all([
-        DatabaseGateway.getAll('lots', initialLots),
-        DatabaseGateway.getAll('deals', initialDeals),
-        DatabaseGateway.getAll('buyer_applications', initialCandidates),
-        DatabaseGateway.getAll('seller_requests', initialSellerRequests),
+        DatabaseGateway.getAll('lots', isProd ? [] : initialLots),
+        DatabaseGateway.getAll('deals', isProd ? [] : initialDeals),
+        DatabaseGateway.getAll('buyer_applications', isProd ? [] : initialCandidates),
+        DatabaseGateway.getAll('seller_requests', isProd ? [] : initialSellerRequests),
         DatabaseGateway.getAll('partner_applications', initialPartners),
         DatabaseGateway.getAll('employees', initialEmployees),
         DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
@@ -40,6 +47,12 @@ export class DatabaseInitializer {
 
   static clearDemoData(): void {
     const keys = [
+      'domexit_fb_demo_lots',
+      'domexit_fb_demo_deals',
+      'domexit_fb_demo_candidates',
+      'domexit_fb_demo_buyer_applications',
+      'domexit_fb_demo_seller_requests',
+      'domexit_fb_demo_documents_vault',
       'domexit_fb_lots',
       'domexit_fb_deals',
       'domexit_fb_candidates',
@@ -56,6 +69,8 @@ export class DatabaseInitializer {
 
   static resetToDemoData(): void {
     this.clearDemoData();
+    localStorage.removeItem('domexit_sandbox_migrated_v1');
+    localStorage.removeItem('domexit_sandbox_migrated_v2');
     window.location.reload();
   }
 }

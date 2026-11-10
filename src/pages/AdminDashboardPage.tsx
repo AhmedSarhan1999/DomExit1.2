@@ -24,6 +24,8 @@ import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { SecurityIncidentsRepository } from '../dal/repositories/SecurityIncidentsRepository';
 import { LegalPoliciesRepository, CANONICAL_POLICY_NAMES, INITIAL_POLICY_TEXTS } from '../dal/repositories/LegalPoliciesRepository';
 import { computeSha256 } from '../utils/crypto';
+import { useEnvironmentStore } from '../stores/useEnvironmentStore';
+import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useCompanyProfileStore } from '../stores/useCompanyProfileStore';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { maskSensitiveData } from '../utils/dataMasking';
@@ -88,6 +90,19 @@ import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../utils/asyncG
 
 export const AdminDashboardPage: React.FC = () => {
   const { user, switchRole } = useAuth();
+  const { currentEnv, isProduction, toggleEnvironment } = useEnvironmentStore();
+  const canSwitchEnvironment =
+    user?.email === 'amaas9499@gmail.com' || user?.activeRole === 'owner';
+
+  const handleToggleEnvironment = () => {
+    const nextIsProd = !isProduction;
+    toggleEnvironment();
+    showToast(
+      nextIsProd
+        ? 'Активирован Боевой режим (Production) — чистая промышленная база'
+        : 'Активирован Режим песочницы (Sandbox) — демонстрационные данные'
+    );
+  };
 
   const [kpis, setKpis] = useState<KPIStats | null>(null);
   const [lots, setLots] = useState<Lot[]>([]);
@@ -424,7 +439,11 @@ export const AdminDashboardPage: React.FC = () => {
 
   useEffect(() => {
     loadAllData();
-  }, [user?.activeRole, currentEmployeeId]);
+    const unsub = DatabaseGateway.subscribe(() => {
+      loadAllData();
+    });
+    return unsub;
+  }, [user?.activeRole, currentEmployeeId, currentEnv]);
 
   const findSellerRequestForLot = (lotCode: string): SellerExitRequest | undefined =>
     sellerRequests.find((r) => r.lotCode.toUpperCase() === lotCode.toUpperCase());
@@ -981,6 +1000,85 @@ export const AdminDashboardPage: React.FC = () => {
         )}
 
         <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
+          {/* Master Environment Switcher (Owner Exclusive) */}
+          {canSwitchEnvironment && (
+            <div
+              className={`rounded-2xl border-2 p-4 sm:p-5 shadow-sm transition-all duration-200 ${
+                isProduction
+                  ? 'border-emerald-500 bg-emerald-500/10'
+                  : 'border-amber-400 bg-amber-500/10'
+              }`}
+            >
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div
+                    className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${
+                      isProduction
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-700'
+                        : 'bg-amber-500/20 border-amber-400 text-amber-700'
+                    }`}
+                  >
+                    {isProduction ? (
+                      <ShieldCheck className="w-6 h-6 text-emerald-700" />
+                    ) : (
+                      <AlertTriangle className="w-6 h-6 text-amber-700" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                          isProduction
+                            ? 'bg-emerald-200 text-emerald-900 border-emerald-300'
+                            : 'bg-amber-200 text-amber-900 border-amber-300'
+                        }`}
+                      >
+                        {isProduction ? 'PRODUCTION • БОЕВОЙ' : 'SANDBOX • ПЕСОЧНИЦА'}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-600">
+                        {isProduction
+                          ? 'Промышленный контур 214-ФЗ'
+                          : 'Тестовый симуляционный контур'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs sm:text-sm font-medium text-slate-900">
+                      {isProduction ? (
+                        <>
+                          🔒 <strong>БОЕВОЙ РЕЖИМ (PRODUCTION)</strong> — Чистая промышленная база. Все создаваемые лоты, сделки и эскроу-аккаунты являются юридически значимыми.
+                        </>
+                      ) : (
+                        <>
+                          ⚠️ <strong>РЕЖИМ ПЕСОЧНИЦЫ (SANDBOX)</strong> — Отображаются тестовые данные для симуляции и демонстрации. Реальные клиенты не видят эти объекты.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleEnvironment}
+                  className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer shrink-0 ${
+                    isProduction
+                      ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/20'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                  }`}
+                >
+                  {isProduction ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4 text-slate-950" />
+                      <span>Переключиться в Песочницу (Demo)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4 text-white" />
+                      <span>Переключиться в Боевой режим (Production)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Role Status Bar */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center space-x-3">

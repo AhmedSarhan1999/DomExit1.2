@@ -8,6 +8,8 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import { IDatabaseAdapter } from '../interfaces/IDatabaseAdapter';
+import { isIsolatedCollection } from '../config/collectionResolver';
+import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 /**
  * Recursively strips `undefined` properties before writing to Firestore,
@@ -77,6 +79,8 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
   ): Promise<T[]> {
     const storageKey = `domexit_fb_${collectionName}`;
     const localCached = this.getCache<T>(collectionName);
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
 
     // Fetch from live Firestore and merge with local/seed items so newly created or seeded entities are never lost
     try {
@@ -98,7 +102,7 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
               remoteMap.set(localItem.id, localItem);
             }
           }
-          for (const seedItem of seedFallback) {
+          for (const seedItem of effectiveSeedFallback) {
             if (!remoteMap.has(seedItem.id)) {
               remoteMap.set(seedItem.id, seedItem);
             }
@@ -117,9 +121,9 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
 
     if (localCached.length > 0) {
       // Ensure any newly added seed lots/entities appear cleanly
-      if (seedFallback.length > 0) {
+      if (effectiveSeedFallback.length > 0) {
         const existingIds = new Set(localCached.map((i) => i.id));
-        const missingSeeds = seedFallback.filter((s) => !existingIds.has(s.id));
+        const missingSeeds = effectiveSeedFallback.filter((s) => !existingIds.has(s.id));
         if (missingSeeds.length > 0) {
           const combined = [...localCached, ...missingSeeds];
           try {
@@ -131,12 +135,12 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
       return localCached;
     }
 
-    if (seedFallback.length > 0) {
+    if (effectiveSeedFallback.length > 0) {
       try {
-        localStorage.setItem(storageKey, JSON.stringify(seedFallback));
+        localStorage.setItem(storageKey, JSON.stringify(effectiveSeedFallback));
       } catch {}
     }
-    return [...seedFallback];
+    return [...effectiveSeedFallback];
   }
 
   async getEntityById<T extends { id: string }>(
