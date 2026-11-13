@@ -556,7 +556,6 @@ export const LotDetailsPage: React.FC = () => {
             {/* Phase 4 Requirement: Smart Mortgage & Credit Calculator */}
             <SmartMortgageCalculator
               lot={lot}
-              onApplyWithCalculation={() => setIsBookingModalOpen(true)}
             />
 
             {/* Phase 4 Requirement: Rental & Income Potential of Location */}

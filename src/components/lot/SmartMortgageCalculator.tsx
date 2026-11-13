@@ -25,7 +25,6 @@ interface SmartMortgageCalculatorProps {
 
 export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = ({
   lot,
-  onApplyWithCalculation,
 }) => {
   const { language } = useLanguage();
   const { enableBankPortal } = useFeatureFlagsStore();
@@ -672,21 +671,6 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
               </div>
             </div>
           </div>
-
-          {onApplyWithCalculation && (
-            <button
-              type="button"
-              onClick={onApplyWithCalculation}
-              className="mt-5 w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-sm transition-all flex items-center justify-center space-x-2 text-sm cursor-pointer"
-            >
-              <span>
-                {language === 'ru'
-                  ? 'Подать заявку с этим расчётом'
-                  : 'Apply With This Calculation'}
-              </span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
     </div>

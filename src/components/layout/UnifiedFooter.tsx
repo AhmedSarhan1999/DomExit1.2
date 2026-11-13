@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { ShieldCheck, Phone, Mail, MapPin, Send, CheckCircle2, Building2, MessageCircle, Bot } from 'lucide-react';
+import { ShieldCheck, Phone, Mail, MapPin, Send, Building2, MessageCircle, Bot } from 'lucide-react';
 import { useCompanyProfileStore } from '../../stores/useCompanyProfileStore';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
@@ -151,12 +151,6 @@ export const UnifiedFooter: React.FC = () => {
                 </a>
               </div>
             </div>
-
-            {/* Rosreestr Badge */}
-            <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>{t.footer.rosreestrBadge}</span>
-            </div>
           </div>
 
         </div>
@@ -177,8 +171,6 @@ export const UnifiedFooter: React.FC = () => {
               Расчетный банк: {profile.bankName} (БИК: <span className="font-mono">{profile.bik}</span>, р/с: <span className="font-mono">{profile.checkingAccount}</span>)
             </div>
           </div>
-
-          <p>{t.footer.disclaimer}</p>
 
           <div className="flex flex-col lg:flex-row items-center justify-between gap-4 pt-3 text-[11px] text-slate-500 border-t border-slate-200/80">
             <div>
