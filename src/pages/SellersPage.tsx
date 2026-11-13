@@ -51,6 +51,7 @@ import {
   Loader2,
   Download,
   MapPin,
+  Building2,
 } from 'lucide-react';
 
 export const SellersPage: React.FC = () => {
@@ -69,8 +70,8 @@ export const SellersPage: React.FC = () => {
   const [district, setDistrict] = useState<string>('Приморский район');
   const [accreditedDevelopers, setAccreditedDevelopers] = useState<AccreditedDeveloper[]>([]);
   const [isAddingNewDeveloper, setIsAddingNewDeveloper] = useState<boolean>(false);
-  const [developerName, setDeveloperName] = useState<string>('Setl Group');
-  const [developerInn, setDeveloperInn] = useState<string>('7810245481');
+  const [developerName, setDeveloperName] = useState<string>('');
+  const [developerInn, setDeveloperInn] = useState<string>('');
   const [complexName, setComplexName] = useState<string>('ЖК «Чистое Небо»');
   const [dduCode, setDduCode] = useState<string>('ДДУ-78/12-10599');
   const [rooms, setRooms] = useState<Lot['rooms']>('2-room');
@@ -147,6 +148,14 @@ export const SellersPage: React.FC = () => {
     const loadDevs = () => {
       DevelopersRepository.getAllDevelopers().then((devs) => {
         setAccreditedDevelopers(devs);
+        if (devs.length === 0) {
+          setIsAddingNewDeveloper(true);
+          setDeveloperName('');
+          setDeveloperInn('');
+        } else if (devs.length > 0 && !developerName) {
+          setDeveloperName(devs[0].name);
+          setDeveloperInn(devs[0].inn || '');
+        }
       });
     };
     loadDevs();
@@ -414,6 +423,26 @@ export const SellersPage: React.FC = () => {
             referredByPartnerCode: partnerRefCode.trim() || undefined,
           });
 
+          if (isAddingNewDeveloper) {
+            try {
+              await DevelopersRepository.createAccreditationRequest({
+                developerName: developerName.trim(),
+                developerInn: developerInn.trim() || '7700000000',
+                lotId: result.lot.id,
+                lotCode: result.lot.lotCode,
+                complexName: complexName.trim(),
+                city: locationRegion,
+                district,
+                contractPriceRub: contractPrice,
+                sellerName: sellerName.trim(),
+                sellerClientCode: activeUser.clientCode || 'DEX-784105',
+                documentIds: vaultDocs.map((d) => d.id),
+              });
+            } catch (devErr) {
+              console.warn('[SellersPage] Non-fatal developer accreditation submit:', devErr);
+            }
+          }
+
           if (uploadedPhotos.length > 0) {
             result.lot.imageUrl = uploadedPhotos[0];
             result.lot.galleryImages = uploadedPhotos;
@@ -649,39 +678,74 @@ export const SellersPage: React.FC = () => {
                           }}
                           className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
                         >
-                          {accreditedDevelopers.map((d) => (
-                            <option key={d.id} value={d.name}>
-                              {formatDeveloperOption(d)}
+                          {accreditedDevelopers.length === 0 ? (
+                            <option value="" disabled>
+                              -- Нет аккредитованных застройщиков (0) --
                             </option>
-                          ))}
-                          <option value="__ADD_NEW__">+ Добавить нового застройщика</option>
+                          ) : (
+                            accreditedDevelopers.map((d) => (
+                              <option key={d.id} value={d.name}>
+                                {formatDeveloperOption(d)}
+                              </option>
+                            ))
+                          )}
+                          <option value="__ADD_NEW__" className="font-bold text-emerald-700 bg-emerald-50">
+                            + Добавить нового застройщика
+                          </option>
                         </select>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {activeRegionConfig.majorDevelopers.slice(0, 4).map((dev) => (
+                        {accreditedDevelopers.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {activeRegionConfig.majorDevelopers
+                              .filter((dev) => accreditedDevelopers.some((a) => a.name === dev))
+                              .slice(0, 4)
+                              .map((dev) => (
+                                <button
+                                  key={dev}
+                                  type="button"
+                                  onClick={() => {
+                                    setIsAddingNewDeveloper(false);
+                                    setDeveloperName(dev);
+                                    const matched = accreditedDevelopers.find(
+                                      (d) => d.name === dev || normalizeDeveloperName(d.name) === normalizeDeveloperName(dev)
+                                    );
+                                    if (matched?.inn) setDeveloperInn(matched.inn);
+                                  }}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                                    developerName === dev
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {dev}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="space-y-3 bg-amber-50/80 border border-amber-200 rounded-2xl p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-amber-700" />
+                            <span>Добавление нового застройщика</span>
+                          </span>
+                          {accreditedDevelopers.length > 0 && (
                             <button
-                              key={dev}
                               type="button"
                               onClick={() => {
                                 setIsAddingNewDeveloper(false);
-                                setDeveloperName(dev);
-                                const matched = accreditedDevelopers.find(
-                                  (d) => d.name === dev || normalizeDeveloperName(d.name) === normalizeDeveloperName(dev)
-                                );
-                                if (matched?.inn) setDeveloperInn(matched.inn);
+                                if (accreditedDevelopers[0]) {
+                                  setDeveloperName(accreditedDevelopers[0].name);
+                                  setDeveloperInn(accreditedDevelopers[0].inn || '');
+                                }
                               }}
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
-                                developerName === dev
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                              }`}
+                              className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
                             >
-                              {dev}
+                              Выбрать из списка ({accreditedDevelopers.length})
                             </button>
-                          ))}
+                          )}
                         </div>
-                      </>
-                    ) : (
-                      <div className="space-y-2.5 bg-amber-50/70 border border-amber-200 rounded-xl p-3">
+
                         <div>
                           <label className="block text-[11px] font-bold text-slate-700 mb-1">
                             Наименование нового застройщика *
@@ -691,7 +755,7 @@ export const SellersPage: React.FC = () => {
                             value={developerName}
                             onChange={(e) => setDeveloperName(e.target.value)}
                             placeholder="Например: СК «Северный Горизонт»"
-                            className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
                           />
                         </div>
                         <div>
@@ -704,12 +768,13 @@ export const SellersPage: React.FC = () => {
                             value={developerInn}
                             onChange={(e) => setDeveloperInn(sanitizeDigitsOnly(e.target.value))}
                             placeholder="7813654902"
-                            className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
                           />
                         </div>
-                        <p className="text-[10px] text-amber-900 font-medium leading-tight">
-                          Объект будет опубликован без блокировки со статусом «Ожидает аккредитации банков». Запрос с ДДУ и справкой об оплате будет автоматически направлен в Сбербанк, ВТБ, Альфа-Банк и ДОМ.РФ.
-                        </p>
+
+                        <div className="p-3 bg-white/90 border border-amber-300/80 rounded-xl text-[11px] text-amber-950 leading-relaxed font-medium">
+                          «Заявка на добавление застройщика отправлена администратору платформы. После проверки ИНН застройщик появится в общем списке».
+                        </div>
                       </div>
                     )}
                   </div>

@@ -22,6 +22,10 @@ export const ISOLATED_COLLECTIONS: readonly string[] = [
   'partner_banks',
   'bank_employees',
   'user_consents',
+  'developers',
+  'developer_accreditation_requests',
+  'users',
+  'employees',
 ];
 
 /**
@@ -41,7 +45,7 @@ export function resolveCollectionName(baseCollection: string): string {
     return currentEnv === 'production' ? baseCollection : `demo_${baseCollection}`;
   }
 
-  // Shared infrastructure collections (market_settings, developers) remain unchanged
+  // Shared infrastructure collections (e.g. market_settings) remain unchanged
   return baseCollection;
 }
 

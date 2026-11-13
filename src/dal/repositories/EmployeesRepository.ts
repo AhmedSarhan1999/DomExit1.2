@@ -1,12 +1,43 @@
 import { Employee } from '../../types';
 import { initialEmployees } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const COLLECTION = 'employees';
 
+export const PROD_SYSTEM_EMPLOYEES: Employee[] = [
+  {
+    id: 'emp-1',
+    name: 'Алексей Смирнов',
+    email: 'amaas9494@gmail.com',
+    role: 'Ведущий куратор отдела выходов',
+    phone: '+7 (921) 888-11-22',
+    telegram: '@domexit_smirnov',
+    whatsapp: '+7 (921) 888-11-22',
+    maxProfile: '+7 (921) 888-11-22',
+    bio: '12 лет в сфере уступки прав по 214-ФЗ и аккредитивов. Экс-руководитель юридического блока строительного холдинга.',
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    activeLotsCount: 0,
+    closedDealsCount: 0,
+    avgSpeedDays: 8.5,
+    status: 'active',
+    permissions: ['legal_audit', 'packaging', 'matchmaker', 'closing'],
+  },
+];
+
 export class EmployeesRepository {
   static async getAll(): Promise<Employee[]> {
-    return DatabaseGateway.getAll<Employee>(COLLECTION, initialEmployees);
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const seed = isProd ? PROD_SYSTEM_EMPLOYEES : initialEmployees;
+    const raw = await DatabaseGateway.getAll<Employee>(COLLECTION, seed);
+    if (isProd) {
+      const valid = raw.filter((e) => {
+        const email = (e.email || '').toLowerCase().trim();
+        return email === 'amaas9494@gmail.com' || (!email.includes('@domexit.ru') && !email.includes('test'));
+      });
+      return valid.length > 0 ? valid : PROD_SYSTEM_EMPLOYEES;
+    }
+    return raw;
   }
 
   static async getById(employeeId: string): Promise<Employee | null> {

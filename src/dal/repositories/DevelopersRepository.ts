@@ -11,6 +11,7 @@ import {
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const DEVELOPERS_COLLECTION = 'developers';
 const ACCREDITATION_REQUESTS_COLLECTION = 'developer_accreditation_requests';
@@ -380,17 +381,20 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
     }
   }
 
-  // Ensure all institutional seed developers are present
-  for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
-    const seedNorm = normalizeDeveloperName(seed.name);
-    const seedCleanInn = seed.inn.trim().replace(/\D/g, '');
-    const alreadyIn = mergedList.some((m) => {
-      const mNorm = normalizeDeveloperName(m.name);
-      const mCleanInn = (m.inn || '').trim().replace(/\D/g, '');
-      return mNorm === seedNorm || (seedCleanInn && mCleanInn === seedCleanInn);
-    });
-    if (!alreadyIn) {
-      mergedList.push({ ...seed });
+  // Ensure all institutional seed developers are present ONLY in Demo / Sandbox mode
+  const isProd = useEnvironmentStore.getState().isProduction;
+  if (!isProd) {
+    for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
+      const seedNorm = normalizeDeveloperName(seed.name);
+      const seedCleanInn = seed.inn.trim().replace(/\D/g, '');
+      const alreadyIn = mergedList.some((m) => {
+        const mNorm = normalizeDeveloperName(m.name);
+        const mCleanInn = (m.inn || '').trim().replace(/\D/g, '');
+        return mNorm === seedNorm || (seedCleanInn && mCleanInn === seedCleanInn);
+      });
+      if (!alreadyIn) {
+        mergedList.push({ ...seed });
+      }
     }
   }
 
@@ -400,7 +404,11 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
 
 class DevelopersRepositoryController {
   async getAllDevelopers(): Promise<AccreditedDeveloper[]> {
-    const raw = await DatabaseGateway.getAll<AccreditedDeveloper>(DEVELOPERS_COLLECTION, INITIAL_ACCREDITED_DEVELOPERS);
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const raw = await DatabaseGateway.getAll<AccreditedDeveloper>(
+      DEVELOPERS_COLLECTION,
+      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+    );
     return deduplicateDevelopers(raw);
   }
 
@@ -421,14 +429,18 @@ class DevelopersRepositoryController {
     );
     if (found) return found;
 
-    // Check seed fallback
-    const seed = INITIAL_ACCREDITED_DEVELOPERS.find(
-      (d) =>
-        normalizeDeveloperName(d.name) === norm ||
-        (d.inn && developerName.trim() === d.inn.trim()) ||
-        d.id === developerName
-    );
-    return seed || null;
+    const isProd = useEnvironmentStore.getState().isProduction;
+    if (!isProd) {
+      // Check seed fallback ONLY in demo mode
+      const seed = INITIAL_ACCREDITED_DEVELOPERS.find(
+        (d) =>
+          normalizeDeveloperName(d.name) === norm ||
+          (d.inn && developerName.trim() === d.inn.trim()) ||
+          d.id === developerName
+      );
+      return seed || null;
+    }
+    return null;
   }
 
   async isDeveloperAccredited(developerName: string): Promise<boolean> {
@@ -595,9 +607,10 @@ class DevelopersRepositoryController {
   }
 
   async getAllAccreditationRequests(): Promise<DeveloperAccreditationRequest[]> {
+    const isProd = useEnvironmentStore.getState().isProduction;
     return DatabaseGateway.getAll<DeveloperAccreditationRequest>(
       ACCREDITATION_REQUESTS_COLLECTION,
-      INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+      isProd ? [] : INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
     );
   }
 
@@ -614,21 +627,6 @@ class DevelopersRepositoryController {
     sellerClientCode: string;
     documentIds: string[];
   }): Promise<DeveloperAccreditationRequest> {
-    // Also ensure developer record exists in `developers` (with isAccredited = false if new)
-    const existingDev = await this.findDeveloperByName(params.developerName);
-    if (!existingDev) {
-      const newDev: AccreditedDeveloper = {
-        id: `dev-${Date.now()}`,
-        name: params.developerName.trim(),
-        inn: params.developerInn.trim() || '7700000000',
-        isAccredited: false,
-        bankTerms: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await DatabaseGateway.save<AccreditedDeveloper>(DEVELOPERS_COLLECTION, newDev);
-    }
-
     const request: DeveloperAccreditationRequest = {
       id: `DEV-ACC-${Date.now().toString().slice(-6)}`,
       developerName: params.developerName.trim(),
@@ -658,11 +656,81 @@ class DevelopersRepositoryController {
       operatorName: params.sellerName,
       operatorRole: 'client',
       actionType: 'developer_accreditation_submitted',
-      title: `Запрос аккредитации нового застройщика: ${params.developerName}`,
-      description: `ИНН: ${params.developerInn} • Объект: ${params.complexName} (Лот ${params.lotCode}). Направлено в банки-партнёры.`,
+      title: `Запрос на добавление застройщика: ${params.developerName}`,
+      description: `ИНН: ${params.developerInn} • ЖК: ${params.complexName}. Заявка передана на проверку администратору.`,
     });
 
     return saved;
+  }
+
+  async approveAccreditationRequest(
+    requestId: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец)'
+  ): Promise<{ request: DeveloperAccreditationRequest; developer: AccreditedDeveloper } | null> {
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const req = await DatabaseGateway.getById<DeveloperAccreditationRequest>(
+      ACCREDITATION_REQUESTS_COLLECTION,
+      requestId,
+      isProd ? [] : INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+    );
+    if (!req) return null;
+
+    req.status = 'approved';
+    await DatabaseGateway.save(ACCREDITATION_REQUESTS_COLLECTION, req);
+
+    const devSlug = req.developerName.toLowerCase().replace(/[^a-zа-я0-9]/gi, '-').slice(0, 30);
+    const newDev: AccreditedDeveloper = {
+      id: `dev-${devSlug || Date.now()}`,
+      name: req.developerName.trim(),
+      inn: req.developerInn.trim() || '7700000000',
+      isAccredited: true,
+      bankTerms: [
+        { bankName: 'Сбербанк', isAccredited: true, baseRatePercent: 19.5, familyMortgage6: true, itMortgage6: true, maxPdnPercent: 50, accreditedAt: new Date().toISOString() },
+        { bankName: 'ВТБ', isAccredited: true, baseRatePercent: 19.9, familyMortgage6: true, itMortgage6: true, maxPdnPercent: 60, accreditedAt: new Date().toISOString() },
+        { bankName: 'Альфа-Банк', isAccredited: true, baseRatePercent: 20.5, familyMortgage6: true, itMortgage6: false, maxPdnPercent: 50, accreditedAt: new Date().toISOString() },
+        { bankName: 'ДОМ.РФ', isAccredited: true, baseRatePercent: 19.2, familyMortgage6: true, itMortgage6: true, maxPdnPercent: 50, accreditedAt: new Date().toISOString() },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await DatabaseGateway.save(DEVELOPERS_COLLECTION, newDev);
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'developer_accreditation_decided',
+      title: `Одобрен и внесен в реестр застройщик: ${newDev.name}`,
+      description: `ИНН: ${newDev.inn}. Аккредитация утверждена. Застройщик появится в общем списке.`,
+    });
+
+    return { request: req, developer: newDev };
+  }
+
+  async rejectAccreditationRequest(
+    requestId: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец)'
+  ): Promise<boolean> {
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const req = await DatabaseGateway.getById<DeveloperAccreditationRequest>(
+      ACCREDITATION_REQUESTS_COLLECTION,
+      requestId,
+      isProd ? [] : INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+    );
+    if (!req) return false;
+
+    req.status = 'rejected';
+    await DatabaseGateway.save(ACCREDITATION_REQUESTS_COLLECTION, req);
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'developer_accreditation_decided',
+      title: `Отклонена заявка на добавление застройщика: ${req.developerName}`,
+      description: `ИНН: ${req.developerInn}. Заявка отклонена владельцем.`,
+    });
+
+    return true;
   }
 
   async decideAccreditationRequest(params: {

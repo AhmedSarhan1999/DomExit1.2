@@ -2,12 +2,94 @@ import { UserProfile } from '../../types';
 import { initialUsers } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const COLLECTION = 'users';
 
+export const PROD_SYSTEM_USERS: UserProfile[] = [
+  {
+    id: 'usr-owner-001',
+    clientCode: 'DEX-104662',
+    name: 'Ahmed Abdallah (Владелец / CEO)',
+    email: 'amaas9499@gmail.com',
+    phone: '+7 (812) 900-00-01',
+    telegram: '@domexit_owner',
+    role: 'admin',
+    roles: ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'],
+    activeRole: 'owner',
+    isPartnerApproved: true,
+    isInvestorApproved: true,
+    partnerRefCode: 'PARTNER-MASTER-OWNER',
+    favorites: [],
+    registeredAt: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'usr-staff-002',
+    clientCode: 'DEX-000002',
+    name: 'Алексей Смирнов (Ведущий куратор)',
+    email: 'amaas9494@gmail.com',
+    phone: '+7 (921) 888-11-22',
+    telegram: '@domexit_smirnov',
+    role: 'employee',
+    roles: ['employee', 'buyer', 'seller'],
+    activeRole: 'employee',
+    assignedEmployeeId: 'emp-1',
+    isPartnerApproved: false,
+    isInvestorApproved: false,
+    favorites: [],
+    registeredAt: '2026-02-01T00:00:00Z',
+  },
+];
+
 export class UsersRepository {
   static async getAll(): Promise<UserProfile[]> {
-    return DatabaseGateway.getAll<UserProfile>(COLLECTION, initialUsers);
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const seed = isProd ? PROD_SYSTEM_USERS : initialUsers;
+    const raw = await DatabaseGateway.getAll<UserProfile>(COLLECTION, seed);
+
+    if (isProd) {
+      // In production, strictly filter out any demo/dummy accounts
+      const DEMO_EMAILS_TO_EXCLUDE = new Set([
+        'seller@domexit.ru',
+        'client@domexit.ru',
+        'investor@domexit.ru',
+        'google.user@gmail.com',
+        'aa@domexit.com',
+        'bank@domexit.ru',
+        'alexander@domexit.ru',
+        'morozov@domexit.ru',
+        'romanova@domexit.ru',
+        'voronov@domexit.ru',
+      ]);
+
+      const filtered = raw.filter((u) => {
+        const email = (u.email || '').toLowerCase().trim();
+        return !DEMO_EMAILS_TO_EXCLUDE.has(email);
+      });
+
+      // Deduplicate by email
+      const seen = new Set<string>();
+      const deduped: UserProfile[] = [];
+      for (const u of filtered) {
+        const email = (u.email || '').toLowerCase().trim();
+        if (email && seen.has(email)) continue;
+        if (email) seen.add(email);
+        deduped.push(u);
+      }
+
+      // Ensure the 2 production accounts are present
+      for (const p of PROD_SYSTEM_USERS) {
+        const pEmail = (p.email || '').toLowerCase();
+        if (pEmail && !seen.has(pEmail)) {
+          deduped.unshift(p);
+          seen.add(pEmail);
+        }
+      }
+
+      return deduped;
+    }
+
+    return raw;
   }
 
   static async getById(userId: string): Promise<UserProfile | null> {

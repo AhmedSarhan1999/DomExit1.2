@@ -7,6 +7,7 @@ import { getRegionByCode, getDistrictsForRegion, RUSSIAN_REGIONS } from '../data
 import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { DevelopersRepository } from '../dal/repositories/DevelopersRepository';
 import { AnalyticsRepository } from '../dal/repositories/AnalyticsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
@@ -50,6 +51,7 @@ import {
   PublicChannelsConfig,
   LegalPolicyType,
   LegalPolicyVersion,
+  DeveloperAccreditationRequest,
 } from '../types';
 import {
   CheckCircle2,
@@ -352,6 +354,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [staffTab, setStaffTab] = useState<'users' | 'employees'>('users');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [developerRequests, setDeveloperRequests] = useState<DeveloperAccreditationRequest[]>([]);
 
   const isEmployee = Boolean(user && user.activeRole === 'employee');
   const isOwner = Boolean(
@@ -403,6 +406,7 @@ export const AdminDashboardPage: React.FC = () => {
       pBanks,
       incData,
       allDealsData,
+      devReqsData,
     ] = await Promise.all([
       AnalyticsRepository.getKPIs(),
       LotsRepository.getAll({ includePendingApproval: true }),
@@ -416,6 +420,7 @@ export const AdminDashboardPage: React.FC = () => {
       BankPortalRepository.getAllPartnerBanks(),
       SecurityIncidentsRepository.getAll(),
       DealsRepository.getAll(),
+      DevelopersRepository.getAllAccreditationRequests(),
     ]);
 
     // Sort lots so pending owner approval & docs requested appear first in Triage Desk
@@ -445,6 +450,7 @@ export const AdminDashboardPage: React.FC = () => {
     setPartnerBanks(pBanks);
     setIncidents(incData);
     setAllDeals(allDealsData);
+    setDeveloperRequests(devReqsData);
   };
 
   useEffect(() => {
@@ -655,6 +661,29 @@ export const AdminDashboardPage: React.FC = () => {
     showToast('Статус Партнера B2B одобрен! Реферальный кабинет активирован.');
     setModalPartner(null);
     await loadAllData();
+  };
+
+  const handleApproveDeveloperRequest = async (requestId: string) => {
+    try {
+      const res = await DevelopersRepository.approveAccreditationRequest(requestId, operatorName);
+      if (res) {
+        showToast(`Застройщик «${res.developer.name}» успешно аккредитован и добавлен в общий реестр!`);
+      }
+      await loadAllData();
+    } catch (e: any) {
+      showError(`Ошибка при аккредитации: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleRejectDeveloperRequest = async (requestId: string) => {
+    if (!confirm('Отклонить заявку на добавление застройщика?')) return;
+    try {
+      await DevelopersRepository.rejectAccreditationRequest(requestId, operatorName);
+      showToast('Заявка на добавление застройщика отклонена.');
+      await loadAllData();
+    } catch (e: any) {
+      showError(`Ошибка при отклонении: ${e?.message || 'Сбой'}`);
+    }
   };
 
   const handlePartnerModalDecision = async (e: React.FormEvent) => {
@@ -965,6 +994,7 @@ export const AdminDashboardPage: React.FC = () => {
   const pendingSellerCount = lots.filter((l) => l.approvalStatus === 'pending_owner_approval').length;
   const pendingPartnerCount = partners.filter((p) => p.status === 'pending').length;
   const pendingInvestorCount = investors.filter((i) => i.status === 'pending').length;
+  const pendingDevReqCount = developerRequests.filter((r) => r.status === 'pending').length;
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 pb-20">
@@ -1877,6 +1907,96 @@ export const AdminDashboardPage: React.FC = () => {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* OWNER TRIAGE DESK 4: Developer Accreditation Requests */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div className="space-y-0.5">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <Building2 className="w-4 h-4 text-emerald-600" />
+                      <span>Заявки на добавление застройщиков (Аккредитация) ({developerRequests.length})</span>
+                      {pendingDevReqCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                          +{pendingDevReqCount} новых
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Проверка ИНН застройщика и добавление в официальный реестр аккредитованных девелоперов платформы.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    Верификация ФНС / ЕРЗ
+                  </span>
+                </div>
+
+                {developerRequests.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-xs">
+                    Нет активных заявок на добавление застройщиков
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    {developerRequests.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-xs text-slate-900">{req.developerName}</span>
+                            <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-mono text-[10px] font-medium">
+                              ИНН: {req.developerInn || 'не указан'}
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {new Date(req.requestedAt).toLocaleDateString('ru-RU')}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            ЖК: <span className="font-semibold text-slate-800">{req.complexName || 'Не указан'}</span>
+                            {req.district && ` • Район: ${req.district}`}
+                            {req.city && ` • ${req.city}`}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Продавец: <span className="font-medium text-slate-700">{req.sellerName}</span> ({req.sellerClientCode})
+                            {req.contractPriceRub > 0 && ` • Цена ДДУ: ${req.contractPriceRub.toLocaleString('ru-RU')} ₽`}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 shrink-0 self-end md:self-center">
+                          {req.status === 'approved' ? (
+                            <span className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center space-x-1">
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Аккредитован</span>
+                            </span>
+                          ) : req.status === 'rejected' ? (
+                            <span className="px-3 py-1.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold">
+                              Отклонен
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveDeveloperRequest(req.id)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center space-x-1"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Одобрить и добавить в список</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRejectDeveloperRequest(req.id)}
+                                className="px-3 py-1.5 rounded-xl bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+                              >
+                                Отклонить
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
