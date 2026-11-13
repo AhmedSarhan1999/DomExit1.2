@@ -424,8 +424,9 @@ export class LotsRepository {
     if (!lot) return null;
 
     lot.isVerified = true;
+    lot.isPublished = true;
     lot.approvalStatus = 'approved';
-    lot.status = lot.status === 'closed' ? 'available' : lot.status || 'available';
+    lot.status = lot.status === 'closed' ? 'closed' : lot.status === 'processing' ? 'processing' : 'available';
     lot.currentStage = 3;
     if (customAntiBankruptcyIndex !== undefined) {
       lot.legalPassport.antiBankruptcyIndex = customAntiBankruptcyIndex;
