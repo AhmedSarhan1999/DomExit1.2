@@ -282,34 +282,6 @@ export const OpportunitiesPage: React.FC = () => {
                   : 'Every property vetted by 42 parameters. Buy at original DDU contract price with 152-FZ privacy protection.'}
               </p>
             </div>
-
-            {/* Prominent View Mode Toggle: Grid vs Interactive Map */}
-            <div className="inline-flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-start lg:self-auto shrink-0">
-              <button
-                type="button"
-                onClick={() => handleViewModeChange('grid')}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <LayoutGrid className="w-4 h-4 text-emerald-600" />
-                <span>{language === 'ru' ? 'Вид сеткой' : 'Grid View'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleViewModeChange('map')}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all ${
-                  viewMode === 'map'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <MapIcon className="w-4 h-4 text-emerald-400" />
-                <span>{language === 'ru' ? 'Интерактивная карта' : 'Interactive Map'}</span>
-              </button>
-            </div>
           </div>
 
           {/* 4 Live Registry Metric Cards */}
@@ -575,8 +547,36 @@ export const OpportunitiesPage: React.FC = () => {
             })}
           </div>
 
-          {/* Results Counter & Page Size Selector [12 | 24 | 48] */}
-          <div className="flex items-center justify-between md:justify-end gap-3 text-xs">
+          {/* View Mode Switcher + Results Counter & Page Size Selector [12 | 24 | 48] */}
+          <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 text-xs">
+            {/* View Mode Switcher: Grid vs Interactive Map */}
+            <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleViewModeChange('grid')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{language === 'ru' ? 'Вид сеткой' : 'Grid View'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleViewModeChange('map')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  viewMode === 'map'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{language === 'ru' ? 'Интерактивная карта' : 'Interactive Map'}</span>
+              </button>
+            </div>
+
             <span className="font-semibold text-slate-600">
               {language === 'ru' ? `Найдено: ${lots.length}` : `Found: ${lots.length}`}
             </span>

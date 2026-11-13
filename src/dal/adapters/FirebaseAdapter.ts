@@ -113,6 +113,13 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
             localStorage.setItem(storageKey, JSON.stringify(merged));
           } catch {}
           return merged;
+        } else if (isProd && isIsolatedCollection(collectionName)) {
+          // In production, an empty Firestore collection means there are truly 0 items.
+          // Do not resurrect stale cached items or demo seeds.
+          try {
+            localStorage.setItem(storageKey, '[]');
+          } catch {}
+          return [];
         }
       }
     } catch {
@@ -120,6 +127,30 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
     }
 
     if (localCached.length > 0) {
+      if (isProd && isIsolatedCollection(collectionName)) {
+        // Strip out demo seed items in production mode so production displays zero demo data
+        const nonSeed = localCached.filter((item) => {
+          const id = (item as any)?.id || '';
+          return (
+            !id.startsWith('lot-') &&
+            !id.startsWith('deal-') &&
+            !id.startsWith('cand-') &&
+            !id.startsWith('req-') &&
+            !id.startsWith('emp-') &&
+            !id.startsWith('PARTNER-') &&
+            !id.startsWith('BANK-') &&
+            !id.startsWith('bank-') &&
+            !id.startsWith('sa-')
+          );
+        });
+        if (nonSeed.length !== localCached.length) {
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(nonSeed));
+          } catch {}
+        }
+        return nonSeed;
+      }
+
       // Ensure any newly added seed lots/entities appear cleanly
       if (effectiveSeedFallback.length > 0) {
         const existingIds = new Set(localCached.map((i) => i.id));

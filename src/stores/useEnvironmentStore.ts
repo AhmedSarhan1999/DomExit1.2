@@ -29,7 +29,7 @@ function getInitialEnvironment(): AppEnvironment {
     }
   }
   // Default: 'demo' in dev / sandbox, 'production' in live builds
-  return import.meta.env.DEV ? 'demo' : 'production';
+  return (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ? 'demo' : 'production';
 }
 
 export const useEnvironmentStore = create<EnvironmentState>((set, get) => {

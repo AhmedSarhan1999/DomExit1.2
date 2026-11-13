@@ -35,10 +35,10 @@ export class DatabaseInitializer {
         DatabaseGateway.getAll('deals', isProd ? [] : initialDeals),
         DatabaseGateway.getAll('buyer_applications', isProd ? [] : initialCandidates),
         DatabaseGateway.getAll('seller_requests', isProd ? [] : initialSellerRequests),
-        DatabaseGateway.getAll('partner_applications', initialPartners),
+        DatabaseGateway.getAll('partner_applications', isProd ? [] : initialPartners),
         DatabaseGateway.getAll('employees', initialEmployees),
         DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
-        DatabaseGateway.getAll('bank_employees', initialBankEmployees),
+        DatabaseGateway.getAll('bank_employees', isProd ? [] : initialBankEmployees),
       ]);
     } catch (err) {
       console.warn('[DatabaseInitializer] Non-fatal migration check:', err);

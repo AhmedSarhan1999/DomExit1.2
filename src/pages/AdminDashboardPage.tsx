@@ -1730,7 +1730,7 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
 
               {/* OWNER TRIAGE DESK 2 & 3: Partners & VIP Investors */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className={`grid grid-cols-1 ${enableVipClub ? 'lg:grid-cols-2' : ''} gap-6`}>
                 {/* Partners Approval Desk */}
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1805,78 +1805,80 @@ export const AdminDashboardPage: React.FC = () => {
                 </div>
 
                 {/* Investors Approval Desk (6-step Onboarding) */}
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                      <Crown className="w-4 h-4 text-amber-600" />
-                      <span>Заявки VIP Инвесторов ({investors.length})</span>
-                      {pendingInvestorCount > 0 && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                          +{pendingInvestorCount} новых
-                        </span>
-                      )}
-                    </h3>
-                    <span className="text-[11px] font-mono font-bold text-amber-700">
-                      Ранний доступ 48ч
-                    </span>
-                  </div>
+                {enableVipClub && (
+                  <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                        <Crown className="w-4 h-4 text-amber-600" />
+                        <span>Заявки VIP Инвесторов ({investors.length})</span>
+                        {pendingInvestorCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                            +{pendingInvestorCount} новых
+                          </span>
+                        )}
+                      </h3>
+                      <span className="text-[11px] font-mono font-bold text-amber-700">
+                        Ранний доступ 48ч
+                      </span>
+                    </div>
 
-                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                    {investors.map((inv) => (
-                      <div
-                        key={inv.id}
-                        className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 truncate">
-                            {inv.fullName}
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                      {investors.map((inv) => (
+                        <div
+                          key={inv.id}
+                          className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-slate-900 truncate">
+                              {inv.fullName}
+                            </div>
+                            <div className="text-[11px] text-slate-500 truncate">
+                              {inv.companyOrFund || 'Частный капитал'} • Капитал: {inv.capitalVolume}
+                            </div>
+                            <div className="text-[10px] text-amber-700 font-semibold mt-0.5 truncate">
+                              Стратегия: {inv.strategy} • {inv.targetRegions?.slice(0, 2).join(', ')}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-slate-500 truncate">
-                            {inv.companyOrFund || 'Частный капитал'} • Капитал: {inv.capitalVolume}
-                          </div>
-                          <div className="text-[10px] text-amber-700 font-semibold mt-0.5 truncate">
-                            Стратегия: {inv.strategy} • {inv.targetRegions?.slice(0, 2).join(', ')}
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setModalInvestor(inv);
-                              setInvestorActionMode('approve');
-                              setInvestorActionNote('');
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-xs cursor-pointer"
-                          >
-                            Досье 6 шагов
-                          </button>
-                          {inv.status === 'approved' ? (
-                            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold flex items-center space-x-1">
-                              <Check className="w-3 h-3" />
-                              <span>Одобрен</span>
-                            </span>
-                          ) : inv.status === 'rejected' ? (
-                            <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold">
-                              Отклонен
-                            </span>
-                          ) : inv.status === 'docs_requested' ? (
-                            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
-                              Запрос капитала
-                            </span>
-                          ) : (
+                          <div className="flex items-center space-x-2 shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleApproveInvestor(inv.id)}
-                              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                              onClick={() => {
+                                setModalInvestor(inv);
+                                setInvestorActionMode('approve');
+                                setInvestorActionNote('');
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-xs cursor-pointer"
                             >
-                              Одобрить VIP
+                              Досье 6 шагов
                             </button>
-                          )}
+                            {inv.status === 'approved' ? (
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold flex items-center space-x-1">
+                                <Check className="w-3 h-3" />
+                                <span>Одобрен</span>
+                              </span>
+                            ) : inv.status === 'rejected' ? (
+                              <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold">
+                                Отклонен
+                              </span>
+                            ) : inv.status === 'docs_requested' ? (
+                              <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
+                                Запрос капитала
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleApproveInvestor(inv.id)}
+                                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                              >
+                                Одобрить VIP
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
                 </div>

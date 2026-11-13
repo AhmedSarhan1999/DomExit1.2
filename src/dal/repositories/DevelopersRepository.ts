@@ -270,8 +270,21 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
     if (!rawItem || !rawItem.name) continue;
 
     const cleanName = rawItem.name.trim();
-    const normName = normalizeDeveloperName(cleanName);
     const cleanInn = (rawItem.inn || '').trim().replace(/\D/g, '');
+
+    // Strict institutional sanitizer: exclude test, placeholder or junk developers
+    const isFake =
+      cleanName.toLowerCase().includes('xxx') ||
+      cleanName.toLowerCase().includes('1234') ||
+      cleanName.toLowerCase().includes('aaaa') ||
+      cleanName.toLowerCase().includes('test') ||
+      cleanInn === '1234567890' ||
+      cleanInn === '123456789012' ||
+      cleanName.length < 2;
+
+    if (isFake) continue;
+
+    const normName = normalizeDeveloperName(cleanName);
     const hasValidInn = cleanInn.length >= 10 && cleanInn !== '7700000000' && cleanInn !== '7800000000';
 
     // Find if an entry already exists in mergedList with same normalized name OR matching non-dummy INN

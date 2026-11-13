@@ -16,6 +16,12 @@ export const ISOLATED_COLLECTIONS: readonly string[] = [
   'partner_preliminary_requests',
   'escrow_bridge_chats',
   'bank_special_approvals',
+  'partners',
+  'partner_applications',
+  'investor_applications',
+  'partner_banks',
+  'bank_employees',
+  'user_consents',
 ];
 
 /**
