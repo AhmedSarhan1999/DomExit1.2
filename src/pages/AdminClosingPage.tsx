@@ -139,6 +139,10 @@ export const AdminClosingPage: React.FC = () => {
   );
   const canExecuteBankStep = !enableBankPortal || isBankOfficer || isOwner || isEmployee;
   const hasRosreestrStamp = Boolean(rosreestrStampDoc && rosreestrStampDoc.trim().length > 0);
+  const hasBuyer = Boolean(
+    (deal?.buyerUserId && deal.buyerUserId.trim().length > 0) ||
+    (deal?.buyerName && deal.buyerName.trim().length > 0 && deal.buyerName !== 'Победитель отбора')
+  );
 
   // Step A: Curator Review complete -> Handover to Bank
   const handleHandoverToBank = async () => {
@@ -191,16 +195,22 @@ export const AdminClosingPage: React.FC = () => {
   // Step D: Bank Officer releases funds & closes deal
   const handleReleaseEscrow = async () => {
     if (!deal) return;
-    const updated = await DealsRepository.releaseEscrowFunds(
-      deal.dealId,
-      `${operatorName} (Банковский контур)`
-    );
-    if (updated) {
-      setDeal(updated);
-      setNotificationMsg(
-        `Аккредитив раскрыт! ${formatRubles(sellerReturnRub)} перечислено продавцу, ${formatRubles(platformFeeRub)} (2.5%) — DomExit.`
+    try {
+      const updated = await DealsRepository.releaseEscrowFunds(
+        deal.dealId,
+        `${operatorName} (Банковский контур)`
       );
-      setTimeout(() => setNotificationMsg(null), 5000);
+      if (updated) {
+        setDeal(updated);
+        const linkedLot = await LotsRepository.getByCode(deal.lotCode);
+        if (linkedLot) setLot(linkedLot);
+        setNotificationMsg(
+          `Сделка ${deal.dealId} успешно закрыта! Аккредитив раскрыт: ${formatRubles(sellerReturnRub)} перечислено продавцу, ${formatRubles(platformFeeRub)} (2.5%) — DomExit.`
+        );
+        setTimeout(() => setNotificationMsg(null), 6000);
+      }
+    } catch (err: any) {
+      setNotificationMsg(`Ошибка закрытия сделки: ${err?.message || 'Сбой'}`);
     }
   };
 
@@ -389,6 +399,30 @@ export const AdminClosingPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Buyer Gating Warning if no buyer is assigned */}
+              {!hasBuyer && (
+                <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                  <div className="flex items-start space-x-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-xs uppercase tracking-wide text-amber-900">
+                        Внимание: К сделке #{deal.dealId} еще не прикреплен покупатель (цессионарий)
+                      </h4>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        Банковские расчеты и переход по этапам СБР заблокированы до утверждения покупателя в модуле матчмейкинга.
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/admin/matchmaker/${deal.lotCode}`}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 shadow-xs transition-colors flex items-center space-x-1.5"
+                  >
+                    <span>Назначить покупателя в Матчмейкере</span>
+                    <span>→</span>
+                  </Link>
+                </div>
+              )}
+
               {/* 4-Step Interactive Execution Flow Header */}
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
@@ -432,8 +466,14 @@ export const AdminClosingPage: React.FC = () => {
                     {currentStep === 'curator_review' && (
                       <button
                         type="button"
+                        disabled={!hasBuyer}
                         onClick={handleHandoverToBank}
-                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+                        className={`w-full py-2 font-bold rounded-xl text-xs shadow-xs transition-colors ${
+                          hasBuyer
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                        }`}
+                        title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
                       >
                         Передать в банк на аккредитив →
                       </button>
@@ -465,8 +505,14 @@ export const AdminClosingPage: React.FC = () => {
                       canExecuteBankStep ? (
                         <button
                           type="button"
+                          disabled={!hasBuyer}
                           onClick={handleConfirmBankDeposit}
-                          className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+                          className={`w-full py-2 font-bold rounded-xl text-xs shadow-xs transition-colors ${
+                            hasBuyer
+                              ? 'bg-sky-600 hover:bg-sky-700 text-white cursor-pointer'
+                              : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                          }`}
+                          title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
                         >
                           {!enableBankPortal
                             ? '✓ Подтвердить депонирование в отделении банка (СБР)'
@@ -513,8 +559,14 @@ export const AdminClosingPage: React.FC = () => {
                     {currentStep === 'signing_photos' && (
                       <button
                         type="button"
+                        disabled={!hasBuyer}
                         onClick={handleSubmitProof}
-                        className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+                        className={`w-full py-2 font-bold rounded-xl text-xs shadow-xs transition-colors ${
+                          hasBuyer
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                        }`}
+                        title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
                       >
                         Зафиксировать и передать банку →
                       </button>
@@ -547,15 +599,17 @@ export const AdminClosingPage: React.FC = () => {
                         <div className="space-y-2">
                           <button
                             type="button"
-                            disabled={!hasRosreestrStamp}
+                            disabled={!hasRosreestrStamp || !hasBuyer}
                             onClick={handleReleaseEscrow}
                             className={`w-full py-2.5 font-bold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center space-x-1.5 ${
-                              hasRosreestrStamp
+                              hasRosreestrStamp && hasBuyer
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
                                 : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
                             }`}
                             title={
-                              !hasRosreestrStamp
+                              !hasBuyer
+                                ? 'Сначала утвердите покупателя в Матчмейкере'
+                                : !hasRosreestrStamp
                                 ? 'Загрузите выписку ЕГРН со штампом Росреестра'
                                 : undefined
                             }
@@ -672,7 +726,7 @@ export const AdminClosingPage: React.FC = () => {
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-500 block">
-                          Перевод остатка долга в {deal.developer} на нового дольщика
+                          Перевод остатка долга в {deal.developer || lot?.developer || 'застройщика'} на нового дольщика
                         </span>
                       </div>
                       <div className="text-xl font-bold text-slate-700 font-mono">

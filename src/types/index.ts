@@ -66,15 +66,21 @@ export interface Lot {
   earlyAccessHoursLeft?: number;
   escrowBank: 'Sberbank' | 'VTB' | 'AlfaBank' | string;
   tags: string[];
-  status?: 'available' | 'processing' | 'closed' | 'draft' | 'vip_exclusive'; // Status in Catalog
+  status?: 'available' | 'processing' | 'in_deal' | 'closed' | 'draft' | 'hidden' | 'blocked' | 'vip_exclusive'; // Status in Catalog
   currentStage?: number; // Current deal stage 1-5
   approvalStatus?: 'approved' | 'approved_for_packaging' | 'pending_owner_approval' | 'rejected';
   rejectionReason?: string;
+  blockedReason?: string;
+  moderationReason?: string;
   assignedEmployeeId?: string; // ID of assigned employee
   assignedEmployeeName?: string; // Name of assigned employee
   sellerUserId?: string; // ID of the seller user
   sellerClientCode?: string; // DEX-XXXXXX
   sellerInn?: string;
+  buyerUserId?: string;
+  buyerName?: string;
+  buyerPhone?: string;
+  buyerEmail?: string;
   referredByPartnerCode?: string;
   documentIds?: string[];
 
@@ -317,6 +323,10 @@ export interface DealTrack {
   buyerName?: string;
   buyerUserId?: string;
   buyerClientCode?: string;
+  buyerPhone?: string;
+  buyerEmail?: string;
+  status?: 'active' | 'in_deal' | 'closed' | 'cancelled';
+  closedAt?: string;
   partnerRefCode?: string;
   partnerRewardRub?: number;
   partnerPayoutStatus?: 'pending' | 'paid';
@@ -516,6 +526,8 @@ export interface AccreditedDeveloper {
   name: string; // e.g. 'ПИК', 'Setl Group', 'Самолёт'
   inn: string; // 10-digit corporate ИНН or 12-digit for ИП
   isAccredited: boolean;
+  isActive?: boolean;
+  regions?: RussianCityCode[];
   registrationSource?: 'institutional' | 'project_approval' | 'seed' | 'seller_submission';
   registered_via_project?: boolean;
   registrationNote?: string;

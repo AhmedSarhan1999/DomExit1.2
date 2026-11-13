@@ -31,7 +31,7 @@ export class LotsRepository {
           if (l.approvalStatus === 'rejected' || l.approvalStatus === 'pending_owner_approval' || l.approvalStatus === 'approved_for_packaging') {
             return false;
           }
-          if (l.status === 'draft') return false;
+          if (l.status === 'draft' || l.status === 'hidden' || l.status === 'blocked') return false;
           if (l.isPublished === false) return false;
           // Hide VIP exclusive lots from public catalog for 48h
           if (l.isVipExclusive) {
@@ -43,7 +43,11 @@ export class LotsRepository {
       }
 
       if (filter.status && filter.status !== 'all') {
-        list = list.filter((l) => (l.status || 'available') === filter.status);
+        if (filter.status === 'processing') {
+          list = list.filter((l) => l.status === 'processing' || l.status === 'in_deal');
+        } else {
+          list = list.filter((l) => (l.status || 'available') === filter.status);
+        }
 
         if (filter.status === 'processing') {
           if (!filter.isVipInvestor) {
@@ -561,6 +565,135 @@ export class LotsRepository {
     });
 
     return lot;
+  }
+
+  static async unpublishLot(
+    lotCode: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
+  ): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+
+    lot.isPublished = false;
+    lot.status = 'draft';
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
+
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'deal_cancelled_relisted',
+      title: `Лот #${lot.lotCode} снят с публикации`,
+      description: `Объект переведен в черновик и скрыт из публичного каталога оператором ${operatorName}.`,
+    });
+
+    return lot;
+  }
+
+  static async blockLot(
+    lotCode: string,
+    reason: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
+  ): Promise<Lot | null> {
+    const lot = await this.getByCode(lotCode);
+    if (!lot) return null;
+
+    lot.isPublished = false;
+    lot.status = 'blocked';
+    lot.approvalStatus = 'rejected';
+    lot.rejectionReason = reason;
+    lot.blockedReason = reason;
+    await DatabaseGateway.save<Lot>(COLLECTION, lot);
+
+    try {
+      const deals = await DatabaseGateway.query<{ id: string; lotCode: string; status?: string }>(
+        'deals',
+        (d) => d.lotCode?.toUpperCase() === lot.lotCode.toUpperCase()
+      );
+      for (const d of deals) {
+        d.status = 'cancelled';
+        await DatabaseGateway.save('deals', d);
+      }
+    } catch {}
+
+    await AuditLogsRepository.addLog({
+      lotCode: lot.lotCode,
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'legal_rejected',
+      title: `Лот #${lot.lotCode} заблокирован администратором`,
+      description: `Причина блокировки: ${reason}. Объект скрыт из каталога.`,
+    });
+
+    return lot;
+  }
+
+  static async deleteLotAndDeal(
+    lotCode: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
+  ): Promise<boolean> {
+    const lot = await this.getByCode(lotCode);
+    const targetLotCode = lot?.lotCode || lotCode;
+
+    // 1. Remove lot
+    if (lot) {
+      await DatabaseGateway.remove(COLLECTION, lot.id);
+    }
+
+    // 2. Remove deals
+    try {
+      const deals = await DatabaseGateway.query<{ id: string; lotCode: string }>(
+        'deals',
+        (d) => d.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
+      );
+      for (const d of deals) {
+        await DatabaseGateway.remove('deals', d.id);
+      }
+    } catch {}
+
+    // 3. Remove seller requests
+    try {
+      const reqs = await DatabaseGateway.query<{ id: string; lotCode: string }>(
+        'seller_requests',
+        (r) => r.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
+      );
+      for (const r of reqs) {
+        await DatabaseGateway.remove('seller_requests', r.id);
+      }
+    } catch {}
+
+    // 4. Remove candidates
+    try {
+      const cands = await DatabaseGateway.query<{ id: string; lotCode: string }>(
+        'candidates',
+        (c) => c.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
+      );
+      for (const c of cands) {
+        await DatabaseGateway.remove('candidates', c.id);
+      }
+    } catch {}
+
+    // 5. Remove developer accreditation requests
+    try {
+      const devReqs = await DatabaseGateway.query<{ id: string; lotCode: string }>(
+        'developer_accreditation_requests',
+        (dr) => dr.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
+      );
+      for (const dr of devReqs) {
+        await DatabaseGateway.remove('developer_accreditation_requests', dr.id);
+      }
+    } catch {}
+
+    await AuditLogsRepository.addLog({
+      lotCode: targetLotCode,
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'deal_cancelled_relisted',
+      title: `Объект #${targetLotCode} и связанная сделка удалены`,
+      description: `Лот, сделка и сопутствующие заявки безвозвратно удалены оператором ${operatorName}.`,
+    });
+
+    return true;
   }
 
   static async update(lot: Lot): Promise<Lot> {

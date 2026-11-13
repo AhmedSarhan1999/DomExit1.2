@@ -210,7 +210,7 @@ export const OpportunitiesPage: React.FC = () => {
   const registryMetrics = useMemo(() => {
     const totalCount = allRegistryLots.length;
     const availableCount = allRegistryLots.filter((l) => (l.status || 'available') === 'available').length;
-    const processingCount = allRegistryLots.filter((l) => l.status === 'processing').length;
+    const processingCount = allRegistryLots.filter((l) => l.status === 'processing' || l.status === 'in_deal').length;
     const closedCount = allRegistryLots.filter((l) => l.status === 'closed').length;
     const totalVolumeRub = allRegistryLots.reduce((acc, l) => acc + (l.dduContractPrice || 0), 0);
     const maxSavingsPct =

@@ -146,7 +146,8 @@ export const SellersPage: React.FC = () => {
       if (s?.developerPenaltyPercent) setPenaltyRatePercent(s.developerPenaltyPercent);
     });
     const loadDevs = () => {
-      DevelopersRepository.getAllDevelopers().then((devs) => {
+      DevelopersRepository.getAllDevelopers().then((rawDevs) => {
+        const devs = rawDevs.filter((d) => d.isActive !== false);
         setAccreditedDevelopers(devs);
         if (devs.length === 0) {
           setIsAddingNewDeveloper(true);

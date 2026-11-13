@@ -203,14 +203,27 @@ export class CandidatesRepository {
       }
     }
 
-    await LotsRepository.updateStatus(lotCode, 'processing');
+    const lot = await LotsRepository.getByCode(lotCode);
+    if (lot && winner) {
+      lot.status = 'in_deal';
+      lot.buyerUserId = winner.uid || winner.userId;
+      lot.buyerName = winner.name;
+      lot.buyerPhone = winner.phone;
+      lot.buyerEmail = winner.email;
+      await LotsRepository.update(lot);
+    } else {
+      await LotsRepository.updateStatus(lotCode, 'processing');
+    }
 
     const deal = await DealsRepository.getById(lotCode);
     if (deal && winner) {
       deal.stage = 'closing_escrow';
+      deal.status = 'in_deal';
       deal.buyerName = winner.name;
       deal.buyerUserId = winner.uid || winner.userId;
       deal.buyerClientCode = winner.clientCode;
+      deal.buyerPhone = winner.phone;
+      deal.buyerEmail = winner.email;
       const chosenBank = winner.selectedBank || deal.escrowWorkflow?.bankName || 'Сбербанк';
       deal.bankName = chosenBank;
       if (!deal.escrowWorkflow) {

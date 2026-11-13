@@ -398,8 +398,10 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
     }
   }
 
-  // Sort alphabetically by Russian collation
-  return mergedList.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  // Sort alphabetically by Russian collation and ensure isActive is boolean
+  return mergedList
+    .map((d) => ({ ...d, isActive: d.isActive !== false }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 }
 
 class DevelopersRepositoryController {
@@ -414,7 +416,7 @@ class DevelopersRepositoryController {
 
   async getAccreditedDevelopers(): Promise<AccreditedDeveloper[]> {
     const all = await this.getAllDevelopers();
-    return all.filter((d) => d.isAccredited);
+    return all.filter((d) => d.isAccredited && d.isActive !== false);
   }
 
   async findDeveloperByName(developerName: string): Promise<AccreditedDeveloper | null> {
@@ -684,6 +686,7 @@ class DevelopersRepositoryController {
       name: req.developerName.trim(),
       inn: req.developerInn.trim() || '7700000000',
       isAccredited: true,
+      isActive: true,
       bankTerms: [
         { bankName: 'Сбербанк', isAccredited: true, baseRatePercent: 19.5, familyMortgage6: true, itMortgage6: true, maxPdnPercent: 50, accreditedAt: new Date().toISOString() },
         { bankName: 'ВТБ', isAccredited: true, baseRatePercent: 19.9, familyMortgage6: true, itMortgage6: true, maxPdnPercent: 60, accreditedAt: new Date().toISOString() },
@@ -705,6 +708,59 @@ class DevelopersRepositoryController {
     });
 
     return { request: req, developer: newDev };
+  }
+
+  async toggleDeveloperActive(
+    developerId: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец)'
+  ): Promise<AccreditedDeveloper | null> {
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+      DEVELOPERS_COLLECTION,
+      developerId,
+      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+    );
+    if (!dev) return null;
+
+    dev.isActive = dev.isActive === false ? true : false;
+    dev.updatedAt = new Date().toISOString();
+    await DatabaseGateway.save(DEVELOPERS_COLLECTION, dev);
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'developer_accreditation_decided',
+      title: `${dev.isActive ? 'Активирован' : 'Скрыт'} застройщик: ${dev.name}`,
+      description: `Статус застройщика (ИНН ${dev.inn}) изменен на: ${dev.isActive ? 'Активен (виден клиентам)' : 'Скрыт (скрыт из списка)'}.`,
+    });
+
+    return dev;
+  }
+
+  async deleteDeveloper(
+    developerId: string,
+    operatorName: string = 'Ahmed Abdallah (Владелец)'
+  ): Promise<boolean> {
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+      DEVELOPERS_COLLECTION,
+      developerId,
+      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+    );
+    const devName = dev?.name || developerId;
+    const devInn = dev?.inn || '—';
+
+    await DatabaseGateway.remove(DEVELOPERS_COLLECTION, developerId);
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'developer_accreditation_decided',
+      title: `Удален застройщик из реестра: ${devName}`,
+      description: `Застройщик (ИНН: ${devInn}, ID: ${developerId}) удален владельцем из базы данных платформы.`,
+    });
+
+    return true;
   }
 
   async rejectAccreditationRequest(

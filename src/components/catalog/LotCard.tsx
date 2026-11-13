@@ -5,6 +5,7 @@ import { formatRubles, formatPercent } from '../../utils/formatters';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { resolveLotGeoDetails } from '../../data/russianGeography';
+import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
 import { ShieldCheck, Flame, ArrowRight, Heart, MapPin, TrainFront } from 'lucide-react';
 
 interface LotCardProps {
@@ -14,6 +15,7 @@ interface LotCardProps {
 export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
   const { language, t } = useLanguage();
   const { isFavorite, toggleFavorite } = useAuth();
+  const { enableBankPortal } = useFeatureFlagsStore();
   const favorited = isFavorite(lot.lotCode);
 
   const geo = resolveLotGeoDetails(lot);
@@ -55,7 +57,7 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-indigo-600 text-white text-[11px] font-bold shadow-md">
                 <span>{language === 'ru' ? 'VIP 48ч Доступ' : 'VIP 48h Access'}</span>
               </span>
-            ) : lotStatus === 'processing' ? (
+            ) : lotStatus === 'processing' || lotStatus === 'in_deal' ? (
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-md">
                 <span>{language === 'ru' ? `В сделке (${lot.currentStage || 3}/5)` : `In Deal (${lot.currentStage || 3}/5)`}</span>
               </span>
@@ -72,7 +74,7 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
                 <span>{language === 'ru' ? 'Срочный' : 'Urgent'}</span>
               </span>
             )}
-            {(lot.developerAccreditationStatus === 'pending_bank_accreditation' ||
+            {enableBankPortal && lotStatus !== 'closed' && (lot.developerAccreditationStatus === 'pending_bank_accreditation' ||
               lot.tags?.includes('Ожидает аккредитации банков')) && (
               <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold shadow-xs">
                 <span>Ожидает аккредитации банков</span>

@@ -52,6 +52,8 @@ import {
   LegalPolicyType,
   LegalPolicyVersion,
   DeveloperAccreditationRequest,
+  AccreditedDeveloper,
+  DeveloperBankTerms,
 } from '../types';
 import {
   CheckCircle2,
@@ -89,6 +91,9 @@ import {
   Mail,
   Trash2,
   AlertTriangle,
+  Eye,
+  EyeOff,
+  Ban,
 } from 'lucide-react';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../utils/asyncGuard';
 
@@ -355,6 +360,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [staffTab, setStaffTab] = useState<'users' | 'employees'>('users');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [developerRequests, setDeveloperRequests] = useState<DeveloperAccreditationRequest[]>([]);
+  const [developersList, setDevelopersList] = useState<AccreditedDeveloper[]>([]);
 
   const isEmployee = Boolean(user && user.activeRole === 'employee');
   const isOwner = Boolean(
@@ -407,6 +413,7 @@ export const AdminDashboardPage: React.FC = () => {
       incData,
       allDealsData,
       devReqsData,
+      allDevsData,
     ] = await Promise.all([
       AnalyticsRepository.getKPIs(),
       LotsRepository.getAll({ includePendingApproval: true }),
@@ -421,6 +428,7 @@ export const AdminDashboardPage: React.FC = () => {
       SecurityIncidentsRepository.getAll(),
       DealsRepository.getAll(),
       DevelopersRepository.getAllAccreditationRequests(),
+      DevelopersRepository.getAllDevelopers(),
     ]);
 
     // Sort lots so pending owner approval & docs requested appear first in Triage Desk
@@ -451,6 +459,7 @@ export const AdminDashboardPage: React.FC = () => {
     setIncidents(incData);
     setAllDeals(allDealsData);
     setDeveloperRequests(devReqsData);
+    setDevelopersList(allDevsData);
   };
 
   useEffect(() => {
@@ -683,6 +692,75 @@ export const AdminDashboardPage: React.FC = () => {
       await loadAllData();
     } catch (e: any) {
       showError(`Ошибка при отклонении: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleToggleDeveloperActive = async (developerId: string) => {
+    try {
+      const updated = await DevelopersRepository.toggleDeveloperActive(developerId, operatorName);
+      if (updated) {
+        showToast(
+          updated.isActive !== false
+            ? `Застройщик «${updated.name}» теперь активен и отображается в анкетах продавцов.`
+            : `Застройщик «${updated.name}» скрыт из списка в анкетах продавцов.`
+        );
+        await loadAllData();
+      }
+    } catch (e: any) {
+      showError(`Ошибка изменения статуса застройщика: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleDeleteDeveloper = async (developerId: string, devName: string) => {
+    if (
+      !confirm(
+        `ВНИМАНИЕ! Вы действительно хотите безвозвратно удалить застройщика «${devName}» из реестра платформы?`
+      )
+    ) {
+      return;
+    }
+    try {
+      const ok = await DevelopersRepository.deleteDeveloper(developerId, operatorName);
+      if (ok) {
+        showToast(`Застройщик «${devName}» безвозвратно удален из базы данных.`);
+        await loadAllData();
+      }
+    } catch (e: any) {
+      showError(`Ошибка при удалении застройщика: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleUnpublishLotAdmin = async (lot: Lot) => {
+    if (!confirm(`Снять лот #${lot.lotCode} с публикации? Он перестанет отображаться в каталоге и на витрине.`)) return;
+    try {
+      await LotsRepository.unpublishLot(lot.lotCode, operatorName);
+      showToast(`Лот #${lot.lotCode} снят с публикации и переведен в черновик.`);
+      await loadAllData();
+    } catch (err: any) {
+      showError(err?.message || 'Ошибка при снятии с публикации');
+    }
+  };
+
+  const handleBlockLotAdmin = async (lot: Lot) => {
+    const reason = prompt(`Укажите причину блокировки лота #${lot.lotCode}:`, 'Нарушение регламента платформы или правил публикации');
+    if (!reason) return;
+    try {
+      await LotsRepository.blockLot(lot.lotCode, reason, operatorName);
+      showToast(`Лот #${lot.lotCode} успешно заблокирован.`);
+      await loadAllData();
+    } catch (err: any) {
+      showError(err?.message || 'Ошибка блокировки лота');
+    }
+  };
+
+  const handleDeleteLotAdmin = async (lot: Lot) => {
+    if (!confirm(`ВНИМАНИЕ! Безвозвратно удалить лот #${lot.lotCode}, связанную сделку и все заявки? Это действие необратимо.`)) return;
+    try {
+      await LotsRepository.deleteLotAndDeal(lot.lotCode, operatorName);
+      showToast(`Лот #${lot.lotCode} и связанные сущности успешно удалены.`);
+      await loadAllData();
+    } catch (err: any) {
+      showError(err?.message || 'Ошибка удаления лота');
     }
   };
 
@@ -1669,7 +1747,11 @@ export const AdminDashboardPage: React.FC = () => {
                               </span>
                             </td>
                             <td className="py-3 px-3">
-                              {isRejected ? (
+                              {lot.status === 'blocked' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                  Заблокирован
+                                </span>
+                              ) : isRejected ? (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                   Отклонен
                                 </span>
@@ -1681,19 +1763,23 @@ export const AdminDashboardPage: React.FC = () => {
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                                   На проверке CEO
                                 </span>
+                              ) : lot.status === 'draft' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                  Черновик
+                                </span>
                               ) : (
                                 <span
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                     lot.status === 'available'
                                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                      : lot.status === 'processing'
+                                      : lot.status === 'processing' || lot.status === 'in_deal'
                                       ? 'bg-sky-50 text-sky-700 border border-sky-200'
                                       : 'bg-slate-100 text-slate-700'
                                   }`}
                                 >
                                   {lot.status === 'available'
                                     ? 'В каталоге'
-                                    : lot.status === 'processing'
+                                    : lot.status === 'processing' || lot.status === 'in_deal'
                                     ? 'В сделке'
                                     : 'Закрыт'}
                                 </span>
@@ -1712,14 +1798,14 @@ export const AdminDashboardPage: React.FC = () => {
                               )}
                             </td>
                             <td className="py-3 px-3 text-right">
-                              <div className="flex items-center justify-end space-x-2">
+                              <div className="flex items-center justify-end space-x-1.5">
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setModalLot(lot);
                                     setLotActionMode('approve');
                                   }}
-                                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs border border-slate-200 transition-colors cursor-pointer"
+                                  className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs border border-slate-200 transition-colors cursor-pointer"
                                 >
                                   Анкета и Сейф S3
                                 </button>
@@ -1749,6 +1835,39 @@ export const AdminDashboardPage: React.FC = () => {
                                 >
                                   {isPendingOwner ? 'Одобрить' : 'Закрепить'}
                                 </button>
+
+                                {isOwner && (
+                                  <div className="flex items-center space-x-1 pl-1 border-l border-slate-200">
+                                    {lot.isPublished && lot.status !== 'draft' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUnpublishLotAdmin(lot)}
+                                        title="Снять с публикации (в черновик)"
+                                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 border border-slate-200 transition-colors cursor-pointer"
+                                      >
+                                        <EyeOff className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {lot.status !== 'blocked' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBlockLotAdmin(lot)}
+                                        title="Заблокировать лот"
+                                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 transition-colors cursor-pointer"
+                                      >
+                                        <Ban className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteLotAdmin(lot)}
+                                      title="Удалить лот и сделку навсегда"
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 border border-slate-200 transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1997,6 +2116,114 @@ export const AdminDashboardPage: React.FC = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* OWNER TRIAGE DESK 5: Accredited Developers Registry & Visibility Management */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div className="space-y-0.5">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <Building2 className="w-4 h-4 text-indigo-600" />
+                      <span>Реестр аккредитованных застройщиков (Управление списком) ({developersList.length})</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Централизованный каталог девелоперов: скрывайте застройщиков из выпадающего списка продавцов или удаляйте навсегда.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    Аккредитация 214-ФЗ
+                  </span>
+                </div>
+
+                {developersList.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-xs">
+                    В реестре пока нет девелоперов
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-slate-400 font-semibold uppercase text-[10px]">
+                          <th className="py-2.5 px-3">Застройщик / ИНН</th>
+                          <th className="py-2.5 px-3">Регионы присутствия</th>
+                          <th className="py-2.5 px-3">Банки-партнеры</th>
+                          <th className="py-2.5 px-3">Статус показа</th>
+                          <th className="py-2.5 px-3 text-right">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {developersList.map((dev: AccreditedDeveloper) => {
+                          const isActive = dev.isActive !== false;
+                          const activeBanks = (dev.bankTerms || []).filter((b: DeveloperBankTerms) => b.isAccredited);
+                          return (
+                            <tr key={dev.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-3">
+                                <span className="font-bold text-slate-900 block">{dev.name}</span>
+                                <span className="text-[10px] font-mono text-slate-500">ИНН: {dev.inn || '—'}</span>
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {dev.regions && dev.regions.length > 0 ? (
+                                    dev.regions.map((r: RussianCityCode) => (
+                                      <span key={r} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-medium">
+                                        {getRegionByCode(r).shortLabelRu}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-slate-400 text-[10px]">Все регионы РФ</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className="text-slate-700 text-[11px]">
+                                  {activeBanks.length > 0
+                                    ? activeBanks.map((b: DeveloperBankTerms) => b.bankName).join(', ')
+                                    : 'Ожидает аккредитации'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3">
+                                {isActive ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center space-x-1">
+                                    <Check className="w-3 h-3" />
+                                    <span>Активен</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 inline-flex items-center space-x-1">
+                                    <EyeOff className="w-3 h-3" />
+                                    <span>Скрыт</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <div className="flex items-center justify-end space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleDeveloperActive(dev.id)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                                      isActive
+                                        ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                    }`}
+                                  >
+                                    {isActive ? 'Скрыть из списка' : 'Активировать'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDeveloper(dev.id, dev.name)}
+                                    title="Безвозвратно удалить из базы"
+                                    className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>

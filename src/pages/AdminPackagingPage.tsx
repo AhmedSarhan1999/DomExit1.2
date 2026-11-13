@@ -23,7 +23,12 @@ import {
   Star,
   Globe,
   Sparkles,
+  EyeOff,
+  Ban,
+  Trash2,
+  Shield,
 } from 'lucide-react';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -316,6 +321,58 @@ export const AdminPackagingPage: React.FC = () => {
     }
   };
 
+  const { enableVipClub } = useFeatureFlagsStore();
+
+  const handleUnpublishLot = async () => {
+    if (!lot) return;
+    if (!confirm(`Снять лот #${lot.lotCode} с публикации в каталоге?`)) return;
+    try {
+      const updated = await LotsRepository.unpublishLot(lot.lotCode, operatorName);
+      if (updated) {
+        setLot(updated);
+        setNotificationMsg(`Лот #${lot.lotCode} снят с публикации и переведен в черновик.`);
+        setTimeout(() => setNotificationMsg(null), 5000);
+      }
+    } catch (e: any) {
+      alert(`Ошибка: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleBlockLot = async () => {
+    if (!lot) return;
+    const reason = prompt(
+      'Укажите причину блокировки лота (будет сохранена в журнале и отображена продавцу):',
+      'Нарушение условий размещения (недостоверные данные)'
+    );
+    if (!reason) return;
+    try {
+      const updated = await LotsRepository.blockLot(lot.lotCode, reason.trim(), operatorName);
+      if (updated) {
+        setLot(updated);
+        setNotificationMsg(`Лот #${lot.lotCode} заблокирован.`);
+        setTimeout(() => setNotificationMsg(null), 5000);
+      }
+    } catch (e: any) {
+      alert(`Ошибка: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleDeleteLotAndDeal = async () => {
+    if (!lot) return;
+    if (
+      !confirm(
+        `ВНИМАНИЕ! Безвозвратно удалить лот #${lot.lotCode}, связанную сделку и заявки из базы данных платформы?`
+      )
+    )
+      return;
+    try {
+      await LotsRepository.deleteLotAndDeal(lot.lotCode, operatorName);
+      navigate('/admin/dashboard', { replace: true });
+    } catch (e: any) {
+      alert(`Ошибка при удалении: ${e?.message || 'Сбой'}`);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900">
       <AdminSidebar />
@@ -412,13 +469,61 @@ export const AdminPackagingPage: React.FC = () => {
                     <Globe className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Опубликовать в открытом каталоге</span>
                   </button>
+                  {enableVipClub && (
+                    <button
+                      type="button"
+                      onClick={handlePublishVipCatalog}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Отправить в закрытый VIP-каталог (на 48 часов)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Admin Moderation & Governance Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-900 text-white rounded-2xl shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-slate-200">
+                    Модерация и удаление объекта:
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    #{lot.lotCode}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {(lot.isPublished || lot.status === 'available') && (
+                    <button
+                      type="button"
+                      onClick={handleUnpublishLot}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>Снять с публикации</span>
+                    </button>
+                  )}
+
+                  {lot.status !== 'blocked' && (
+                    <button
+                      type="button"
+                      onClick={handleBlockLot}
+                      className="px-3 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                      <span>Заблокировать лот</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
-                    onClick={handlePublishVipCatalog}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer"
+                    onClick={handleDeleteLotAndDeal}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Отправить в закрытый VIP-каталог (на 48 часов)</span>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Удалить лот и сделку</span>
                   </button>
                 </div>
               </div>
@@ -1124,14 +1229,16 @@ export const AdminPackagingPage: React.FC = () => {
                         <span>Опубликовать в открытом каталоге</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={handlePublishVipCatalog}
-                        className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                      >
-                        <Send className="w-4 h-4" />
-                        <span>Отправить в закрытый VIP-каталог (на 48 часов)</span>
-                      </button>
+                      {enableVipClub && (
+                        <button
+                          type="button"
+                          onClick={handlePublishVipCatalog}
+                          className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                        >
+                          <Send className="w-4 h-4" />
+                          <span>Отправить в закрытый VIP-каталог (на 48 часов)</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"

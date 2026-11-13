@@ -208,6 +208,8 @@ export class DealsRepository {
     deal.escrowWorkflow.fundsReleasedAt = new Date().toISOString();
     deal.escrowWorkflow.platformFeeRub = Math.round(deal.sellerReturnRub * 0.025);
     deal.stage = 'completed';
+    deal.status = 'closed';
+    deal.closedAt = new Date().toISOString();
     deal.daysLeft = 0;
     if (deal.partnerRefCode) {
       deal.partnerPayoutStatus = 'paid';
