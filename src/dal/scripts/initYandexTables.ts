@@ -112,6 +112,13 @@ export async function callYdbDocApi(
 ): Promise<{ status: number; text: string; data?: any }> {
   const cfg = config || getYandexCredentials();
   const url = new URL(cfg.endpoint);
+  const isBrowser = typeof window !== 'undefined';
+
+  // Yandex YDB Document API canonical host and path
+  const canonicalHost = 'docapi.serverless.yandexcloud.net';
+  const canonicalPath = url.pathname.replace(/^\/ydb-proxy/, '');
+  const fetchUrl = isBrowser ? `/ydb-proxy${canonicalPath}` : cfg.endpoint;
+
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const dateStamp = amzDate.substring(0, 8);
@@ -120,7 +127,7 @@ export async function callYdbDocApi(
 
   const canonicalHeaders = [
     'content-type:application/x-amz-json-1.0',
-    `host:${url.host}`,
+    `host:${canonicalHost}`,
     `x-amz-date:${amzDate}`,
     `x-amz-target:${target}`,
   ].join('\n') + '\n';
@@ -128,7 +135,7 @@ export async function callYdbDocApi(
   const signedHeaders = 'content-type;host;x-amz-date;x-amz-target';
   const canonicalRequest = [
     'POST',
-    url.pathname,
+    canonicalPath,
     '',
     canonicalHeaders,
     signedHeaders,
@@ -152,7 +159,7 @@ export async function callYdbDocApi(
 
   const authHeader = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  const res = await fetch(cfg.endpoint, {
+  const res = await fetch(fetchUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.0',

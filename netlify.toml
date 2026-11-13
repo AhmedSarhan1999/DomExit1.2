@@ -3,6 +3,12 @@
   publish = "dist"
 
 [[redirects]]
+  from = "/ydb-proxy/*"
+  to = "https://docapi.serverless.yandexcloud.net/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
