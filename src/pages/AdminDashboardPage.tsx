@@ -1375,13 +1375,15 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
-              className="px-3.5 py-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors shrink-0 cursor-pointer"
-            >
-              {isOwner ? 'Переключиться в Кабинет Сотрудника' : 'Переключиться в Панель Владельца'}
-            </button>
+            {!isProduction && user?.role !== 'employee' && (
+              <button
+                type="button"
+                onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
+                className="px-3.5 py-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors shrink-0 cursor-pointer"
+              >
+                {isOwner ? 'Переключиться в Кабинет Сотрудника' : 'Переключиться в Панель Владельца'}
+              </button>
+            )}
           </div>
 
           {/* =========================================================================

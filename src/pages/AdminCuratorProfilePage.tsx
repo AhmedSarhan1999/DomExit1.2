@@ -16,11 +16,15 @@ import {
   Save,
   Upload,
   AlertCircle,
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export const AdminCuratorProfilePage: React.FC = () => {
   const { language } = useLanguage();
-  const { user } = useAuth();
+  const { user, updateUserProfile, updateUserPassword } = useAuth();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [name, setName] = useState<string>('Алексей Смирнов');
@@ -37,6 +41,17 @@ export const AdminCuratorProfilePage: React.FC = () => {
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Password state
+  const [currentPassword, setCurrentPassword] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [showCurrentPass, setShowCurrentPass] = useState<boolean>(false);
+  const [showNewPass, setShowNewPass] = useState<boolean>(false);
+  const [showConfirmPass, setShowConfirmPass] = useState<boolean>(false);
+  const [isChangingPass, setIsChangingPass] = useState<boolean>(false);
+  const [passwordSuccessMsg, setPasswordSuccessMsg] = useState<string | null>(null);
+  const [passwordErrorMsg, setPasswordErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -91,6 +106,16 @@ export const AdminCuratorProfilePage: React.FC = () => {
     // Synchronously update all lots currently assigned to this curator
     await LotsRepository.updateCuratorProfileForAssignedLots(updated);
 
+    // Synchronously update user in AuthContext / UsersRepository
+    if (updateUserProfile) {
+      await updateUserProfile({
+        name: updated.name,
+        phone: updated.phone,
+        telegram: updated.telegram,
+        photoURL: updated.photoUrl,
+      });
+    }
+
     await AuditLogsRepository.addLog({
       operatorId: empId,
       operatorName: updated.name,
@@ -106,6 +131,43 @@ export const AdminCuratorProfilePage: React.FC = () => {
       'Ваш профиль куратора успешно сохранен и автоматически синхронизирован со всеми вашими лотами!'
     );
     setTimeout(() => setNotificationMsg(null), 4000);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordErrorMsg(null);
+    setPasswordSuccessMsg(null);
+
+    if (newPassword.length < 8) {
+      setPasswordErrorMsg('Новый пароль должен содержать минимум 8 символов');
+      return;
+    }
+
+    if (!/[A-Za-zА-Яа-я]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setPasswordErrorMsg('Новый пароль должен содержать как буквы, так и цифры');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordErrorMsg('Новый пароль и подтверждение пароля не совпадают');
+      return;
+    }
+
+    setIsChangingPass(true);
+    try {
+      if (updateUserPassword) {
+        await updateUserPassword(currentPassword, newPassword);
+      }
+      setPasswordSuccessMsg('Пароль учетной записи куратора успешно изменен!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setPasswordErrorMsg(err?.message || 'Ошибка смены пароля');
+    } finally {
+      setIsChangingPass(false);
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,11 +218,12 @@ export const AdminCuratorProfilePage: React.FC = () => {
 
         <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Column (7 cols): Edit Profile Form */}
-            <form
-              onSubmit={handleSaveProfile}
-              className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-5 shadow-xs"
-            >
+            {/* Left Column (7 cols): Edit Profile Form & Security */}
+            <div className="lg:col-span-7 space-y-6">
+              <form
+                onSubmit={handleSaveProfile}
+                className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-5 shadow-xs"
+              >
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
                   <User className="w-5 h-5 text-indigo-600" />
@@ -290,7 +353,122 @@ export const AdminCuratorProfilePage: React.FC = () => {
               </div>
             </form>
 
-            {/* Right Column (5 cols): Live Preview Card */}
+            {/* Password Change Form */}
+            <form
+              onSubmit={handleChangePassword}
+              className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                  <KeyRound className="w-5 h-5 text-indigo-600" />
+                  <span>Безопасность учетной записи и смена пароля</span>
+                </h3>
+                <span className="text-slate-500 text-xs font-semibold">
+                  152-ФЗ / ГОСТ Р 57580
+                </span>
+              </div>
+
+              {passwordSuccessMsg && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{passwordSuccessMsg}</span>
+                </div>
+              )}
+
+              {passwordErrorMsg && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{passwordErrorMsg}</span>
+                </div>
+              )}
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Текущий пароль учетной записи *:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPass ? 'text' : 'password'}
+                      required
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono focus:outline-none focus:border-indigo-500 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPass(!showCurrentPass)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Новый пароль (мин. 8 симв.) *:
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPass ? 'text' : 'password'}
+                        required
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono focus:outline-none focus:border-indigo-500 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPass(!showNewPass)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Повтор нового пароля *:
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPass ? 'text' : 'password'}
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono focus:outline-none focus:border-indigo-500 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPass(!showConfirmPass)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isChangingPass}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs shadow-md transition-all flex items-center space-x-2 cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isChangingPass ? 'Обновление...' : 'Обновить пароль'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Right Column (5 cols): Live Preview Card */}
             <div className="lg:col-span-5 space-y-5">
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">

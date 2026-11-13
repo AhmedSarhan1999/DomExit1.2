@@ -20,11 +20,15 @@ import {
   Crown,
   Briefcase,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatRussianPhoneInput, isValidRussianPhone } from '../../utils/validators';
-import { UserProfile } from '../../types';
+import { UserProfile, Employee } from '../../types';
+import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
+import { LotsRepository } from '../../dal/repositories/LotsRepository';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -34,8 +38,20 @@ interface UserProfileModalProps {
 type ProfileModalTab = 'general' | 'avatar' | 'security' | 'roles';
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
-  const { user, updateUserProfile, updateUserPassword } = useAuth();
+  const navigate = useNavigate();
+  const { user, updateUserProfile, updateUserPassword, logout } = useAuth();
   const { language } = useLanguage();
+
+  const handleLogout = async () => {
+    onClose();
+    try {
+      if (logout) {
+        await logout();
+      }
+    } finally {
+      navigate('/');
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<ProfileModalTab>('general');
 
@@ -172,7 +188,38 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         });
       }
 
-      setSuccessMessage('Профиль успешно обновлен!');
+      // Synchronize with EmployeesRepository and assigned lots if employee
+      if (
+        currentUser.role === 'employee' ||
+        currentUser.activeRole === 'employee' ||
+        currentUser.assignedEmployeeId
+      ) {
+        const empId = currentUser.assignedEmployeeId || currentUser.id;
+        const existingEmp = await EmployeesRepository.getById(empId);
+        const updatedEmp: Employee = {
+          id: empId,
+          name: cleanName,
+          email: currentUser.email || existingEmp?.email || 'curator@domexit.ru',
+          role: existingEmp?.role || 'Ведущий куратор отдела выходов',
+          phone: cleanPhone,
+          telegram: telegram.trim().startsWith('@') ? telegram.trim() : `@${telegram.trim()}`,
+          whatsapp: existingEmp?.whatsapp || cleanPhone,
+          maxProfile: existingEmp?.maxProfile || cleanPhone,
+          photoUrl: photoURL.trim() || existingEmp?.photoUrl,
+          bio:
+            existingEmp?.bio ||
+            'Сертифицированный специалист по сделкам с уступкой прав по 214-ФЗ и аккредитивным расчетам.',
+          activeLotsCount: existingEmp?.activeLotsCount || 0,
+          closedDealsCount: existingEmp?.closedDealsCount || 0,
+          avgSpeedDays: existingEmp?.avgSpeedDays || 8.0,
+          status: existingEmp?.status || 'active',
+          permissions: existingEmp?.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'],
+        };
+        await EmployeesRepository.update(updatedEmp);
+        await LotsRepository.updateCuratorProfileForAssignedLots(updatedEmp);
+      }
+
+      setSuccessMessage('Профиль успешно обновлен и синхронизирован!');
       setTimeout(() => {
         setSuccessMessage(null);
       }, 3500);
@@ -644,9 +691,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">
-            Безопасное соединение • TLS 1.3 • DomExit ID
-          </span>
+          <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-600" />
+              <span>Выйти из аккаунта</span>
+            </button>
+            <span className="hidden sm:inline text-[11px] text-slate-400">
+              Безопасное соединение • TLS 1.3 • DomExit ID
+            </span>
+          </div>
 
           <div className="flex items-center space-x-3">
             <button

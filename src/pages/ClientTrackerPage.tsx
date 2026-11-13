@@ -527,14 +527,35 @@ export const ClientTrackerPage: React.FC = () => {
                       <span>{curator?.phone || '+7 (921) 456-78-90'}</span>
                     </a>
                     <a
-                      href="https://t.me/domexit_official"
+                      href={
+                        curator?.telegram
+                          ? curator.telegram.startsWith('http')
+                            ? curator.telegram
+                            : `https://t.me/${curator.telegram.replace('@', '')}`
+                          : 'https://t.me/domexit_ru'
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
                     >
                       <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Написать куратору</span>
+                      <span>Telegram</span>
                     </a>
+                    {(curator?.maxProfile || curator?.whatsapp) && (
+                      <a
+                        href={
+                          (curator.maxProfile || curator.whatsapp || '').startsWith('http')
+                            ? curator.maxProfile || curator.whatsapp
+                            : `https://max.im/${(curator.maxProfile || curator.whatsapp || '').replace(/[^\w]/g, '')}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>MAX</span>
+                      </a>
+                    )}
                     <button
                       type="button"
                       onClick={() => setIsVaultOpen(true)}

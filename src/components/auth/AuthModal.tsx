@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   X, 
   ShieldCheck, 
@@ -17,6 +18,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 export const AuthModal: React.FC = () => {
+  const navigate = useNavigate();
   const { 
     isAuthModalOpen, 
     closeAuthModal, 
@@ -53,12 +55,45 @@ export const AuthModal: React.FC = () => {
 
     try {
       if (mode === 'signin') {
-        await loginWithEmail(email, password);
+        const loggedUser = await loginWithEmail(email, password);
+        if (loggedUser) {
+          const isStaffOrOwner =
+            loggedUser.role === 'owner' ||
+            loggedUser.role === 'admin' ||
+            loggedUser.role === 'employee' ||
+            loggedUser.activeRole === 'owner' ||
+            loggedUser.activeRole === 'employee';
+          if (isStaffOrOwner) {
+            navigate('/admin/dashboard');
+          } else if (loggedUser.role === 'bank' || loggedUser.activeRole === 'bank') {
+            navigate('/admin/bank-gateway');
+          } else {
+            navigate('/portal');
+          }
+        }
       } else {
-        await registerWithEmail(email, password, name, phone, selectedRole);
+        const registered = await registerWithEmail(email, password, name, phone, selectedRole);
+        if (registered) {
+          navigate('/portal');
+        }
       }
     } catch (err: any) {
       console.warn('Email auth notice:', err);
+    }
+  };
+
+  const handleQuickDemoLogin = async (
+    role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
+  ) => {
+    const logged = await quickDemoLogin(role);
+    if (logged) {
+      if (role === 'owner' || role === 'employee') {
+        navigate('/admin/dashboard');
+      } else if (role === 'bank') {
+        navigate('/admin/bank-gateway');
+      } else {
+        navigate('/portal');
+      }
     }
   };
 
@@ -313,7 +348,7 @@ export const AuthModal: React.FC = () => {
                 {/* 1. Owner */}
                 <button
                   type="button"
-                  onClick={() => quickDemoLogin('owner')}
+                  onClick={() => handleQuickDemoLogin('owner')}
                   disabled={loading}
                   className="p-2 rounded-xl bg-white hover:bg-indigo-50/80 text-slate-800 hover:text-indigo-950 border border-slate-200 hover:border-indigo-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
                 >
@@ -327,7 +362,7 @@ export const AuthModal: React.FC = () => {
                 {/* 2. Employee */}
                 <button
                   type="button"
-                  onClick={() => quickDemoLogin('employee')}
+                  onClick={() => handleQuickDemoLogin('employee')}
                   disabled={loading}
                   className="p-2 rounded-xl bg-white hover:bg-blue-50/80 text-slate-800 hover:text-blue-950 border border-slate-200 hover:border-blue-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
                 >
@@ -341,7 +376,7 @@ export const AuthModal: React.FC = () => {
                 {/* 3. Bank */}
                 <button
                   type="button"
-                  onClick={() => quickDemoLogin('bank')}
+                  onClick={() => handleQuickDemoLogin('bank')}
                   disabled={loading}
                   className="p-2 rounded-xl bg-white hover:bg-sky-50/80 text-slate-800 hover:text-sky-950 border border-slate-200 hover:border-sky-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
                 >
@@ -355,7 +390,7 @@ export const AuthModal: React.FC = () => {
                 {/* 4. Partner */}
                 <button
                   type="button"
-                  onClick={() => quickDemoLogin('partner')}
+                  onClick={() => handleQuickDemoLogin('partner')}
                   disabled={loading}
                   className="p-2 rounded-xl bg-white hover:bg-purple-50/80 text-slate-800 hover:text-purple-950 border border-slate-200 hover:border-purple-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
                 >
@@ -369,7 +404,7 @@ export const AuthModal: React.FC = () => {
                 {/* 6. Seller */}
                 <button
                   type="button"
-                  onClick={() => quickDemoLogin('seller')}
+                  onClick={() => handleQuickDemoLogin('seller')}
                   disabled={loading}
                   className="p-2 rounded-xl bg-white hover:bg-emerald-50/80 text-slate-800 hover:text-emerald-950 border border-slate-200 hover:border-emerald-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
                 >
@@ -383,7 +418,7 @@ export const AuthModal: React.FC = () => {
                 {/* 7. Buyer */}
                 <button
                   type="button"
-                  onClick={() => quickDemoLogin('buyer')}
+                  onClick={() => handleQuickDemoLogin('buyer')}
                   disabled={loading}
                   className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 border border-slate-200 hover:border-slate-300 text-left shadow-2xs transition-all flex items-center justify-between cursor-pointer"
                 >

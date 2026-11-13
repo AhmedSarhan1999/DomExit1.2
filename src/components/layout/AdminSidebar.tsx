@@ -18,7 +18,6 @@ import {
   X,
   Crown,
   Briefcase,
-  ArrowRightLeft,
   UserCheck,
 } from 'lucide-react';
 
@@ -157,27 +156,17 @@ export const AdminSidebar: React.FC = () => {
         </Link>
       </div>
 
-      {/* Role Indicator & Mode Switcher */}
+      {/* Role Indicator */}
       <div className="p-3 bg-slate-50 border-b border-slate-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {isOwner ? (
-              <Crown className="w-4 h-4 text-indigo-600 shrink-0" />
-            ) : (
-              <Briefcase className="w-4 h-4 text-emerald-600 shrink-0" />
-            )}
-            <div className="text-[11px] font-bold truncate">
-              {isOwner ? '👑 Владелец платформы' : '👔 Куратор (Сотрудник)'}
-            </div>
+        <div className="flex items-center space-x-2">
+          {isOwner ? (
+            <Crown className="w-4 h-4 text-indigo-600 shrink-0" />
+          ) : (
+            <Briefcase className="w-4 h-4 text-emerald-600 shrink-0" />
+          )}
+          <div className="text-[11px] font-bold truncate">
+            {isOwner ? '👑 Владелец платформы' : '👔 Куратор (Сотрудник)'}
           </div>
-          <button
-            type="button"
-            onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
-            title="Переключить режим роли"
-            className="p-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5" />
-          </button>
         </div>
         <p className="text-[10px] text-slate-400 mt-1">
           {isOwner
@@ -273,26 +262,14 @@ export const AdminSidebar: React.FC = () => {
         )}
       </nav>
 
-      {/* Bottom Compliance & Officer Indicator */}
-      <div className="p-4 border-t border-slate-200 bg-slate-50/80 space-y-3">
+      {/* Bottom Compliance Indicator */}
+      <div className="p-4 border-t border-slate-200 bg-slate-50/80">
         <div className="flex items-center justify-between text-[11px]">
           <span className="text-slate-600 flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>ЕИСЖС (Наш.дом.рф)</span>
           </span>
           <span className="text-emerald-700 font-bold">Активна</span>
-        </div>
-
-        <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-200">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-            {initials || (isOwner ? 'ВС' : 'АС')}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-xs font-bold text-slate-900 truncate">{displayName}</span>
-            <span className="text-[10px] text-emerald-700 truncate">
-              {isOwner ? 'Генеральный директор' : 'Куратор отдела выходов'}
-            </span>
-          </div>
         </div>
       </div>
     </div>

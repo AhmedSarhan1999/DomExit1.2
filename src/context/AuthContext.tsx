@@ -210,6 +210,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (successCallback) successCallback();
       closeAuthModal();
+
+      // Role-Based Post-Login Redirect: Staff/Owner directly to /admin/dashboard
+      const isStaffOrOwner =
+        profile.role === 'owner' ||
+        profile.role === 'admin' ||
+        profile.role === 'employee' ||
+        profile.activeRole === 'owner' ||
+        profile.activeRole === 'employee';
+
+      const targetPath = isStaffOrOwner
+        ? '/admin/dashboard'
+        : profile.role === 'bank' || profile.activeRole === 'bank'
+        ? '/admin/bank-gateway'
+        : '/portal';
+
+      if (typeof window !== 'undefined') {
+        if (window.location.pathname === '/' || window.location.pathname === '/portal') {
+          window.location.href = targetPath;
+        }
+      }
     } catch (err: any) {
       console.warn('[AuthContext] Yandex OAuth callback error:', err);
       setAuthError(err?.message || 'Ошибка авторизации через Яндекс ID');
@@ -322,6 +342,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (successCallback) successCallback();
       closeAuthModal();
+
+      // Role-Based Post-Login Redirect: Staff/Owner directly to /admin/dashboard
+      const isStaffOrOwner =
+        profile.role === 'owner' ||
+        profile.role === 'admin' ||
+        profile.role === 'employee' ||
+        profile.activeRole === 'owner' ||
+        profile.activeRole === 'employee';
+
+      const targetPath = isStaffOrOwner
+        ? '/admin/dashboard'
+        : profile.role === 'bank' || profile.activeRole === 'bank'
+        ? '/admin/bank-gateway'
+        : '/portal';
+
+      if (typeof window !== 'undefined') {
+        if (window.location.pathname === '/' || window.location.pathname === '/portal') {
+          window.location.href = targetPath;
+        }
+      }
       return profile;
     } catch (err: any) {
       const errorMsg =
@@ -476,6 +516,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (successCallback) successCallback();
       closeAuthModal();
+
+      const profile = newProfile;
+
+      // Role-Based Post-Login Redirect: Staff/Owner directly to /admin/dashboard
+      const isStaffOrOwner =
+        profile.role === 'owner' ||
+        profile.role === 'admin' ||
+        profile.role === 'employee' ||
+        profile.activeRole === 'owner' ||
+        profile.activeRole === 'employee';
+
+      const targetPath = isStaffOrOwner
+        ? '/admin/dashboard'
+        : profile.role === 'bank' || profile.activeRole === 'bank'
+        ? '/admin/bank-gateway'
+        : '/portal';
+
+      if (typeof window !== 'undefined') {
+        if (window.location.pathname === '/' || window.location.pathname === '/portal') {
+          window.location.href = targetPath;
+        }
+      }
       return newProfile;
     } catch (err: any) {
       const msg =

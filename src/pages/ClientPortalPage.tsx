@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, Navigate } from 'react-router-dom';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -619,15 +619,24 @@ export const ClientPortalPage: React.FC = () => {
     );
   }
 
+  // Instant enterprise redirect: Owner and Staff must NEVER hang or land in consumer /portal
   if (
-    !isAuthenticated ||
-    !user ||
-    user.role === 'bank' ||
-    user.activeRole === 'bank' ||
-    user.role === 'employee' ||
-    user.activeRole === 'employee'
+    user &&
+    (user.role === 'owner' ||
+      user.role === 'admin' ||
+      user.role === 'employee' ||
+      user.activeRole === 'owner' ||
+      user.activeRole === 'employee')
   ) {
-    return null;
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (user && (user.role === 'bank' || user.activeRole === 'bank')) {
+    return <Navigate to="/admin/bank-gateway" replace />;
+  }
+
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -1042,8 +1051,20 @@ export const ClientPortalPage: React.FC = () => {
                           const linkedDeal = allDeals.find(
                             (d) => d.lotCode.toUpperCase() === (bid.lotCode || '').toUpperCase()
                           );
+                          const matchedLot = allLots.find(
+                            (l) => l.lotCode.toUpperCase() === (bid.lotCode || '').toUpperCase()
+                          );
+                          const curatorData = matchedLot?.curator;
                           const wfStep = linkedDeal?.escrowWorkflow?.step || 'curator_review';
-                          const curatorName = linkedDeal?.assignedEmployeeName || linkedDeal?.curatorName || 'Алексей Смирнов';
+                          const curatorName =
+                            linkedDeal?.assignedEmployeeName ||
+                            linkedDeal?.curatorName ||
+                            curatorData?.name ||
+                            'Алексей Смирнов';
+                          const curatorPhone = curatorData?.phone || '+7 (921) 456-78-90';
+                          const curatorTelegram = curatorData?.telegram || '@domexit_official';
+                          const curatorMax = curatorData?.maxProfile || curatorData?.whatsapp;
+                          const curatorPhoto = curatorData?.photoUrl;
                           return (
                             <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-3">
                               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -1094,9 +1115,17 @@ export const ClientPortalPage: React.FC = () => {
                               {!enableBankPortal && (
                                 <div className="pt-2.5 border-t border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
                                   <div className="flex items-center space-x-3">
-                                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-xs">
-                                      {curatorName.slice(0, 2).toUpperCase()}
-                                    </div>
+                                    {curatorPhoto ? (
+                                      <img
+                                        src={curatorPhoto}
+                                        alt={curatorName}
+                                        className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                                      />
+                                    ) : (
+                                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-xs">
+                                        {curatorName.slice(0, 2).toUpperCase()}
+                                      </div>
+                                    )}
                                     <div>
                                       <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
                                         Ваш персональный куратор сделки
@@ -1109,21 +1138,43 @@ export const ClientPortalPage: React.FC = () => {
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                                     <a
-                                      href="tel:+79214567890"
+                                      href={`tel:${curatorPhone.replace(/[^\d+]/g, '')}`}
                                       className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
                                     >
                                       <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                                      <span>+7 (921) 456-78-90</span>
+                                      <span>{curatorPhone}</span>
                                     </a>
                                     <a
-                                      href="https://t.me/domexit_official"
+                                      href={
+                                        curatorTelegram.startsWith('http')
+                                          ? curatorTelegram
+                                          : `https://t.me/${curatorTelegram.replace('@', '')}`
+                                      }
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
                                     >
                                       <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-                                      <span>Написать куратору</span>
+                                      <span>Telegram</span>
                                     </a>
+                                    {curatorMax && (
+                                      <a
+                                        href={
+                                          curatorMax.startsWith('http') || curatorMax.startsWith('max://')
+                                            ? curatorMax
+                                            : `https://max.im/${curatorMax.replace(/[^\w]/g, '')}`
+                                        }
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-black text-xs flex items-center space-x-1.5 transition-colors shadow-2xs"
+                                        title="Профиль MAX (Messenger / App)"
+                                      >
+                                        <span className="w-3.5 h-3.5 rounded bg-indigo-600 text-white text-[8px] font-black flex items-center justify-center">
+                                          M
+                                        </span>
+                                        <span>MAX</span>
+                                      </a>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1394,7 +1445,18 @@ export const ClientPortalPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    {(activeSellerLot.curator?.phone || curator?.phone) && (
+                      <a
+                        href={`tel:${(activeSellerLot.curator?.phone || curator?.phone || '').replace(/[^\d+]/g, '')}`}
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs"
+                        title={activeSellerLot.curator?.phone || curator?.phone}
+                      >
+                        <Phone className="w-3.5 h-3.5 text-slate-600" />
+                        <span>{language === 'ru' ? 'Звонок' : 'Call'}</span>
+                      </a>
+                    )}
+
                     <a
                       href={`https://t.me/${(
                         activeSellerLot.curator?.telegram ||
@@ -1403,11 +1465,27 @@ export const ClientPortalPage: React.FC = () => {
                       ).replace('@', '')}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs text-xs"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Telegram куратора</span>
+                      <span>Telegram</span>
                     </a>
+
+                    {(activeSellerLot.curator?.maxProfile || curator?.maxProfile || activeSellerLot.curator?.whatsapp || curator?.whatsapp) && (
+                      <a
+                        href={
+                          (activeSellerLot.curator?.maxProfile || curator?.maxProfile || activeSellerLot.curator?.whatsapp || curator?.whatsapp || '').startsWith('http')
+                            ? activeSellerLot.curator?.maxProfile || curator?.maxProfile || activeSellerLot.curator?.whatsapp || curator?.whatsapp
+                            : `https://max.im/${(activeSellerLot.curator?.maxProfile || curator?.maxProfile || '').replace(/[^\w]/g, '')}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>MAX</span>
+                      </a>
+                    )}
                   </div>
                 </div>
 
