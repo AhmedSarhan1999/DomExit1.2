@@ -573,7 +573,7 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
         </div>
 
         {/* Output Summary Column — 100% Pure Light Mode Institutional Card (Zero Dark/Phone Frame) */}
-        <div className="lg:col-span-5 bg-slate-50 border border-slate-200 rounded-2xl p-6 text-slate-900 flex flex-col justify-between shadow-sm">
+        <div className="lg:col-span-5 bg-slate-50 border border-slate-200 rounded-2xl p-6 text-slate-900 flex flex-col justify-between h-full shadow-sm">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
@@ -670,6 +670,13 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
                 Формула: {formatRubles(calculation.monthlyPayment)} ÷ ({pdnPercent}% / 100)
               </div>
             </div>
+          </div>
+
+          {/* Institutional Banking Disclaimer Notice */}
+          <div className="mt-4 bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-[11px] leading-relaxed text-slate-500">
+            {language === 'ru'
+              ? 'Расчёт носит предварительный информационный характер. Итоговые условия кредитования зависят от выбранной программы банка, размера первоначального взноса и официального подтверждения дохода (2-НДФЛ / выписка СФР).'
+              : 'Calculation is for informational purposes only. Final loan terms depend on the selected bank program, downpayment amount, and verified official income (2-NDFL / SFR statement).'}
           </div>
         </div>
       </div>

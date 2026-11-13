@@ -106,7 +106,7 @@ export const translations: Record<'ru' | 'en', TranslationDict> = {
       tracker: 'Трекер сделки',
       admin: 'Панель управления',
       wantBuy: 'Хочу купить',
-      wantSell: 'Хочу продать (0%)',
+      wantSell: 'Хочу продать',
     },
     footer: {
       legalDescription: 'Платформа безопасной переуступки прав требований по 214-ФЗ. Институциональный стандарт защиты прав дольщиков и покупателей в Санкт-Петербурге и Москве.',
@@ -199,7 +199,7 @@ export const translations: Record<'ru' | 'en', TranslationDict> = {
       tracker: 'Deal Tracker',
       admin: 'Admin Core',
       wantBuy: 'I Want to Buy',
-      wantSell: 'I Want to Exit (0%)',
+      wantSell: 'I Want to Sell',
     },
     footer: {
       legalDescription: 'Institutional safe assignment platform under Federal Law 214-FZ. Standard of capital protection for developers and real estate buyers in St. Petersburg and Moscow.',

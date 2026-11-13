@@ -401,15 +401,15 @@ export const UnifiedNavbar: React.FC = () => {
             {/* "Want to Buy" Button */}
             <Link
               to="/opportunities"
-              className="px-3 py-2 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 shadow-xs transition-colors"
+              className="h-9 px-3.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 shadow-xs transition-colors flex items-center justify-center whitespace-nowrap"
             >
               {t.nav.wantBuy}
             </Link>
 
-            {/* Prominent Emerald Green "Want to Sell (0%)" Button */}
+            {/* Prominent Emerald Green "Want to Sell" Button */}
             <Link
               to="/sellers"
-              className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-900/40 hover:shadow-emerald-900/60 transition-all flex items-center space-x-1"
+              className="h-9 px-4 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-900/40 hover:shadow-emerald-900/60 transition-all flex items-center justify-center space-x-1.5 whitespace-nowrap"
             >
               <span>{t.nav.wantSell}</span>
               <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />

@@ -19,7 +19,7 @@ export const UnifiedFooter: React.FC = () => {
         {/* 4 Columns Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           
-          {/* Column 1: Brand & Telegram */}
+          {/* Column 1: Brand & Overview */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
               <span className="text-2xl font-black text-slate-900 tracking-tight">DomExit</span>
@@ -30,43 +30,6 @@ export const UnifiedFooter: React.FC = () => {
             <p className="text-sm text-slate-600 leading-relaxed">
               {t.footer.legalDescription}
             </p>
-            <div className="pt-1 flex flex-wrap gap-2">
-              <a
-                href={channels.telegramChannelUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold shadow-xs hover:shadow-md transition-all"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{t.footer.tgChannel}</span>
-              </a>
-              <a
-                href={channels.telegramBotUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-xs transition-all"
-              >
-                <Bot className="w-3.5 h-3.5 text-sky-400" />
-                <span>Бот</span>
-              </a>
-              <a
-                href={channels.vkCommunityUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all"
-              >
-                <span className="font-black text-[11px]">VK</span>
-              </a>
-              <a
-                href={channels.maxProfileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>MAX</span>
-              </a>
-            </div>
           </div>
 
           {/* Column 2: Navigation Links */}
@@ -150,6 +113,46 @@ export const UnifiedFooter: React.FC = () => {
                   {channels.supportEmail || profile.privacyEmail}
                 </a>
               </div>
+            </div>
+
+            {/* Social & Messaging Channels (Institutional Minimalist Style) */}
+            <div className="grid grid-cols-2 gap-2 mt-3 pt-1">
+              <a
+                href={channels.telegramChannelUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-2"
+              >
+                <Send className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="truncate">{t.footer.tgChannel}</span>
+              </a>
+              <a
+                href={channels.telegramBotUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-2"
+              >
+                <Bot className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="truncate">Бот</span>
+              </a>
+              <a
+                href={channels.vkCommunityUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-2"
+              >
+                <span className="font-bold text-[11px] text-emerald-700 shrink-0">VK</span>
+                <span className="truncate">ВКонтакте</span>
+              </a>
+              <a
+                href={channels.maxProfileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-2"
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="truncate">MAX</span>
+              </a>
             </div>
           </div>
 
