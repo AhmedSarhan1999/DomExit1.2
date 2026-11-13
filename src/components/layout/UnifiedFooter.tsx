@@ -4,11 +4,13 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { ShieldCheck, Phone, Mail, MapPin, Send, CheckCircle2, Building2, MessageCircle, Bot } from 'lucide-react';
 import { useCompanyProfileStore } from '../../stores/useCompanyProfileStore';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
+import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
 
 export const UnifiedFooter: React.FC = () => {
   const { language, t } = useLanguage();
   const { profile } = useCompanyProfileStore();
   const { channels } = usePublicChannelsStore();
+  const { enableVipClub } = useFeatureFlagsStore();
 
   return (
     <footer className="bg-[#F8FAFC] border-t border-slate-200 text-slate-700 pt-16 pb-12 transition-colors">
@@ -88,11 +90,13 @@ export const UnifiedFooter: React.FC = () => {
                   {t.footer.safeDealProtocol}
                 </Link>
               </li>
-              <li>
-                <Link to="/vip-catalog" className="text-slate-600 hover:text-emerald-600 transition-colors">
-                  {t.footer.investPools}
-                </Link>
-              </li>
+              {enableVipClub && (
+                <li>
+                  <Link to="/vip-catalog" className="text-slate-600 hover:text-emerald-600 transition-colors">
+                    {t.footer.investPools}
+                  </Link>
+                </li>
+              )}
               <li>
                 <Link to="/partners" className="text-slate-600 hover:text-emerald-600 transition-colors">
                   {language === 'ru' ? 'Партнерская сеть (бонус 30 000 ₽)' : 'Partner Network (30,000 ₽ bonus)'}

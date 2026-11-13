@@ -229,7 +229,7 @@ export const QuickMatchModal: React.FC<QuickMatchModalProps> = ({
             className="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-2"
           >
             <Check className="w-4 h-4 stroke-[3]" />
-            <span>{language === 'ru' ? 'Показать подходящие лоты ->' : 'Show Matching Lots ->'}</span>
+            <span>{language === 'ru' ? 'Показать подходящие лоты' : 'Show Matching Lots'}</span>
           </button>
         </div>
 

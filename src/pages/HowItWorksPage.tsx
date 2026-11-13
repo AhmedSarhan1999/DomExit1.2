@@ -239,7 +239,7 @@ export const HowItWorksPage: React.FC = () => {
                 to="/sellers"
                 className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2"
               >
-                <span>{language === 'ru' ? 'Начать оценку договора (0%) ->' : 'Start Contract Evaluation (0%) ->'}</span>
+                <span>{language === 'ru' ? 'Начать оценку договора (0%)' : 'Start Contract Evaluation (0%)'}</span>
                 <ArrowRight className="w-4 h-4 stroke-[3]" />
               </Link>
             </div>
@@ -353,7 +353,7 @@ export const HowItWorksPage: React.FC = () => {
                 to="/opportunities"
                 className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2"
               >
-                <span>{language === 'ru' ? 'Смотреть проверенные лоты ->' : 'Explore Verified Units ->'}</span>
+                <span>{language === 'ru' ? 'Смотреть проверенные лоты' : 'Explore Verified Units'}</span>
                 <ArrowRight className="w-4 h-4 stroke-[3]" />
               </Link>
             </div>

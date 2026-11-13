@@ -62,6 +62,7 @@ import {
 } from '../types';
 import { FileManager } from '../utils/fileManager';
 import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
 type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'consents';
 
@@ -89,6 +90,7 @@ export const ClientPortalPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading, logout, toggleFavorite, upgradeToPartner, upgradeToInvestor, openAuthModal } = useAuth();
   const { language } = useLanguage();
+  const { enableVipClub } = useFeatureFlagsStore();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Strict Enterprise Account Isolation & Role Redirects
@@ -794,6 +796,7 @@ export const ClientPortalPage: React.FC = () => {
           </div>
 
           {/* VIP Catalog Early Access Banner */}
+          {enableVipClub && (
           <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
             <div className="flex items-center space-x-3">
               <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
@@ -816,6 +819,7 @@ export const ClientPortalPage: React.FC = () => {
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
+          )}
 
         </div>
       </section>

@@ -41,6 +41,7 @@ import {
   ArrowRight,
   Upload,
   AlertCircle,
+  AlertTriangle,
   Clock,
   FileText,
   Check,
@@ -84,6 +85,7 @@ export const SellersPage: React.FC = () => {
   const [contractPriceStr, setContractPriceStr] = useState<string>('11400000');
   const [paidAmountStr, setPaidAmountStr] = useState<string>('2850000');
   const [todayMarketPriceStr, setTodayMarketPriceStr] = useState<string>('14500000');
+  const [usedMatkap, setUsedMatkap] = useState<'no' | 'yes'>('no');
   const [agreeTerms, setAgreeTerms] = useState<boolean>(true);
   const [penaltyRatePercent, setPenaltyRatePercent] = useState<number>(15);
 
@@ -206,6 +208,15 @@ export const SellersPage: React.FC = () => {
     const complexCheck = validateTextEntityName(complexName, 'Название жилого комплекса');
     if (!complexCheck.valid) {
       setStep1Error(language === 'ru' ? complexCheck.messageRu! : complexCheck.messageEn!);
+      return;
+    }
+
+    if (usedMatkap === 'yes') {
+      setStep1Error(
+        language === 'ru'
+          ? 'В соответствии с 256-ФЗ, объекты с использованием материнского капитала требуют разрешения органов опеки и не принимаются на платформу DomExit.'
+          : 'According to 256-FZ, units bought with maternity capital are not accepted on DomExit.'
+      );
       return;
     }
 
@@ -339,6 +350,14 @@ export const SellersPage: React.FC = () => {
 
   const handleSubmitFinal = async () => {
     setStep3Error(null);
+    if (usedMatkap === 'yes') {
+      setStep3Error(
+        language === 'ru'
+          ? 'Отправка заявки заблокирована: переуступка прав по ДДУ с маткапиталом не поддерживается (256-ФЗ).'
+          : 'Submission blocked: maternity capital exits are not accepted.'
+      );
+      return;
+    }
 
     if (vaultDocs.length === 0) {
       setStep3Error(
@@ -877,6 +896,65 @@ export const SellersPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* 256-FZ Maternal Capital Check (Deal-Breaker) */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <span className="text-rose-600">*</span>
+                      <span>Использовался ли материнский капитал (Маткапитал) при оплате договора ДДУ?</span>
+                    </label>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                      256-ФЗ
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setUsedMatkap('no')}
+                      className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                        usedMatkap === 'no'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CheckCircle2 className={`w-4 h-4 ${usedMatkap === 'no' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        <span>Нет, не использовался</span>
+                      </span>
+                      <span className="text-[10px] font-semibold text-emerald-700">✓ Подходит для DomExit</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setUsedMatkap('yes')}
+                      className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                        usedMatkap === 'yes'
+                          ? 'bg-rose-50 border-rose-500 text-rose-950 ring-2 ring-rose-500/20 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle className={`w-4 h-4 ${usedMatkap === 'yes' ? 'text-rose-600' : 'text-slate-400'}`} />
+                        <span>Да, использовался</span>
+                      </span>
+                      <span className="text-[10px] font-semibold text-rose-700">Ограничение 256-ФЗ</span>
+                    </button>
+                  </div>
+
+                  {usedMatkap === 'yes' && (
+                    <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-2 animate-fade-in">
+                      <div className="flex items-center space-x-2 font-bold text-xs text-rose-900">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>Ограничение 256-ФЗ: Переуступка прав невозможна</span>
+                      </div>
+                      <p className="text-xs text-rose-800 leading-relaxed">
+                        В соответствии с 256-ФЗ, переуступка прав по ДДУ с использованием материнского капитала требует предварительного разрешения органов опеки и выделения долей детям в готовом жилье. В целях защиты покупателей и соблюдения сроков сделки платформа DomExit не принимает такие объекты в работу.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="pt-1">
                   <label className="flex items-start space-x-3 cursor-pointer text-xs text-slate-700">
                     <input
@@ -896,8 +974,13 @@ export const SellersPage: React.FC = () => {
                 <div className="pt-2">
                   <button
                     type="button"
+                    disabled={usedMatkap === 'yes'}
                     onClick={handleGoToStep2}
-                    className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                    className={`w-full py-4 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center space-x-2 ${
+                      usedMatkap === 'yes'
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                    }`}
                   >
                     <span>
                       {language === 'ru'
@@ -1311,7 +1394,7 @@ export const SellersPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={isSubmitting || !consents.pdProcessing || !consents.termsAgreed}
+                  disabled={isSubmitting || usedMatkap === 'yes' || !consents.pdProcessing || !consents.termsAgreed}
                   onClick={handleSubmitFinal}
                   className="px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center space-x-2 cursor-pointer"
                 >

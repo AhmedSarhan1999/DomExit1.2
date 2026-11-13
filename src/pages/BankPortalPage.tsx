@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, Navigate } from 'react-router-dom';
 import {
   Landmark,
   ShieldCheck,
@@ -64,9 +64,25 @@ import { UserProfileModal } from '../components/profile/UserProfileModal';
 import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal';
 import { BankGatewayErrorBoundary } from '../components/common/BankGatewayErrorBoundary';
 import { useEnvironmentStore } from '../stores/useEnvironmentStore';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
 export const BankPortalPage: React.FC = () => {
   const { user, quickDemoLogin, openAuthModal } = useAuth();
+  const { enableBankPortal } = useFeatureFlagsStore();
+
+  if (!enableBankPortal) {
+    const isStaff = Boolean(
+      user &&
+        (user.activeRole === 'owner' ||
+          user.activeRole === 'admin' ||
+          user.activeRole === 'employee' ||
+          user.role === 'admin' ||
+          user.role === 'curator' ||
+          user.email === 'amaas9499@gmail.com')
+    );
+    return <Navigate to={isStaff ? '/admin/dashboard' : '/'} replace />;
+  }
+
   const { isProduction } = useEnvironmentStore();
   const showTestSwitchers = !isProduction;
   const [searchParams] = useSearchParams();

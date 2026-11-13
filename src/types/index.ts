@@ -44,6 +44,8 @@ export interface Lot {
 
   // Financial Truth Engine variables
   dduContractPrice: number; // e.g. 10 972 000 ₽
+  developerConsentFeeRub?: number; // Плата застройщика за согласование уступки
+  contractTemplateRequirement?: 'developer_template' | 'domexit_template'; // Требование к шаблону договора
   cashPaidBySeller: number; // e.g. 2 485 230 ₽ (what seller gets now: 100% cash, 0% commission)
   remainingInstallmentDebt: number; // e.g. 8 486 770 ₽ (transfers to buyer)
   todayDeveloperPrice: number; // e.g. 14 200 000 ₽

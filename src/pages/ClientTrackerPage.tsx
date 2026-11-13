@@ -58,11 +58,27 @@ export const ClientTrackerPage: React.FC = () => {
 
   const loadTracker = async () => {
     setLoading(true);
-    const targetId = dealId || user?.activeDealId || 'DEAL-2025-10566';
+    const targetId = dealId || user?.activeDealId;
+    if (!targetId) {
+      setDeal(null);
+      setLot(null);
+      setOffers([]);
+      setDocs([]);
+      setLoading(false);
+      return;
+    }
     const loadedDeal = await DealsRepository.getById(targetId);
     setDeal(loadedDeal);
 
-    const lotCode = loadedDeal?.lotCode || 'U-10566';
+    if (!loadedDeal) {
+      setLot(null);
+      setOffers([]);
+      setDocs([]);
+      setLoading(false);
+      return;
+    }
+
+    const lotCode = loadedDeal.lotCode;
     const [loadedLot, lotOffers, vaultDocs, emps] = await Promise.all([
       LotsRepository.getByCode(lotCode),
       CandidatesRepository.getByLotCode(lotCode),
@@ -258,7 +274,7 @@ export const ClientTrackerPage: React.FC = () => {
   const progressPercent = deal?.stage === 'completed' ? 100 : Math.min(95, activeStageNum * 20);
   const sellerPayout = deal?.sellerReturnRub || lot?.cashPaidBySeller || 2485230;
   const estimatedPenaltySaved = Math.round((lot?.dduContractPrice || sellerPayout * 3) * 0.15);
-  const targetLotCode = deal?.lotCode || lot?.lotCode || 'U-10566';
+  const targetLotCode = deal?.lotCode || lot?.lotCode || '';
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 pb-20">
@@ -275,7 +291,7 @@ export const ClientTrackerPage: React.FC = () => {
           </Link>
 
           <span className="font-mono text-xs font-bold text-slate-500">
-            ID: {deal?.dealId || dealId || 'DEAL-2025-10566'}
+            ID: {deal?.dealId || dealId || '—'}
           </span>
         </div>
 

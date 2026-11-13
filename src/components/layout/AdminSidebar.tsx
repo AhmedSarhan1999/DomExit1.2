@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
 import {
   LayoutDashboard,
   GitPullRequest,
@@ -26,6 +27,7 @@ export const AdminSidebar: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const { user, switchRole } = useAuth();
+  const { enableBankPortal } = useFeatureFlagsStore();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
 
@@ -255,18 +257,20 @@ export const AdminSidebar: React.FC = () => {
         </Link>
 
         {/* Bank Portal Link */}
-        <Link
-          to="/bank-portal"
-          onClick={() => setMobileDrawerOpen(false)}
-          className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-            isActive('/bank-portal')
-              ? 'bg-sky-50 text-sky-800 border border-sky-200/80 shadow-2xs'
-              : 'text-slate-600 hover:text-sky-900 hover:bg-slate-50'
-          }`}
-        >
-          <Building2 className="w-4 h-4 text-sky-600" />
-          <span>{language === 'ru' ? 'Банковский шлюз (Эскроу)' : 'Bank Escrow Gateway'}</span>
-        </Link>
+        {enableBankPortal && (
+          <Link
+            to="/bank-portal"
+            onClick={() => setMobileDrawerOpen(false)}
+            className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              isActive('/bank-portal')
+                ? 'bg-sky-50 text-sky-800 border border-sky-200/80 shadow-2xs'
+                : 'text-slate-600 hover:text-sky-900 hover:bg-slate-50'
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-sky-600" />
+            <span>{language === 'ru' ? 'Банковский шлюз (Эскроу)' : 'Bank Escrow Gateway'}</span>
+          </Link>
+        )}
       </nav>
 
       {/* Bottom Compliance & Officer Indicator */}

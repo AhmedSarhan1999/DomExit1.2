@@ -542,8 +542,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   ? 'Регистрация предложения...'
                   : 'Submitting Offer...'
                 : language === 'ru'
-                ? 'Отправить заявку куратору лота →'
-                : 'Submit Offer to Assigned Curator →'}
+                ? 'Отправить заявку куратору лота'
+                : 'Submit Offer to Assigned Curator'}
             </span>
             <ArrowRight className="w-4 h-4 stroke-[3]" />
           </button>

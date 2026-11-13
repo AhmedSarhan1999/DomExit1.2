@@ -67,6 +67,8 @@ export const AdminPackagingPage: React.FC = () => {
   const [cashToSeller, setCashToSeller] = useState<number>(2485230);
   const [debtToDev, setDebtToDev] = useState<number>(8486770);
   const [todayDevPrice, setTodayDevPrice] = useState<number>(14200000);
+  const [developerConsentFeeRub, setDeveloperConsentFeeRub] = useState<number>(50000);
+  const [contractTemplateRequirement, setContractTemplateRequirement] = useState<'developer_template' | 'domexit_template'>('developer_template');
 
   // Media materials state
   const [sellerPhotos, setSellerPhotos] = useState<string[]>([]);
@@ -119,6 +121,8 @@ export const AdminPackagingPage: React.FC = () => {
     setCashToSeller(data.cashPaidBySeller || 2000000);
     setDebtToDev(data.remainingInstallmentDebt || 8000000);
     setTodayDevPrice(data.todayDeveloperPrice || 13500000);
+    setDeveloperConsentFeeRub(data.developerConsentFeeRub || 50000);
+    setContractTemplateRequirement(data.contractTemplateRequirement || 'developer_template');
 
     // Media
     const sPhotos =
@@ -255,6 +259,8 @@ export const AdminPackagingPage: React.FC = () => {
       remainingInstallmentDebt: debtToDev,
       todayDeveloperPrice: todayDevPrice,
       serviceCommissionRub: buyerFee,
+      developerConsentFeeRub,
+      contractTemplateRequirement,
       imageUrl: effectiveCover,
       approvedGalleryImages: approvedPhotos,
       galleryImages: approvedPhotos.length > 0 ? approvedPhotos : [effectiveCover],
@@ -861,6 +867,42 @@ export const AdminPackagingPage: React.FC = () => {
                       <div className="text-3xl font-black text-emerald-700 tracking-tight font-mono">
                         +{formatRubles(buyerNetSavings)}
                       </div>
+                      {/* Curator Administrative Packaging Fields */}
+                      <div className="pt-3 border-t border-emerald-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-slate-800 mb-1 font-bold">
+                            5. Плата застройщика за согласование уступки / перевод долга (₽):
+                          </label>
+                          <input
+                            type="number"
+                            step="5000"
+                            value={developerConsentFeeRub}
+                            onChange={(e) => setDeveloperConsentFeeRub(Number(e.target.value))}
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-1 block">
+                            Покрывается покупателем в рамках агентского сопровождения 2.5% (расчет через аккредитив).
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-800 mb-1 font-bold">
+                            6. Требование к договору уступки:
+                          </label>
+                          <select
+                            value={contractTemplateRequirement}
+                            onChange={(e) => setContractTemplateRequirement(e.target.value as any)}
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:border-emerald-500"
+                          >
+                            <option value="developer_template">Типовой шаблон застройщика (Обязательное условие ДДУ)</option>
+                            <option value="domexit_template">Шаблон юристов DomExit (Стандарт 214-ФЗ / 140-ФЗ)</option>
+                          </select>
+                          <span className="text-[10px] text-slate-500 mt-1 block">
+                            Юридический отдел готовит проект договора по регламенту застройщика.
+                          </span>
+                        </div>
+                      </div>
+
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-emerald-200 text-xs text-slate-600">
                         <span>
                           Комиссия покупателя (2.5% по факту сделки):{' '}

@@ -36,6 +36,7 @@ import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
 import { AdminCuratorProfilePage } from './pages/AdminCuratorProfilePage';
 import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { DatabaseInitializer } from './dal/initializer';
+import { useFeatureFlagsStore } from './stores/useFeatureFlagsStore';
 
 // Federal Law 152-FZ & 38-FZ Legal Pages
 import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage';
@@ -64,6 +65,8 @@ const ScrollToTop: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const { enableVipClub } = useFeatureFlagsStore();
+
   useEffect(() => {
     DatabaseInitializer.initLiveDatabase();
   }, []);
@@ -81,11 +84,14 @@ export const App: React.FC = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/sellers" element={<SellersPage />} />
               <Route path="/opportunities" element={<OpportunitiesPage />} />
-              <Route path="/vip-catalog" element={<VipCatalogPage />} />
+              <Route
+                path="/vip-catalog"
+                element={enableVipClub ? <VipCatalogPage /> : <Navigate to="/opportunities" replace />}
+              />
               <Route path="/opportunities/:lotCode" element={<LotDetailsPage />} />
               <Route path="/how-it-works" element={<HowItWorksPage />} />
               <Route path="/story" element={<StoryPage />} />
-              <Route path="/investors" element={<Navigate to="/vip-catalog" replace />} />
+              <Route path="/investors" element={<Navigate to="/opportunities" replace />} />
               <Route path="/partners" element={<PartnersPublicPage />} />
               <Route path="/verify/:lotCode" element={<VerifyCertificatePage />} />
 

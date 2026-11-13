@@ -9,6 +9,7 @@ import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { DealTrack, Lot } from '../types';
 import {
   Building2,
@@ -50,9 +51,8 @@ export const AdminClosingPage: React.FC = () => {
   const [proofVideos, setProofVideos] = useState<string[]>([
     'Видеофиксация_сессии_ЭЦП_Сбербанк.mp4',
   ]);
-  const [rosreestrStampDoc, setRosreestrStampDoc] = useState<string>(
-    'Выписка_ЕГРН_с_ЭЦП_регистратора_РР-78-01.pdf'
-  );
+  const [rosreestrStampDoc, setRosreestrStampDoc] = useState<string>('');
+  const { enableBankPortal } = useFeatureFlagsStore();
 
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
@@ -137,7 +137,8 @@ export const AdminClosingPage: React.FC = () => {
         user.roles?.includes('owner') ||
         user.email === 'amaas9499@gmail.com')
   );
-  const canExecuteBankStep = isBankOfficer || isOwner;
+  const canExecuteBankStep = !enableBankPortal || isBankOfficer || isOwner || isEmployee;
+  const hasRosreestrStamp = Boolean(rosreestrStampDoc && rosreestrStampDoc.trim().length > 0);
 
   // Step A: Curator Review complete -> Handover to Bank
   const handleHandoverToBank = async () => {
@@ -467,7 +468,9 @@ export const AdminClosingPage: React.FC = () => {
                           onClick={handleConfirmBankDeposit}
                           className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
                         >
-                          ✓ Подтвердить депонирование (Офицер банка)
+                          {!enableBankPortal
+                            ? '✓ Подтвердить депонирование в отделении банка (СБР)'
+                            : '✓ Подтвердить депонирование (Офицер банка)'}
                         </button>
                       ) : (
                         <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
@@ -541,13 +544,35 @@ export const AdminClosingPage: React.FC = () => {
                     </p>
                     {currentStep === 'bank_funds_release' && (
                       canExecuteBankStep ? (
-                        <button
-                          type="button"
-                          onClick={handleReleaseEscrow}
-                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
-                        >
-                          Раскрыть аккредитив и закрыть (Офицер банка)
-                        </button>
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            disabled={!hasRosreestrStamp}
+                            onClick={handleReleaseEscrow}
+                            className={`w-full py-2.5 font-bold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center space-x-1.5 ${
+                              hasRosreestrStamp
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                                : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                            }`}
+                            title={
+                              !hasRosreestrStamp
+                                ? 'Загрузите выписку ЕГРН со штампом Росреестра'
+                                : undefined
+                            }
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>
+                              {!enableBankPortal
+                                ? 'Раскрыть СБР и выплатить 3 транша'
+                                : 'Раскрыть аккредитив и закрыть (Офицер банка)'}
+                            </span>
+                          </button>
+                          {!hasRosreestrStamp && (
+                            <p className="text-[10px] text-amber-700 font-bold leading-tight">
+                              ⚠️ Блокировка: Сначала загрузите выписку ЕГРН со штампом Росреестра на Шаге В
+                            </p>
+                          )}
+                        </div>
                       ) : (
                         <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
                           <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
@@ -783,13 +808,19 @@ export const AdminClosingPage: React.FC = () => {
                       </label>
                     </div>
 
-                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
-                      <div className="flex items-center space-x-2 text-xs font-bold text-emerald-900">
-                        <FileCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                        <span className="truncate">{rosreestrStampDoc}</span>
+                    <div className={`p-4 border rounded-2xl space-y-2 ${
+                      hasRosreestrStamp
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-amber-50/70 border-amber-200'
+                    }`}>
+                      <div className="flex items-center space-x-2 text-xs font-bold text-slate-900">
+                        <FileCheck className={`w-4 h-4 shrink-0 ${hasRosreestrStamp ? 'text-emerald-700' : 'text-amber-600'}`} />
+                        <span className="truncate">{rosreestrStampDoc || 'Файл ЕГРН пока не прикреплен'}</span>
                       </div>
-                      <p className="text-[11px] text-emerald-800/80">
-                        УКЭП государственного регистратора Росреестра проверена.
+                      <p className="text-[11px] text-slate-600">
+                        {hasRosreestrStamp
+                          ? 'УКЭП государственного регистратора Росреестра проверена.'
+                          : 'Загрузите электронную выписку ЕГРН со штампом для разблокировки выплаты.'}
                       </p>
                     </div>
                   </div>

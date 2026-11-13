@@ -11,6 +11,7 @@ import { CatalogMapView } from '../components/catalog/CatalogMapView';
 import { AdvancedFilterDrawer } from '../components/catalog/AdvancedFilterDrawer';
 import { QuickMatchModal } from '../components/catalog/QuickMatchModal';
 import { VipSubscriptionModal } from '../components/vip/VipSubscriptionModal';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { Link } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -64,15 +65,18 @@ export const OpportunitiesPage: React.FC = () => {
 
   // Active drawer filter state
   const [appliedFilters, setAppliedFilters] = useState<any>({});
+  const { enableVipClub } = useFeatureFlagsStore();
 
-  const isVipMember = !!(
-    user?.isVipSubscriber ||
-    user?.isInvestorApproved ||
-    user?.role === 'admin' ||
-    user?.role === 'curator' ||
-    user?.activeRole === 'owner' ||
-    user?.activeRole === 'employee'
-  );
+  const isVipMember =
+    !enableVipClub ||
+    !!(
+      user?.isVipSubscriber ||
+      user?.isInvestorApproved ||
+      user?.role === 'admin' ||
+      user?.role === 'curator' ||
+      user?.activeRole === 'owner' ||
+      user?.activeRole === 'employee'
+    );
 
   // Sync URL query params -> state when navigated from LotDetailsPage ("Смотреть похожие лоты в этом районе")
   useEffect(() => {
@@ -830,40 +834,42 @@ export const OpportunitiesPage: React.FC = () => {
         )}
 
         {/* Early Access VIP Club Banner */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-amber-400/30 text-white rounded-3xl p-8 sm:p-10 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl mt-8">
-          <div className="space-y-2 text-center sm:text-left">
-            <span className="px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 text-[11px] font-black border border-amber-400/40 inline-flex items-center space-x-1.5">
-              <Sparkles className="w-3.5 h-3.5 fill-current" />
-              <span>КЛУБ РАННЕГО ДОСТУПА 48 ЧАСОВ</span>
-            </span>
-            <h3 className="text-xl sm:text-2xl font-black text-white">
-              {language === 'ru'
-                ? 'Хотите первыми бронировать объекты до их выхода в открытый каталог?'
-                : 'Want priority access to lots 48 hours before the public catalog?'}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              {language === 'ru'
-                ? 'Резиденты VIP-клуба получают уведомления и право раннего бронирования проверенных переуступок напрямую от дольщиков за 48 часов до публикации на сайте с экономией до 35%.'
-                : 'VIP Club members receive instant early access and reservation rights to vetted DDU distress exits 48 hours before public release.'}
-            </p>
+        {enableVipClub && (
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-amber-400/30 text-white rounded-3xl p-8 sm:p-10 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl mt-8">
+            <div className="space-y-2 text-center sm:text-left">
+              <span className="px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 text-[11px] font-black border border-amber-400/40 inline-flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5 fill-current" />
+                <span>КЛУБ РАННЕГО ДОСТУПА 48 ЧАСОВ</span>
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-white">
+                {language === 'ru'
+                  ? 'Хотите первыми бронировать объекты до их выхода в открытый каталог?'
+                  : 'Want priority access to lots 48 hours before the public catalog?'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+                {language === 'ru'
+                  ? 'Резиденты VIP-клуба получают уведомления и право раннего бронирования проверенных переуступок напрямую от дольщиков за 48 часов до публикации на сайте с экономией до 35%.'
+                  : 'VIP Club members receive instant early access and reservation rights to vetted DDU distress exits 48 hours before public release.'}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsVipModalOpen(true)}
+                className="px-6 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-400/20 transition-all flex items-center space-x-2 cursor-pointer"
+              >
+                <Crown className="w-4 h-4 text-slate-950" />
+                <span>{language === 'ru' ? 'Оформить ранний доступ (48ч)' : 'Unlock 48h Early Access'}</span>
+              </button>
+              <Link
+                to="/vip-catalog"
+                className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all flex items-center space-x-1.5"
+              >
+                <span>{language === 'ru' ? 'Смотреть витрину VIP' : 'View VIP Showcase'}</span>
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsVipModalOpen(true)}
-              className="px-6 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-400/20 transition-all flex items-center space-x-2 cursor-pointer"
-            >
-              <Crown className="w-4 h-4 text-slate-950" />
-              <span>{language === 'ru' ? 'Оформить ранний доступ (48ч)' : 'Unlock 48h Early Access'}</span>
-            </button>
-            <Link
-              to="/vip-catalog"
-              className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all flex items-center space-x-1.5"
-            >
-              <span>{language === 'ru' ? 'Смотреть витрину VIP' : 'View VIP Showcase'}</span>
-            </Link>
-          </div>
-        </div>
+        )}
 
       </section>
 
@@ -875,14 +881,16 @@ export const OpportunitiesPage: React.FC = () => {
       />
 
       {/* VIP Early Access Subscription Modal */}
-      <VipSubscriptionModal
-        isOpen={isVipModalOpen}
-        onClose={() => setIsVipModalOpen(false)}
-        onSuccess={() => {
-          setIsVipModalOpen(false);
-          loadLots();
-        }}
-      />
+      {enableVipClub && (
+        <VipSubscriptionModal
+          isOpen={isVipModalOpen}
+          onClose={() => setIsVipModalOpen(false)}
+          onSuccess={() => {
+            setIsVipModalOpen(false);
+            loadLots();
+          }}
+        />
+      )}
     </div>
   );
 };

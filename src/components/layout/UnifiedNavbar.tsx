@@ -4,6 +4,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
+import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
 import { 
   ShieldCheck, 
   User, 
@@ -24,6 +25,7 @@ export const UnifiedNavbar: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   const { user, isAuthenticated, openAuthModal, switchRole } = useAuth();
   const { channels } = usePublicChannelsStore();
+  const { enableVipClub, enableBankPortal } = useFeatureFlagsStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -37,7 +39,7 @@ export const UnifiedNavbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // 3 Core Operational Roles (Owner, Employee, Partner Bank)
+  // Core Operational Roles (Owner, Employee, Partner Bank)
   const roleOptions: Array<{
     id: 'owner' | 'employee' | 'bank';
     title: string;
@@ -72,7 +74,8 @@ export const UnifiedNavbar: React.FC = () => {
     },
   ];
 
-  const currentRoleOption = roleOptions.find(o => o.id === user?.activeRole) || roleOptions[0];
+  const visibleRoleOptions = roleOptions.filter((o) => o.id !== 'bank' || enableBankPortal);
+  const currentRoleOption = visibleRoleOptions.find(o => o.id === user?.activeRole) || visibleRoleOptions[0];
 
   // Verify staff / owner access
   useEffect(() => {
@@ -205,7 +208,7 @@ export const UnifiedNavbar: React.FC = () => {
             </Link>
 
             {/* Direct Link to Bank Portal for Bank Partners */}
-            {user?.activeRole === 'bank' && (
+            {user?.activeRole === 'bank' && enableBankPortal && (
               <Link
                 to="/bank-portal"
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 ${
@@ -276,21 +279,23 @@ export const UnifiedNavbar: React.FC = () => {
                       </div>
                     </button>
 
-                    <Link
-                      to="/bank-portal"
-                      onClick={() => setServicesDropdownOpen(false)}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-sky-950/70 text-slate-200 hover:text-sky-200 transition-colors flex items-start space-x-3 cursor-pointer group block"
-                    >
-                      <Building2 className="w-4 h-4 text-sky-400 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
-                      <div>
-                        <div className="text-xs font-bold text-white">
-                          {language === 'ru' ? 'Банковский Шлюз' : 'Bank Gateway'}
+                    {enableBankPortal && (
+                      <Link
+                        to="/bank-portal"
+                        onClick={() => setServicesDropdownOpen(false)}
+                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-sky-950/70 text-slate-200 hover:text-sky-200 transition-colors flex items-start space-x-3 cursor-pointer group block"
+                      >
+                        <Building2 className="w-4 h-4 text-sky-400 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                        <div>
+                          <div className="text-xs font-bold text-white">
+                            {language === 'ru' ? 'Банковский Шлюз' : 'Bank Gateway'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 leading-tight">
+                            {language === 'ru' ? 'Кредитные лимиты и СБР эскроу' : 'Credit limits & escrow'}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-slate-400 leading-tight">
-                          {language === 'ru' ? 'Кредитные лимиты и СБР эскроу' : 'Credit limits & escrow'}
-                        </div>
-                      </div>
-                    </Link>
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>
@@ -321,11 +326,11 @@ export const UnifiedNavbar: React.FC = () => {
                 <div className="absolute right-0 top-full mt-2 w-80 bg-slate-900/98 border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in space-y-1 text-slate-100 backdrop-blur-xl">
                   <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 flex items-center justify-between">
                     <span>{language === 'ru' ? 'Сменить аккаунт / Роль:' : 'Switch Account / Role:'}</span>
-                    <span className="text-[10px] text-emerald-400 font-mono">3 роли</span>
+                    <span className="text-[10px] text-emerald-400 font-mono">{visibleRoleOptions.length} роли</span>
                   </div>
 
                   <div className="max-h-[380px] overflow-y-auto space-y-1 pt-1">
-                    {roleOptions.map((opt) => (
+                    {visibleRoleOptions.map((opt) => (
                       <button
                         key={opt.id}
                         type="button"
@@ -478,20 +483,22 @@ export const UnifiedNavbar: React.FC = () => {
           >
             {t.nav.catalog}
           </Link>
-          <Link
-            to="/vip-catalog"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between ${
-              isActive('/vip-catalog')
-                ? 'text-amber-300 bg-amber-950/60 border border-amber-500/40'
-                : 'text-amber-400 hover:bg-slate-800'
-            }`}
-          >
-            <span>Закрытый VIP-каталог (48ч)</span>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              VIP
-            </span>
-          </Link>
+          {enableVipClub && (
+            <Link
+              to="/vip-catalog"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between ${
+                isActive('/vip-catalog')
+                  ? 'text-amber-300 bg-amber-950/60 border border-amber-500/40'
+                  : 'text-amber-400 hover:bg-slate-800'
+              }`}
+            >
+              <span>Закрытый VIP-каталог (48ч)</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                VIP
+              </span>
+            </Link>
+          )}
           <Link
             to="/how-it-works"
             onClick={() => setMobileMenuOpen(false)}
@@ -527,14 +534,14 @@ export const UnifiedNavbar: React.FC = () => {
             {language === 'ru' ? 'Личный кабинет' : 'Client Portal'}
           </button>
 
-          {/* Mobile 7-Role Switcher */}
+          {/* Mobile Role Switcher */}
           <div className="pt-2 border-t border-slate-800 space-y-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase px-3 py-1 flex items-center justify-between">
               <span>{language === 'ru' ? 'Быстрая смена роли:' : 'Quick Role Switch:'}</span>
-              <span className="text-emerald-400 font-mono">3 роли</span>
+              <span className="text-emerald-400 font-mono">{visibleRoleOptions.length} роли</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5 pt-1">
-              {roleOptions.map((opt) => (
+              {visibleRoleOptions.map((opt) => (
                 <button
                   key={opt.id}
                   type="button"

@@ -5,6 +5,7 @@ import { DevelopersRepository } from '../../dal/repositories/DevelopersRepositor
 import { DatabaseGateway } from '../../dal/DatabaseGateway';
 import { formatRubles, normalizeDeveloperName } from '../../utils/formatters';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
 import {
   Calculator,
   Landmark,
@@ -27,6 +28,7 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
   onApplyWithCalculation,
 }) => {
   const { language } = useLanguage();
+  const { enableBankPortal } = useFeatureFlagsStore();
 
   const [cbrRate, setCbrRate] = useState<number>(21);
   const [bankTermsList, setBankTermsList] = useState<ResolvedBankFinancing[]>([]);
@@ -47,7 +49,7 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
 
     setBankTermsList(financingList || []);
 
-    if (financingList && financingList.length > 0) {
+    if (enableBankPortal && financingList && financingList.length > 0) {
       const preferred =
         financingList.find(
           (b) =>
@@ -176,23 +178,28 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
             </span>
             <h3 className="text-lg sm:text-xl font-extrabold text-slate-900">
               {language === 'ru'
-                ? 'Умный ипотечный калькулятор переуступки'
-                : 'Smart Assignment Mortgage Calculator'}
+                ? enableBankPortal
+                  ? 'Умный ипотечный калькулятор переуступки'
+                  : 'Расчетный ипотечный калькулятор'
+                : enableBankPortal
+                ? 'Smart Assignment Mortgage Calculator'
+                : 'Estimated Mortgage Calculator'}
             </h3>
           </div>
         </div>
         <div className="inline-flex items-center space-x-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700">
           <Landmark className="w-3.5 h-3.5 text-emerald-600" />
           <span>
-            {selectedBank
+            {selectedBank && enableBankPortal
               ? `${selectedBank} (${activeBankTerm?.baseRatePercent ?? cbrRate}%)`
-              : `Ключевая ЦБ: ${cbrRate}%`}
+              : `Ориентир ЦБ: ${cbrRate}%`}
           </span>
         </div>
       </div>
 
       {/* Approved Banks Bar (Шкала аккредитованных банков) */}
-      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2.5">
+      {enableBankPortal && (
+        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
             <Building2 className="w-4 h-4 text-emerald-600" />
@@ -280,7 +287,8 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
             </span>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Main Grid: Controls (Left) + Pure Light Institutional Summary Card (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -363,78 +371,136 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
               <span className="text-xs font-black text-slate-900">{interestRate}% годовых</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => handleSelectPreset('base', baseBankRate)}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
-                  ratePreset === 'base'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="text-[10px] opacity-80">
-                  {selectedBank ? `Базовая (${selectedBank})` : 'Базовая ставка'}
-                </div>
-                <div className="text-sm font-black mt-0.5">{baseBankRate}%</div>
-              </button>
+            {!enableBankPortal ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset('family', 6)}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                    interestRate === 6
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[10px] opacity-80">
+                    {language === 'ru' ? 'Льготная / Семейная' : 'Subsidized / Family'}
+                  </div>
+                  <div className="text-sm font-black mt-0.5">6.0%</div>
+                </button>
 
-              <button
-                type="button"
-                disabled={activeBankTerm ? !activeBankTerm.familyMortgage6 : false}
-                onClick={() => handleSelectPreset('family', 6)}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
-                  ratePreset === 'family'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : activeBankTerm && !activeBankTerm.familyMortgage6
-                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="text-[10px] opacity-80">Семейная</div>
-                <div className="text-sm font-black mt-0.5">6.0%</div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset('base', cbrRate || 21)}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                    interestRate === (cbrRate || 21)
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[10px] opacity-80">
+                    {language === 'ru' ? 'Базовая ставка рынка' : 'Market Standard Rate'}
+                  </div>
+                  <div className="text-sm font-black mt-0.5">{cbrRate || 21}%</div>
+                </button>
 
-              <button
-                type="button"
-                disabled={activeBankTerm ? !activeBankTerm.itMortgage6 : false}
-                onClick={() => handleSelectPreset('it', 6)}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
-                  ratePreset === 'it'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : activeBankTerm && !activeBankTerm.itMortgage6
-                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="text-[10px] opacity-80">IT-ипотека</div>
-                <div className="text-sm font-black mt-0.5">6.0%</div>
-              </button>
-
-              <div
-                className={`px-3 py-1.5 rounded-xl border bg-white flex flex-col justify-center ${
-                  ratePreset === 'custom'
-                    ? 'border-emerald-600 ring-2 ring-emerald-500/20'
-                    : 'border-slate-200'
-                }`}
-              >
-                <label className="text-[10px] font-bold text-slate-400 block">
-                  {language === 'ru' ? 'Своя ставка, %' : 'Custom rate, %'}
-                </label>
-                <div className="flex items-center">
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="45"
-                    value={interestRate}
-                    onChange={(e) => handleCustomRateChange(e.target.value)}
-                    className="w-full text-sm font-black text-slate-900 bg-transparent focus:outline-none"
-                  />
-                  <Percent className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <div
+                  className={`px-3 py-1.5 rounded-xl border bg-white flex flex-col justify-center ${
+                    ratePreset === 'custom' || (interestRate !== 6 && interestRate !== (cbrRate || 21))
+                      ? 'border-emerald-600 ring-2 ring-emerald-500/20'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  <label className="text-[10px] font-bold text-slate-400 block">
+                    {language === 'ru' ? 'Своя ставка, %' : 'Custom rate, %'}
+                  </label>
+                  <div className="flex items-center">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="45"
+                      value={interestRate}
+                      onChange={(e) => handleCustomRateChange(e.target.value)}
+                      className="w-full text-sm font-black text-slate-900 bg-transparent focus:outline-none"
+                    />
+                    <Percent className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset('base', baseBankRate)}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                    ratePreset === 'base'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[10px] opacity-80">
+                    {selectedBank ? `Базовая (${selectedBank})` : 'Базовая ставка'}
+                  </div>
+                  <div className="text-sm font-black mt-0.5">{baseBankRate}%</div>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={activeBankTerm ? !activeBankTerm.familyMortgage6 : false}
+                  onClick={() => handleSelectPreset('family', 6)}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                    ratePreset === 'family'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : activeBankTerm && !activeBankTerm.familyMortgage6
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[10px] opacity-80">Семейная</div>
+                  <div className="text-sm font-black mt-0.5">6.0%</div>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={activeBankTerm ? !activeBankTerm.itMortgage6 : false}
+                  onClick={() => handleSelectPreset('it', 6)}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                    ratePreset === 'it'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : activeBankTerm && !activeBankTerm.itMortgage6
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[10px] opacity-80">IT-ипотека</div>
+                  <div className="text-sm font-black mt-0.5">6.0%</div>
+                </button>
+
+                <div
+                  className={`px-3 py-1.5 rounded-xl border bg-white flex flex-col justify-center ${
+                    ratePreset === 'custom'
+                      ? 'border-emerald-600 ring-2 ring-emerald-500/20'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  <label className="text-[10px] font-bold text-slate-400 block">
+                    {language === 'ru' ? 'Своя ставка, %' : 'Custom rate, %'}
+                  </label>
+                  <div className="flex items-center">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="45"
+                      value={interestRate}
+                      onChange={(e) => handleCustomRateChange(e.target.value)}
+                      className="w-full text-sm font-black text-slate-900 bg-transparent focus:outline-none"
+                    />
+                    <Percent className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 3. Loan Term + Interactive PDN (DTI) Selector [ 40% | 50% | 60% ] */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { Lot, Employee, DistrictYieldConfig } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
@@ -44,6 +45,7 @@ export const LotDetailsPage: React.FC = () => {
   const { lotCode } = useParams<{ lotCode: string }>();
   const { language } = useLanguage();
   const { user, isFavorite, toggleFavorite } = useAuth();
+  const { enableBankPortal } = useFeatureFlagsStore();
 
   const [lot, setLot] = useState<Lot | null>(null);
   const [districtYield, setDistrictYield] = useState<DistrictYieldConfig | null>(null);
@@ -350,12 +352,12 @@ export const LotDetailsPage: React.FC = () => {
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Аккредитован в ТОП-банках (СБР)</span>
                 </span>
-              ) : (
+              ) : enableBankPortal ? (
                 <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold">
                   <Building2 className="w-3.5 h-3.5 text-amber-700" />
                   <span>Ожидает аккредитации банков</span>
                 </span>
-              )}
+              ) : null}
             </div>
 
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-950 tracking-tight">
