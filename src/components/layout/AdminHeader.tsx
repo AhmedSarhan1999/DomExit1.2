@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, User, Crown, Briefcase, Settings } from 'lucide-react';
+import { Bell, User, Crown, Briefcase, Settings, Database } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { UserProfileModal } from '../profile/UserProfileModal';
+import { YandexCloudAdapter } from '../../dal/adapters/YandexCloudAdapter';
+import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 interface AdminHeaderProps {
   title: string;
@@ -13,7 +15,36 @@ interface AdminHeaderProps {
 export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => {
   const { language, setLanguage } = useLanguage();
   const { user, switchRole } = useAuth();
+  const { isProduction } = useEnvironmentStore();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  const [ydbStatus, setYdbStatus] = useState<{
+    ok: boolean;
+    message: string;
+    latencyMs?: number;
+    error?: string;
+  } | null>(null);
+  const [isCheckingYdb, setIsCheckingYdb] = useState(false);
+
+  const checkYdb = async () => {
+    setIsCheckingYdb(true);
+    try {
+      const res = await YandexCloudAdapter.testConnection();
+      setYdbStatus(res);
+    } catch (err: any) {
+      setYdbStatus({
+        ok: false,
+        message: 'Сбой соединения',
+        error: err?.message,
+      });
+    } finally {
+      setIsCheckingYdb(false);
+    }
+  };
+
+  useEffect(() => {
+    checkYdb();
+  }, []);
 
   const isOwner = user?.activeRole === 'owner';
 
@@ -29,10 +60,46 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* Live Yandex Cloud YDB & S3 Diagnostic Badge */}
+            <button
+              type="button"
+              onClick={checkYdb}
+              disabled={isCheckingYdb}
+              title="Нажмите для активного тестирования Yandex Cloud YDB Document API & S3"
+              className={`hidden sm:inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all cursor-pointer shadow-2xs ${
+                ydbStatus?.ok
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/20'
+                  : ydbStatus === null
+                  ? 'bg-slate-100 border-slate-200 text-slate-600'
+                  : 'bg-rose-50 border-rose-300 text-rose-700 hover:bg-rose-100'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  ydbStatus?.ok
+                    ? 'bg-emerald-500 animate-pulse'
+                    : ydbStatus === null
+                    ? 'bg-amber-400 animate-ping'
+                    : 'bg-rose-600'
+                }`}
+              />
+              <span>
+                {isCheckingYdb
+                  ? 'Проверка YDB & S3...'
+                  : ydbStatus?.ok
+                  ? `● Yandex YDB & S3: Подключено (Live • ${isProduction ? 'Production' : 'Sandbox'})${
+                      ydbStatus.latencyMs ? ` [${ydbStatus.latencyMs}мс]` : ''
+                    }`
+                  : ydbStatus
+                  ? `● Yandex YDB & S3: Ошибка (${ydbStatus.error || ydbStatus.message})`
+                  : 'Подключение к YDB...'}
+              </span>
+            </button>
+
             {/* Banking API indicator */}
-            <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
+            <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Сбер / ВТБ Эскроу API: Онлайн</span>
+              <span>Сбер / ВТБ Эскроу: Онлайн</span>
             </div>
 
             {/* Dual RU/EN language switcher in admin */}

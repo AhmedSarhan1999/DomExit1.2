@@ -225,11 +225,12 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
     const canonicalHeaders = [
       `content-type:${contentType}`,
       `host:${url.host}`,
+      `x-amz-acl:public-read`,
       `x-amz-content-sha256:${payloadHash}`,
       `x-amz-date:${amzDate}`,
     ].join('\n') + '\n';
 
-    const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
+    const signedHeaders = 'content-type;host;x-amz-acl;x-amz-content-sha256;x-amz-date';
     const canonicalRequest = [
       'PUT',
       url.pathname,
@@ -265,6 +266,7 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
       method: 'PUT',
       headers: {
         'Content-Type': contentType,
+        'x-amz-acl': 'public-read',
         'x-amz-date': amzDate,
         'x-amz-content-sha256': payloadHash,
         Authorization: authHeader,
@@ -365,5 +367,49 @@ export class YandexCloudAdapter {
     city: RussianCityCode
   ): Promise<{ lat: number; lng: number }> {
     return getRegionByCode(city).center;
+  }
+
+  /**
+   * Performs an active end-to-end diagnostic ping on Yandex YDB Document API.
+   * Returns latency, connectivity status, and error details if any.
+   */
+  static async testConnection(): Promise<{
+    ok: boolean;
+    provider: 'yandex_cloud';
+    message: string;
+    latencyMs: number;
+    error?: string;
+  }> {
+    const start = Date.now();
+    try {
+      const res = await callYdbDocApi('DynamoDB_20120810.DescribeTable', {
+        TableName: 'platform_settings',
+      });
+      const latencyMs = Date.now() - start;
+      if (res.status === 200) {
+        return {
+          ok: true,
+          provider: 'yandex_cloud',
+          message: 'Подключено (Live • Production)',
+          latencyMs,
+        };
+      }
+      return {
+        ok: false,
+        provider: 'yandex_cloud',
+        message: `Ошибка YDB API (${res.status}): ${res.text || 'Недоступно'}`,
+        latencyMs,
+        error: res.text,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - start;
+      return {
+        ok: false,
+        provider: 'yandex_cloud',
+        message: `Сбой подключения к YDB: ${err?.message || 'Сеть недоступна'}`,
+        latencyMs,
+        error: err?.message,
+      };
+    }
   }
 }

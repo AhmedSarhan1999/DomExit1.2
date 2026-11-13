@@ -23,6 +23,7 @@ export const YANDEX_REQUIRED_TABLES = [
   'bank_special_approvals',
   'escrow_bridge_chats',
   'partner_preliminary_requests',
+  'platform_settings',
   // Isolated Demo / Sandbox Collections
   'demo_users',
   'demo_employees',
@@ -44,6 +45,7 @@ export const YANDEX_REQUIRED_TABLES = [
   'demo_bank_special_approvals',
   'demo_escrow_bridge_chats',
   'demo_partner_preliminary_requests',
+  'demo_platform_settings',
 ] as const;
 
 export interface YandexCredentialsConfig {

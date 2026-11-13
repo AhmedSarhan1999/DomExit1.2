@@ -1,7 +1,7 @@
 import { CompanyLegalProfile } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
 
-const COLLECTION = 'settings';
+const COLLECTION = 'platform_settings';
 const PROFILE_ID = 'company_legal_profile';
 
 export const DEFAULT_COMPANY_LEGAL_PROFILE: CompanyLegalProfile = {

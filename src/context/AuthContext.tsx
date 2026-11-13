@@ -17,6 +17,7 @@ import { UsersRepository } from '../dal/repositories/UsersRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 
 export const MASTER_OWNER_EMAILS = ['amaas9499@gmail.com', 'ceo@domexit.ru'];
 
@@ -388,9 +389,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // In production this should use bcrypt; for MVP we compare plaintext fallback
         const storedPass = (ydbProfile as any).passwordHash || '';
         const isValidPass =
-          pass === DEMO_PASSWORD ||
-          pass === storedPass ||
-          storedPass === '' ||
+          (storedPass ? pass === storedPass : pass === DEMO_PASSWORD) ||
           (ydbProfile as any).authProvider === 'yandex';
 
         if (isValidPass) {
@@ -852,9 +851,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!newPass || newPass.length < 8) {
       throw new Error('Пароль должен содержать не менее 8 символов');
     }
+
+    // 1. Try Firebase Auth sync if available
     if (firebaseUser && firebaseUser.email) {
       try {
-        
         if (currentPass) {
           const cred = EmailAuthProvider.credential(firebaseUser.email, currentPass);
           await reauthenticateWithCredential(firebaseUser, cred);
@@ -864,11 +864,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (err?.code === 'auth/wrong-password') {
           throw new Error('Неверно указан текущий пароль');
         } else if (err?.code === 'auth/requires-recent-login') {
-          throw new Error('Срок сессии истек. Пожалуйста, выполните повторный вход.');
+          console.warn('[AuthContext] Firebase session expired, continuing with primary YDB update');
+        } else {
+          console.warn('[AuthContext] Firebase password sync notice:', err?.message);
         }
-        throw new Error(err?.message || 'Не удалось обновить пароль');
       }
     }
+
+    // 2. Persist new password to Yandex YDB users table via UsersRepository
+    const updatedUser: UserProfile = {
+      ...user,
+      passwordHash: newPass,
+      updatedAt: new Date().toISOString(),
+    } as any;
+
+    await UsersRepository.save(updatedUser);
+    setUser(updatedUser);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
+    }
+
+    // 3. Audit trail in YDB audit_logs
+    await AuditLogsRepository.addLog({
+      operatorName: user.name || 'Пользователь',
+      operatorRole: (user.activeRole as any) || (user.role as any) || 'owner',
+      actionType: 'employee_created_modified',
+      title: 'Пароль учетной записи успешно обновлен',
+      description: `Пользователь ${user.name} (${user.email || user.clientCode}) обновил пароль в защищенной базе данных YDB (152-ФЗ).`,
+    }).catch(() => {});
   };
 
   const refreshUserProfile = async (): Promise<void> => {

@@ -29,7 +29,7 @@ export const useCompanyProfileStore = create<CompanyProfileState>((set) => {
   // Subscribe to real-time changes
   if (typeof window !== 'undefined') {
     DatabaseGateway.subscribe((collection) => {
-      if (collection === 'settings' || !collection) {
+      if (collection === 'platform_settings' || collection === 'demo_platform_settings' || collection === 'settings' || !collection) {
         CompanyProfileRepository.getProfile().then((data) => {
           set({ profile: data });
           try {

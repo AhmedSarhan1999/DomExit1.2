@@ -26,6 +26,7 @@ export const ISOLATED_COLLECTIONS: readonly string[] = [
   'developer_accreditation_requests',
   'users',
   'employees',
+  'platform_settings',
 ];
 
 /**

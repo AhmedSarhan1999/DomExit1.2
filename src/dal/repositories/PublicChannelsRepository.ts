@@ -1,7 +1,7 @@
 import { PublicChannelsConfig } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
 
-const COLLECTION = 'settings';
+const COLLECTION = 'platform_settings';
 const CHANNELS_ID = 'public_channels';
 
 export const DEFAULT_PUBLIC_CHANNELS: PublicChannelsConfig = {
