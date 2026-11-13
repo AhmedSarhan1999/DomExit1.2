@@ -10,6 +10,7 @@ import {
   initialSellerRequests,
 } from './seedData';
 import { migrateToSandbox } from './scripts/migrateToSandbox';
+import { initYandexTables } from './scripts/initYandexTables';
 import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
 /**
@@ -24,6 +25,12 @@ export class DatabaseInitializer {
     this.isInitialized = true;
 
     try {
+      // 0. Auto-provision & seed Yandex Cloud YDB tables if Yandex provider is active
+      const provider = import.meta.env.VITE_DATA_PROVIDER || 'yandex';
+      if (provider === 'yandex') {
+        await initYandexTables();
+      }
+
       // 1. Run dual-environment sandbox migration
       await migrateToSandbox();
 
@@ -40,6 +47,98 @@ export class DatabaseInitializer {
         DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
         DatabaseGateway.getAll('bank_employees', isProd ? [] : initialBankEmployees),
       ]);
+
+      // 3. Clean up unapproved test developer 'dfdfv' from developers collection,
+      // while guaranteeing its pending request in developer_accreditation_requests for owner testing
+      try {
+        const prodDevs = await DatabaseGateway.getAll<any>('developers', []);
+        for (const d of prodDevs) {
+          if (
+            d.name?.toLowerCase().includes('dfdfv') ||
+            d.inn === '7896512304' ||
+            d.id?.includes('dfdfv')
+          ) {
+            await DatabaseGateway.remove('developers', d.id);
+          }
+        }
+
+        const demoDevs = await DatabaseGateway.getAll<any>('demo_developers', []);
+        for (const d of demoDevs) {
+          if (
+            d.name?.toLowerCase().includes('dfdfv') ||
+            d.inn === '7896512304' ||
+            d.id?.includes('dfdfv')
+          ) {
+            await DatabaseGateway.remove('demo_developers', d.id);
+          }
+        }
+
+        // Clean local storage cache keys
+        if (typeof localStorage !== 'undefined') {
+          const cacheKeys = [
+            'domexit_db_developers',
+            'domexit_ydb_developers',
+            'domexit_fb_developers',
+            'domexit_db_demo_developers',
+            'domexit_ydb_demo_developers',
+            'domexit_fb_demo_developers',
+          ];
+          for (const k of cacheKeys) {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              try {
+                const list = JSON.parse(raw);
+                if (Array.isArray(list)) {
+                  const filtered = list.filter(
+                    (item: any) =>
+                      !item.name?.toLowerCase().includes('dfdfv') &&
+                      item.inn !== '7896512304' &&
+                      !item.id?.includes('dfdfv')
+                  );
+                  localStorage.setItem(k, JSON.stringify(filtered));
+                }
+              } catch {}
+            }
+          }
+        }
+
+        // Guarantee pending request for dfdfv in developer_accreditation_requests
+        const reqCollections = ['developer_accreditation_requests', 'demo_developer_accreditation_requests'];
+        for (const col of reqCollections) {
+          const reqs = await DatabaseGateway.getAll<any>(col, []);
+          const existing = reqs.find(
+            (r: any) =>
+              r.developerName?.toLowerCase().includes('dfdfv') ||
+              r.developerInn === '7896512304'
+          );
+          if (existing) {
+            if (existing.status !== 'pending') {
+              existing.status = 'pending';
+              await DatabaseGateway.save(col, existing);
+            }
+          } else {
+            await DatabaseGateway.save(col, {
+              id: 'DEV-ACC-dfdfv-test',
+              developerName: 'dfdfv',
+              developerInn: '7896512304',
+              lotId: 'lot-test-dfdfv',
+              lotCode: 'U-10566',
+              complexName: 'ЖК «Тестовый Проект»',
+              city: 'spb',
+              district: 'Приморский район',
+              contractPriceRub: 12500000,
+              sellerName: 'Иван Сергеевич Т.',
+              sellerClientCode: 'DEX-784105',
+              documentIds: [],
+              status: 'pending',
+              requestedAt: new Date().toISOString(),
+              decisions: [],
+            });
+          }
+        }
+      } catch (cleanErr) {
+        console.warn('[DatabaseInitializer] dfdfv cleanup notice:', cleanErr);
+      }
     } catch (err) {
       console.warn('[DatabaseInitializer] Non-fatal migration check:', err);
     }

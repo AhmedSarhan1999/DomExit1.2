@@ -341,6 +341,7 @@ export interface DealTrack {
   clientName: string;
   curatorName: string;
   assignedEmployeeId?: string;
+  assignedEmployeeName?: string;
   createdDate: string;
   updatedDate: string;
   rosreestrPackageNumber?: string;

@@ -25,6 +25,8 @@ import {
   FolderLock,
   ExternalLink,
   Building2,
+  Phone,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -90,7 +92,9 @@ export const ClientPortalPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading, logout, toggleFavorite, upgradeToPartner, upgradeToInvestor, openAuthModal } = useAuth();
   const { language } = useLanguage();
-  const { enableVipClub } = useFeatureFlagsStore();
+  const { enableVipClub, enableBankPortal } = useFeatureFlagsStore();
+  const [isBuyerVaultOpen, setIsBuyerVaultOpen] = useState<boolean>(false);
+  const [buyerVaultLotCode, setBuyerVaultLotCode] = useState<string>('U-10566');
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Strict Enterprise Account Isolation & Role Redirects
@@ -1039,8 +1043,9 @@ export const ClientPortalPage: React.FC = () => {
                             (d) => d.lotCode.toUpperCase() === (bid.lotCode || '').toUpperCase()
                           );
                           const wfStep = linkedDeal?.escrowWorkflow?.step || 'curator_review';
+                          const curatorName = linkedDeal?.assignedEmployeeName || linkedDeal?.curatorName || 'Алексей Смирнов';
                           return (
-                            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-2">
+                            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-3">
                               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                                 <div className="flex items-center space-x-2 font-bold">
                                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1058,23 +1063,25 @@ export const ClientPortalPage: React.FC = () => {
                                   </span>
                                 </div>
                                 <div className="flex items-center space-x-2 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveEscrowChatDeal({
-                                        dealId: linkedDeal?.dealId || `DEAL-2025-${bid.lotCode || '10566'}`,
-                                        dealStage: wfStep,
-                                        lotCode: bid.lotCode || 'U-10566',
-                                        lotTitle: allLots.find((l) => l.lotCode === bid.lotCode)?.complexName || 'ЖК',
-                                        bankName: linkedDeal?.bankName || linkedDeal?.escrowWorkflow?.bankName || (bid as any).selectedBank || 'Сбербанк',
-                                        buyerName: user?.name || bid.name,
-                                      });
-                                    }}
-                                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
-                                  >
-                                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span>Чат с банком по эскроу</span>
-                                  </button>
+                                  {enableBankPortal && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveEscrowChatDeal({
+                                          dealId: linkedDeal?.dealId || `DEAL-2025-${bid.lotCode || '10566'}`,
+                                          dealStage: wfStep,
+                                          lotCode: bid.lotCode || 'U-10566',
+                                          lotTitle: allLots.find((l) => l.lotCode === bid.lotCode)?.complexName || 'ЖК',
+                                          bankName: linkedDeal?.bankName || linkedDeal?.escrowWorkflow?.bankName || (bid as any).selectedBank || 'Сбербанк',
+                                          buyerName: user?.name || bid.name,
+                                        });
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                                    >
+                                      <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>Чат с банком по эскроу</span>
+                                    </button>
+                                  )}
                                   <Link
                                     to={`/opportunities/${bid.lotCode || 'U-10566'}`}
                                     className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
@@ -1083,6 +1090,54 @@ export const ClientPortalPage: React.FC = () => {
                                   </Link>
                                 </div>
                               </div>
+
+                              {!enableBankPortal && (
+                                <div className="pt-2.5 border-t border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-xs">
+                                      {curatorName.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                                        Ваш персональный куратор сделки
+                                      </span>
+                                      <h5 className="font-bold text-xs text-slate-900">{curatorName}</h5>
+                                      <p className="text-[11px] text-slate-500 max-w-lg mt-0.5">
+                                        Сопровождение открытия аккредитива в банке, согласование с застройщиком и регистрация в Росреестре
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                    <a
+                                      href="tel:+79214567890"
+                                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
+                                    >
+                                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>+7 (921) 456-78-90</span>
+                                    </a>
+                                    <a
+                                      href="https://t.me/domexit_official"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
+                                    >
+                                      <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                                      <span>Написать куратору</span>
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setBuyerVaultLotCode(bid.lotCode || 'U-10566');
+                                        setIsBuyerVaultOpen(true);
+                                      }}
+                                      className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                      <span>Хранилище S3</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2214,6 +2269,20 @@ export const ClientPortalPage: React.FC = () => {
           onDocumentsChanged={(updated) => setSellerVaultDocs(updated)}
         />
       )}
+
+      {/* Interactive Cloud Document Vault Modal for Buyer */}
+      <DocumentVaultModal
+        isOpen={isBuyerVaultOpen}
+        onClose={() => setIsBuyerVaultOpen(false)}
+        entityType="lot"
+        entityId={buyerVaultLotCode}
+        entityTitle={`Документы по сделке (#${buyerVaultLotCode})`}
+        uploadedByUid={user?.id || 'usr-buyer-001'}
+        clientCode={user?.clientCode || 'DEX-000000'}
+        mode="general"
+        canUpload={true}
+        canReview={false}
+      />
 
       {/* Escrow Bridge Chat Modal */}
       {activeEscrowChatDeal && (

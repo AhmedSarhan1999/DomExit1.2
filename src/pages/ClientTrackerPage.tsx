@@ -10,6 +10,7 @@ import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useEnvironmentStore } from '../stores/useEnvironmentStore';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { BuyerCandidate, DealTrack, DocumentMetadata, Employee, Lot } from '../types';
 import {
@@ -21,6 +22,7 @@ import {
   Plus,
   Send,
   Phone,
+  MessageSquare,
   ArrowLeft,
   Check,
   FileText,
@@ -45,6 +47,7 @@ export const ClientTrackerPage: React.FC = () => {
   const { language } = useLanguage();
   const { user, quickDemoLogin, openAuthModal } = useAuth();
   const { isProduction } = useEnvironmentStore();
+  const { enableBankPortal } = useFeatureFlagsStore();
   const showTestSwitchers = !isProduction;
 
   const [deal, setDeal] = useState<DealTrack | null>(null);
@@ -463,29 +466,86 @@ export const ClientTrackerPage: React.FC = () => {
               })}
             </div>
 
-            {deal?.escrowWorkflow && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="flex items-center space-x-2 font-bold text-emerald-950">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    {deal.escrowWorkflow.step === 'curator_review' &&
-                      'Шлюз СБР: Подготовка пакета документов куратором к передаче в уполномоченный банк'}
-                    {deal.escrowWorkflow.step === 'bank_escrow_deposit' &&
-                      'Шаг 1 синхронизирован: Документы переданы в банк • Открывается аккредитив СБР'}
-                    {deal.escrowWorkflow.step === 'signing_photos' &&
-                      'Шаг 2 синхронизирован: Банк подтвердил депонирование средств покупателя на СБР • Сессия подписания'}
-                    {deal.escrowWorkflow.step === 'bank_funds_release' &&
-                      'Шаг 3 синхронизирован: Штамп Росреестра загружен • Передано в банк на раскрытие СБР'}
-                    {deal.escrowWorkflow.step === 'deal_finalized' &&
-                      `Шаг 4 завершён: Аккредитив СБР раскрыт! Транш ${formatRubles(
-                        sellerPayout
-                      )} (100% кэш) выплачен продавцу. Сделка официально закрыта.`}
-                  </span>
+            {deal && (
+              enableBankPortal ? (
+                deal.escrowWorkflow ? (
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center space-x-2 font-bold text-emerald-950">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        {deal.escrowWorkflow.step === 'curator_review' &&
+                          'Шлюз СБР: Подготовка пакета документов куратором к передаче в уполномоченный банк'}
+                        {deal.escrowWorkflow.step === 'bank_escrow_deposit' &&
+                          'Шаг 1 синхронизирован: Документы переданы в банк • Открывается аккредитив СБР'}
+                        {deal.escrowWorkflow.step === 'signing_photos' &&
+                          'Шаг 2 синхронизирован: Банк подтвердил депонирование средств покупателя на СБР • Сессия подписания'}
+                        {deal.escrowWorkflow.step === 'bank_funds_release' &&
+                          'Шаг 3 синхронизирован: Штамп Росреестра загружен • Передано в банк на раскрытие СБР'}
+                        {deal.escrowWorkflow.step === 'deal_finalized' &&
+                          `Шаг 4 завершён: Аккредитив СБР раскрыт! Транш ${formatRubles(
+                            sellerPayout
+                          )} (100% кэш) выплачен продавцу. Сделка официально закрыта.`}
+                      </span>
+                    </div>
+                    <span className="font-mono text-[11px] font-bold text-emerald-700 shrink-0">
+                      {deal.escrowWorkflow.bankName} • {deal.escrowWorkflow.escrowAccountNumber}
+                    </span>
+                  </div>
+                ) : null
+              ) : (
+                <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs shadow-xs">
+                  <div className="flex items-center space-x-3.5">
+                    {curator?.photoUrl ? (
+                      <img
+                        src={curator.photoUrl}
+                        alt={curator.name}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm">
+                        {(deal.assignedEmployeeName || deal.curatorName || curator?.name || 'АС').slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                        Ваш персональный куратор сделки
+                      </span>
+                      <h4 className="font-bold text-sm text-slate-900">
+                        {deal.assignedEmployeeName || deal.curatorName || curator?.name || 'Алексей Смирнов'}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 max-w-lg mt-0.5">
+                        Сопровождение открытия аккредитива в банке, согласование с застройщиком и регистрация в Росреестре
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <a
+                      href={`tel:${curator?.phone || '+79214567890'}`}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>{curator?.phone || '+7 (921) 456-78-90'}</span>
+                    </a>
+                    <a
+                      href="https://t.me/domexit_official"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Написать куратору</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setIsVaultOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Сейф документов (152-ФЗ)</span>
+                    </button>
+                  </div>
                 </div>
-                <span className="font-mono text-[11px] font-bold text-emerald-700 shrink-0">
-                  {deal.escrowWorkflow.bankName} • {deal.escrowWorkflow.escrowAccountNumber}
-                </span>
-              </div>
+              )
             )}
           </div>
 

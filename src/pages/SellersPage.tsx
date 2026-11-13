@@ -285,17 +285,6 @@ export const SellersPage: React.FC = () => {
         );
         return;
       }
-      // Instantly register developer in platform directory for live synchronization across bank portals
-      try {
-        await DevelopersRepository.registerDeveloperFromProject({
-          name: developerName.trim(),
-          inn: developerInn.trim() || '7800000000',
-          registrationSource: 'seller_submission',
-          registrationNote: 'Зарегистрирован продавцом через мастер подачи заявки',
-        });
-      } catch (err) {
-        console.warn('[SellersPage] Error auto-registering developer:', err);
-      }
     } else {
       const matched = accreditedDevelopers.find((d) => d.name === developerName);
       if (matched && !developerInn) {

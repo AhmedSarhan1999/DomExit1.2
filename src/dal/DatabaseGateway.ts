@@ -13,8 +13,11 @@ import { useEnvironmentStore } from '../stores/useEnvironmentStore';
  *
  * Dynamically resolves Sandbox ('demo_*') vs Virgin Production collections based on useEnvironmentStore.
  */
+const defaultProvider = import.meta.env.VITE_DATA_PROVIDER || 'yandex';
+
 class DatabaseGatewayController {
-  private activeAdapter: IDatabaseAdapter = firebaseAdapterInstance;
+  private activeAdapter: IDatabaseAdapter =
+    defaultProvider === 'yandex' ? YandexCloudAdapter.getAdapter() : firebaseAdapterInstance;
 
   get adapter(): IDatabaseAdapter {
     return this.activeAdapter;

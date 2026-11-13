@@ -361,6 +361,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [developerRequests, setDeveloperRequests] = useState<DeveloperAccreditationRequest[]>([]);
   const [developersList, setDevelopersList] = useState<AccreditedDeveloper[]>([]);
+  const [editingDeveloper, setEditingDeveloper] = useState<{ id: string; name: string; inn: string } | null>(null);
 
   const isEmployee = Boolean(user && user.activeRole === 'employee');
   const isOwner = Boolean(
@@ -677,10 +678,42 @@ export const AdminDashboardPage: React.FC = () => {
       const res = await DevelopersRepository.approveAccreditationRequest(requestId, operatorName);
       if (res) {
         showToast(`Застройщик «${res.developer.name}» успешно аккредитован и добавлен в общий реестр!`);
+        setDeveloperRequests((prev) =>
+          prev.map((r) => (r.id === requestId ? { ...r, status: 'approved' } : r))
+        );
+        setDevelopersList((prev) => {
+          const exists = prev.some((d) => d.id === res.developer.id);
+          return exists ? prev : [res.developer, ...prev];
+        });
       }
       await loadAllData();
     } catch (e: any) {
       showError(`Ошибка при аккредитации: ${e?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleSaveDeveloperEdit = async () => {
+    if (!editingDeveloper) return;
+    if (!editingDeveloper.name.trim()) {
+      showError('Имя застройщика не может быть пустым');
+      return;
+    }
+    try {
+      const updated = await DevelopersRepository.updateDeveloper(
+        editingDeveloper.id,
+        { name: editingDeveloper.name, inn: editingDeveloper.inn },
+        operatorName
+      );
+      if (updated) {
+        setDevelopersList((prev) =>
+          prev.map((d) => (d.id === updated.id ? { ...d, name: updated.name, inn: updated.inn } : d))
+        );
+        showToast(`Застройщик «${updated.name}» успешно обновлен!`);
+        setEditingDeveloper(null);
+        await loadAllData();
+      }
+    } catch (e: any) {
+      showError(`Ошибка при сохранении: ${e?.message || 'Сбой'}`);
     }
   };
 
@@ -689,6 +722,9 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       await DevelopersRepository.rejectAccreditationRequest(requestId, operatorName);
       showToast('Заявка на добавление застройщика отклонена.');
+      setDeveloperRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected' } : r))
+      );
       await loadAllData();
     } catch (e: any) {
       showError(`Ошибка при отклонении: ${e?.message || 'Сбой'}`);
@@ -699,6 +735,9 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       const updated = await DevelopersRepository.toggleDeveloperActive(developerId, operatorName);
       if (updated) {
+        setDevelopersList((prev) =>
+          prev.map((d) => (d.id === developerId ? { ...d, isActive: updated.isActive } : d))
+        );
         showToast(
           updated.isActive !== false
             ? `Застройщик «${updated.name}» теперь активен и отображается в анкетах продавцов.`
@@ -722,6 +761,7 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       const ok = await DevelopersRepository.deleteDeveloper(developerId, operatorName);
       if (ok) {
+        setDevelopersList((prev) => prev.filter((d) => d.id !== developerId));
         showToast(`Застройщик «${devName}» безвозвратно удален из базы данных.`);
         await loadAllData();
       }
@@ -2157,6 +2197,64 @@ export const AdminDashboardPage: React.FC = () => {
                         {developersList.map((dev: AccreditedDeveloper) => {
                           const isActive = dev.isActive !== false;
                           const activeBanks = (dev.bankTerms || []).filter((b: DeveloperBankTerms) => b.isAccredited);
+                          const isEditing = editingDeveloper?.id === dev.id;
+
+                          if (isEditing) {
+                            return (
+                              <tr key={dev.id} className="bg-indigo-50/50">
+                                <td className="py-3 px-3" colSpan={2}>
+                                  <div className="space-y-1.5">
+                                    <input
+                                      type="text"
+                                      value={editingDeveloper.name}
+                                      onChange={(e) =>
+                                        setEditingDeveloper({ ...editingDeveloper, name: e.target.value })
+                                      }
+                                      placeholder="Название застройщика"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={editingDeveloper.inn}
+                                      onChange={(e) =>
+                                        setEditingDeveloper({ ...editingDeveloper, inn: e.target.value })
+                                      }
+                                      placeholder="ИНН (10 или 12 цифр)"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 text-xs font-mono text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    />
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="text-[11px] text-slate-500">Редактирование реквизитов</span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="text-[11px] text-slate-500">
+                                    {isActive ? 'Статус: Активен' : 'Статус: Скрыт'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-right">
+                                  <div className="flex items-center justify-end space-x-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleSaveDeveloperEdit}
+                                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center space-x-1"
+                                    >
+                                      <Save className="w-3 h-3" />
+                                      <span>Сохранить</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingDeveloper(null)}
+                                      className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                                    >
+                                      Отмена
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+
                           return (
                             <tr key={dev.id} className="hover:bg-slate-50/80 transition-colors">
                               <td className="py-3 px-3">
@@ -2197,25 +2295,44 @@ export const AdminDashboardPage: React.FC = () => {
                                 )}
                               </td>
                               <td className="py-3 px-3 text-right">
-                                <div className="flex items-center justify-end space-x-2">
+                                <div className="flex items-center justify-end space-x-1.5">
+                                  {/* 1. Редактировать */}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingDeveloper({ id: dev.id, name: dev.name, inn: dev.inn || '' })
+                                    }
+                                    title="Редактировать название или ИНН"
+                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors cursor-pointer flex items-center space-x-1"
+                                  >
+                                    <Edit className="w-3 h-3 text-indigo-600" />
+                                    <span>Редактировать</span>
+                                  </button>
+
+                                  {/* 2. Активен / Скрыт */}
                                   <button
                                     type="button"
                                     onClick={() => handleToggleDeveloperActive(dev.id)}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                                    title={isActive ? 'Скрыть из анкет продавцов' : 'Активировать показ'}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer flex items-center space-x-1 ${
                                       isActive
                                         ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
                                         : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                                     }`}
                                   >
-                                    {isActive ? 'Скрыть из списка' : 'Активировать'}
+                                    {isActive ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                    <span>{isActive ? 'Скрыть' : 'Активен'}</span>
                                   </button>
+
+                                  {/* 3. Удалить */}
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteDeveloper(dev.id, dev.name)}
-                                    title="Безвозвратно удалить из базы"
-                                    className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                                    title="Безвозвратно удалить из базы данных"
+                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer flex items-center space-x-1"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-3 h-3 text-rose-600" />
+                                    <span>Удалить</span>
                                   </button>
                                 </div>
                               </td>

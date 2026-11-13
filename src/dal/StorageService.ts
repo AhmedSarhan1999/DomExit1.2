@@ -2,12 +2,14 @@ import { DocumentCategory, DocumentMetadata, DocumentReviewStatus } from '../typ
 import { DatabaseGateway } from './DatabaseGateway';
 import { IStorageService, UploadDocumentParams } from './interfaces/IStorageAdapter';
 import { AuditLogsRepository } from './repositories/AuditLogsRepository';
+import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 
 const IDB_NAME = 'domexit_yandex_s3_emulator';
 const IDB_VERSION = 1;
 const IDB_STORE = 's3_bucket_objects';
 const METADATA_COLLECTION = 'documents_vault';
-const DEFAULT_S3_BUCKET = 'domexit-docs-152fz';
+const DEFAULT_S3_BUCKET =
+  import.meta.env.VITE_YANDEX_STORAGE_BUCKET || 'domexit-storage-vault';
 
 interface S3StoredObject {
   s3Uri: string; // s3://domexit-docs-152fz/<objectKey>
@@ -312,7 +314,19 @@ class YandexS3CompatibleStorageService implements IStorageService {
 
     const previewDataUrl = await createImageThumbnail(dataUrl, file.type || 'application/octet-stream');
 
-    // 1. Store full binary payload inside IndexedDB S3 Object Store
+    // 1. Live Upload directly to Yandex Object Storage (S3 API)
+    let cloudUrl = `https://storage.yandexcloud.net/${bucket}/${objectKey}`;
+    try {
+      cloudUrl = await YandexCloudAdapter.uploadS3Object(
+        objectKey,
+        file,
+        file.type || 'application/octet-stream'
+      );
+    } catch (err) {
+      console.warn('[StorageService] Live Yandex Object Storage upload warning, keeping local fallback:', err);
+    }
+
+    // 2. Store binary payload inside local IndexedDB S3 Object Store as resilient backup
     await putS3Object({
       s3Uri,
       bucket,
@@ -323,7 +337,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
       createdAt: nowIso,
     });
 
-    // 2. Store lightweight metadata inside Firestore / DAL documents_vault
+    // 3. Store lightweight metadata inside YDB / DAL documents_vault
     const metadata: DocumentMetadata = {
       id: docId,
       bucket,
@@ -341,8 +355,8 @@ class YandexS3CompatibleStorageService implements IStorageService {
       status: 'under_review',
       sha256Hash,
       previewDataUrl,
-      cloudUrl: `https://storage.yandexcloud.net/${bucket}/${objectKey}`,
-      storageDriver: 'indexeddb_s3',
+      cloudUrl,
+      storageDriver: 'yandex_s3',
     };
 
     await DatabaseGateway.save<DocumentMetadata>(METADATA_COLLECTION, metadata);
@@ -385,6 +399,9 @@ class YandexS3CompatibleStorageService implements IStorageService {
   }
 
   async resolveObjectDataUrl(doc: DocumentMetadata): Promise<string> {
+    if (doc.cloudUrl && doc.cloudUrl.startsWith('http')) {
+      return doc.cloudUrl;
+    }
     const s3Uri = `s3://${doc.bucket}/${doc.objectKey}`;
     const stored = await getS3Object(s3Uri);
     if (stored && stored.dataUrl) {

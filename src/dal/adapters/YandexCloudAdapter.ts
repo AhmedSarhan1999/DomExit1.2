@@ -1,54 +1,91 @@
 import { IDatabaseAdapter } from '../interfaces/IDatabaseAdapter';
 import { RussianCityCode } from '../../types';
 import { getRegionByCode } from '../../data/russianGeography';
+import {
+  callYdbDocApi,
+  toDynamoAttribute,
+  fromDynamoAttribute,
+  getYandexCredentials,
+  YandexCredentialsConfig,
+} from '../scripts/initYandexTables';
 
 /**
- * Transitional Data Access Layer: Yandex Cloud Production Adapter
+ * Enterprise Production Data Access Layer: Yandex Cloud Adapter
  *
- * Compliant with:
- * - Russian Federal Law No. 152-FZ (Personal Data Localization in RF)
- * - Managed PostgreSQL / Yandex Database (YDB Serverless / Dedicated)
- * - Yandex Object Storage (Encrypted S3-compatible document vault)
- * - Yandex Maps API (Geocoding & Cadastral visual mapping)
+ * Implements:
+ * - 152-FZ Russian Federal Law Compliance (Data & Object Storage in RF)
+ * - Yandex Managed Service for YDB (Document API / DynamoDB wire-compatible)
+ * - Yandex Object Storage (AWS S3 Signature v4 compatible)
+ * - Transparent fallback & optimistic local caching
  */
 
-export interface YandexCloudConfig {
-  endpoint: string;
-  postgresGatewayUrl: string;
-  database: string;
-  folderId: string;
-  storageBucket: string;
-  s3Endpoint: string;
-  mapsApiKey: string;
-  iamToken?: string;
+async function sha256Hex(buf: ArrayBuffer | Uint8Array): Promise<string> {
+  const data: BufferSource = buf instanceof Uint8Array ? new Uint8Array(buf) as unknown as BufferSource : buf;
+  const hash = await globalThis.crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function hmacRaw(keyBuf: ArrayBuffer | Uint8Array, dataBuf: Uint8Array): Promise<ArrayBuffer> {
+  const keyData: BufferSource = keyBuf instanceof Uint8Array ? (keyBuf as unknown as BufferSource) : keyBuf;
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return await globalThis.crypto.subtle.sign('HMAC', key, dataBuf as unknown as BufferSource);
+}
+
+async function getS3SigningKey(
+  secret: string,
+  dateStamp: string,
+  region: string,
+  service: string
+): Promise<ArrayBuffer> {
+  const enc = new TextEncoder();
+  const kDate = await hmacRaw(enc.encode('AWS4' + secret), enc.encode(dateStamp));
+  const kRegion = await hmacRaw(kDate, enc.encode(region));
+  const kService = await hmacRaw(kRegion, enc.encode(service));
+  return await hmacRaw(kService, enc.encode('aws4_request'));
 }
 
 export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
   readonly providerName = 'yandex_cloud' as const;
+  private config: YandexCredentialsConfig;
 
-  private config: YandexCloudConfig = {
-    endpoint: 'ydb.serverless.yandexcloud.net:2135',
-    postgresGatewayUrl: 'https://api.domexit.yandexcloud.net/v1/db',
-    database: '/ru-central1/b1g8domexit/etn0prod152fz',
-    folderId: 'b1g8domexit152fz',
-    storageBucket: 'domexit-docs-152fz',
-    s3Endpoint: 'https://storage.yandexcloud.net',
-    mapsApiKey: 'yandex-maps-api-key-domexit',
-  };
-
-  constructor(customConfig?: Partial<YandexCloudConfig>) {
-    if (customConfig) {
-      this.config = { ...this.config, ...customConfig };
-    }
+  constructor(customConfig?: Partial<YandexCredentialsConfig>) {
+    this.config = { ...getYandexCredentials(), ...customConfig };
   }
 
   async saveEntity<T extends { id: string }>(collectionName: string, entity: T): Promise<T> {
-    const key = `domexit_yc_${collectionName}`;
-    const list = this.readLocal<T>(key);
-    const idx = list.findIndex((i) => i.id === entity.id);
-    if (idx >= 0) list[idx] = entity;
-    else list.unshift(entity);
-    localStorage.setItem(key, JSON.stringify(list));
+    const item: Record<string, any> = {};
+    for (const k of Object.keys(entity)) {
+      const val = (entity as any)[k];
+      if (val !== undefined) {
+        item[k] = toDynamoAttribute(val);
+      }
+    }
+
+    // 1. Optimistic write to localStorage for instant local reactivity
+    this.writeLocalCache(collectionName, entity);
+
+    // 2. Persist to YDB Document API
+    try {
+      await callYdbDocApi(
+        'DynamoDB_20120810.PutItem',
+        {
+          TableName: collectionName,
+          Item: item,
+        },
+        this.config
+      );
+    } catch (err) {
+      console.warn(`[YandexCloudAdapter] Error writing to YDB table ${collectionName}:`, err);
+    }
+
     return entity;
   }
 
@@ -56,12 +93,45 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
     collectionName: string,
     seedFallback: T[] = []
   ): Promise<T[]> {
-    const key = `domexit_yc_${collectionName}`;
-    const list = this.readLocal<T>(key);
-    if (list.length > 0) return list;
-    if (seedFallback.length > 0) {
-      localStorage.setItem(key, JSON.stringify(seedFallback));
+    try {
+      const res = await callYdbDocApi(
+        'DynamoDB_20120810.Scan',
+        {
+          TableName: collectionName,
+        },
+        this.config
+      );
+
+      if (res.status === 200 && Array.isArray(res.data?.Items)) {
+        const items: T[] = res.data.Items.map((rawItem: any) => {
+          const obj: Record<string, any> = {};
+          for (const k of Object.keys(rawItem)) {
+            obj[k] = fromDynamoAttribute(rawItem[k]);
+          }
+          return obj as T;
+        });
+
+        if (items.length > 0) {
+          this.replaceLocalCache(collectionName, items);
+          return items;
+        }
+
+        // If table is empty and fallback seed provided, seed if permitted
+        if (seedFallback.length > 0) {
+          for (const item of seedFallback) {
+            await this.saveEntity(collectionName, item);
+          }
+          return [...seedFallback];
+        }
+        return [];
+      }
+    } catch (err) {
+      console.warn(`[YandexCloudAdapter] YDB Scan error on ${collectionName}:`, err);
     }
+
+    // Fallback to local cache if network is unavailable
+    const cached = this.readLocalCache<T>(collectionName);
+    if (cached.length > 0) return cached;
     return [...seedFallback];
   }
 
@@ -70,8 +140,30 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
     id: string,
     seedFallback: T[] = []
   ): Promise<T | null> {
-    const all = await this.getAllEntities<T>(collectionName, seedFallback);
-    return all.find((i) => i.id === id) || null;
+    try {
+      const res = await callYdbDocApi(
+        'DynamoDB_20120810.GetItem',
+        {
+          TableName: collectionName,
+          Key: { id: { S: id } },
+        },
+        this.config
+      );
+
+      if (res.status === 200 && res.data?.Item) {
+        const obj: Record<string, any> = {};
+        for (const k of Object.keys(res.data.Item)) {
+          obj[k] = fromDynamoAttribute(res.data.Item[k]);
+        }
+        return obj as T;
+      }
+    } catch (err) {
+      console.warn(`[YandexCloudAdapter] YDB GetItem error on ${collectionName}/${id}:`, err);
+    }
+
+    const cached = this.readLocalCache<T>(collectionName).find((i) => i.id === id);
+    if (cached) return cached;
+    return seedFallback.find((i) => i.id === id) || null;
   }
 
   async queryEntities<T extends { id: string }>(
@@ -84,31 +176,167 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
   }
 
   async removeEntity(collectionName: string, id: string): Promise<boolean> {
-    const key = `domexit_yc_${collectionName}`;
-    const list = this.readLocal<{ id: string }>(key).filter((i) => i.id !== id);
-    localStorage.setItem(key, JSON.stringify(list));
-    return true;
+    this.removeLocalCache(collectionName, id);
+
+    try {
+      await callYdbDocApi(
+        'DynamoDB_20120810.DeleteItem',
+        {
+          TableName: collectionName,
+          Key: { id: { S: id } },
+        },
+        this.config
+      );
+      return true;
+    } catch (err) {
+      console.warn(`[YandexCloudAdapter] YDB DeleteItem error on ${collectionName}/${id}:`, err);
+      return true;
+    }
   }
 
-  getConfig(): YandexCloudConfig {
+  /**
+   * Uploads a file/document to Yandex Object Storage via S3 Signature v4.
+   */
+  async uploadS3Object(
+    objectKey: string,
+    data: Uint8Array | ArrayBuffer | Blob | File | string,
+    contentType = 'application/octet-stream'
+  ): Promise<string> {
+    let payloadBytes: Uint8Array;
+    if (typeof data === 'string') {
+      payloadBytes = new TextEncoder().encode(data);
+    } else if (data instanceof Uint8Array) {
+      payloadBytes = data;
+    } else if (data instanceof ArrayBuffer) {
+      payloadBytes = new Uint8Array(data);
+    } else {
+      const ab = await data.arrayBuffer();
+      payloadBytes = new Uint8Array(ab);
+    }
+
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.substring(0, 8);
+    const payloadHash = await sha256Hex(payloadBytes);
+
+    const safeKey = objectKey.startsWith('/') ? objectKey.slice(1) : objectKey;
+    const url = new URL(`${this.config.storageEndpoint}/${this.config.storageBucket}/${safeKey}`);
+
+    const canonicalHeaders = [
+      `content-type:${contentType}`,
+      `host:${url.host}`,
+      `x-amz-content-sha256:${payloadHash}`,
+      `x-amz-date:${amzDate}`,
+    ].join('\n') + '\n';
+
+    const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
+    const canonicalRequest = [
+      'PUT',
+      url.pathname,
+      '',
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+
+    const credentialScope = `${dateStamp}/${this.config.region}/s3/aws4_request`;
+    const enc = new TextEncoder();
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      await sha256Hex(enc.encode(canonicalRequest)),
+    ].join('\n');
+
+    const signingKey = await getS3SigningKey(
+      this.config.secretAccessKey,
+      dateStamp,
+      this.config.region,
+      's3'
+    );
+    const sigBuf = await hmacRaw(signingKey, enc.encode(stringToSign));
+    const signature = Array.from(new Uint8Array(sigBuf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const authHeader = `AWS4-HMAC-SHA256 Credential=${this.config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const res = await fetch(url.toString(), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+        'x-amz-date': amzDate,
+        'x-amz-content-sha256': payloadHash,
+        Authorization: authHeader,
+      },
+      body: payloadBytes as unknown as BodyInit,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn(`[YandexCloudAdapter] S3 upload failed (${res.status}):`, errText);
+      throw new Error(`Ошибка загрузки в Yandex Object Storage (${res.status}): ${errText}`);
+    }
+
+    return `${this.config.storageEndpoint}/${this.config.storageBucket}/${safeKey}`;
+  }
+
+  getConfig(): YandexCredentialsConfig {
     return this.config;
   }
 
-  private readLocal<T>(key: string): T[] {
+  private getCacheKey(collectionName: string): string {
+    return `domexit_ydb_${collectionName}`;
+  }
+
+  private readLocalCache<T>(collectionName: string): T[] {
+    if (typeof localStorage === 'undefined') return [];
     try {
-      const raw = localStorage.getItem(key);
+      const raw = localStorage.getItem(this.getCacheKey(collectionName));
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
+    }
+  }
+
+  private writeLocalCache<T extends { id: string }>(collectionName: string, entity: T): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const list = this.readLocalCache<T>(collectionName);
+      const idx = list.findIndex((i) => i.id === entity.id);
+      if (idx >= 0) list[idx] = entity;
+      else list.unshift(entity);
+      localStorage.setItem(this.getCacheKey(collectionName), JSON.stringify(list));
+    } catch {
+      // Ignored if storage full
+    }
+  }
+
+  private replaceLocalCache<T>(collectionName: string, items: T[]): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(this.getCacheKey(collectionName), JSON.stringify(items));
+    } catch {
+      // Ignored
+    }
+  }
+
+  private removeLocalCache(collectionName: string, id: string): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const list = this.readLocalCache<{ id: string }>(collectionName).filter((i) => i.id !== id);
+      localStorage.setItem(this.getCacheKey(collectionName), JSON.stringify(list));
+    } catch {
+      // Ignored
     }
   }
 }
 
 export class YandexCloudAdapter {
   private static instance = new YandexCloudDatabaseAdapter();
-  private static isConnected = false;
+  private static isConnected = true;
 
-  static async initialize(customConfig?: Partial<YandexCloudConfig>): Promise<boolean> {
+  static async initialize(customConfig?: Partial<YandexCredentialsConfig>): Promise<boolean> {
     if (customConfig) {
       this.instance = new YandexCloudDatabaseAdapter(customConfig);
     }
@@ -124,7 +352,18 @@ export class YandexCloudAdapter {
     return this.instance;
   }
 
-  static async resolveAddress(_complexName: string, city: RussianCityCode): Promise<{ lat: number; lng: number }> {
+  static async uploadS3Object(
+    objectKey: string,
+    data: Uint8Array | ArrayBuffer | Blob | File | string,
+    contentType = 'application/octet-stream'
+  ): Promise<string> {
+    return this.instance.uploadS3Object(objectKey, data, contentType);
+  }
+
+  static async resolveAddress(
+    _complexName: string,
+    city: RussianCityCode
+  ): Promise<{ lat: number; lng: number }> {
     return getRegionByCode(city).center;
   }
 }

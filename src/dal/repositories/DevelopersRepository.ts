@@ -273,16 +273,8 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
     const cleanName = rawItem.name.trim();
     const cleanInn = (rawItem.inn || '').trim().replace(/\D/g, '');
 
-    // Strict institutional sanitizer: exclude test, placeholder or junk developers
-    const isFake =
-      cleanName.toLowerCase().includes('xxx') ||
-      cleanName.toLowerCase().includes('1234') ||
-      cleanName.toLowerCase().includes('aaaa') ||
-      cleanName.toLowerCase().includes('test') ||
-      cleanInn === '1234567890' ||
-      cleanInn === '123456789012' ||
-      cleanName.length < 2;
-
+    // Exclude invalid or empty developer names
+    const isFake = cleanName.length < 2;
     if (isFake) continue;
 
     const normName = normalizeDeveloperName(cleanName);
@@ -761,6 +753,38 @@ class DevelopersRepositoryController {
     });
 
     return true;
+  }
+
+  async updateDeveloper(
+    developerId: string,
+    updates: { name: string; inn: string },
+    operatorName: string = 'Ahmed Abdallah (Владелец)'
+  ): Promise<AccreditedDeveloper | null> {
+    const isProd = useEnvironmentStore.getState().isProduction;
+    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+      DEVELOPERS_COLLECTION,
+      developerId,
+      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+    );
+    if (!dev) return null;
+
+    const oldName = dev.name;
+    const oldInn = dev.inn;
+    dev.name = updates.name.trim();
+    dev.inn = updates.inn.trim() || dev.inn;
+    dev.updatedAt = new Date().toISOString();
+
+    await DatabaseGateway.save(DEVELOPERS_COLLECTION, dev);
+
+    await AuditLogsRepository.addLog({
+      operatorName,
+      operatorRole: 'owner',
+      actionType: 'developer_accreditation_decided',
+      title: `Отредактирован застройщик: ${dev.name}`,
+      description: `Изменения: имя "${oldName}" → "${dev.name}", ИНН "${oldInn}" → "${dev.inn}".`,
+    });
+
+    return dev;
   }
 
   async rejectAccreditationRequest(

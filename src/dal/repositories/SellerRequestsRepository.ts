@@ -241,18 +241,6 @@ export class SellerRequestsRepository {
     await LotsRepository.add(newLot);
 
     if (!isAccreditedDev) {
-      try {
-        await DevelopersRepository.registerDeveloperFromProject({
-          name: params.developer,
-          inn: params.developerInn || '7800000000',
-          lotCode,
-          registrationSource: 'seller_submission',
-          registrationNote: `Добавлен продавцом при подаче заявки на лот #${lotCode}`,
-        });
-      } catch (e) {
-        console.warn('[SellerRequestsRepository] Failed to register developer:', e);
-      }
-
       // Exclusively route to Tab 3 (Special Object & Project Approval) for partner banks
       for (const bankName of PARTNER_BANKS) {
         await BankPortalRepository.addSpecialApproval({

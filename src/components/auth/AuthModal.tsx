@@ -19,7 +19,8 @@ export const AuthModal: React.FC = () => {
   const { 
     isAuthModalOpen, 
     closeAuthModal, 
-    loginWithGoogle, 
+    loginWithGoogle,
+    loginWithYandex,
     loginWithEmail, 
     registerWithEmail,
     quickDemoLogin,
@@ -146,6 +147,17 @@ export const AuthModal: React.FC = () => {
               {language === 'ru' ? 'Мгновенная авторизация через официальный аккаунт Google' : 'Instant real Firebase Google Auth'}
             </p>
           </div>
+
+          {/* YANDEX ID SIGN-IN BUTTON */}
+          <button
+            type="button"
+            onClick={() => loginWithYandex()}
+            disabled={loading}
+            className="w-full py-3.5 px-4 rounded-2xl border-2 border-red-200 hover:border-red-300 bg-white hover:bg-red-50 text-slate-800 font-bold text-sm shadow-xs transition-all flex items-center justify-center space-x-3 active:scale-[0.99] disabled:opacity-60"
+          >
+            <span className="flex items-center justify-center w-6 h-6 rounded-md bg-red-600 text-white font-black text-sm leading-none">Я</span>
+            <span>{language === 'ru' ? 'Войти через Яндекс ID' : 'Continue with Yandex ID'}</span>
+          </button>
 
           {/* Divider */}
           <div className="relative flex items-center justify-center">
