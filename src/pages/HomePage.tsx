@@ -54,7 +54,6 @@ export const HomePage: React.FC = () => {
         name: `Клиент ${calcPhone.slice(-4) || '78'}`,
         phone: calcPhone,
         role: calcTab === 'seller' ? 'seller' : 'buyer',
-        activeDealId: 'DEAL-2025-10566',
       });
     } catch (err) {
       console.warn('Calc submission fallback:', err);

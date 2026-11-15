@@ -295,7 +295,19 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
     if (typeof localStorage === 'undefined') return [];
     try {
       const raw = localStorage.getItem(this.getCacheKey(collectionName));
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const parsed: T[] = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      // In production collections, strictly guarantee no mock test entities leak into cache
+      if (!collectionName.startsWith('demo_')) {
+        return parsed.filter((item: any) => {
+          if (!item) return false;
+          if (item.lotCode === 'U-10566' || item.id === 'lot-1' || item.dealId === 'DEAL-2025-10566' || item.id === 'deal-1') return false;
+          if (item.id === 'DEV-ACC-dfdfv-test' || item.developerName === 'dfdfv' || item.developerInn === '7896512304') return false;
+          return true;
+        });
+      }
+      return parsed;
     } catch {
       return [];
     }

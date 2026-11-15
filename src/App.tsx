@@ -126,16 +126,16 @@ export const App: React.FC = () => {
               <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
               <Route path="/admin/pipeline" element={<AdminPipelinePage />} />
               
-              <Route path="/admin/packaging" element={<Navigate to="/admin/packaging/lot-1" replace />} />
+              <Route path="/admin/packaging" element={<AdminPackagingPage />} />
               <Route path="/admin/packaging/:lotId" element={<AdminPackagingPage />} />
               
-              <Route path="/admin/legal-audit" element={<Navigate to="/admin/legal-audit/lot-1" replace />} />
+              <Route path="/admin/legal-audit" element={<AdminLegalAuditPage />} />
               <Route path="/admin/legal-audit/:lotId" element={<AdminLegalAuditPage />} />
               
-              <Route path="/admin/matchmaker" element={<Navigate to="/admin/matchmaker/lot-1" replace />} />
+              <Route path="/admin/matchmaker" element={<AdminMatchmakerPage />} />
               <Route path="/admin/matchmaker/:lotId" element={<AdminMatchmakerPage />} />
               
-              <Route path="/admin/closing" element={<Navigate to="/admin/closing/DEAL-2025-10566" replace />} />
+              <Route path="/admin/closing" element={<AdminClosingPage />} />
               <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
               
               <Route path="/admin/investors" element={<Navigate to="/admin/dashboard" replace />} />

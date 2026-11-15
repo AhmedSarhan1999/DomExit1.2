@@ -43,13 +43,12 @@ export class DatabaseInitializer {
         DatabaseGateway.getAll('buyer_applications', isProd ? [] : initialCandidates),
         DatabaseGateway.getAll('seller_requests', isProd ? [] : initialSellerRequests),
         DatabaseGateway.getAll('partner_applications', isProd ? [] : initialPartners),
-        DatabaseGateway.getAll('employees', initialEmployees),
+        DatabaseGateway.getAll('employees', isProd ? [initialEmployees[0]] : initialEmployees),
         DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
         DatabaseGateway.getAll('bank_employees', isProd ? [] : initialBankEmployees),
       ]);
 
-      // 3. Clean up unapproved test developer 'dfdfv' from developers collection,
-      // while guaranteeing its pending request in developer_accreditation_requests for owner testing
+      // 3. Clean up unapproved test developer 'dfdfv' from developers and requests collections
       try {
         const prodDevs = await DatabaseGateway.getAll<any>('developers', []);
         for (const d of prodDevs) {
@@ -82,6 +81,8 @@ export class DatabaseInitializer {
             'domexit_db_demo_developers',
             'domexit_ydb_demo_developers',
             'domexit_fb_demo_developers',
+            'domexit_ydb_developer_accreditation_requests',
+            'domexit_db_developer_accreditation_requests',
           ];
           for (const k of cacheKeys) {
             const raw = localStorage.getItem(k);
@@ -92,7 +93,9 @@ export class DatabaseInitializer {
                   const filtered = list.filter(
                     (item: any) =>
                       !item.name?.toLowerCase().includes('dfdfv') &&
+                      !item.developerName?.toLowerCase().includes('dfdfv') &&
                       item.inn !== '7896512304' &&
+                      item.developerInn !== '7896512304' &&
                       !item.id?.includes('dfdfv')
                   );
                   localStorage.setItem(k, JSON.stringify(filtered));
@@ -102,42 +105,22 @@ export class DatabaseInitializer {
           }
         }
 
-        // Guarantee pending request for dfdfv in developer_accreditation_requests
+        // Clean any remaining mock requests from accreditation collections
         const reqCollections = ['developer_accreditation_requests', 'demo_developer_accreditation_requests'];
         for (const col of reqCollections) {
           const reqs = await DatabaseGateway.getAll<any>(col, []);
-          const existing = reqs.find(
-            (r: any) =>
+          for (const r of reqs) {
+            if (
+              r.id === 'DEV-ACC-dfdfv-test' ||
               r.developerName?.toLowerCase().includes('dfdfv') ||
               r.developerInn === '7896512304'
-          );
-          if (existing) {
-            if (existing.status !== 'pending') {
-              existing.status = 'pending';
-              await DatabaseGateway.save(col, existing);
+            ) {
+              await DatabaseGateway.remove(col, r.id);
             }
-          } else {
-            await DatabaseGateway.save(col, {
-              id: 'DEV-ACC-dfdfv-test',
-              developerName: 'dfdfv',
-              developerInn: '7896512304',
-              lotId: 'lot-test-dfdfv',
-              lotCode: 'U-10566',
-              complexName: 'ЖК «Тестовый Проект»',
-              city: 'spb',
-              district: 'Приморский район',
-              contractPriceRub: 12500000,
-              sellerName: 'Иван Сергеевич Т.',
-              sellerClientCode: 'DEX-784105',
-              documentIds: [],
-              status: 'pending',
-              requestedAt: new Date().toISOString(),
-              decisions: [],
-            });
           }
         }
       } catch (cleanErr) {
-        console.warn('[DatabaseInitializer] dfdfv cleanup notice:', cleanErr);
+        console.warn('[DatabaseInitializer] cleanup notice:', cleanErr);
       }
     } catch (err) {
       console.warn('[DatabaseInitializer] Non-fatal migration check:', err);

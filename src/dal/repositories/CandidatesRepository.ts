@@ -4,6 +4,7 @@ import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const COLLECTION = 'buyer_applications';
 const LEGACY_COLLECTION = 'candidates';
@@ -11,8 +12,9 @@ const MAX_ACTIVE_BIDS_PER_USER = 3;
 
 export class CandidatesRepository {
   static async getAll(): Promise<BuyerCandidate[]> {
+    const isProd = useEnvironmentStore.getState().isProduction;
     const [canonical, legacy] = await Promise.all([
-      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, initialCandidates),
+      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, isProd ? [] : initialCandidates),
       DatabaseGateway.getAll<BuyerCandidate>(LEGACY_COLLECTION, []),
     ]);
 
@@ -68,7 +70,7 @@ export class CandidatesRepository {
     const newBid: BuyerCandidate = {
       id: `cand-${Date.now()}`,
       code: `B-${Math.floor(400 + Math.random() * 599)}`,
-      lotCode: data.lotCode || 'U-10566',
+      lotCode: data.lotCode,
       userId: uid,
       uid,
       clientCode,

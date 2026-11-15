@@ -283,6 +283,28 @@ export async function initYandexTables(): Promise<{ success: boolean; createdCou
       await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'demo_users', Item: item });
     }
 
+    // Seed default Employee in production & demo employees tables
+    const defaultEmployee = {
+      id: 'emp-1',
+      name: 'Алексей Смирнов',
+      email: 'amaas9494@gmail.com',
+      role: 'Ведущий юрист и куратор по переуступкам 214-ФЗ',
+      phone: '+7 (921) 456-78-90',
+      telegram: '@domexit_smirnov',
+      whatsapp: '+7 (921) 456-78-90',
+      bio: 'Ведущий куратор сделок по 214-ФЗ, аккредитивам и эскроу-счетам.',
+      photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+      activeLotsCount: 0,
+      closedDealsCount: 0,
+      avgSpeedDays: 8.5,
+      status: 'active',
+      permissions: ['legal_audit', 'packaging', 'matchmaker', 'closing'],
+    };
+    const empItem: Record<string, any> = {};
+    for (const k of Object.keys(defaultEmployee)) empItem[k] = toDynamoAttribute((defaultEmployee as any)[k]);
+    await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'employees', Item: empItem });
+    await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'demo_employees', Item: empItem });
+
     // Seed default Market Settings
     const defaultMarket: MarketSettings = {
       id: 'singleton_market_settings',

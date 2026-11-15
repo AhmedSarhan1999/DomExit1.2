@@ -44,13 +44,8 @@ export const AdminClosingPage: React.FC = () => {
   );
 
   // Proof upload form state for Step C
-  const [proofPhotos, setProofPhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=400&q=80',
-    'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=400&q=80',
-  ]);
-  const [proofVideos, setProofVideos] = useState<string[]>([
-    'Видеофиксация_сессии_ЭЦП_Сбербанк.mp4',
-  ]);
+  const [proofPhotos, setProofPhotos] = useState<string[]>([]);
+  const [proofVideos, setProofVideos] = useState<string[]>([]);
   const [rosreestrStampDoc, setRosreestrStampDoc] = useState<string>('');
   const { enableBankPortal } = useFeatureFlagsStore();
 
@@ -66,14 +61,15 @@ export const AdminClosingPage: React.FC = () => {
 
     setAccessibleDeals(pool);
 
-    const targetId = (dealId || 'DEAL-2025-10566').toUpperCase();
-    const found =
-      pool.find(
-        (d) =>
-          d.dealId.toUpperCase() === targetId ||
-          d.id.toUpperCase() === targetId ||
-          d.lotCode.toUpperCase() === targetId
-      ) || pool[0];
+    const targetId = (dealId || '').toUpperCase();
+    const found = targetId
+      ? pool.find(
+          (d) =>
+            d.dealId.toUpperCase() === targetId ||
+            d.id.toUpperCase() === targetId ||
+            d.lotCode.toUpperCase() === targetId
+        )
+      : pool[0] || null;
 
     setDeal(found || null);
 
@@ -107,7 +103,7 @@ export const AdminClosingPage: React.FC = () => {
 
   const currentStep = deal?.escrowWorkflow?.step || 'curator_review';
 
-  const sellerReturnRub = deal?.sellerReturnRub || lot?.cashPaidBySeller || 2485230;
+  const sellerReturnRub = deal?.sellerReturnRub ?? lot?.cashPaidBySeller ?? 0;
   const platformFeeRub =
     deal?.escrowWorkflow?.platformFeeRub ||
     lot?.serviceCommissionRub ||
@@ -134,8 +130,7 @@ export const AdminClosingPage: React.FC = () => {
         user.role === 'admin' ||
         user.activeRole === 'owner' ||
         user.activeRole === 'admin' ||
-        user.roles?.includes('owner') ||
-        user.email === 'amaas9499@gmail.com')
+        user.roles?.includes('owner'))
   );
   const canExecuteBankStep = !enableBankPortal || isBankOfficer || isOwner || isEmployee;
   const hasRosreestrStamp = Boolean(rosreestrStampDoc && rosreestrStampDoc.trim().length > 0);

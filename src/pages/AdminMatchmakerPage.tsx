@@ -32,7 +32,7 @@ import {
 
 export const AdminMatchmakerPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
-  const currentLotCode = lotId || 'U-10566';
+  const currentLotCode = lotId || '';
   const { language } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -40,7 +40,7 @@ export const AdminMatchmakerPage: React.FC = () => {
   const [lot, setLot] = useState<Lot | null>(null);
   const [allLots, setAllLots] = useState<Lot[]>([]);
   const [candidates, setCandidates] = useState<BuyerCandidate[]>([]);
-  const [linkedDealId, setLinkedDealId] = useState<string>('DEAL-2025-10566');
+  const [linkedDealId, setLinkedDealId] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'budget' | 'cash48' | 'mortgage'>('all');
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [warningToast, setWarningToast] = useState<string | null>(null);
@@ -48,9 +48,9 @@ export const AdminMatchmakerPage: React.FC = () => {
   const [isBuyerVaultOpen, setIsBuyerVaultOpen] = useState<boolean>(false);
 
   const isEmployee = user?.activeRole === 'employee';
-  const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
+  const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
   const curatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор лота)' : 'Ahmed Abdallah (Владелец / CEO)');
+    user?.name || (isEmployee ? 'Куратор DomExit' : 'Ahmed Abdallah (Владелец / CEO)');
 
   const loadData = async () => {
     const [lotsData, candData] = await Promise.all([
@@ -61,12 +61,13 @@ export const AdminMatchmakerPage: React.FC = () => {
     ]);
 
     setAllLots(lotsData);
-    const current =
-      lotsData.find(
-        (l) =>
-          l.lotCode.toUpperCase() === currentLotCode.toUpperCase() ||
-          l.id.toUpperCase() === currentLotCode.toUpperCase()
-      ) || lotsData[0];
+    const current = currentLotCode
+      ? lotsData.find(
+          (l) =>
+            l.lotCode.toUpperCase() === currentLotCode.toUpperCase() ||
+            l.id.toUpperCase() === currentLotCode.toUpperCase()
+        )
+      : lotsData[0] || null;
 
     setLot(current || null);
 
@@ -166,7 +167,7 @@ export const AdminMatchmakerPage: React.FC = () => {
     if (activeFilter === 'mortgage')
       return c.buyerTrack === 'mortgage_substitution' || c.fundingType === 'family-mortgage';
     if (activeFilter === 'budget')
-      return c.availableLiquidity >= (lot?.cashPaidBySeller || 2000000);
+      return c.availableLiquidity >= (lot?.cashPaidBySeller || 0);
     return true;
   });
 

@@ -35,9 +35,9 @@ interface EscrowBridgeChatModalProps {
 export const EscrowBridgeChatModal: React.FC<EscrowBridgeChatModalProps> = ({
   dealId,
   dealStage = 'bank_escrow_deposit',
-  lotCode = 'U-10566',
-  lotTitle = 'ЖК Чистое Небо',
-  bankName = 'Сбербанк',
+  lotCode = '',
+  lotTitle = 'Объект',
+  bankName = 'Банк',
   buyerName = 'Покупатель DomExit',
   isOpen,
   onClose,
@@ -51,7 +51,7 @@ export const EscrowBridgeChatModal: React.FC<EscrowBridgeChatModalProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const cleanDealId = (dealId || 'DEAL-2025-10566').trim().toUpperCase();
+  const cleanDealId = (dealId || '').trim().toUpperCase();
 
   // Lifecycle constraint: editable only during Steps 1 & 2 ('curator_review', 'bank_escrow_deposit')
   const isReadOnly =
@@ -61,7 +61,10 @@ export const EscrowBridgeChatModal: React.FC<EscrowBridgeChatModalProps> = ({
     dealStage === 'deal_cancelled';
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !cleanDealId) {
+      setMessages([]);
+      return;
+    }
     const unsubscribe = EscrowBridgeRepository.subscribeToDealChat(cleanDealId, (msgs) => {
       setMessages(msgs);
     });

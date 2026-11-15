@@ -244,6 +244,15 @@ export class LotsRepository {
       publishedAt: new Date().toISOString(),
     };
     await DatabaseGateway.save<Lot>(COLLECTION, updated);
+
+    // Simultaneously advance the linked deal stage to buyer_matching
+    try {
+      const { DealsRepository } = await import('./DealsRepository');
+      await DealsRepository.updateStage(lot.lotCode, 'buyer_matching');
+    } catch (dealErr) {
+      console.warn('[LotsRepository] Non-fatal deal stage sync:', dealErr);
+    }
+
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
       operatorName,
@@ -277,6 +286,15 @@ export class LotsRepository {
       publishedAt: new Date().toISOString(),
     };
     await DatabaseGateway.save<Lot>(COLLECTION, updated);
+
+    // Simultaneously advance the linked deal stage to buyer_matching
+    try {
+      const { DealsRepository } = await import('./DealsRepository');
+      await DealsRepository.updateStage(lot.lotCode, 'buyer_matching');
+    } catch (dealErr) {
+      console.warn('[LotsRepository] Non-fatal deal stage sync:', dealErr);
+    }
+
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
       operatorName,

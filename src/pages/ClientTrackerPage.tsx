@@ -277,7 +277,7 @@ export const ClientTrackerPage: React.FC = () => {
 
   const activeStageNum = deal ? STAGE_INDEX_MAP[deal.stage] || 4 : 4;
   const progressPercent = deal?.stage === 'completed' ? 100 : Math.min(95, activeStageNum * 20);
-  const sellerPayout = deal?.sellerReturnRub || lot?.cashPaidBySeller || 2485230;
+  const sellerPayout = deal?.sellerReturnRub ?? lot?.cashPaidBySeller ?? 0;
   const estimatedPenaltySaved = Math.round((lot?.dduContractPrice || sellerPayout * 3) * 0.15);
   const targetLotCode = deal?.lotCode || lot?.lotCode || '';
 
@@ -322,12 +322,12 @@ export const ClientTrackerPage: React.FC = () => {
               </span>
               <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[11px] font-bold">
                 <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-                <span>Эскроу ПАО {lot?.escrowBank || 'Сбербанк'}</span>
+                <span>Эскроу {lot?.escrowBank ? `ПАО ${lot.escrowBank}` : 'Банк-партнер 214-ФЗ'}</span>
               </span>
             </div>
 
             <h1 className="text-xl sm:text-2xl font-black text-slate-950">
-              Трекер чистого выхода: {lot?.complexName || deal?.lotTitle || 'ЖК «Чистое Небо»'} (Лот #{targetLotCode})
+              Трекер чистого выхода: {lot?.complexName || deal?.lotTitle || 'Объект ДДУ'} (Лот #{targetLotCode})
             </h1>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -351,7 +351,7 @@ export const ClientTrackerPage: React.FC = () => {
                 />
               ) : (
                 <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-sm">
-                  {(curator?.name || 'АМ').slice(0, 2).toUpperCase()}
+                  {(curator?.name || deal?.curatorName || 'К').slice(0, 1).toUpperCase()}
                 </div>
               )}
               <div>
@@ -359,7 +359,7 @@ export const ClientTrackerPage: React.FC = () => {
                   {language === 'ru' ? 'Персональный куратор' : 'Dedicated Curator'}
                 </span>
                 <span className="text-xs font-bold text-slate-900 block">
-                  {curator?.name || deal?.curatorName || 'Алексей Морозов'}
+                  {curator?.name || deal?.curatorName || 'Назначается куратор платформы'}
                 </span>
                 <span className="text-[11px] text-emerald-700 font-semibold block">
                   {curator?.role || 'Ведущий юрист по 214-ФЗ'}
@@ -515,7 +515,7 @@ export const ClientTrackerPage: React.FC = () => {
                         Ваш персональный куратор сделки
                       </span>
                       <h4 className="font-bold text-sm text-slate-900">
-                        {deal.assignedEmployeeName || deal.curatorName || curator?.name || 'Алексей Смирнов'}
+                        {deal.assignedEmployeeName || deal.curatorName || curator?.name || 'Назначается куратор платформы'}
                       </h4>
                       <p className="text-[11px] text-slate-500 max-w-lg mt-0.5">
                         Сопровождение открытия аккредитива в банке, согласование с застройщиком и регистрация в Росреестре
@@ -762,7 +762,7 @@ export const ClientTrackerPage: React.FC = () => {
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
               <span className="text-slate-600">Застройщик и банк эскроу:</span>
               <span className="font-bold text-slate-900">
-                {lot?.developer || 'Setl Group'} • ПАО {lot?.escrowBank || 'Сбербанк'}
+                {lot?.developer || '—'} • {lot?.escrowBank ? `ПАО ${lot.escrowBank}` : 'Банк-партнер 214-ФЗ'}
               </span>
             </div>
 
@@ -793,8 +793,8 @@ export const ClientTrackerPage: React.FC = () => {
         entityType="lot"
         entityId={targetLotCode}
         entityTitle={`${lot?.complexName || deal?.lotTitle || 'Объект ДДУ'} (#${targetLotCode})`}
-        uploadedByUid={user?.id || deal?.sellerUserId || 'usr-seller-001'}
-        clientCode={user?.clientCode || deal?.sellerClientCode || 'DEX-784105'}
+        uploadedByUid={user?.id || deal?.sellerUserId || ''}
+        clientCode={user?.clientCode || deal?.sellerClientCode || ''}
         mode="seller"
         canUpload={true}
         canReview={false}

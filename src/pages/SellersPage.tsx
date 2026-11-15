@@ -74,32 +74,32 @@ export const SellersPage: React.FC = () => {
   const [isAddingNewDeveloper, setIsAddingNewDeveloper] = useState<boolean>(false);
   const [developerName, setDeveloperName] = useState<string>('');
   const [developerInn, setDeveloperInn] = useState<string>('');
-  const [complexName, setComplexName] = useState<string>('ЖК «Чистое Небо»');
-  const [dduCode, setDduCode] = useState<string>('ДДУ-78/12-10599');
-  const [rooms, setRooms] = useState<Lot['rooms']>('2-room');
-  const [areaM2, setAreaM2] = useState<string>('62.5');
-  const [floor, setFloor] = useState<string>('9');
-  const [totalFloors, setTotalFloors] = useState<string>('24');
+  const [complexName, setComplexName] = useState<string>('');
+  const [dduCode, setDduCode] = useState<string>('');
+  const [rooms, setRooms] = useState<Lot['rooms']>('1-room');
+  const [areaM2, setAreaM2] = useState<string>('');
+  const [floor, setFloor] = useState<string>('');
+  const [totalFloors, setTotalFloors] = useState<string>('');
   const [exitRoute, setExitRoute] = useState<'ddu_assignment' | 'fast_cash' | 'trade_in_6'>(
     'ddu_assignment'
   );
 
   // Financial Parameters
-  const [contractPriceStr, setContractPriceStr] = useState<string>('11400000');
-  const [paidAmountStr, setPaidAmountStr] = useState<string>('2850000');
-  const [todayMarketPriceStr, setTodayMarketPriceStr] = useState<string>('14500000');
+  const [contractPriceStr, setContractPriceStr] = useState<string>('');
+  const [paidAmountStr, setPaidAmountStr] = useState<string>('');
+  const [todayMarketPriceStr, setTodayMarketPriceStr] = useState<string>('');
   const [usedMatkap, setUsedMatkap] = useState<'no' | 'yes'>('no');
   const [agreeTerms, setAgreeTerms] = useState<boolean>(true);
   const [penaltyRatePercent, setPenaltyRatePercent] = useState<number>(15);
 
   // Step 2 Seller Identity & Strict Russian Validation
   const [sellerName, setSellerName] = useState<string>(
-    user?.name || 'Александр Владимирович Белов'
+    user?.name || ''
   );
   const [sellerPhone, setSellerPhone] = useState<string>(
-    user?.phone ? formatRussianPhoneInput(user.phone) : '+7 (911) 409-44-12'
+    user?.phone ? formatRussianPhoneInput(user.phone) : '+7 ('
   );
-  const [sellerInn, setSellerInn] = useState<string>('781432994102');
+  const [sellerInn, setSellerInn] = useState<string>('');
   const [partnerRefCode, setPartnerRefCode] = useState<string>('');
   const [isPartnerLocked, setIsPartnerLocked] = useState<boolean>(false);
   const [searchParams] = useSearchParams();
@@ -193,8 +193,8 @@ export const SellersPage: React.FC = () => {
   const cleanReturnDomExit = paidAmount;
   const netFamilyBenefit = devPenalty;
 
-  const clientCode = user?.clientCode || 'DEX-784105';
-  const currentUid = user?.id || 'usr-seller-live';
+  const clientCode = user?.clientCode || (user?.id ? `DEX-${user.id.slice(-6)}` : `DEX-${String(Date.now()).slice(-6)}`);
+  const currentUid = user?.id || '';
 
   const handleGoToStep2 = async () => {
     setStep1Error(null);
@@ -427,7 +427,7 @@ export const SellersPage: React.FC = () => {
                 district,
                 contractPriceRub: contractPrice,
                 sellerName: sellerName.trim(),
-                sellerClientCode: activeUser.clientCode || 'DEX-784105',
+                sellerClientCode: activeUser.clientCode || (activeUser.id ? `DEX-${activeUser.id.slice(-6)}` : `DEX-${String(Date.now()).slice(-6)}`),
                 documentIds: vaultDocs.map((d) => d.id),
               });
             } catch (devErr) {
@@ -1169,7 +1169,7 @@ export const SellersPage: React.FC = () => {
                     type="text"
                     value={sellerName}
                     onChange={(e) => setSellerName(e.target.value)}
-                    placeholder="Белов Александр Владимирович"
+                    placeholder={language === 'ru' ? 'Иванов Иван Иванович' : 'Full Name'}
                     className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold focus:outline-none focus:border-emerald-500"
                   />
                 </div>

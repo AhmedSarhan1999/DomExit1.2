@@ -25,6 +25,7 @@ import {
   FolderLock,
   ExternalLink,
   Building2,
+  Trash2,
   Phone,
   MessageSquare,
 } from 'lucide-react';
@@ -94,7 +95,7 @@ export const ClientPortalPage: React.FC = () => {
   const { language } = useLanguage();
   const { enableVipClub, enableBankPortal } = useFeatureFlagsStore();
   const [isBuyerVaultOpen, setIsBuyerVaultOpen] = useState<boolean>(false);
-  const [buyerVaultLotCode, setBuyerVaultLotCode] = useState<string>('U-10566');
+  const [buyerVaultLotCode, setBuyerVaultLotCode] = useState<string>('');
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Strict Enterprise Account Isolation & Role Redirects
@@ -255,9 +256,28 @@ export const ClientPortalPage: React.FC = () => {
     };
   };
 
+  const handleCancelSellerRequest = async (lotCode: string) => {
+    if (
+      !confirm(
+        language === 'ru'
+          ? `Вы уверены, что хотите отозвать заявку по лоту #${lotCode}? Заявка и связанный черновик сделки будут безвозвратно удалены из системы.`
+          : `Are you sure you want to withdraw request #${lotCode}?`
+      )
+    )
+      return;
+
+    try {
+      await LotsRepository.deleteLotAndDeal(lotCode, user?.name || 'Продавец');
+      setSelectedSellerLotCode('');
+      await loadData();
+    } catch (err: any) {
+      alert(`Ошибка отзыва заявки: ${err?.message || 'Сбой'}`);
+    }
+  };
+
   const loadData = async () => {
     const uid = user?.id || '';
-    const clientCode = user?.clientCode || 'DEX-784105';
+    const clientCode = user?.clientCode || '';
     const partnerRefCode = user?.partnerRefCode || '';
 
     const [
@@ -328,46 +348,38 @@ export const ClientPortalPage: React.FC = () => {
       setSelectedPackage(myInvestorEntry.selectedPackage);
     }
 
-    // Buyer bids: strictly user's own bids (or demo fallback if guest)
+    // Buyer bids: strictly user's own bids
     if (myBids.length > 0) {
       setUserBids(myBids);
-    } else if (!uid) {
-      setUserBids(allCandidates.slice(0, 1));
     } else {
       setUserBids([]);
     }
 
-    // Seller lots & deals (fallback to U-10566 / DEAL-2025-10566 if demo seller has no custom lot yet)
-    let resolvedSellerLots = mySellerLots;
-    let resolvedSellerDeals = mySellerDeals;
-    if (resolvedSellerLots.length === 0) {
-      const fallbackLot = lotsData.find((l) => l.lotCode === 'U-10566') || lotsData[0];
-      if (fallbackLot) resolvedSellerLots = [fallbackLot];
-    }
-    if (resolvedSellerDeals.length === 0) {
-      const fallbackDeal = await DealsRepository.getById(user?.activeDealId || 'DEAL-2025-10566');
-      if (fallbackDeal) resolvedSellerDeals = [fallbackDeal];
-    }
-
-    setSellerLots(resolvedSellerLots);
-    setSellerDeals(resolvedSellerDeals);
+    // Seller lots & deals: strictly user's own lots and deals (no silent mock fallbacks)
+    setSellerLots(mySellerLots);
+    setSellerDeals(mySellerDeals);
     setSellerRequests(mySellerReqs);
 
     const activeCode =
-      selectedSellerLotCode && resolvedSellerLots.some((l) => l.lotCode === selectedSellerLotCode)
+      selectedSellerLotCode && mySellerLots.some((l) => l.lotCode === selectedSellerLotCode)
         ? selectedSellerLotCode
-        : resolvedSellerLots[0]?.lotCode || 'U-10566';
+        : mySellerLots[0]?.lotCode || '';
     setSelectedSellerLotCode(activeCode);
 
-    const activeLotObj = resolvedSellerLots.find((l) => l.lotCode === activeCode);
-    const docs = await StorageService.getDocumentsByEntity('lot', activeCode);
-    setSellerVaultDocs(docs);
+    if (activeCode) {
+      const activeLotObj = mySellerLots.find((l) => l.lotCode === activeCode);
+      const docs = await StorageService.getDocumentsByEntity('lot', activeCode);
+      setSellerVaultDocs(docs);
 
-    if (activeLotObj?.assignedEmployeeId) {
-      const emp = allEmps.find((e) => e.id === activeLotObj.assignedEmployeeId);
-      setCurator(emp || allEmps[0] || null);
-    } else if (allEmps.length > 0) {
-      setCurator(allEmps[0]);
+      if (activeLotObj?.assignedEmployeeId) {
+        const emp = allEmps.find((e) => e.id === activeLotObj.assignedEmployeeId);
+        setCurator(emp || null);
+      } else {
+        setCurator(null);
+      }
+    } else {
+      setSellerVaultDocs([]);
+      setCurator(null);
     }
 
 
@@ -966,13 +978,13 @@ export const ClientPortalPage: React.FC = () => {
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
                               <Link
-                                to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                to={`/opportunities/${bid.lotCode}`}
                                 className="font-mono font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-0.5 rounded text-xs"
                               >
                                 #{bid.lotCode}
                               </Link>
                               <Link
-                                to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                to={`/opportunities/${bid.lotCode}`}
                                 className="font-bold text-sm text-slate-900 hover:text-emerald-700"
                               >
                                 {lotDisplayTitle}
@@ -1089,9 +1101,9 @@ export const ClientPortalPage: React.FC = () => {
                                       type="button"
                                       onClick={() => {
                                         setActiveEscrowChatDeal({
-                                          dealId: linkedDeal?.dealId || `DEAL-2025-${bid.lotCode || '10566'}`,
+                                          dealId: linkedDeal?.dealId || '',
                                           dealStage: wfStep,
-                                          lotCode: bid.lotCode || 'U-10566',
+                                          lotCode: bid.lotCode || '',
                                           lotTitle: allLots.find((l) => l.lotCode === bid.lotCode)?.complexName || 'ЖК',
                                           bankName: linkedDeal?.bankName || linkedDeal?.escrowWorkflow?.bankName || (bid as any).selectedBank || 'Сбербанк',
                                           buyerName: user?.name || bid.name,
@@ -1104,7 +1116,7 @@ export const ClientPortalPage: React.FC = () => {
                                     </button>
                                   )}
                                   <Link
-                                    to={`/opportunities/${bid.lotCode || 'U-10566'}`}
+                                    to={`/opportunities/${bid.lotCode}`}
                                     className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
                                   >
                                     Паспорт лота →
@@ -1178,7 +1190,7 @@ export const ClientPortalPage: React.FC = () => {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setBuyerVaultLotCode(bid.lotCode || 'U-10566');
+                                        setBuyerVaultLotCode(bid.lotCode || '');
                                         setIsBuyerVaultOpen(true);
                                       }}
                                       className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
@@ -1204,33 +1216,56 @@ export const ClientPortalPage: React.FC = () => {
         {/* ================= TAB 2: SELLER LISTINGS VIEW ================= */}
         {activeTab === 'seller' && (
           <div className="space-y-6">
-            {/* Switcher if Seller submitted multiple lots + New Exit CTA */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {sellerLots.map((sl) => (
-                  <button
-                    key={sl.lotCode}
-                    type="button"
-                    onClick={() => setSelectedSellerLotCode(sl.lotCode)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      activeSellerLot?.lotCode === sl.lotCode
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    #{sl.lotCode} • {sl.complexName}
-                  </button>
-                ))}
+            {sellerLots.length === 0 ? (
+              <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-sm text-center max-w-xl mx-auto space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                  <Building2 className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    У вас пока нет выставленных объектов ДДУ
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Если у вас есть строящаяся квартира по договору ДДУ (214-ФЗ) и вы хотите безопасно уступить права через банковский аккредитив без штрафов застройщика — подайте заявку на экспресс-выход.
+                  </p>
+                </div>
+                <Link
+                  to="/sellers"
+                  className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-emerald-400" />
+                  <span>Подать заявку на выход из ДДУ</span>
+                </Link>
               </div>
+            ) : (
+              <>
+                {/* Switcher if Seller submitted multiple lots + New Exit CTA */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {sellerLots.map((sl) => (
+                      <button
+                        key={sl.lotCode}
+                        type="button"
+                        onClick={() => setSelectedSellerLotCode(sl.lotCode)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          activeSellerLot?.lotCode === sl.lotCode
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        #{sl.lotCode} • {sl.complexName}
+                      </button>
+                    ))}
+                  </div>
 
-              <Link
-                to="/sellers"
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Подать еще один объект ДДУ</span>
-              </Link>
-            </div>
+                  <Link
+                    to="/sellers"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Подать еще один объект ДДУ</span>
+                  </Link>
+                </div>
 
             {/* URGENT ALERT: Curator or Owner Requested Additional Documents */}
             {activeSellerLot?.additionalDocsRequested?.status === 'pending' && (
@@ -1307,6 +1342,17 @@ export const ClientPortalPage: React.FC = () => {
                           ? 'Отклонен'
                           : 'Одобрен и закреплен за куратором'}
                       </span>
+                      {(activeSellerLot.approvalStatus === 'pending_owner_approval' || activeSellerLot.status === 'draft') && (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelSellerRequest(activeSellerLot.lotCode)}
+                          className="px-2.5 py-0.5 rounded-full border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-bold transition-colors cursor-pointer flex items-center space-x-1"
+                          title="Отоزвать заявку и удалить черновик"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Отозвать заявку / Удалить</span>
+                        </button>
+                      )}
                     </div>
                     <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight mt-1.5">
                       {activeSellerLot.complexName} — {activeSellerLot.areaM2} м² ({activeSellerLot.district})
@@ -1564,6 +1610,8 @@ export const ClientPortalPage: React.FC = () => {
                   )}
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         )}

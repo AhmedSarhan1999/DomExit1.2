@@ -55,24 +55,24 @@ export const AdminPackagingPage: React.FC = () => {
   // Technical Specs
   const [complexName, setComplexName] = useState<string>('');
   const [developer, setDeveloper] = useState<string>('');
-  const [areaM2, setAreaM2] = useState<number>(42);
+  const [areaM2, setAreaM2] = useState<number>(0);
   const [rooms, setRooms] = useState<string>('1-room');
-  const [floor, setFloor] = useState<number>(8);
-  const [totalFloors, setTotalFloors] = useState<number>(24);
+  const [floor, setFloor] = useState<number>(0);
+  const [totalFloors, setTotalFloors] = useState<number>(0);
   const [ceilingHeightM, setCeilingHeightM] = useState<number>(2.78);
   const [finishing, setFinishing] = useState<string>('clean');
-  const [deliveryDate, setDeliveryDate] = useState<string>('4 кв. 2026 г.');
-  const [deliveryYear, setDeliveryYear] = useState<number>(2026);
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
+  const [deliveryYear, setDeliveryYear] = useState<number>(new Date().getFullYear() + 1);
   const [transactionType, setTransactionType] = useState<string>('installment_cession');
-  const [constructionReadinessPercent, setConstructionReadinessPercent] = useState<number>(85);
-  const [districtAvgPricePerM2, setDistrictAvgPricePerM2] = useState<number>(285000);
+  const [constructionReadinessPercent, setConstructionReadinessPercent] = useState<number>(80);
+  const [districtAvgPricePerM2, setDistrictAvgPricePerM2] = useState<number>(0);
 
   // Financial Truth Engine numeric inputs
-  const [oldDduPrice, setOldDduPrice] = useState<number>(10972000);
-  const [cashToSeller, setCashToSeller] = useState<number>(2485230);
-  const [debtToDev, setDebtToDev] = useState<number>(8486770);
-  const [todayDevPrice, setTodayDevPrice] = useState<number>(14200000);
-  const [developerConsentFeeRub, setDeveloperConsentFeeRub] = useState<number>(50000);
+  const [oldDduPrice, setOldDduPrice] = useState<number>(0);
+  const [cashToSeller, setCashToSeller] = useState<number>(0);
+  const [debtToDev, setDebtToDev] = useState<number>(0);
+  const [todayDevPrice, setTodayDevPrice] = useState<number>(0);
+  const [developerConsentFeeRub, setDeveloperConsentFeeRub] = useState<number>(0);
   const [contractTemplateRequirement, setContractTemplateRequirement] = useState<'developer_template' | 'domexit_template'>('developer_template');
 
   // Media materials state
@@ -98,51 +98,48 @@ export const AdminPackagingPage: React.FC = () => {
     setStreetAddress(data.streetAddress || '');
     if (data.metroStations && data.metroStations.length > 0) {
       setMetroName(data.metroStations[0].name);
-      setMetroTime(data.metroStations[0].travelTimeText || '12 мин. пешком');
+      setMetroTime(data.metroStations[0].travelTimeText || '');
       setMetroMode(data.metroStations[0].mode || 'walk');
     } else {
-      setMetroName('Комендантский пр.');
-      setMetroTime('12 мин. пешком');
+      setMetroName('');
+      setMetroTime('');
       setMetroMode('walk');
     }
 
     // Technical
     setComplexName(data.complexName || '');
     setDeveloper(data.developer || '');
-    setAreaM2(data.areaM2 || 42);
+    setAreaM2(data.areaM2 || 0);
     setRooms(data.rooms || '1-room');
-    setFloor(data.floor || 8);
-    setTotalFloors(data.totalFloors || 24);
+    setFloor(data.floor || 0);
+    setTotalFloors(data.totalFloors || 0);
     setCeilingHeightM(data.ceilingHeightM || 2.78);
     setFinishing(data.finishing || 'clean');
-    setDeliveryDate(data.deliveryDate || '4 кв. 2026 г.');
+    setDeliveryDate(data.deliveryDate || '');
     setDeliveryYear(data.deliveryYear || 2026);
     setTransactionType(data.transactionType || 'installment_cession');
-    setConstructionReadinessPercent(data.constructionReadinessPercent || 85);
-    setDistrictAvgPricePerM2(data.districtAvgPricePerM2 || 285000);
+    setConstructionReadinessPercent(data.constructionReadinessPercent || 80);
+    setDistrictAvgPricePerM2(data.districtAvgPricePerM2 || 0);
 
     // Financial
-    setOldDduPrice(data.dduContractPrice || 10000000);
-    setCashToSeller(data.cashPaidBySeller || 2000000);
-    setDebtToDev(data.remainingInstallmentDebt || 8000000);
-    setTodayDevPrice(data.todayDeveloperPrice || 13500000);
-    setDeveloperConsentFeeRub(data.developerConsentFeeRub || 50000);
+    setOldDduPrice(data.dduContractPrice || 0);
+    setCashToSeller(data.cashPaidBySeller || 0);
+    setDebtToDev(data.remainingInstallmentDebt || 0);
+    setTodayDevPrice(data.todayDeveloperPrice || 0);
+    setDeveloperConsentFeeRub(data.developerConsentFeeRub || 0);
     setContractTemplateRequirement(data.contractTemplateRequirement || 'developer_template');
 
     // Media
     const sPhotos =
       data.sellerUploadedPhotos && data.sellerUploadedPhotos.length > 0
         ? data.sellerUploadedPhotos
-        : data.galleryImages || [
-            'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
-            'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
-          ];
+        : data.galleryImages || [];
     setSellerPhotos(sPhotos);
 
     const aPhotos =
       data.approvedGalleryImages && data.approvedGalleryImages.length > 0
         ? data.approvedGalleryImages
-        : sPhotos.slice(0, 2);
+        : sPhotos;
     setApprovedPhotos(aPhotos);
     setCoverImageUrl(data.imageUrl || aPhotos[0] || sPhotos[0] || '');
   };
@@ -155,10 +152,10 @@ export const AdminPackagingPage: React.FC = () => {
 
       setAccessibleLots(pool);
 
-      const code = (lotId || 'U-10566').toUpperCase();
-      const matched =
-        pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) ||
-        pool[0];
+      const code = (lotId || '').toUpperCase();
+      const matched = code
+        ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code)
+        : pool[0];
 
       if (matched) {
         hydrateLotState(matched);

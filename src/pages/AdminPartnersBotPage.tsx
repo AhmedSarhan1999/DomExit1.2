@@ -53,9 +53,9 @@ export const AdminPartnersBotPage: React.FC = () => {
   const [activeOperationalTab, setActiveOperationalTab] = useState<'vip_investors' | 'partners_registry'>('vip_investors');
 
   const [partners, setPartners] = useState<PartnerEntry[]>(initialPartners);
-  const [lots, setLots] = useState<Lot[]>(initialLots);
+  const [lots, setLots] = useState<Lot[]>([]);
   const [investors, setInvestors] = useState<InvestorApplication[]>([]);
-  const [selectedLotCode, setSelectedLotCode] = useState<string>('U-10566');
+  const [selectedLotCode, setSelectedLotCode] = useState<string>('');
   const [broadcastLang, setBroadcastLang] = useState<'RU' | 'EN' | 'RU+EN'>('RU');
   const [selectedAudience, setSelectedAudience] = useState<'vip' | 'all' | 'smart_cash'>('vip');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'developer_cancellation' | 'mortgage_broker'>('all');

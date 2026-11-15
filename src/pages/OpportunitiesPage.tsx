@@ -174,8 +174,13 @@ export const OpportunitiesPage: React.FC = () => {
   };
 
   const handleApplyDrawerFilters = (filters: any) => {
-    const nextCity = filters.city || selectedCity;
-    const nextDistrict = filters.district || (filters.city ? 'all' : selectedDistrict);
+    const isReset = !filters || Object.keys(filters).length === 0;
+    const nextCity = isReset ? 'all' : (filters.city || selectedCity);
+    const nextDistrict = isReset ? 'all' : (filters.district || (filters.city ? 'all' : selectedDistrict));
+    if (isReset) {
+      setSelectedCity('all');
+      setSelectedDistrict('all');
+    }
     setAppliedFilters(filters);
     syncUrlParams(nextCity, nextDistrict);
     loadLots(filters, searchQuery, activeQuickFilter, statusFilter, nextCity, nextDistrict);

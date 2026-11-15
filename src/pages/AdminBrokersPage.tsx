@@ -27,6 +27,7 @@ import {
   AlertCircle,
   X,
   FileText,
+  Printer,
   Clock,
   ArrowUpRight,
 } from 'lucide-react';
@@ -61,6 +62,10 @@ export const AdminBrokersPage: React.FC = () => {
   const [payoutDate, setPayoutDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [payoutNotes, setPayoutNotes] = useState<string>('');
   const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
+
+  // Reconciliation Statement Modal State
+  const [showReconciliationModal, setShowReconciliationModal] = useState(false);
+  const [reconciliationPartner, setReconciliationPartner] = useState<PartnerEntry | null>(null);
 
   const loadData = async () => {
     const list = await PartnersRepository.getAll();
@@ -236,7 +241,7 @@ export const AdminBrokersPage: React.FC = () => {
                 <Banknote className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="text-2xl font-black text-emerald-700 font-mono">
-                {formatRubles(totalPaidRub || 2850000)}
+                {formatRubles(totalPaidRub || 0)}
               </div>
               <p className="text-[11px] text-emerald-800 font-semibold">
                 ✓ Проведено по безналичному расчету (152-ФЗ)
@@ -249,7 +254,7 @@ export const AdminBrokersPage: React.FC = () => {
                 <Clock className="w-4 h-4 text-amber-500" />
               </div>
               <div className="text-2xl font-black text-amber-600 font-mono">
-                {formatRubles(totalPendingRub || 360000)}
+                {formatRubles(totalPendingRub || 0)}
               </div>
               <p className="text-[11px] text-slate-500">
                 Фиксированная ставка: 30 000 ₽ за закрытый лот
@@ -308,14 +313,29 @@ export const AdminBrokersPage: React.FC = () => {
               </select>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowAddPartnerModal(true)}
-              className="px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Зарегистрировать брокера</span>
-            </button>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setReconciliationPartner(filteredPartners[0] || null);
+                  setShowReconciliationModal(true);
+                }}
+                className="px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+                title="Сформировать единый или индивидуальный акт сверки расчетов"
+              >
+                <FileText className="w-4 h-4 text-purple-400" />
+                <span>Сформировать акт сверки</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAddPartnerModal(true)}
+                className="px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Зарегистрировать брокера</span>
+              </button>
+            </div>
           </div>
 
           {/* Brokers & Referral Ledger Table */}
@@ -417,17 +437,30 @@ export const AdminBrokersPage: React.FC = () => {
                           </td>
 
                           <td className="py-3.5 px-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPayoutModal(partner)}
-                              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                                hasPending
-                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                              }`}
-                            >
-                              {hasPending ? 'Оформить выплату' : 'Провести расчет'}
-                            </button>
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReconciliationPartner(partner);
+                                  setShowReconciliationModal(true);
+                                }}
+                                className="p-2 text-slate-500 hover:text-purple-600 rounded-xl hover:bg-purple-50 transition-colors border border-slate-200"
+                                title="Сформировать акт сверки по партнеру"
+                              >
+                                <Printer className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPayoutModal(partner)}
+                                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                                  hasPending
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                                }`}
+                              >
+                                {hasPending ? 'Оформить выплату' : 'Провести расчет'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -674,6 +707,110 @@ export const AdminBrokersPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: RECONCILIATION STATEMENT */}
+      {showReconciliationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2 text-purple-600">
+                <FileText className="w-5 h-5" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Акт сверки взаимных расчетов с агентом
+                </h3>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Печать / Экспорт</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReconciliationModal(false)}
+                  className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {reconciliationPartner ? (
+              <div className="space-y-4 text-xs text-slate-700">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-200 pb-2">
+                    <span className="font-bold text-slate-900 text-sm">{reconciliationPartner.name}</span>
+                    <span className="font-mono text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      Код партнера: {reconciliationPartner.referralCode}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                    <div>Организация: <strong className="text-slate-800">{reconciliationPartner.organization}</strong></div>
+                    <div>Телефон: <strong className="text-slate-800">{reconciliationPartner.phone}</strong></div>
+                    <div>Статус договора: <strong className="text-emerald-700">Активен (Оферта партнерской программы)</strong></div>
+                    <div>Дата акта: <strong className="text-slate-800">{new Date().toLocaleDateString('ru-RU')}</strong></div>
+                  </div>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-600 font-bold text-[11px]">
+                      <tr>
+                        <th className="py-2.5 px-3">Параметр взаиморасчетов</th>
+                        <th className="py-2.5 px-3 text-right">Показатель</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr>
+                        <td className="py-2.5 px-3">Количество переданных заявок (лидов)</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          {reconciliationPartner.leadsCountMonthly}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3">Тариф вознаграждения за закрытый лот</td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-700">30 000 ₽</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3">Сумма фактически выплаченных средств</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                          {formatRubles(reconciliationPartner.paidBonusesRub || 0)}
+                        </td>
+                      </tr>
+                      <tr className="bg-amber-50/50">
+                        <td className="py-2.5 px-3 font-bold text-slate-800">Текущий остаток к перечислению</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700 text-sm">
+                          {formatRubles(reconciliationPartner.pendingBonusesRub || 0)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 text-[11px] text-purple-950">
+                  Настоящий акт фиксирует состояние расчетов между платформой «DomExit» и партнером на текущую дату. Выплата комиссионного вознаграждения осуществляется безналичным расчетом в соответствии со статьей 152-ФЗ и агентским соглашением.
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-400">
+                Выберите партнера для формирования акта сверки.
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReconciliationModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+              >
+                Закрыть
+              </button>
+            </div>
           </div>
         </div>
       )}

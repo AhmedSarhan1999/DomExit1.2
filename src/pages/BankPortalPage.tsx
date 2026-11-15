@@ -122,7 +122,7 @@ export const BankPortalPage: React.FC = () => {
   // Document Vault Preview Modal
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [vaultModalTitle, setVaultModalTitle] = useState('');
-  const [vaultEntityId, setVaultEntityId] = useState('U-10566');
+  const [vaultEntityId, setVaultEntityId] = useState('');
 
   // Special Approval Decision Modal State (Task 5: Per-Project Granular Approval)
   const [selectedSpecialReq, setSelectedSpecialReq] = useState<SpecialApprovalRequest | null>(null);

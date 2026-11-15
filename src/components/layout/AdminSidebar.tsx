@@ -68,7 +68,7 @@ export const AdminSidebar: React.FC = () => {
       roles: ['owner', 'employee'],
     },
     {
-      path: '/admin/matchmaker/U-10566',
+      path: '/admin/matchmaker',
       matchPrefix: '/admin/matchmaker',
       label: isOwner
         ? language === 'ru'
@@ -81,21 +81,21 @@ export const AdminSidebar: React.FC = () => {
       roles: ['owner', 'employee'],
     },
     {
-      path: '/admin/packaging/U-10566',
+      path: '/admin/packaging',
       matchPrefix: '/admin/packaging',
       label: language === 'ru' ? 'Каталог и упаковка 152-ФЗ' : 'Packaging Studio 152-FZ',
       icon: PackageCheck,
       roles: ['owner', 'employee'],
     },
     {
-      path: '/admin/legal-audit/U-10566',
+      path: '/admin/legal-audit',
       matchPrefix: '/admin/legal-audit',
       label: language === 'ru' ? 'Юридический аудит (42 пункта)' : 'Legal Audit (42 Checks)',
       icon: Scale,
       roles: ['owner', 'employee'],
     },
     {
-      path: '/admin/closing/DEAL-2025-10566',
+      path: '/admin/closing',
       matchPrefix: '/admin/closing',
       label: language === 'ru' ? 'Сделки в банках (Эскроу)' : 'Bank Escrow Closing',
       icon: Building2,

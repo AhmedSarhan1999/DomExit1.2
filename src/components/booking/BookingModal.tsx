@@ -52,6 +52,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   );
   const [uploadedDocMeta, setUploadedDocMeta] = useState<DocumentMetadata | null>(null);
   const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
+  const [docUploadError, setDocUploadError] = useState<string | null>(null);
+  const [uploadProgressMsg, setUploadProgressMsg] = useState<string>('');
 
   const [selectedBank, setSelectedBank] = useState<string>('Сбербанк');
   const [readiness, setReadiness] = useState<'48h' | '1-2weeks'>('48h');
@@ -76,15 +78,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Real browser file upload stored directly in Yandex S3 Emulator (StorageService)
+  // Real browser file upload stored directly in Yandex S3 (StorageService)
   const handleUploadBankDoc = async () => {
     try {
+      setDocUploadError(null);
       setIsUploadingDoc(true);
+      setUploadProgressMsg('Выбор файла и валидация формата...');
       const selected = await FileManager.selectAndReadFile(
         purchaseTrack === 'full_cash' ? 'other' : 'mortgage_approval',
         '.pdf,.png,.jpg,.jpeg,.doc,.docx'
       );
       if (selected && selected.file) {
+        setUploadProgressMsg('Шифрование (AES-256) и передача в Yandex Object Storage S3...');
         const meta = await StorageService.uploadDocument({
           file: selected.file,
           category: purchaseTrack === 'full_cash' ? 'buyer_cash_statement' : 'mortgage_approval',
@@ -98,12 +103,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           clientCode: user?.clientCode || 'DEX-BUYER',
         });
         setUploadedDocMeta(meta);
+        setUploadProgressMsg('');
         setErrorMsg(null);
       }
-    } catch (err) {
-      console.warn('File upload aborted:', err);
+    } catch (err: any) {
+      console.error('File upload error:', err);
+      setDocUploadError('Ошибка передачи документа в защищенное хранилище S3. Пожалуйста, повторите попытку.');
     } finally {
       setIsUploadingDoc(false);
+      setUploadProgressMsg('');
     }
   };
 
@@ -362,12 +370,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <UploadCloud className="w-4 h-4 text-emerald-600" />
                   <span className="truncate">
                     {isUploadingDoc
-                      ? 'Шифрование и загрузка в S3...'
+                      ? (uploadProgressMsg || 'Шифрование и загрузка в S3...')
                       : uploadedDocMeta
                       ? `В сейфе S3: ${uploadedDocMeta.name}`
                       : 'Загрузить выписку со счета (PDF / JPG / PNG)'}
                   </span>
                 </button>
+                {docUploadError && (
+                  <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center space-x-1.5 mt-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                    <span>{docUploadError}</span>
+                  </div>
+                )}
                 {uploadedDocMeta && (
                   <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">
                     ✓ Сохранено в защищенном хранилище ({(uploadedDocMeta.sizeBytes / 1024).toFixed(1)} КБ • SHA-256)
@@ -416,12 +430,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <UploadCloud className="w-4 h-4 text-amber-600" />
                     <span className="truncate">
                       {isUploadingDoc
-                        ? 'Шифрование S3...'
+                        ? (uploadProgressMsg || 'Шифрование S3...')
                         : uploadedDocMeta
                         ? `В сейфе S3: ${uploadedDocMeta.name}`
                         : 'Загрузить справку банка'}
                     </span>
                   </button>
+                  {docUploadError && (
+                    <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center space-x-1.5 mt-1.5">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                      <span>{docUploadError}</span>
+                    </div>
+                  )}
                   {uploadedDocMeta && (
                     <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">
                       ✓ Документ сохранен в S3 ({(uploadedDocMeta.sizeBytes / 1024).toFixed(1)} КБ)

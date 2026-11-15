@@ -691,6 +691,25 @@ class DevelopersRepositoryController {
 
     await DatabaseGateway.save(DEVELOPERS_COLLECTION, newDev);
 
+    // Automatically update the linked lot's developer and accreditation status
+    if (req.lotId || req.lotCode) {
+      try {
+        const lotIdOrCode = req.lotCode || req.lotId || '';
+        const lot = lotIdOrCode ? await LotsRepository.getByCode(lotIdOrCode) : null;
+        if (lot) {
+          lot.developer = newDev.name;
+          lot.developerInn = newDev.inn;
+          lot.developerAccreditationStatus = 'accredited';
+          if (lot.tags) {
+            lot.tags = lot.tags.filter((t: string) => !t.includes('аккредитации'));
+          }
+          await LotsRepository.update(lot);
+        }
+      } catch (err) {
+        console.warn('[DevelopersRepository] Failed to sync linked lot developer status:', err);
+      }
+    }
+
     await AuditLogsRepository.addLog({
       operatorName,
       operatorRole: 'owner',

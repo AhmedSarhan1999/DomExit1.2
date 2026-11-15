@@ -65,7 +65,12 @@ export const LotDetailsPage: React.FC = () => {
   const [isDevAccredited, setIsDevAccredited] = useState<boolean>(true);
 
   useEffect(() => {
-    const code = lotCode || 'U-10566';
+    const code = lotCode || '';
+    if (!code) {
+      setLot(null);
+      setLoading(false);
+      return;
+    }
 
     async function fetchLot(shouldIncrementViews = false) {
       if (shouldIncrementViews) {

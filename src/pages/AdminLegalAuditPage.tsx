@@ -128,9 +128,9 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [selectedBank, setSelectedBank] = useState('Сбербанк');
 
   const isEmployee = user?.activeRole === 'employee';
-  const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
+  const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
   const curatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Старший юрист)' : 'Ahmed Abdallah (Владелец / CEO)');
+    user?.name || (isEmployee ? 'Куратор DomExit (Юрист)' : 'Руководство платформы DomExit');
 
   const loadLotData = async () => {
     const pool = isEmployee
@@ -139,9 +139,10 @@ export const AdminLegalAuditPage: React.FC = () => {
 
     setAccessibleLots(pool);
 
-    const code = (lotId || 'U-10566').toUpperCase();
-    const found =
-      pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) || pool[0];
+    const code = (lotId || '').toUpperCase();
+    const found = code
+      ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code)
+      : pool[0] || null;
     
     if (found) {
       setLot(found);
@@ -197,9 +198,9 @@ export const AdminLegalAuditPage: React.FC = () => {
   const isApprovalEligible =
     allCheckpointsEvaluated && allCheckpointsHaveProof && isIndexSufficient && !hasCriticalRisk;
 
-  const currentLotCode = lot?.lotCode || 'U-10566';
-  const sellerInn = lot?.sellerInn || '781432994102';
-  const sellerFullName = lot?.ownerDossier?.fullNameMasked || 'Александр Владимирович Б.';
+  const currentLotCode = lot?.lotCode || '';
+  const sellerInn = lot?.sellerInn || '—';
+  const sellerFullName = lot?.ownerDossier?.fullNameMasked || 'Правообладатель ДДУ';
 
   const handleOpenInspector = (cp: LegalAuditCheckpoint) => {
     setInspectingCheckpoint(cp);
@@ -297,10 +298,10 @@ export const AdminLegalAuditPage: React.FC = () => {
   };
 
   const getMemoText = () => {
-    const cashStr = formatRubles(lot?.cashPaidBySeller || 2485230);
-    const dduNum = lot?.ownerDossier?.dduNumber || `№ ЧН-12/2-${currentLotCode}`;
-    const devName = lot?.developer || 'Setl Group';
-    const penaltyStr = formatRubles(Math.round((lot?.dduContractPrice || 10000000) * 0.15));
+    const cashStr = formatRubles(lot?.cashPaidBySeller || 0);
+    const dduNum = lot?.ownerDossier?.dduNumber || `№ ДДУ-${currentLotCode || '—'}`;
+    const devName = lot?.developer || 'Застройщик';
+    const penaltyStr = formatRubles(Math.round((lot?.dduContractPrice || 0) * 0.15));
 
     let text = `Цена уступки права требования в размере ${cashStr} строго соответствует сумме фактически внесенных Цедентом денежных средств по Договору участия в долевом строительстве ${dduNum}.\n\n`;
     text += `Стороны констатируют, что установление данной цены экономически обусловлено предотвращением финансовых убытков Цедента в виде контрактного штрафа Застройщика (${devName}) в размере 15% (${penaltyStr}) при одностороннем отказе от договора. В силу ст. 302 ГК РФ и ст. 61.2 ФЗ-127 Цессионарий признается добросовестным приобретателем, действовавшим в стандартных условиях делового оборота без цели причинения вреда кредиторам.`;
