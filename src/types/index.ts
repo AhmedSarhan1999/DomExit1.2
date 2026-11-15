@@ -874,3 +874,5 @@ export interface ProofOfConsentRecord {
   isWithdrawn?: boolean;
   withdrawnAt?: string;
 }
+
+export * from './legal';

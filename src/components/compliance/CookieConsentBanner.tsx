@@ -111,7 +111,14 @@ export const CookieConsentBanner: React.FC = () => {
                   авторизации и работы расчетов эскроу. Аналитические трекеры запускаются только с
                   вашего явного согласия с анонимизацией IP-адресов. Подробнее в нашей{' '}
                   <Link
-                    to="/privacy"
+                    to="/legal/cookies"
+                    className="text-emerald-700 underline font-semibold hover:text-emerald-800"
+                  >
+                    Политике файлов cookie
+                  </Link>
+                  {' '}и{' '}
+                  <Link
+                    to="/legal/privacy"
                     className="text-emerald-700 underline font-semibold hover:text-emerald-800"
                   >
                     Политике конфиденциальности

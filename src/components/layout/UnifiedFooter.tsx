@@ -180,20 +180,29 @@ export const UnifiedFooter: React.FC = () => {
               © 2026 {profile.shortName}. Все права защищены. Сервис аккредитован для расчетов по 214-ФЗ.
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
-              <Link to="/privacy" className="hover:text-emerald-700 underline">
+              <Link to="/legal" className="hover:text-emerald-700 underline font-semibold text-emerald-900">
+                Правовой центр
+              </Link>
+              <Link to="/legal/privacy" className="hover:text-emerald-700 underline">
                 Политика 152-ФЗ
               </Link>
-              <Link to="/terms" className="hover:text-emerald-700 underline">
+              <Link to="/legal/terms" className="hover:text-emerald-700 underline">
                 Пользовательское соглашение
               </Link>
-              <Link to="/consent-pd" className="hover:text-emerald-700 underline">
+              <Link to="/legal/consent-pd" className="hover:text-emerald-700 underline">
                 Согласие на обработку ПД
               </Link>
-              <Link to="/consent-ads" className="hover:text-emerald-700 underline">
+              <Link to="/legal/consent-ads" className="hover:text-emerald-700 underline">
                 Реклама (ФЗ-38)
               </Link>
-              <Link to="/consent-distribution" className="hover:text-emerald-700 underline">
+              <Link to="/legal/consent-distribution" className="hover:text-emerald-700 underline">
                 Распространение ПД (ст. 10.1)
+              </Link>
+              <Link to="/legal/cookies" className="hover:text-emerald-700 underline">
+                Cookie
+              </Link>
+              <Link to="/legal/call-recording" className="hover:text-emerald-700 underline">
+                Запись звонков
               </Link>
               <Link to="/legal/archive" className="hover:text-emerald-700 underline text-emerald-800 font-bold">
                 Архив редакций (SHA-256)

@@ -38,13 +38,11 @@ import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { DatabaseInitializer } from './dal/initializer';
 import { useFeatureFlagsStore } from './stores/useFeatureFlagsStore';
 
-// Federal Law 152-FZ & 38-FZ Legal Pages
-import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage';
-import { TermsOfServicePage } from './pages/legal/TermsOfServicePage';
-import { ConsentPdPage } from './pages/legal/ConsentPdPage';
-import { ConsentAdsPage } from './pages/legal/ConsentAdsPage';
-import { ConsentDistributionPage } from './pages/legal/ConsentDistributionPage';
+// Federal Law 152-FZ & 38-FZ Legal Engine & Unified /legal/* Routes
+import { LegalIndexPage } from './pages/legal/LegalIndexPage';
+import { LegalDocumentReaderPage } from './pages/legal/LegalDocumentReaderPage';
 import { LegalArchivePage } from './pages/legal/LegalArchivePage';
+import { LegalArchiveSnapshotPage } from './pages/legal/LegalArchiveSnapshotPage';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
 
@@ -100,13 +98,20 @@ export const App: React.FC = () => {
               <Route path="/knowledge/:articleSlug" element={<ArticleDetailPage />} />
               <Route path="/faq" element={<FAQPage />} />
 
-              {/* Federal 152-FZ & 38-FZ Legal Routes & Transparency Archive */}
-              <Route path="/privacy" element={<PrivacyPolicyPage />} />
-              <Route path="/terms" element={<TermsOfServicePage />} />
-              <Route path="/consent-pd" element={<ConsentPdPage />} />
-              <Route path="/consent-ads" element={<ConsentAdsPage />} />
-              <Route path="/consent-distribution" element={<ConsentDistributionPage />} />
+              {/* Unified /legal/* Enterprise Legal CMS Routes */}
+              <Route path="/legal" element={<LegalIndexPage />} />
               <Route path="/legal/archive" element={<LegalArchivePage />} />
+              <Route path="/legal/archive/:slug/:version" element={<LegalArchiveSnapshotPage />} />
+              <Route path="/legal/:slug" element={<LegalDocumentReaderPage />} />
+
+              {/* Backward-Compatible Legal Redirects */}
+              <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />
+              <Route path="/terms" element={<Navigate to="/legal/terms" replace />} />
+              <Route path="/consent-pd" element={<Navigate to="/legal/consent-pd" replace />} />
+              <Route path="/consent-ads" element={<Navigate to="/legal/consent-ads" replace />} />
+              <Route path="/consent-distribution" element={<Navigate to="/legal/consent-distribution" replace />} />
+              <Route path="/cookies" element={<Navigate to="/legal/cookies" replace />} />
+              <Route path="/call-recording" element={<Navigate to="/legal/call-recording" replace />} />
 
               {/* Unified Client Account & Portal */}
               <Route path="/portal" element={<ClientPortalPage />} />

@@ -22,6 +22,7 @@ export const ISOLATED_COLLECTIONS: readonly string[] = [
   'partner_banks',
   'bank_employees',
   'user_consents',
+  'user_consent_logs',
   'developers',
   'developer_accreditation_requests',
   'users',

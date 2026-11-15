@@ -16,6 +16,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
+import { ConsentCheckboxes, ConsentState } from '../compliance/ConsentCheckboxes';
+import { LegalRepository } from '../../dal/repositories/LegalRepository';
 
 export const AuthModal: React.FC = () => {
   const navigate = useNavigate();
@@ -41,6 +43,11 @@ export const AuthModal: React.FC = () => {
   const [phone, setPhone] = useState('+7 ');
   const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller' | 'partner'>('buyer');
   const [localError, setLocalError] = useState<string | null>(null);
+  const [consents, setConsents] = useState<ConsentState>({
+    pdProcessing: false,
+    termsAgreed: false,
+    ads: false,
+  });
 
   if (!isAuthModalOpen) return null;
 
@@ -72,8 +79,34 @@ export const AuthModal: React.FC = () => {
           }
         }
       } else {
+        if (!consents.pdProcessing || !consents.termsAgreed) {
+          setLocalError(
+            language === 'ru'
+              ? 'Для регистрации необходимо подтвердить согласие на обработку ПД (152-ФЗ) и принять Пользовательское соглашение'
+              : 'Please accept terms and personal data processing to register'
+          );
+          return;
+        }
+
         const registered = await registerWithEmail(email, password, name, phone, selectedRole);
         if (registered) {
+          try {
+            await LegalRepository.logUserConsent({
+              user_id: registered.id || registered.clientCode,
+              user_name: name || registered.name,
+              phone: phone || registered.phone,
+              email: email,
+              action_type: 'registration',
+              consented_documents: [
+                { document_slug: 'terms', is_accepted: consents.termsAgreed },
+                { document_slug: 'privacy', is_accepted: consents.pdProcessing },
+                { document_slug: 'consent-pd', is_accepted: consents.pdProcessing },
+                { document_slug: 'consent-ads', is_accepted: consents.ads },
+              ],
+            });
+          } catch (logErr) {
+            console.warn('[AuthModal] Consent log sync notice:', logErr);
+          }
           navigate('/portal');
         }
       }
@@ -310,6 +343,15 @@ export const AuthModal: React.FC = () => {
                 />
               </div>
             </div>
+
+            {mode === 'register' && (
+              <div className="pt-1">
+                <ConsentCheckboxes
+                  value={consents}
+                  onChange={setConsents}
+                />
+              </div>
+            )}
 
             <button
               type="submit"

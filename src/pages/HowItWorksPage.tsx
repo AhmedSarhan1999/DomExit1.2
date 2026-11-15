@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
+import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import {
   ShieldCheck,
   ArrowRight,
@@ -17,6 +18,7 @@ import {
 
 export const HowItWorksPage: React.FC = () => {
   const { language } = useLanguage();
+  const { channels } = usePublicChannelsStore();
   const [activeTrack, setActiveTrack] = useState<'seller' | 'buyer'>('seller');
 
   return (
@@ -507,7 +509,7 @@ export const HowItWorksPage: React.FC = () => {
             </p>
           </div>
           <a
-            href="https://t.me/domexit_ru"
+            href={channels.telegramBotUrl || channels.telegramChannelUrl}
             target="_blank"
             rel="noreferrer"
             className="px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center space-x-2 shrink-0"

@@ -46,7 +46,7 @@ export const ConsentCheckboxes: React.FC<ConsentCheckboxesProps> = ({
           <strong className="text-slate-900">Я даю согласие</strong> на обработку моих персональных
           данных в соответствии с{' '}
           <Link
-            to="/consent-pd"
+            to="/legal/consent-pd"
             target="_blank"
             rel="noreferrer"
             className="text-emerald-700 underline font-semibold hover:text-emerald-800"
@@ -55,7 +55,7 @@ export const ConsentCheckboxes: React.FC<ConsentCheckboxesProps> = ({
           </Link>{' '}
           и ознакомлен с{' '}
           <Link
-            to="/privacy"
+            to="/legal/privacy"
             target="_blank"
             rel="noreferrer"
             className="text-emerald-700 underline font-semibold hover:text-emerald-800"
@@ -79,7 +79,7 @@ export const ConsentCheckboxes: React.FC<ConsentCheckboxesProps> = ({
         <span className="leading-snug">
           <strong className="text-slate-900">Я принимаю</strong> условия{' '}
           <Link
-            to="/terms"
+            to="/legal/terms"
             target="_blank"
             rel="noreferrer"
             className="text-emerald-700 underline font-semibold hover:text-emerald-800"
@@ -104,7 +104,7 @@ export const ConsentCheckboxes: React.FC<ConsentCheckboxesProps> = ({
           Я согласен получать информационные и рекламные уведомления о новых дисконтных объектах,
           ставках банков и статусе сделок в соответствии со ст. 18 ФЗ-38 «О рекламе» (
           <Link
-            to="/consent-ads"
+            to="/legal/consent-ads"
             target="_blank"
             rel="noreferrer"
             className="text-slate-700 underline hover:text-emerald-700"

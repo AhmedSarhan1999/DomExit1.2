@@ -11,6 +11,7 @@ import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
+import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { BuyerCandidate, DealTrack, DocumentMetadata, Employee, Lot } from '../types';
 import {
@@ -48,6 +49,7 @@ export const ClientTrackerPage: React.FC = () => {
   const { user, quickDemoLogin, openAuthModal } = useAuth();
   const { isProduction } = useEnvironmentStore();
   const { enableBankPortal } = useFeatureFlagsStore();
+  const { channels } = usePublicChannelsStore();
   const showTestSwitchers = !isProduction;
 
   const [deal, setDeal] = useState<DealTrack | null>(null);
@@ -370,7 +372,9 @@ export const ClientTrackerPage: React.FC = () => {
                 href={
                   (curator?.telegram || '').startsWith('http')
                     ? curator?.telegram
-                    : `https://t.me/${(curator?.telegram || 'domexit_ru').replace('@', '')}`
+                    : curator?.telegram
+                    ? `https://t.me/${curator.telegram.replace('@', '')}`
+                    : channels.telegramBotUrl || channels.telegramChannelUrl || 'https://t.me/domexit_ru'
                 }
                 target="_blank"
                 rel="noreferrer"
@@ -532,7 +536,7 @@ export const ClientTrackerPage: React.FC = () => {
                           ? curator.telegram.startsWith('http')
                             ? curator.telegram
                             : `https://t.me/${curator.telegram.replace('@', '')}`
-                          : 'https://t.me/domexit_ru'
+                          : channels.telegramBotUrl || channels.telegramChannelUrl || 'https://t.me/domexit_ru'
                       }
                       target="_blank"
                       rel="noopener noreferrer"

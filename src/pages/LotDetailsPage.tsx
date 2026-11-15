@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
+import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { Lot, Employee, DistrictYieldConfig } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
@@ -46,6 +47,7 @@ export const LotDetailsPage: React.FC = () => {
   const { language } = useLanguage();
   const { user, isFavorite, toggleFavorite } = useAuth();
   const { enableBankPortal } = useFeatureFlagsStore();
+  const { channels } = usePublicChannelsStore();
 
   const [lot, setLot] = useState<Lot | null>(null);
   const [districtYield, setDistrictYield] = useState<DistrictYieldConfig | null>(null);
@@ -1035,11 +1037,9 @@ export const LotDetailsPage: React.FC = () => {
                   href={
                     (curatorEmployee?.telegram || lot.curator.telegram || '').startsWith('http')
                       ? curatorEmployee?.telegram || lot.curator.telegram
-                      : `https://t.me/${(
-                          curatorEmployee?.telegram ||
-                          lot.curator.telegram ||
-                          'domexit_ru'
-                        ).replace('@', '')}`
+                      : curatorEmployee?.telegram || lot.curator.telegram
+                      ? `https://t.me/${(curatorEmployee?.telegram || lot.curator.telegram).replace('@', '')}`
+                      : channels.telegramChannelUrl || 'https://t.me/domexit_official'
                   }
                   target="_blank"
                   rel="noreferrer"

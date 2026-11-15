@@ -1,5 +1,6 @@
 import { UserConsentRecord } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { LegalRepository } from './LegalRepository';
 
 const COLLECTION = 'user_consents';
 
@@ -48,6 +49,36 @@ export class UserConsentsRepository {
     };
 
     await DatabaseGateway.save<UserConsentRecord>(COLLECTION, record);
+
+    // Synchronize to Enterprise Legal Audit Logs with SHA-256 snapshot hashes
+    try {
+      const rawCtx = (params.formSource || params.context || 'seller_submission').toLowerCase();
+      const actionType = rawCtx.includes('book') 
+        ? 'buyer_reservation' 
+        : rawCtx.includes('auth') || rawCtx.includes('register') 
+        ? 'registration' 
+        : rawCtx.includes('cookie') 
+        ? 'cookie_consent' 
+        : 'seller_submission';
+
+      await LegalRepository.logUserConsent({
+        user_id: params.userId || params.clientCode,
+        phone: params.phone,
+        email: params.email,
+        action_type: actionType,
+        consented_documents: [
+          { document_slug: 'terms', is_accepted: items.termsAgreed },
+          { document_slug: 'privacy', is_accepted: items.pdProcessing },
+          { document_slug: 'consent-pd', is_accepted: items.pdProcessing },
+          { document_slug: 'consent-ads', is_accepted: !!items.ads },
+        ],
+        user_agent: userAgent,
+        ip_masked: ipAddress,
+      });
+    } catch (auditErr) {
+      console.warn('[UserConsentsRepository] LegalRepository logUserConsent audit sync notice:', auditErr);
+    }
+
     return record;
   }
 

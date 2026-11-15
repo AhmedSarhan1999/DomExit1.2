@@ -31,6 +31,7 @@ import {
   ASYNC_NETWORK_TIMEOUT_MESSAGE,
 } from '../utils/asyncGuard';
 import { useAuth } from '../context/AuthContext';
+import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { ConsentCheckboxes, ConsentState } from '../components/compliance/ConsentCheckboxes';
 import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
@@ -57,6 +58,7 @@ import {
 export const SellersPage: React.FC = () => {
   const { language } = useLanguage();
   const { user, login } = useAuth();
+  const { channels } = usePublicChannelsStore();
   const navigate = useNavigate();
 
   // Wizard Step (1 to 4)
@@ -1587,7 +1589,7 @@ export const SellersPage: React.FC = () => {
             </p>
           </div>
           <a
-            href="https://t.me/domexit_ru"
+            href={channels.telegramBotUrl || channels.telegramChannelUrl}
             target="_blank"
             rel="noreferrer"
             className="px-5 py-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-md transition-all flex items-center space-x-2 shrink-0"
