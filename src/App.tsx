@@ -1,55 +1,54 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { AuthProvider } from './context/AuthContext';
 import { PublicLayout } from './components/layout/PublicLayout';
+import { PageSkeletonLoader } from './components/common/Skeletons';
 
-// Public User-Facing Pages (Interfaces 1 to 10 + Supplementary)
-import { HomePage } from './pages/HomePage';
-import { SellersPage } from './pages/SellersPage';
-import { OpportunitiesPage } from './pages/OpportunitiesPage';
-import { VipCatalogPage } from './pages/VipCatalogPage';
-import { LotDetailsPage } from './pages/LotDetailsPage';
-import { HowItWorksPage } from './pages/HowItWorksPage';
-import { StoryPage } from './pages/StoryPage';
-import { InvestorsPage } from './pages/InvestorsPage';
-import { PartnersPublicPage } from './pages/PartnersPublicPage';
-import { VerifyCertificatePage } from './pages/VerifyCertificatePage';
+// Public User-Facing Pages (Lazy Loaded for minimal initial bundle)
+const HomePage = React.lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
+const SellersPage = React.lazy(() => import('./pages/SellersPage').then((m) => ({ default: m.SellersPage })));
+const OpportunitiesPage = React.lazy(() => import('./pages/OpportunitiesPage').then((m) => ({ default: m.OpportunitiesPage })));
+const VipCatalogPage = React.lazy(() => import('./pages/VipCatalogPage').then((m) => ({ default: m.VipCatalogPage })));
+const LotDetailsPage = React.lazy(() => import('./pages/LotDetailsPage').then((m) => ({ default: m.LotDetailsPage })));
+const HowItWorksPage = React.lazy(() => import('./pages/HowItWorksPage').then((m) => ({ default: m.HowItWorksPage })));
+const StoryPage = React.lazy(() => import('./pages/StoryPage').then((m) => ({ default: m.StoryPage })));
+const PartnersPublicPage = React.lazy(() => import('./pages/PartnersPublicPage').then((m) => ({ default: m.PartnersPublicPage })));
+const VerifyCertificatePage = React.lazy(() => import('./pages/VerifyCertificatePage').then((m) => ({ default: m.VerifyCertificatePage })));
 
 // Unified Client Portal (Interface 11 & User Account)
-import { ClientPortalPage } from './pages/ClientPortalPage';
-import { ClientTrackerPage } from './pages/ClientTrackerPage';
+const ClientPortalPage = React.lazy(() => import('./pages/ClientPortalPage').then((m) => ({ default: m.ClientPortalPage })));
+const ClientTrackerPage = React.lazy(() => import('./pages/ClientTrackerPage').then((m) => ({ default: m.ClientTrackerPage })));
 
 // Admin, CRM & Operations Pages (Interfaces 12 to 18)
-import { AdminDashboardPage } from './pages/AdminDashboardPage';
-import { AdminPipelinePage } from './pages/AdminPipelinePage';
-import { AdminPackagingPage } from './pages/AdminPackagingPage';
-import { AdminLegalAuditPage } from './pages/AdminLegalAuditPage';
-import { AdminMatchmakerPage } from './pages/AdminMatchmakerPage';
-import { AdminClosingPage } from './pages/AdminClosingPage';
-import { AdminPartnersBotPage } from './pages/AdminPartnersBotPage';
-import { AdminBrokersPage } from './pages/AdminBrokersPage';
-import { initReferralTracker } from './utils/referralTracker';
-import { BankPortalPage } from './pages/BankPortalPage';
+const AdminDashboardPage = React.lazy(() => import('./pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
+const AdminPipelinePage = React.lazy(() => import('./pages/AdminPipelinePage').then((m) => ({ default: m.AdminPipelinePage })));
+const AdminPackagingPage = React.lazy(() => import('./pages/AdminPackagingPage').then((m) => ({ default: m.AdminPackagingPage })));
+const AdminLegalAuditPage = React.lazy(() => import('./pages/AdminLegalAuditPage').then((m) => ({ default: m.AdminLegalAuditPage })));
+const AdminMatchmakerPage = React.lazy(() => import('./pages/AdminMatchmakerPage').then((m) => ({ default: m.AdminMatchmakerPage })));
+const AdminClosingPage = React.lazy(() => import('./pages/AdminClosingPage').then((m) => ({ default: m.AdminClosingPage })));
+const AdminBrokersPage = React.lazy(() => import('./pages/AdminBrokersPage').then((m) => ({ default: m.AdminBrokersPage })));
+const BankPortalPage = React.lazy(() => import('./pages/BankPortalPage').then((m) => ({ default: m.BankPortalPage })));
+const AdminArchiveLogsPage = React.lazy(() => import('./pages/AdminArchiveLogsPage').then((m) => ({ default: m.AdminArchiveLogsPage })));
+const AdminCuratorProfilePage = React.lazy(() => import('./pages/AdminCuratorProfilePage').then((m) => ({ default: m.AdminCuratorProfilePage })));
+
+// Federal Law 152-FZ & 38-FZ Legal Engine & Unified /legal/* Routes
+const LegalIndexPage = React.lazy(() => import('./pages/legal/LegalIndexPage').then((m) => ({ default: m.LegalIndexPage })));
+const LegalDocumentReaderPage = React.lazy(() => import('./pages/legal/LegalDocumentReaderPage').then((m) => ({ default: m.LegalDocumentReaderPage })));
+const LegalArchivePage = React.lazy(() => import('./pages/legal/LegalArchivePage').then((m) => ({ default: m.LegalArchivePage })));
+const LegalArchiveSnapshotPage = React.lazy(() => import('./pages/legal/LegalArchiveSnapshotPage').then((m) => ({ default: m.LegalArchiveSnapshotPage })));
+
+// SEO Legal Knowledge Hub & FAQ
+const KnowledgeHubPage = React.lazy(() => import('./pages/knowledge/KnowledgeHubPage').then((m) => ({ default: m.KnowledgeHubPage })));
+const ArticleDetailPage = React.lazy(() => import('./pages/knowledge/ArticleDetailPage').then((m) => ({ default: m.ArticleDetailPage })));
+const FAQPage = React.lazy(() => import('./pages/knowledge/FAQPage').then((m) => ({ default: m.FAQPage })));
+
 import { BankGatewayErrorBoundary } from './components/common/BankGatewayErrorBoundary';
-import { AdminArchiveLogsPage } from './pages/AdminArchiveLogsPage';
-import { AdminCuratorProfilePage } from './pages/AdminCuratorProfilePage';
 import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { DatabaseInitializer } from './dal/initializer';
 import { useFeatureFlagsStore } from './stores/useFeatureFlagsStore';
-
-// Federal Law 152-FZ & 38-FZ Legal Engine & Unified /legal/* Routes
-import { LegalIndexPage } from './pages/legal/LegalIndexPage';
-import { LegalDocumentReaderPage } from './pages/legal/LegalDocumentReaderPage';
-import { LegalArchivePage } from './pages/legal/LegalArchivePage';
-import { LegalArchiveSnapshotPage } from './pages/legal/LegalArchiveSnapshotPage';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
-
-// SEO Legal Knowledge Hub & FAQ
-import { KnowledgeHubPage } from './pages/knowledge/KnowledgeHubPage';
-import { ArticleDetailPage } from './pages/knowledge/ArticleDetailPage';
-import { FAQPage } from './pages/knowledge/FAQPage';
 
 const OpportunityRedirect: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -86,8 +85,9 @@ export const App: React.FC = () => {
           <ScrollToTop />
           <CookieConsentBanner />
           <ConsentGateModal />
-          <Routes>
-            {/* Public Layout Wrapping Global Header & Footer */}
+          <Suspense fallback={<PageSkeletonLoader />}>
+            <Routes>
+              {/* Public Layout Wrapping Global Header & Footer */}
             <Route element={<PublicLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/sellers" element={<SellersPage />} />
@@ -187,7 +187,8 @@ export const App: React.FC = () => {
             {/* Catch-all Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
+        </Suspense>
+      </BrowserRouter>
       </AuthProvider>
     </LanguageProvider>
   );

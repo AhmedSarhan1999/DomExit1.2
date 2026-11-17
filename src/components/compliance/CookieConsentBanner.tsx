@@ -35,20 +35,26 @@ export const CookieConsentBanner: React.FC = () => {
 
   const enableAnonymizedAnalytics = () => {
     if (typeof window === 'undefined') return;
-    // Anonymized telemetry initialization (Block-Before-Consent compliance)
-    const win = window as any;
-    if (!win.ymInitialized) {
-      win.ymInitialized = true;
-      // Configure pseudo-metrika or official tag with IP anonymization
-      if (typeof win.ym === 'function') {
-        win.ym(99999999, 'init', {
-          clickmap: false,
-          trackLinks: true,
-          accurateTrackBounce: true,
-          webvisor: false, // privacy friendly
-          ipAnonymization: true, // Roskomnadzor requirement
-        });
+    const initTask = () => {
+      const win = window as any;
+      if (!win.ymInitialized) {
+        win.ymInitialized = true;
+        if (typeof win.ym === 'function') {
+          win.ym(99999999, 'init', {
+            clickmap: false,
+            trackLinks: true,
+            accurateTrackBounce: true,
+            webvisor: false, // privacy friendly
+            ipAnonymization: true, // Roskomnadzor requirement
+          });
+        }
       }
+    };
+
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(initTask, { timeout: 2000 });
+    } else {
+      setTimeout(initTask, 500);
     }
   };
 

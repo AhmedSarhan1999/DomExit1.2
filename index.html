@@ -6,12 +6,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DomExit — Чистый Выход | Платформа выхода из ДДУ и рассрочек без наценки</title>
     <meta name="description" content="Безопасный выход из договоров ДДУ и рассрочек по 214-ФЗ. Возврат 100% денег продавцу наличными (0% комиссии). Покупка квартир по старой цене договора без наценки." />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- 152-FZ Compliance: Zero foreign IP transmission, self-hosted system font stack -->
+    <style>
+      @supports (font-variation-settings: normal) {
+        :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; }
+      }
+    </style>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased font-sans">
-    <div id="root"></div>
+    <div id="root">
+      <!-- High-Performance Instant Static Shell (Criterion 8: FCP < 300ms) -->
+      <div style="min-height: 100vh; display: flex; flex-direction: column; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <header style="height: 64px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img src="/logo-mark.svg" alt="DomExit" width="32" height="32" style="display: block;" />
+            <span style="font-weight: 800; font-size: 18px; color: #0f172a; letter-spacing: -0.02em;">DOM<span style="color: #10b981;">EXIT</span></span>
+          </div>
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <span style="font-size: 13px; font-weight: 600; color: #64748b;">Каталог 214-ФЗ</span>
+            <span style="font-size: 13px; font-weight: 600; color: #64748b;">Продавцам</span>
+            <span style="font-size: 13px; font-weight: 600; color: #059669;">Войти</span>
+          </div>
+        </header>
+        <main style="max-width: 1200px; margin: 40px auto; padding: 0 16px; width: 100%;">
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 24px; padding: 48px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display: inline-block; padding: 6px 16px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; color: #065f46; font-size: 12px; font-weight: 700; margin-bottom: 16px;">
+              🛡️ Федеральный стандарт безопасного выхода из ДДУ
+            </div>
+            <h1 style="font-size: 32px; font-weight: 900; color: #0f172a; margin: 0 0 16px 0; line-height: 1.2;">
+              Платформа чистого выхода из ДДУ и рассрочек
+            </h1>
+            <p style="color: #64748b; font-size: 16px; max-width: 600px; margin: 0 auto 24px auto;">
+              Возврат 100% денег продавцу без комиссии. Покупка проверенных квартир в новостройках по цене старого договора.
+            </p>
+            <div style="display: inline-flex; height: 16px; width: 16px; border: 2px solid #10b981; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+          </div>
+        </main>
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

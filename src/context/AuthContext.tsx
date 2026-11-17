@@ -770,6 +770,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       openAuthModal('Войдите, чтобы сохранять объекты в избранное');
       return;
     }
+    const previousUser = user;
     const currentFavs = user.favorites || [];
     const isRemoving = currentFavs.includes(lotCode);
     const newFavs = isRemoving
@@ -777,8 +778,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       : [...currentFavs, lotCode];
 
     const updatedUser = { ...user, favorites: newFavs };
-    await persistUserState(updatedUser);
-    await LotsRepository.adjustFavoritesCount(lotCode, isRemoving ? -1 : 1);
+    setUser(updatedUser); // Optimistic UI 0ms immediate responsiveness
+
+    try {
+      await persistUserState(updatedUser);
+      await LotsRepository.adjustFavoritesCount(lotCode, isRemoving ? -1 : 1);
+    } catch (err) {
+      console.error('[OptimisticUI] Favorite update failed, rolling back:', err);
+      setUser(previousUser);
+    }
   };
 
   const isFavorite = (lotCode: string): boolean => {

@@ -16,6 +16,7 @@ import { BookingModal } from '../components/booking/BookingModal';
 import { SmartMortgageCalculator } from '../components/lot/SmartMortgageCalculator';
 import { LotMiniMap } from '../components/lot/LotMiniMap';
 import { PublicLegalReportModal } from '../components/lot/PublicLegalReportModal';
+import { LotDetailsSkeleton } from '../components/common/Skeletons';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -170,16 +171,7 @@ export const LotDetailsPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-8">
-        <div className="text-center space-y-3">
-          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">
-            {language === 'ru' ? `Загрузка досье лота #${lotCode}...` : `Loading Lot #${lotCode}...`}
-          </p>
-        </div>
-      </div>
-    );
+    return <LotDetailsSkeleton />;
   }
 
   if (!lot) {
@@ -477,11 +469,14 @@ export const LotDetailsPage: React.FC = () => {
             
             {/* Media Gallery */}
             <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm space-y-4">
-              <div className="relative h-72 sm:h-96 rounded-2xl overflow-hidden bg-slate-100">
+              <div className="relative h-72 sm:h-96 rounded-2xl overflow-hidden bg-slate-100 aspect-[16/10]">
                 <img
                   src={gallery[activeImageIndex % gallery.length] || lot.imageUrl}
                   alt={lot.complexName}
                   className="w-full h-full object-cover"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                 />
                 <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 text-slate-800 border border-slate-200/60 shadow-xs backdrop-blur-md text-xs font-bold">
                   {lot.constructionReadinessPercent}% готовности корпуса
@@ -504,11 +499,13 @@ export const LotDetailsPage: React.FC = () => {
                           : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
-                      <div className="h-16 rounded-lg overflow-hidden bg-slate-100 mb-1">
+                      <div className="h-16 rounded-lg overflow-hidden bg-slate-100 mb-1 aspect-[16/9]">
                         <img
                           src={gallery[idx % gallery.length]}
                           alt={label}
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       </div>
                       <span className="text-[11px] font-bold text-slate-700 block truncate">
@@ -1187,11 +1184,13 @@ export const LotDetailsPage: React.FC = () => {
                   key={sim.lotCode}
                   className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
                 >
-                  <div className="h-40 bg-slate-100 relative overflow-hidden">
+                  <div className="h-40 bg-slate-100 relative overflow-hidden aspect-[16/9]">
                     <img
                       src={sim.imageUrl}
                       alt={sim.complexName}
                       className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
                     />
                     <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-slate-900/80 text-white text-[10px] font-mono font-bold">
                       #{sim.lotCode}

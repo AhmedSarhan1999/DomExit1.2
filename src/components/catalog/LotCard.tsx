@@ -12,7 +12,7 @@ interface LotCardProps {
   lot: Lot;
 }
 
-export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
+export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
   const { language, t } = useLanguage();
   const { isFavorite, toggleFavorite } = useAuth();
   const { enableBankPortal } = useFeatureFlagsStore();
@@ -36,12 +36,15 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
       
       {/* Top Image Container */}
-      <div className="relative h-56 overflow-hidden bg-slate-100">
+      <div className="relative h-56 overflow-hidden bg-slate-100 aspect-[16/9]">
         <img
           src={lot.imageUrl}
           alt={lot.complexName}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
+          decoding="async"
+          width="400"
+          height="224"
         />
 
         {/* Top Badges */}
@@ -220,3 +223,5 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
     </div>
   );
 };
+
+export const LotCard = React.memo(LotCardComponent);

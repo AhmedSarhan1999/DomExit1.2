@@ -12,6 +12,8 @@ import { AdvancedFilterDrawer } from '../components/catalog/AdvancedFilterDrawer
 import { QuickMatchModal } from '../components/catalog/QuickMatchModal';
 import { VipSubscriptionModal } from '../components/vip/VipSubscriptionModal';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
+import { LotCardSkeleton } from '../components/common/Skeletons';
+import { useDebounce } from '../hooks/useDebounce';
 import { Link } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -53,6 +55,7 @@ export const OpportunitiesPage: React.FC = () => {
 
   const [isVipModalOpen, setIsVipModalOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [activeQuickFilter, setActiveQuickFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'processing' | 'closed'>('all');
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState<boolean>(false);
@@ -157,10 +160,13 @@ export const OpportunitiesPage: React.FC = () => {
     syncUrlParams(selectedCity, selectedDistrict, mode);
   };
 
+  useEffect(() => {
+    // Re-fetch only after debounce stabilizes
+    loadLots(appliedFilters, debouncedSearchQuery, activeQuickFilter, statusFilter, selectedCity, selectedDistrict);
+  }, [debouncedSearchQuery]);
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const q = e.target.value;
-    setSearchQuery(q);
-    loadLots(appliedFilters, q, activeQuickFilter, statusFilter, selectedCity, selectedDistrict);
+    setSearchQuery(e.target.value);
   };
 
   const handleQuickFilterClick = (filterKey: string) => {
@@ -658,12 +664,7 @@ export const OpportunitiesPage: React.FC = () => {
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 py-6">
             {[1, 2, 3, 4, 5, 6].map((n) => (
-              <div key={n} className="bg-white rounded-2xl p-5 border border-slate-200 animate-pulse space-y-4">
-                <div className="h-52 bg-slate-200 rounded-xl" />
-                <div className="h-4 bg-slate-200 rounded w-3/4" />
-                <div className="h-14 bg-slate-100 rounded-xl" />
-                <div className="h-10 bg-slate-200 rounded-xl" />
-              </div>
+              <LotCardSkeleton key={n} />
             ))}
           </div>
         ) : lots.length === 0 ? (

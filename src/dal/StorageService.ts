@@ -4,6 +4,7 @@ import { IStorageService, UploadDocumentParams } from './interfaces/IStorageAdap
 import { AuditLogsRepository } from './repositories/AuditLogsRepository';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 import { downloadDocumentFile } from '../utils/downloadManager';
+import { optimizeImageFile } from '../utils/imageOptimizer';
 
 const IDB_NAME = 'domexit_yandex_s3_emulator';
 const IDB_VERSION = 1;
@@ -352,7 +353,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
 
   async uploadDocument(params: UploadDocumentParams): Promise<DocumentMetadata> {
     const {
-      file,
+      file: rawFile,
       uploadedByUid,
       clientCode,
       entityType,
@@ -361,6 +362,8 @@ class YandexS3CompatibleStorageService implements IStorageService {
       categoryLabelRu,
       bucket = DEFAULT_S3_BUCKET,
     } = params;
+
+    const file = rawFile.type.startsWith('image/') ? await optimizeImageFile(rawFile) : rawFile;
 
     const nowIso = new Date().toISOString();
     const safeName = file.name.replace(/[^\w.\-А-Яа-яЁё]/g, '_');
