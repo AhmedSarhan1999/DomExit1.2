@@ -333,7 +333,7 @@ export const AdminBrokersPage: React.FC = () => {
                 className="px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Зарегистрировать брокера</span>
+                <span>Зарегистрировать брокера</span>
               </button>
             </div>
           </div>

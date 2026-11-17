@@ -2,6 +2,8 @@
  * Real Document Upload, Download & Preview Manager for DomExit
  */
 
+import { downloadDocumentFile, UnifiedDownloadOptions } from './downloadManager';
+
 export interface StoredDocument {
   id: string;
   name: string;
@@ -65,43 +67,44 @@ export class FileManager {
 
   /**
    * Triggers a real browser file download for any stored document or URL.
-   * Intelligently handles reversed arguments if a URL/dataUrl was passed first.
+   * Uses Unified Document Download Handler with binary MIME validation & HTML prevention.
    */
-  static downloadFile(fileNameOrUrl: string, contentOrFileName?: string): void {
-    let fileName = fileNameOrUrl;
-    let contentOrUrl = contentOrFileName;
-
+  static async downloadFile(
+    fileNameOrUrl: string,
+    contentOrFileName?: string
+  ): Promise<boolean> {
     const looksLikeUrl = (v?: string) =>
-      !!v && (v.startsWith('data:') || v.startsWith('blob:') || v.startsWith('http://') || v.startsWith('https://'));
+      !!v &&
+      (v.startsWith('data:') ||
+        v.startsWith('blob:') ||
+        v.startsWith('http://') ||
+        v.startsWith('https://') ||
+        v.startsWith('/'));
+
+    let target: any = fileNameOrUrl;
+    let fileName = '';
 
     if (looksLikeUrl(fileNameOrUrl) && contentOrFileName && !looksLikeUrl(contentOrFileName)) {
+      target = fileNameOrUrl;
       fileName = contentOrFileName;
-      contentOrUrl = fileNameOrUrl;
+    } else if (contentOrFileName && looksLikeUrl(contentOrFileName)) {
+      target = contentOrFileName;
+      fileName = fileNameOrUrl;
+    } else {
+      target = fileNameOrUrl;
+      fileName = contentOrFileName || '';
     }
 
-    const link = document.createElement('a');
-    if (contentOrUrl && (contentOrUrl.startsWith('data:') || contentOrUrl.startsWith('blob:'))) {
-      link.href = contentOrUrl;
-    } else {
-      const blob = new Blob(
-        [
-          `DOMEXIT PLATFORM VERIFIED DIGITAL DOCUMENT (152-FZ / 214-FZ)\n` +
-            `File: ${fileName}\n` +
-            `Source: ${contentOrUrl || 'DomExit S3 Vault (domexit-docs-152fz)'}\n` +
-            `Verified by: DomExit Legal Compliance Desk\n` +
-            `Timestamp: ${new Date().toISOString()}\n` +
-            `SHA-256 Digest: #GOST-78-${Math.floor(100000 + Math.random() * 900000)}\n`,
-        ],
-        { type: 'text/plain;charset=utf-8' }
-      );
-      link.href = URL.createObjectURL(blob);
-      if (fileName.toLowerCase().endsWith('.pdf')) {
-        fileName = `${fileName.slice(0, -4)}_VERIFIED_PROTOCOL.txt`;
-      }
-    }
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return downloadDocumentFile(target, { fileName });
+  }
+
+  /**
+   * High-level unified document downloader for any object or entity
+   */
+  static async downloadDocument(
+    target: any,
+    options?: UnifiedDownloadOptions
+  ): Promise<boolean> {
+    return downloadDocumentFile(target, options);
   }
 }

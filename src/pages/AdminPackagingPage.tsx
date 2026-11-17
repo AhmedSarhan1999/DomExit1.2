@@ -8,6 +8,8 @@ import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { StorageService } from '../dal/StorageService';
 import { Lot, RussianCityCode, MetroStationInfo } from '../types';
+import { RUSSIAN_BANKS, DEFAULT_SETTLEMENT_BANKS } from '../data/russianBanks';
+import { showDownloadToast } from '../utils/downloadManager';
 import {
   Lock,
   QrCode,
@@ -74,6 +76,8 @@ export const AdminPackagingPage: React.FC = () => {
   const [todayDevPrice, setTodayDevPrice] = useState<number>(0);
   const [developerConsentFeeRub, setDeveloperConsentFeeRub] = useState<number>(0);
   const [contractTemplateRequirement, setContractTemplateRequirement] = useState<'developer_template' | 'domexit_template'>('developer_template');
+  const [isNegotiable, setIsNegotiable] = useState<boolean>(false);
+  const [sellerBanks, setSellerBanks] = useState<string[]>(DEFAULT_SETTLEMENT_BANKS);
 
   // Media materials state
   const [sellerPhotos, setSellerPhotos] = useState<string[]>([]);
@@ -128,6 +132,9 @@ export const AdminPackagingPage: React.FC = () => {
     setTodayDevPrice(data.todayDeveloperPrice || 0);
     setDeveloperConsentFeeRub(data.developerConsentFeeRub || 0);
     setContractTemplateRequirement(data.contractTemplateRequirement || 'developer_template');
+    setIsNegotiable(Boolean(data.isNegotiable || (data as any).is_negotiable));
+    const banks = (data as any).seller_banks || data.sellerBanks;
+    setSellerBanks(Array.isArray(banks) && banks.length > 0 ? banks : DEFAULT_SETTLEMENT_BANKS);
 
     // Media
     const sPhotos =
@@ -193,31 +200,36 @@ export const AdminPackagingPage: React.FC = () => {
     if (files && files[0] && lot) {
       const file = files[0];
 
-      const savedDoc = await StorageService.uploadDocument({
-        file,
-        category: 'additional',
-        categoryLabelRu: `HD-рендер упаковки: ${file.name}`,
-        entityType: 'lot',
-        entityId: lot.lotCode,
-        uploadedByUid: user?.id || 'curator-packaging',
-        clientCode: user?.clientCode || 'DEX-STAFF',
-      });
+      try {
+        const savedDoc = await StorageService.uploadDocument({
+          file,
+          category: 'additional',
+          categoryLabelRu: `HD-рендер упаковки: ${file.name}`,
+          entityType: 'lot',
+          entityId: lot.lotCode,
+          uploadedByUid: user?.id || 'curator-packaging',
+          clientCode: user?.clientCode || 'DEX-STAFF',
+        });
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const newPhoto =
-          typeof reader.result === 'string'
-            ? reader.result
-            : savedDoc.previewDataUrl || lot.imageUrl;
-        setSellerPhotos((prev) => [...prev, newPhoto]);
-        setApprovedPhotos((prev) => [...prev, newPhoto]);
-        if (!coverImageUrl) setCoverImageUrl(newPhoto);
-        setNotificationMsg(
-          `HD-рендер «${file.name}» загружен и включен в фото-пакет!`
-        );
-        setTimeout(() => setNotificationMsg(null), 4000);
-      };
-      reader.readAsDataURL(file);
+        const reader = new FileReader();
+        reader.onload = () => {
+          const newPhoto =
+            typeof reader.result === 'string'
+              ? reader.result
+              : savedDoc.previewDataUrl || lot.imageUrl;
+          setSellerPhotos((prev) => [...prev, newPhoto]);
+          setApprovedPhotos((prev) => [...prev, newPhoto]);
+          if (!coverImageUrl) setCoverImageUrl(newPhoto);
+          setNotificationMsg(
+            `HD-рендер «${file.name}» загружен и включен в фото-пакет!`
+          );
+          setTimeout(() => setNotificationMsg(null), 4000);
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Packaging media upload error:', err);
+        showDownloadToast('Ошибка загрузки файла в хранилище. Пожалуйста, повторите попытку.', 'error');
+      }
     }
   };
 
@@ -263,6 +275,10 @@ export const AdminPackagingPage: React.FC = () => {
       serviceCommissionRub: buyerFee,
       developerConsentFeeRub,
       contractTemplateRequirement,
+      isNegotiable,
+      is_negotiable: isNegotiable,
+      sellerBanks,
+      seller_banks: sellerBanks,
       imageUrl: effectiveCover,
       approvedGalleryImages: approvedPhotos,
       galleryImages: approvedPhotos.length > 0 ? approvedPhotos : [effectiveCover],
@@ -1015,6 +1031,72 @@ export const AdminPackagingPage: React.FC = () => {
                         </span>
                       </div>
                     </div>
+
+                    {/* Commercial Conditions: Negotiation & Settlement Banks */}
+                    <div className="pt-4 border-t border-slate-200/80 space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                            <span>Возможен ли торг по цене уступки?</span>
+                            {isNegotiable && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                                Активен бейдж «Возможен торг»
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-500">
+                            Отображать покупателям индикатор готовности продавца к дисконту на карточке и странице лота
+                          </span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isNegotiable}
+                            onChange={(e) => setIsNegotiable(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+                      </div>
+
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Банки продавца для проведения аккредитивных расчетов:
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Отметьте уполномоченные банки, в которых покупатель сможет открыть аккредитив по данному лоту:
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
+                          {RUSSIAN_BANKS.map((b) => {
+                            const isSelected = sellerBanks.includes(b.name);
+                            return (
+                              <label
+                                key={b.id}
+                                className={`flex items-center space-x-2 p-2 rounded-xl border text-xs cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSellerBanks((prev) => [...prev, b.name]);
+                                    } else {
+                                      setSellerBanks((prev) => prev.filter((name) => name !== b.name));
+                                    }
+                                  }}
+                                  className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+                                />
+                                <span className="truncate">{b.shortName || b.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Card 5: Media Gallery & Cover Image Selection */}
@@ -1031,7 +1113,7 @@ export const AdminPackagingPage: React.FC = () => {
 
                       <label className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer transition-colors flex items-center space-x-1 border border-slate-200">
                         <Upload className="w-3.5 h-3.5 text-slate-500" />
-                        <span>+ Загрузить HD-файл</span>
+                        <span>Загрузить HD-файл</span>
                         <input
                           type="file"
                           className="hidden"

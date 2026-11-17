@@ -143,15 +143,15 @@ export const LegalIndexPage: React.FC = () => {
           )}
 
           {/* Search & Filter Controls */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-2">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 pt-2">
             {/* Category tabs */}
-            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-2 max-w-full scrollbar-thin">
               {categories.map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                     selectedCategory === cat.id
                       ? 'bg-emerald-600 text-white shadow-2xs'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -163,7 +163,7 @@ export const LegalIndexPage: React.FC = () => {
             </div>
 
             {/* Search Input */}
-            <div className="relative sm:w-72">
+            <div className="relative w-full lg:w-80 shrink-0">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"

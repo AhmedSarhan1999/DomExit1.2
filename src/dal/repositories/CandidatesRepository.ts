@@ -19,8 +19,31 @@ export class CandidatesRepository {
     ]);
 
     const merged = new Map<string, BuyerCandidate>();
-    for (const item of [...legacy, ...canonical]) {
-      merged.set(item.id, item);
+    for (const raw of [...legacy, ...canonical]) {
+      const item = raw as any;
+      const docId = item.documentId || item.document_id;
+      const approvalUrl = item.bankApprovalDocUrl || item.bank_approval_doc_url || item.file_url || item.url;
+      const approvalName = item.bankApprovalDocName || item.bank_approval_doc_name || item.file_name || item.fileName;
+      const statementUrl = item.bankStatementUrl || item.bank_statement_url;
+      const statementName = item.bankStatementName || item.bank_statement_name;
+
+      const normalized: BuyerCandidate = {
+        ...item,
+        documentId: docId,
+        document_id: docId,
+        bankApprovalDocUrl: approvalUrl,
+        bank_approval_doc_url: approvalUrl,
+        bankApprovalDocName: approvalName,
+        bank_approval_doc_name: approvalName,
+        bankStatementUrl: statementUrl,
+        bank_statement_url: statementUrl,
+        bankStatementName: statementName,
+        bank_statement_name: statementName,
+        file_url: approvalUrl || statementUrl,
+        file_name: approvalName || statementName,
+        storage_path: item.storage_path || item.objectKey,
+      };
+      merged.set(item.id, normalized);
     }
 
     return Array.from(merged.values()).sort(
@@ -67,6 +90,13 @@ export class CandidatesRepository {
       );
     }
 
+    const docId = data.documentId || (data as any).document_id;
+    const approvalUrl = data.bankApprovalDocUrl || (data as any).bank_approval_doc_url || (data as any).file_url;
+    const approvalName = data.bankApprovalDocName || (data as any).bank_approval_doc_name || (data as any).file_name;
+    const statementUrl = data.bankStatementUrl || (data as any).bank_statement_url;
+    const statementName = data.bankStatementName || (data as any).bank_statement_name;
+    const storagePath = (data as any).storage_path || (data as any).objectKey;
+
     const newBid: BuyerCandidate = {
       id: `cand-${Date.now()}`,
       code: `B-${Math.floor(400 + Math.random() * 599)}`,
@@ -84,11 +114,19 @@ export class CandidatesRepository {
         data.fundingType || (data.buyerTrack === 'full_cash' ? 'cash' : 'family-mortgage'),
       buyerTrack: data.buyerTrack || 'full_cash',
       creditLimitRub: data.creditLimitRub || 0,
-      bankApprovalDocUrl: data.bankApprovalDocUrl,
-      bankApprovalDocName: data.bankApprovalDocName,
-      bankStatementUrl: data.bankStatementUrl,
-      bankStatementName: data.bankStatementName,
-      documentId: data.documentId,
+      bankApprovalDocUrl: approvalUrl,
+      bank_approval_doc_url: approvalUrl,
+      bankApprovalDocName: approvalName,
+      bank_approval_doc_name: approvalName,
+      bankStatementUrl: statementUrl,
+      bank_statement_url: statementUrl,
+      bankStatementName: statementName,
+      bank_statement_name: statementName,
+      file_url: approvalUrl || statementUrl,
+      file_name: approvalName || statementName,
+      storage_path: storagePath,
+      documentId: docId,
+      document_id: docId,
       curatorVerified: false,
       isVerifiedByCurator: false,
       readinessTimeline:

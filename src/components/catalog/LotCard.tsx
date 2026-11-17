@@ -154,7 +154,7 @@ export const LotCard: React.FC<LotCardProps> = ({ lot }) => {
         <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">{t.common.cashToSeller}</span>
-            {lot.isNegotiable ? (
+            {Boolean(lot.is_negotiable || lot.isNegotiable) ? (
               <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">
                 {language === 'ru' ? 'Возможен торг' : 'Negotiable'}
               </span>

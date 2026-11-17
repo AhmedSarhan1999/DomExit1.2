@@ -18,6 +18,7 @@ import {
 import { DocumentCategory, DocumentMetadata, DocumentReviewStatus } from '../../types';
 import { SELLER_MANDATORY_DOC_SLOTS, StorageService } from '../../dal/StorageService';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { showDownloadToast } from '../../utils/downloadManager';
 
 interface DocumentVaultModalProps {
   isOpen: boolean;
@@ -115,6 +116,9 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
         categoryLabelRu,
       });
       await loadVaultDocuments();
+    } catch (err: any) {
+      console.error('[DocumentVaultModal] upload error:', err);
+      showDownloadToast('Ошибка загрузки файла в хранилище. Пожалуйста, повторите попытку.', 'error');
     } finally {
       setUploadingSlot(null);
     }
@@ -459,7 +463,7 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
                 >
                   <Plus className="w-4 h-4" />
                   <span>
-                    {language === 'ru' ? '+ Дополнительный документ' : '+ Additional Document'}
+                    {language === 'ru' ? 'Дополнительный документ' : 'Additional Document'}
                   </span>
                 </button>
               )}

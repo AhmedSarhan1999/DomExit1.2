@@ -12,6 +12,7 @@ import { StorageService } from '../dal/StorageService';
 import { Lot, LegalAuditCheckpoint } from '../types';
 import { formatRubles } from '../utils/formatters';
 import { FileManager } from '../utils/fileManager';
+import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import {
   Scale,
   ShieldCheck,
@@ -121,6 +122,7 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
 
+  const { enableBankPortal } = useFeatureFlagsStore();
   const [isSpecialBankModalOpen, setIsSpecialBankModalOpen] = useState(false);
   const [bankSpecialReason, setBankSpecialReason] = useState(
     'Нетиповой график рассрочки застройщика. Требуется индивидуальная кредитная аккредитация эскроу.'
@@ -917,14 +919,16 @@ export const AdminLegalAuditPage: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => setIsSpecialBankModalOpen(true)}
-                    className="px-3.5 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
-                  >
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>Запрос спец-одобрения в банк</span>
-                  </button>
+                  {enableBankPortal && (
+                    <button
+                      type="button"
+                      onClick={() => setIsSpecialBankModalOpen(true)}
+                      className="px-3.5 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>Запрос спец-одобрения в банк</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1271,7 +1275,7 @@ export const AdminLegalAuditPage: React.FC = () => {
       )}
 
       {/* MODAL: Special Bank Approval */}
-      {isSpecialBankModalOpen && (
+      {enableBankPortal && isSpecialBankModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 sm:p-8 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">

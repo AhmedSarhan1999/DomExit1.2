@@ -584,19 +584,12 @@ export const ClientPortalPage: React.FC = () => {
 
 
   const handleDownloadBidProof = async (bid: BuyerCandidate) => {
-    if (bid.documentId) {
-      const doc = await StorageService.getDocumentById(bid.documentId);
-      if (doc) {
-        await StorageService.downloadDocument(doc);
-        return;
-      }
-    }
-    if (bid.bankApprovalDocUrl) {
-      FileManager.downloadFile(
-        bid.bankApprovalDocUrl,
-        bid.bankApprovalDocName || 'Подтверждение_банка.pdf'
-      );
-    }
+    await FileManager.downloadDocument(bid, {
+      fileName:
+        bid.bankApprovalDocName ||
+        bid.bankStatementName ||
+        'Подтверждение_банка.pdf',
+    });
   };
 
   const handleSaveInvestorPackage = async (

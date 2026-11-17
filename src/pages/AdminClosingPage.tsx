@@ -11,6 +11,7 @@ import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { DealTrack, Lot } from '../types';
+import { showDownloadToast } from '../utils/downloadManager';
 import {
   Building2,
   ShieldCheck,
@@ -234,20 +235,26 @@ export const AdminClosingPage: React.FC = () => {
     kind: 'photo' | 'video' | 'rosreestr'
   ) => {
     if (!deal) return;
-    await StorageService.uploadDocument({
-      file,
-      category: kind === 'rosreestr' ? 'rosreestr_extract' : 'additional',
-      categoryLabelRu:
-        kind === 'rosreestr'
-          ? `Выписка ЕГРН Росреестра: ${file.name}`
-          : kind === 'video'
-          ? `Видеофиксация подписания: ${file.name}`
-          : `Фотофиксация подписания: ${file.name}`,
-      entityType: 'deal',
-      entityId: deal.dealId,
-      uploadedByUid: user?.id || 'closing-curator',
-      clientCode: user?.clientCode || 'DEX-STAFF',
-    });
+    try {
+      await StorageService.uploadDocument({
+        file,
+        category: kind === 'rosreestr' ? 'rosreestr_extract' : 'additional',
+        categoryLabelRu:
+          kind === 'rosreestr'
+            ? `Выписка ЕГРН Росреестра: ${file.name}`
+            : kind === 'video'
+            ? `Видеофиксация подписания: ${file.name}`
+            : `Фотофиксация подписания: ${file.name}`,
+        entityType: 'deal',
+        entityId: deal.dealId,
+        uploadedByUid: user?.id || 'closing-curator',
+        clientCode: user?.clientCode || 'DEX-STAFF',
+      });
+    } catch (err: any) {
+      console.error('[AdminClosingPage] upload error:', err);
+      showDownloadToast('Ошибка загрузки файла в хранилище. Пожалуйста, повторите попытку.', 'error');
+      return;
+    }
 
     if (kind === 'photo') {
       const reader = new FileReader();

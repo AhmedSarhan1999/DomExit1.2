@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { AuthProvider } from './context/AuthContext';
 import { PublicLayout } from './components/layout/PublicLayout';
@@ -50,6 +50,16 @@ import { ConsentGateModal } from './components/compliance/ConsentGateModal';
 import { KnowledgeHubPage } from './pages/knowledge/KnowledgeHubPage';
 import { ArticleDetailPage } from './pages/knowledge/ArticleDetailPage';
 import { FAQPage } from './pages/knowledge/FAQPage';
+
+const OpportunityRedirect: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/opportunities/${id || ''}`} replace />;
+};
+
+const AdminOpsAuditRedirect: React.FC = () => {
+  const { lotId } = useParams<{ lotId: string }>();
+  return <Navigate to={`/admin/legal-audit/${lotId || ''}`} replace />;
+};
 
 // Helper component to scroll to top on every route change
 const ScrollToTop: React.FC = () => {
@@ -118,6 +128,11 @@ export const App: React.FC = () => {
               <Route path="/account" element={<ClientPortalPage />} />
               <Route path="/tracker" element={<Navigate to="/portal" replace />} />
               <Route path="/client/tracker/:dealId" element={<ClientTrackerPage />} />
+
+              {/* Backward-Compatible Route Aliases */}
+              <Route path="/app/seller" element={<Navigate to="/sellers" replace />} />
+              <Route path="/app/objects" element={<Navigate to="/opportunities" replace />} />
+              <Route path="/app/objects/:id" element={<OpportunityRedirect />} />
             </Route>
 
             {/* Admin, Compliance & Pipeline Operations (Protected by AdminRouteGuard) */}
@@ -131,6 +146,8 @@ export const App: React.FC = () => {
               
               <Route path="/admin/legal-audit" element={<AdminLegalAuditPage />} />
               <Route path="/admin/legal-audit/:lotId" element={<AdminLegalAuditPage />} />
+              <Route path="/admin/ops-audit" element={<Navigate to="/admin/legal-audit" replace />} />
+              <Route path="/admin/ops-audit/:lotId" element={<AdminOpsAuditRedirect />} />
               
               <Route path="/admin/matchmaker" element={<AdminMatchmakerPage />} />
               <Route path="/admin/matchmaker/:lotId" element={<AdminMatchmakerPage />} />

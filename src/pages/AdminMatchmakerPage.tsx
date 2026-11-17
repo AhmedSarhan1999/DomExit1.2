@@ -43,6 +43,7 @@ export const AdminMatchmakerPage: React.FC = () => {
   const [linkedDealId, setLinkedDealId] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'budget' | 'cash48' | 'mortgage'>('all');
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [downloadingCandidateId, setDownloadingCandidateId] = useState<string | null>(null);
   const [warningToast, setWarningToast] = useState<string | null>(null);
   const [previewCandidate, setPreviewCandidate] = useState<BuyerCandidate | null>(null);
   const [isBuyerVaultOpen, setIsBuyerVaultOpen] = useState<boolean>(false);
@@ -133,32 +134,16 @@ export const AdminMatchmakerPage: React.FC = () => {
   };
 
   const handleDownloadDoc = async (candidate: BuyerCandidate) => {
-    if (candidate.documentId) {
-      const s3Doc = await StorageService.getDocumentById(candidate.documentId);
-      if (s3Doc) {
-        await StorageService.downloadDocument(s3Doc);
-        return;
-      }
-    }
-
-    if (candidate.bankApprovalDocUrl) {
-      FileManager.downloadFile(
-        candidate.bankApprovalDocUrl,
-        candidate.bankApprovalDocName || `Справка_одобрения_${candidate.code}.pdf`
-      );
-    } else {
-      FileManager.downloadFile(
-        `data:text/plain;charset=utf-8,${encodeURIComponent(
-          'ВЫПИСКА СО СЧЕТА О НАЛИЧИИ СРЕДСТВ\nБанк: ПАО Сбербанк\nКлиент: ' +
-            candidate.name +
-            '\nКод заявки: ' +
-            candidate.code +
-            '\nДоступный остаток: ' +
-            candidate.availableLiquidity +
-            ' руб.'
-        )}`,
-        `Выписка_со_счета_${candidate.code}.txt`
-      );
+    setDownloadingCandidateId(candidate.id);
+    try {
+      await FileManager.downloadDocument(candidate, {
+        fileName:
+          candidate.bankApprovalDocName ||
+          candidate.bankStatementName ||
+          `Документ_кандидата_${candidate.code}.pdf`,
+      });
+    } finally {
+      setDownloadingCandidateId(null);
     }
   };
 
@@ -644,11 +629,20 @@ export const AdminMatchmakerPage: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
+                  disabled={downloadingCandidateId === previewCandidate.id}
                   onClick={() => handleDownloadDoc(previewCandidate)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-60"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Скачать прикрепленный файл</span>
+                  {downloadingCandidateId === previewCandidate.id ? (
+                    <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {downloadingCandidateId === previewCandidate.id
+                      ? 'Загрузка файла...'
+                      : 'Скачать прикрепленный файл'}
+                  </span>
                 </button>
 
                 <div className="flex items-center space-x-2">

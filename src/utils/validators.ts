@@ -39,6 +39,39 @@ export function sanitizeDigitsOnly(raw: string, maxLen = 15): string {
 }
 
 /**
+ * Validates Russian Individual Taxpayer Identification Number (ИНН физического лица - 12 digits, optional by default).
+ */
+export function validateIndividualInn(
+  inn: string,
+  optional = true
+): { valid: boolean; messageRu?: string; messageEn?: string } {
+  const clean = inn.trim();
+  if (!clean) {
+    if (optional) return { valid: true };
+    return {
+      valid: false,
+      messageRu: 'Укажите ИНН физического лица (12 цифр).',
+      messageEn: 'Please enter individual INN (12 digits).',
+    };
+  }
+  if (!/^\d{12}$/.test(clean)) {
+    return {
+      valid: false,
+      messageRu: 'ИНН физического лица должен содержать строго 12 цифр без букв и спецсимволов.',
+      messageEn: 'Individual INN must contain strictly 12 digits.',
+    };
+  }
+  if (/^(\d)\1+$/.test(clean)) {
+    return {
+      valid: false,
+      messageRu: 'Указан некорректный ИНН (повторяющиеся цифры).',
+      messageEn: 'Invalid INN sequence.',
+    };
+  }
+  return { valid: true };
+}
+
+/**
  * Validates Russian Taxpayer Identification Number (ИНН: 10 digits for legal entities or 12 digits for individuals).
  */
 export function validateRussianInn(inn: string): { valid: boolean; messageRu?: string; messageEn?: string } {

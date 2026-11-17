@@ -3,6 +3,7 @@ import { DatabaseGateway } from './DatabaseGateway';
 import { IStorageService, UploadDocumentParams } from './interfaces/IStorageAdapter';
 import { AuditLogsRepository } from './repositories/AuditLogsRepository';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
+import { downloadDocumentFile } from '../utils/downloadManager';
 
 const IDB_NAME = 'domexit_yandex_s3_emulator';
 const IDB_VERSION = 1;
@@ -257,6 +258,66 @@ const SEEDED_VAULT_DOCUMENTS: DocumentMetadata[] = [
     sha256Hash: '2c91e0f44a81b3d90012fe78c31a5590',
     storageDriver: 'indexeddb_s3',
   },
+  {
+    id: 'vault-c1-statement',
+    bucket: DEFAULT_S3_BUCKET,
+    objectKey: 'buyers/DEX-409112/U-10566/Vypiska_Sberbank_Ivan_P_3000000.pdf',
+    name: 'Выписка_Сбербанк_Иван_П_3000000.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 852_400,
+    uploadedAt: '2026-10-19T11:40:00.000Z',
+    uploadedByUid: 'usr-buyer-001',
+    clientCode: 'DEX-409112',
+    entityType: 'buyer_application',
+    entityId: 'U-10566',
+    category: 'buyer_cash_statement',
+    categoryLabelRu: 'Выписка о ликвидности покупателя (ПАО Сбербанк)',
+    status: 'approved',
+    reviewedBy: 'Алексей Орлов (Старший юрист)',
+    reviewedAt: '2026-10-19T12:00:00.000Z',
+    sha256Hash: 'a71e82bc9034f128d8445102ab98fe01',
+    storageDriver: 'indexeddb_s3',
+  },
+  {
+    id: 'vault-c2-approval',
+    bucket: DEFAULT_S3_BUCKET,
+    objectKey: 'buyers/DEX-990088/U-10566/Odobrenie_Ipoteki_Sber_B-412.pdf',
+    name: 'Одобрение_Ипотеки_Сбер_B-412.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 1_120_500,
+    uploadedAt: '2026-10-19T09:15:00.000Z',
+    uploadedByUid: 'usr-investor-001',
+    clientCode: 'DEX-990088',
+    entityType: 'buyer_application',
+    entityId: 'U-10566',
+    category: 'mortgage_approval',
+    categoryLabelRu: 'Банковское одобрение семейной ипотеки (Сбербанк 6%)',
+    status: 'approved',
+    reviewedBy: 'Алексей Орлов (Старший юрист)',
+    reviewedAt: '2026-10-19T10:00:00.000Z',
+    sha256Hash: '3f90cba7811d092e4451992bcda77102',
+    storageDriver: 'indexeddb_s3',
+  },
+  {
+    id: 'vault-c4-tradein',
+    bucket: DEFAULT_S3_BUCKET,
+    objectKey: 'buyers/DEX-518220/U-10566/Soglasie_Treydin_VTB.pdf',
+    name: 'Согласие_Трейдин_ВТБ.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 740_000,
+    uploadedAt: '2026-10-18T14:10:00.000Z',
+    uploadedByUid: 'usr-c4',
+    clientCode: 'DEX-518220',
+    entityType: 'buyer_application',
+    entityId: 'U-10566',
+    category: 'mortgage_approval',
+    categoryLabelRu: 'Согласование программы Трейд-ин (Банк ВТБ)',
+    status: 'approved',
+    reviewedBy: 'Алексей Орлов (Старший юрист)',
+    reviewedAt: '2026-10-18T15:30:00.000Z',
+    sha256Hash: '5e44ba1288cd7019fbc41029da889100',
+    storageDriver: 'indexeddb_s3',
+  },
 ];
 
 function buildOfficialFallbackCertificateBlobUrl(doc: DocumentMetadata): string {
@@ -357,6 +418,14 @@ class YandexS3CompatibleStorageService implements IStorageService {
       previewDataUrl,
       cloudUrl,
       storageDriver: 'yandex_s3',
+      // Dual-compatibility bindings
+      file_url: cloudUrl,
+      url: cloudUrl,
+      storage_path: objectKey,
+      file_name: file.name,
+      fileName: file.name,
+      mime_type: file.type || 'application/pdf',
+      file_size: file.size,
     };
 
     await DatabaseGateway.save<DocumentMetadata>(METADATA_COLLECTION, metadata);
@@ -399,13 +468,19 @@ class YandexS3CompatibleStorageService implements IStorageService {
   }
 
   async resolveObjectDataUrl(doc: DocumentMetadata): Promise<string> {
-    if (doc.cloudUrl && doc.cloudUrl.startsWith('http')) {
-      return doc.cloudUrl;
-    }
+    // 1. Check local IndexedDB S3 Object Store FIRST (real binary dataUrl saved on upload)
     const s3Uri = `s3://${doc.bucket}/${doc.objectKey}`;
     const stored = await getS3Object(s3Uri);
     if (stored && stored.dataUrl) {
       return stored.dataUrl;
+    }
+    // 2. Check inline dataUrl if attached
+    if ((doc as any).dataUrl && typeof (doc as any).dataUrl === 'string' && (doc as any).dataUrl.startsWith('data:')) {
+      return (doc as any).dataUrl;
+    }
+    // 3. Live cloudUrl
+    if (doc.cloudUrl && doc.cloudUrl.startsWith('http')) {
+      return doc.cloudUrl;
     }
     if (doc.previewDataUrl) {
       return doc.previewDataUrl;
@@ -457,16 +532,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
   }
 
   async downloadDocument(doc: DocumentMetadata): Promise<void> {
-    const url = await this.resolveObjectDataUrl(doc);
-    const link = document.createElement('a');
-    link.href = url;
-    // If fallback certificate text blob was generated for a seeded PDF without binary payload, keep clean filename
-    link.download = url.startsWith('blob:') && !doc.previewDataUrl
-      ? `${doc.name.replace(/\.pdf$/i, '')}_GOST_CERT.txt`
-      : doc.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await downloadDocumentFile(doc);
   }
 
   async rebindDocumentsToEntity(

@@ -57,6 +57,9 @@ export interface Lot {
   isVerified: boolean;
   isUrgentExit: boolean;
   isNegotiable: boolean;
+  is_negotiable?: boolean;
+  sellerBanks?: string[];
+  seller_banks?: string[];
   isFeatured: boolean;
   isPublished?: boolean;
   isVipExclusive?: boolean;
@@ -205,6 +208,14 @@ export interface DocumentMetadata {
   previewDataUrl?: string; // Thumbnail or lightweight inline preview
   cloudUrl?: string;
   storageDriver: 'indexeddb_s3' | 'firebase_cloud' | 'yandex_s3';
+  // Dual-compatibility bindings for YDB and legacy queries
+  file_url?: string;
+  url?: string;
+  storage_path?: string;
+  file_name?: string;
+  fileName?: string;
+  mime_type?: string;
+  file_size?: number;
 }
 
 export interface SellerExitRequest {
@@ -232,6 +243,10 @@ export interface SellerExitRequest {
   paidAmountRub: number;
   remainingDebtRub: number;
   exitRoute: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
+  isNegotiable?: boolean;
+  is_negotiable?: boolean;
+  sellerBanks?: string[];
+  seller_banks?: string[];
   documentIds: string[];
   status: 'pending_owner_review' | 'approved_assigned' | 'docs_requested' | 'rejected';
   rejectionReason?: string;
@@ -293,6 +308,15 @@ export interface BuyerCandidate {
   bankStatementUrl?: string; // Recent bank statement for 100% cash track
   bankStatementName?: string;
   documentId?: string; // Reference into StorageService vault
+  // Dual-compatibility bindings for YDB and legacy queries
+  document_id?: string;
+  bank_approval_doc_url?: string;
+  bank_approval_doc_name?: string;
+  bank_statement_url?: string;
+  bank_statement_name?: string;
+  file_url?: string;
+  file_name?: string;
+  storage_path?: string;
   curatorVerified?: boolean;
   curatorVerifiedAt?: string;
   curatorVerifiedBy?: string;

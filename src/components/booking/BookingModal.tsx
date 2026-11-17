@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { DocumentMetadata, Lot } from '../../types';
+import { RUSSIAN_BANKS, DEFAULT_SETTLEMENT_BANKS } from '../../data/russianBanks';
 import {
   ShieldCheck,
   X,
@@ -55,7 +56,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [docUploadError, setDocUploadError] = useState<string | null>(null);
   const [uploadProgressMsg, setUploadProgressMsg] = useState<string>('');
 
-  const [selectedBank, setSelectedBank] = useState<string>('Сбербанк');
+  const availableBanks = useMemo(() => {
+    const banks = (lot as any).seller_banks || lot.sellerBanks;
+    if (Array.isArray(banks) && banks.length > 0) {
+      return banks;
+    }
+    return DEFAULT_SETTLEMENT_BANKS;
+  }, [lot]);
+
+  const [selectedBank, setSelectedBank] = useState<string>(() => availableBanks[0] || 'ПАО «Сбербанк»');
+
+  useEffect(() => {
+    if (availableBanks.length > 0 && (!selectedBank || !availableBanks.includes(selectedBank))) {
+      setSelectedBank(availableBanks[0]);
+    }
+  }, [availableBanks, selectedBank]);
   const [readiness, setReadiness] = useState<'48h' | '1-2weeks'>('48h');
   const [buyerConsents, setBuyerConsents] = useState<ConsentState>({
     pdProcessing: false,
@@ -494,12 +509,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               required
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold bg-white focus:outline-none focus:border-emerald-500 shadow-xs"
             >
-              <option value="Сбербанк">Сбербанк (ПАО «Сбербанк России»)</option>
-              <option value="ВТБ">Банк ВТБ (ПАО)</option>
-              <option value="Альфа-Банк">АО «АЛЬФА-БАНК»</option>
-              <option value="ДОМ.РФ">АО «Банк ДОМ.РФ»</option>
+              {availableBanks.map((bank) => (
+                <option key={bank} value={bank}>
+                  {bank}
+                </option>
+              ))}
             </select>
-            <span className="text-[10px] text-slate-500 mt-1 block">
+            <span className="text-[10px] text-emerald-600 font-medium mt-1 block">
+              ✓ Доступны банки, подтвержденные продавцом для открытия аккредитива.
+            </span>
+            <span className="text-[10px] text-slate-500 mt-0.5 block">
               Заявка и будущая сделка будут маршрутизированы в защищенный контур выбранного уполномоченного банка.
             </span>
           </div>

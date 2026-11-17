@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
@@ -15,7 +15,7 @@ import { formatRubles, formatPercent } from '../utils/formatters';
 import { BookingModal } from '../components/booking/BookingModal';
 import { SmartMortgageCalculator } from '../components/lot/SmartMortgageCalculator';
 import { LotMiniMap } from '../components/lot/LotMiniMap';
-import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { PublicLegalReportModal } from '../components/lot/PublicLegalReportModal';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -44,8 +44,9 @@ import {
 
 export const LotDetailsPage: React.FC = () => {
   const { lotCode } = useParams<{ lotCode: string }>();
+  const [searchParams] = useSearchParams();
   const { language } = useLanguage();
-  const { user, isFavorite, toggleFavorite } = useAuth();
+  const { user, isFavorite, toggleFavorite, openAuthModal } = useAuth();
   const { enableBankPortal } = useFeatureFlagsStore();
   const { channels } = usePublicChannelsStore();
 
@@ -59,7 +60,7 @@ export const LotDetailsPage: React.FC = () => {
   const [accordionDevOpen, setAccordionDevOpen] = useState(false);
   const [accordionLawOpen, setAccordionLawOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
-  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [bookingSuccessToast, setBookingSuccessToast] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
   const [isDevAccredited, setIsDevAccredited] = useState<boolean>(true);
@@ -72,14 +73,37 @@ export const LotDetailsPage: React.FC = () => {
       return;
     }
 
+    // Deduplicate view counter using localStorage per session/user device
+    const userKey = user?.id || 'guest';
+    const viewedKey = `domexit_viewed_lots_${userKey}`;
+    let viewedLots: string[] = [];
+    try {
+      const stored = localStorage.getItem(viewedKey);
+      if (stored) {
+        viewedLots = JSON.parse(stored);
+      }
+    } catch {
+      viewedLots = [];
+    }
+    const alreadyViewed = Array.isArray(viewedLots) && viewedLots.includes(code);
+
     async function fetchLot(shouldIncrementViews = false) {
       if (shouldIncrementViews) {
         setLoading(true);
         setActiveImageIndex(0);
       }
-      const data = shouldIncrementViews
-        ? await LotsRepository.incrementViews(code)
-        : await LotsRepository.getByCode(code);
+      let data: Lot | null = null;
+      if (shouldIncrementViews && !alreadyViewed) {
+        data = await LotsRepository.incrementViews(code);
+        try {
+          const updated = [...viewedLots, code];
+          localStorage.setItem(viewedKey, JSON.stringify(updated));
+        } catch {
+          // ignore localStorage quota error
+        }
+      } else {
+        data = await LotsRepository.getByCode(code);
+      }
       setLot(data);
 
       if (data) {
@@ -128,6 +152,22 @@ export const LotDetailsPage: React.FC = () => {
     });
     return () => unsub();
   }, [lotCode]);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'book' && user && lot && !loading) {
+      setIsBookingModalOpen(true);
+    }
+  }, [searchParams, user, lot, loading]);
+
+  const handleOpenBooking = () => {
+    if (!user) {
+      const targetLotCode = lot?.lotCode || lotCode || '';
+      sessionStorage.setItem('domexit_return_url', `/opportunities/${targetLotCode}?action=book`);
+      openAuthModal('Войдите или зарегистрируйтесь, чтобы подать заявку на покупку объекта');
+      return;
+    }
+    setIsBookingModalOpen(true);
+  };
 
   if (loading) {
     return (
@@ -365,6 +405,12 @@ export const LotDetailsPage: React.FC = () => {
                   <span>Ожидает аккредитации банков</span>
                 </span>
               ) : null}
+
+              {Boolean(lot.is_negotiable || lot.isNegotiable) && (
+                <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-teal-50 text-teal-800 border border-teal-300 text-xs font-bold">
+                  <span>🤝 Возможен торг</span>
+                </span>
+              )}
             </div>
 
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-950 tracking-tight">
@@ -392,6 +438,12 @@ export const LotDetailsPage: React.FC = () => {
                   Просмотры: <strong className="text-slate-900">{viewsCount}</strong>
                 </span>
               </div>
+
+              {Boolean(lot.is_negotiable || lot.isNegotiable) && (
+                <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 font-bold">
+                  <span>🤝 Возможен торг с продавцом</span>
+                </div>
+              )}
 
               <button
                 type="button"
@@ -756,15 +808,15 @@ export const LotDetailsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons: Digital Certificate & Document Vault */}
+              {/* Action Buttons: Digital Certificate & Public Legal Report */}
               <div className="flex flex-col sm:flex-row gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => setIsVaultModalOpen(true)}
+                  onClick={() => setIsReportModalOpen(true)}
                   className="flex-1 py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer"
                 >
-                  <FolderLock className="w-4 h-4 text-emerald-400" />
-                  <span>Открыть верифицированное досье S3 (ДДУ, Справки)</span>
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Публичное юридическое заключение (214-ФЗ)</span>
                 </button>
 
                 <Link
@@ -885,6 +937,11 @@ export const LotDetailsPage: React.FC = () => {
                 <span className="text-[11px] text-emerald-700 font-bold block mt-1">
                   Ровно сумма, выплаченная владельцем — 0% наценки
                 </span>
+                {Boolean(lot.is_negotiable || lot.isNegotiable) && (
+                  <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold mt-2">
+                    <span>🤝 Возможен торг с продавцом</span>
+                  </div>
+                )}
               </div>
 
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-1">
@@ -942,7 +999,7 @@ export const LotDetailsPage: React.FC = () => {
                 {lotStatus === 'available' && (
                   <button
                     type="button"
-                    onClick={() => setIsBookingModalOpen(true)}
+                    onClick={handleOpenBooking}
                     className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <span>Подать заявку на покупку (Кэш / Ипотека)</span>
@@ -963,7 +1020,7 @@ export const LotDetailsPage: React.FC = () => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setIsBookingModalOpen(true)}
+                      onClick={handleOpenBooking}
                       className="w-full py-3.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <span>Подать заявку в резервный список</span>
@@ -995,11 +1052,11 @@ export const LotDetailsPage: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => setIsVaultModalOpen(true)}
+                  onClick={() => setIsReportModalOpen(true)}
                   className="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer"
                 >
-                  <FolderLock className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Проверить документы лота (S3 Хранилище)</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Публичное юридическое заключение (214-ФЗ)</span>
                 </button>
               </div>
             </div>
@@ -1189,18 +1246,12 @@ export const LotDetailsPage: React.FC = () => {
         }}
       />
 
-      {/* S3 Cloud Document Vault Modal (Read-only public inspection for buyers) */}
-      <DocumentVaultModal
-        isOpen={isVaultModalOpen}
-        onClose={() => setIsVaultModalOpen(false)}
-        entityType="lot"
-        entityId={lot.lotCode}
-        entityTitle={`${lot.complexName} (#${lot.lotCode})`}
-        uploadedByUid={user?.id || 'guest'}
-        clientCode={user?.clientCode || 'PUBLIC-VIEW'}
-        mode="seller"
-        canUpload={false}
-        canReview={false}
+      {/* Public Legal Verification Report Modal (Zero raw files/personal data exposed) */}
+      <PublicLegalReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        lot={lot}
+        curator={curatorEmployee}
       />
 
       {/* Success Notification Toast */}

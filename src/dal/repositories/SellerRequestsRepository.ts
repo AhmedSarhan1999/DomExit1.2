@@ -51,6 +51,10 @@ export interface SubmitSellerExitParams {
   contractPriceRub: number;
   paidAmountRub: number;
   exitRoute: SellerExitRequest['exitRoute'];
+  isNegotiable?: boolean;
+  is_negotiable?: boolean;
+  sellerBanks?: string[];
+  seller_banks?: string[];
   documentIds: string[];
   referredByPartnerCode?: string;
   preliminaryReferralId?: string;
@@ -163,7 +167,10 @@ export class SellerRequestsRepository {
       serviceCommissionRub,
       isVerified: false,
       isUrgentExit: params.exitRoute === 'fast_cash',
-      isNegotiable: true,
+      isNegotiable: params.isNegotiable ?? params.is_negotiable ?? false,
+      is_negotiable: params.isNegotiable ?? params.is_negotiable ?? false,
+      sellerBanks: params.sellerBanks || params.seller_banks,
+      seller_banks: params.sellerBanks || params.seller_banks,
       isFeatured: false,
       isPublished: false,
       isVipExclusive: false,
@@ -232,6 +239,10 @@ export class SellerRequestsRepository {
       paidAmountRub: params.paidAmountRub,
       remainingDebtRub,
       exitRoute: params.exitRoute,
+      isNegotiable: params.isNegotiable ?? params.is_negotiable ?? false,
+      is_negotiable: params.isNegotiable ?? params.is_negotiable ?? false,
+      sellerBanks: params.sellerBanks || params.seller_banks,
+      seller_banks: params.sellerBanks || params.seller_banks,
       documentIds: params.documentIds,
       status: 'pending_owner_review',
       referredByPartnerCode: params.referredByPartnerCode,

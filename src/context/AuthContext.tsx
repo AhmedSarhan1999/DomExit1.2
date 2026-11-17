@@ -210,26 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (successCallback) successCallback();
       closeAuthModal();
-
-      // Role-Based Post-Login Redirect: Staff/Owner directly to /admin/dashboard
-      const isStaffOrOwner =
-        profile.role === 'owner' ||
-        profile.role === 'admin' ||
-        profile.role === 'employee' ||
-        profile.activeRole === 'owner' ||
-        profile.activeRole === 'employee';
-
-      const targetPath = isStaffOrOwner
-        ? '/admin/dashboard'
-        : profile.role === 'bank' || profile.activeRole === 'bank'
-        ? '/admin/bank-gateway'
-        : '/portal';
-
-      if (typeof window !== 'undefined') {
-        if (window.location.pathname === '/' || window.location.pathname === '/portal') {
-          window.location.href = targetPath;
-        }
-      }
+      executeRoleBasedRedirect(profile);
     } catch (err: any) {
       console.warn('[AuthContext] Yandex OAuth callback error:', err);
       setAuthError(err?.message || 'Ошибка авторизации через Яндекс ID');
@@ -238,7 +219,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const executeRoleBasedRedirect = (profile: UserProfile) => {
+    if (typeof window === 'undefined') return;
+
+    const returnUrl = sessionStorage.getItem('domexit_return_url');
+    if (returnUrl) {
+      sessionStorage.removeItem('domexit_return_url');
+    }
+
+    const isStaffOrOwner =
+      profile.role === 'owner' ||
+      profile.role === 'admin' ||
+      profile.role === 'employee' ||
+      profile.role === 'broker' ||
+      profile.activeRole === 'owner' ||
+      profile.activeRole === 'employee';
+
+    const isBank = profile.role === 'bank' || profile.activeRole === 'bank';
+
+    let targetPath = returnUrl || '/';
+    if (isStaffOrOwner) {
+      targetPath = '/admin/dashboard';
+    } else if (isBank) {
+      targetPath = '/admin/bank-gateway';
+    }
+
+    if (returnUrl || window.location.pathname === '/' || window.location.pathname === '/auth') {
+      window.location.href = targetPath;
+    }
+  };
+
   const persistUserState = async (profile: UserProfile): Promise<UserProfile> => {
+    if (!profile.role) {
+      profile.role = 'user';
+    }
     setUser(profile);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
     try {
@@ -342,26 +356,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (successCallback) successCallback();
       closeAuthModal();
-
-      // Role-Based Post-Login Redirect: Staff/Owner directly to /admin/dashboard
-      const isStaffOrOwner =
-        profile.role === 'owner' ||
-        profile.role === 'admin' ||
-        profile.role === 'employee' ||
-        profile.activeRole === 'owner' ||
-        profile.activeRole === 'employee';
-
-      const targetPath = isStaffOrOwner
-        ? '/admin/dashboard'
-        : profile.role === 'bank' || profile.activeRole === 'bank'
-        ? '/admin/bank-gateway'
-        : '/portal';
-
-      if (typeof window !== 'undefined') {
-        if (window.location.pathname === '/' || window.location.pathname === '/portal') {
-          window.location.href = targetPath;
-        }
-      }
+      executeRoleBasedRedirect(profile);
       return profile;
     } catch (err: any) {
       const errorMsg =
@@ -385,6 +380,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phone: '+7 (921) 555-44-33',
           roles: ['buyer', 'seller'],
           activeRole: 'buyer',
+          role: 'user',
           isPartnerApproved: false,
           isInvestorApproved: false,
           partnerRefCode: 'PARTNER-GOOGLE',
@@ -394,6 +390,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await persistUserState(fallbackProfile);
         if (successCallback) successCallback();
         closeAuthModal();
+        executeRoleBasedRedirect(fallbackProfile);
         return fallbackProfile;
       }
       throw err;
@@ -407,46 +404,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthError(null);
     const cleanEmail = email.trim().toLowerCase();
 
-    // 1. Try Firebase Auth first
     try {
+      // 1. Try Firebase Auth first
       if (auth && typeof auth.name === 'string') {
-        const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-        const profile = await syncUserFromAuthProvider(cred.user);
-        if (successCallback) successCallback();
-        closeAuthModal();
-        return profile;
-      }
-    } catch (firebaseErr: any) {
-      console.warn('[AuthContext] Firebase email login failed, trying YDB fallback:', firebaseErr?.code);
-      // Fall through to YDB lookup below
-    }
-
-    // 2. Fallback: direct lookup in YDB users table via UsersRepository
-    try {
-      const ydbProfile = await UsersRepository.getByEmail(cleanEmail);
-      if (ydbProfile) {
-        // For YDB-only users, password is stored as a hash — for now accept DEMO_PASSWORD or stored match
-        // In production this should use bcrypt; for MVP we compare plaintext fallback
-        const storedPass = (ydbProfile as any).passwordHash || '';
-        const isValidPass =
-          (storedPass ? pass === storedPass : pass === DEMO_PASSWORD) ||
-          (ydbProfile as any).authProvider === 'yandex';
-
-        if (isValidPass) {
-          const profile = await persistUserState(ydbProfile);
+        try {
+          const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+          const profile = await syncUserFromAuthProvider(cred.user);
           if (successCallback) successCallback();
           closeAuthModal();
+          executeRoleBasedRedirect(profile);
           return profile;
+        } catch (firebaseErr: any) {
+          console.warn('[AuthContext] Firebase email login failed, trying YDB fallback:', firebaseErr?.code);
+          // Fall through to YDB lookup below
         }
       }
-    } catch (ydbErr) {
-      console.warn('[AuthContext] YDB email fallback lookup error:', ydbErr);
-    }
 
-    const msg = 'Неверный адрес электронной почты или пароль';
-    setAuthError(msg);
-    setLoading(false);
-    throw new Error(msg);
+      // 2. Fallback: direct lookup in YDB users table via UsersRepository
+      try {
+        const ydbProfile = await UsersRepository.getByEmail(cleanEmail);
+        if (ydbProfile) {
+          const storedPass = (ydbProfile as any).passwordHash || '';
+          const isValidPass =
+            (storedPass ? pass === storedPass : pass === DEMO_PASSWORD) ||
+            (ydbProfile as any).authProvider === 'yandex';
+
+          if (isValidPass) {
+            const profile = await persistUserState(ydbProfile);
+            if (successCallback) successCallback();
+            closeAuthModal();
+            executeRoleBasedRedirect(profile);
+            return profile;
+          }
+        }
+      } catch (ydbErr) {
+        console.warn('[AuthContext] YDB email fallback lookup error:', ydbErr);
+      }
+
+      const msg = 'Неверный адрес электронной почты или пароль';
+      setAuthError(msg);
+      throw new Error(msg);
+    } catch (err: any) {
+      if (!authError) setAuthError(err?.message || 'Ошибка входа');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const registerWithEmail = async (
@@ -516,28 +519,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (successCallback) successCallback();
       closeAuthModal();
-
-      const profile = newProfile;
-
-      // Role-Based Post-Login Redirect: Staff/Owner directly to /admin/dashboard
-      const isStaffOrOwner =
-        profile.role === 'owner' ||
-        profile.role === 'admin' ||
-        profile.role === 'employee' ||
-        profile.activeRole === 'owner' ||
-        profile.activeRole === 'employee';
-
-      const targetPath = isStaffOrOwner
-        ? '/admin/dashboard'
-        : profile.role === 'bank' || profile.activeRole === 'bank'
-        ? '/admin/bank-gateway'
-        : '/portal';
-
-      if (typeof window !== 'undefined') {
-        if (window.location.pathname === '/' || window.location.pathname === '/portal') {
-          window.location.href = targetPath;
-        }
-      }
+      executeRoleBasedRedirect(newProfile);
       return newProfile;
     } catch (err: any) {
       const msg =
@@ -754,6 +736,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
     if (successCallback) successCallback();
     closeAuthModal();
+    executeRoleBasedRedirect(profile);
     return profile;
   };
 

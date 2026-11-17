@@ -21,6 +21,7 @@ import {
   sanitizeDigitsOnly,
   validateDduOrLotCode,
   validateRussianInn,
+  validateIndividualInn,
   validateSellerFinancials,
   validateTextEntityName,
 } from '../utils/validators';
@@ -35,6 +36,7 @@ import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { ConsentCheckboxes, ConsentState } from '../components/compliance/ConsentCheckboxes';
 import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
+import { RUSSIAN_BANKS, DEFAULT_SETTLEMENT_BANKS } from '../data/russianBanks';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -57,7 +59,7 @@ import {
 
 export const SellersPage: React.FC = () => {
   const { language } = useLanguage();
-  const { user, login } = useAuth();
+  const { user, login, openAuthModal } = useAuth();
   const { channels } = usePublicChannelsStore();
   const navigate = useNavigate();
 
@@ -91,6 +93,8 @@ export const SellersPage: React.FC = () => {
   const [usedMatkap, setUsedMatkap] = useState<'no' | 'yes'>('no');
   const [agreeTerms, setAgreeTerms] = useState<boolean>(true);
   const [penaltyRatePercent, setPenaltyRatePercent] = useState<number>(15);
+  const [isNegotiable, setIsNegotiable] = useState<boolean>(false);
+  const [sellerBanks, setSellerBanks] = useState<string[]>(DEFAULT_SETTLEMENT_BANKS);
 
   // Step 2 Seller Identity & Strict Russian Validation
   const [sellerName, setSellerName] = useState<string>(
@@ -324,7 +328,7 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
-    const innCheck = validateRussianInn(sellerInn);
+    const innCheck = validateIndividualInn(sellerInn, true);
     if (!innCheck.valid) {
       setStep2Error(language === 'ru' ? innCheck.messageRu! : innCheck.messageEn!);
       return;
@@ -411,6 +415,8 @@ export const SellersPage: React.FC = () => {
             contractPriceRub: contractPrice,
             paidAmountRub: paidAmount,
             exitRoute,
+            isNegotiable,
+            sellerBanks,
             documentIds: vaultDocs.map((d) => d.id),
             referredByPartnerCode: partnerRefCode.trim() || undefined,
           });
@@ -578,6 +584,30 @@ export const SellersPage: React.FC = () => {
           {currentStep === 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               <div className="lg:col-span-7 space-y-5">
+                {!user && (
+                  <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
+                    <div className="flex items-center space-x-2.5">
+                      <Lock className="w-5 h-5 text-sky-600 shrink-0" />
+                      <div>
+                        <span className="font-bold text-sky-950 block">Вы оформляете заявку в гостевом режиме</span>
+                        <span className="text-sky-800 text-[11px]">Войдите в личный кабинет, чтобы сохранить черновик и отслеживать статус выхода</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          sessionStorage.setItem('domexit_return_url', '/app/seller');
+                        }
+                        openAuthModal('Авторизуйтесь в личном кабинете для подачи заявки на выход из ДДУ');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold shrink-0 transition-colors cursor-pointer text-center"
+                    >
+                      Войти / Регистрация
+                    </button>
+                  </div>
+                )}
+
                 {step1Error && (
                   <div className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-start space-x-2.5">
                     <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -1010,6 +1040,83 @@ export const SellersPage: React.FC = () => {
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* Commercial Conditions: Negotiation & Settlement Banks */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                  <div>
+                    <label className="text-xs font-black text-slate-900 block mb-1">
+                      {language === 'ru' ? 'Возможен ли торг по цене уступки?' : 'Is price negotiation allowed?'}
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsNegotiable(false)}
+                        className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                          !isNegotiable
+                            ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span>Нет, цена фиксированная (без торга)</span>
+                        {!isNegotiable && <span className="text-emerald-700 text-xs">✓</span>}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsNegotiable(true)}
+                        className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                          isNegotiable
+                            ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span>Да, возможен торг</span>
+                        {isNegotiable && <span className="text-amber-700 text-xs font-black">🤝</span>}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-black text-slate-900 block mb-1">
+                      {language === 'ru'
+                        ? 'Банки продавца для проведения аккредитивных расчетов'
+                        : 'Seller Banks for Letter of Credit Settlements'}
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Покупатель сможет выбрать один из этих банков при подаче предложения о покупке:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+                      {RUSSIAN_BANKS.map((b) => {
+                        const isSelected = sellerBanks.includes(b.name);
+                        return (
+                          <label
+                            key={b.id}
+                            className={`flex items-center space-x-2 p-2 rounded-xl border text-xs cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSellerBanks((prev) => [...prev, b.name]);
+                                } else {
+                                  if (sellerBanks.length <= 1) return; // Keep at least one bank
+                                  setSellerBanks((prev) => prev.filter((n) => n !== b.name));
+                                }
+                              }}
+                              className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+                            />
+                            <span className="truncate">{b.shortName || b.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="pt-1">

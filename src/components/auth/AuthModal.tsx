@@ -75,7 +75,13 @@ export const AuthModal: React.FC = () => {
           } else if (loggedUser.role === 'bank' || loggedUser.activeRole === 'bank') {
             navigate('/admin/bank-gateway');
           } else {
-            navigate('/portal');
+            const returnUrl = sessionStorage.getItem('domexit_return_url');
+            if (returnUrl) {
+              sessionStorage.removeItem('domexit_return_url');
+              navigate(returnUrl);
+            } else {
+              navigate('/');
+            }
           }
         }
       } else {
@@ -107,7 +113,13 @@ export const AuthModal: React.FC = () => {
           } catch (logErr) {
             console.warn('[AuthModal] Consent log sync notice:', logErr);
           }
-          navigate('/portal');
+          const returnUrl = sessionStorage.getItem('domexit_return_url');
+          if (returnUrl) {
+            sessionStorage.removeItem('domexit_return_url');
+            navigate(returnUrl);
+          } else {
+            navigate('/');
+          }
         }
       }
     } catch (err: any) {
@@ -125,7 +137,13 @@ export const AuthModal: React.FC = () => {
       } else if (role === 'bank') {
         navigate('/admin/bank-gateway');
       } else {
-        navigate('/portal');
+        const returnUrl = sessionStorage.getItem('domexit_return_url');
+        if (returnUrl) {
+          sessionStorage.removeItem('domexit_return_url');
+          navigate(returnUrl);
+        } else {
+          navigate('/');
+        }
       }
     }
   };
