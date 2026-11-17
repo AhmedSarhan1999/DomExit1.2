@@ -2,6 +2,49 @@
   command = "npm run build"
   publish = "dist"
 
+# 1. Strict File Shield: Block public access to sensitive & source files
+[[redirects]]
+  from = "/.env*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.git/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.bak"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/node_modules/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/tsconfig.json"
+  to = "/index.html"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/ydb-proxy/*"
   to = "https://docapi.serverless.yandexcloud.net/:splat"
@@ -13,10 +56,11 @@
   to = "/index.html"
   status = 200
 
-# High-Performance Browser Caching & Security Headers (31 Standards)
+# High-Performance Browser Caching & Security Headers (36 Standards)
 [[headers]]
   for = "/*"
   [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"

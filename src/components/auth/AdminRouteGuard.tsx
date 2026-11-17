@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 import { ShieldAlert, ShieldCheck, UserCheck, Crown, ArrowLeft, Loader2, LogIn } from 'lucide-react';
+import { securityLogger } from '../../dal/telemetry/securityLogger';
 
 interface AdminRouteGuardProps {
   children?: React.ReactNode;
@@ -21,6 +22,29 @@ export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) =>
   const { isProduction } = useEnvironmentStore();
   const showTestSwitchers = !isProduction;
 
+  const isStaff = Boolean(
+    user &&
+      (user.activeRole === 'owner' ||
+        user.activeRole === 'admin' ||
+        user.activeRole === 'employee' ||
+        user.role === 'owner' ||
+        user.role === 'admin' ||
+        user.role === 'employee' ||
+        user.email === 'amaas9499@gmail.com' ||
+        user.email === 'amaas9494@gmail.com')
+  );
+
+  React.useEffect(() => {
+    if (!loading && !isStaff) {
+      securityLogger.log(
+        'UNAUTHORIZED_ADMIN_ATTEMPT',
+        `Попытка несанкционированного доступа к закрытому контуру /admin (Пользователь: ${user?.clientCode || 'Аноним'})`,
+        'high',
+        user?.clientCode
+      );
+    }
+  }, [loading, isStaff, user]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -33,18 +57,6 @@ export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) =>
       </div>
     );
   }
-
-  const isStaff = Boolean(
-    user &&
-      (user.activeRole === 'owner' ||
-        user.activeRole === 'admin' ||
-        user.activeRole === 'employee' ||
-        user.role === 'owner' ||
-        user.role === 'admin' ||
-        user.role === 'employee' ||
-        user.email === 'amaas9499@gmail.com' ||
-        user.email === 'amaas9494@gmail.com')
-  );
 
   if (isStaff) {
     return <>{children || <Outlet />}</>;

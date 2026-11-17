@@ -18,6 +18,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 import { ConsentCheckboxes, ConsentState } from '../compliance/ConsentCheckboxes';
 import { LegalRepository } from '../../dal/repositories/LegalRepository';
+import { sanitizeReturnUrl } from '../../utils/securityGuards';
 
 export const AuthModal: React.FC = () => {
   const navigate = useNavigate();
@@ -75,13 +76,9 @@ export const AuthModal: React.FC = () => {
           } else if (loggedUser.role === 'bank' || loggedUser.activeRole === 'bank') {
             navigate('/admin/bank-gateway');
           } else {
-            const returnUrl = sessionStorage.getItem('domexit_return_url');
-            if (returnUrl) {
-              sessionStorage.removeItem('domexit_return_url');
-              navigate(returnUrl);
-            } else {
-              navigate('/');
-            }
+            const rawReturnUrl = sessionStorage.getItem('domexit_return_url');
+            sessionStorage.removeItem('domexit_return_url');
+            navigate(sanitizeReturnUrl(rawReturnUrl, '/'));
           }
         }
       } else {
@@ -113,13 +110,9 @@ export const AuthModal: React.FC = () => {
           } catch (logErr) {
             console.warn('[AuthModal] Consent log sync notice:', logErr);
           }
-          const returnUrl = sessionStorage.getItem('domexit_return_url');
-          if (returnUrl) {
-            sessionStorage.removeItem('domexit_return_url');
-            navigate(returnUrl);
-          } else {
-            navigate('/');
-          }
+          const rawReturnUrl = sessionStorage.getItem('domexit_return_url');
+          sessionStorage.removeItem('domexit_return_url');
+          navigate(sanitizeReturnUrl(rawReturnUrl, '/'));
         }
       }
     } catch (err: any) {
@@ -137,13 +130,9 @@ export const AuthModal: React.FC = () => {
       } else if (role === 'bank') {
         navigate('/admin/bank-gateway');
       } else {
-        const returnUrl = sessionStorage.getItem('domexit_return_url');
-        if (returnUrl) {
-          sessionStorage.removeItem('domexit_return_url');
-          navigate(returnUrl);
-        } else {
-          navigate('/');
-        }
+        const rawReturnUrl = sessionStorage.getItem('domexit_return_url');
+        sessionStorage.removeItem('domexit_return_url');
+        navigate(sanitizeReturnUrl(rawReturnUrl, '/'));
       }
     }
   };

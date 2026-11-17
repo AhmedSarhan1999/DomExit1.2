@@ -5,6 +5,7 @@ import { AuditLogsRepository } from './repositories/AuditLogsRepository';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 import { downloadDocumentFile } from '../utils/downloadManager';
 import { optimizeImageFile } from '../utils/imageOptimizer';
+import { validateFileSignature } from '../utils/fileSignatureValidator';
 
 const IDB_NAME = 'domexit_yandex_s3_emulator';
 const IDB_VERSION = 1;
@@ -362,6 +363,12 @@ class YandexS3CompatibleStorageService implements IStorageService {
       categoryLabelRu,
       bucket = DEFAULT_S3_BUCKET,
     } = params;
+
+    // Strict Binary Magic Bytes & Size Limits Verification (DomExit Shield 3)
+    const signatureCheck = await validateFileSignature(rawFile);
+    if (!signatureCheck.valid) {
+      throw new Error(signatureCheck.error || 'Недопустимый формат файла');
+    }
 
     const file = rawFile.type.startsWith('image/') ? await optimizeImageFile(rawFile) : rawFile;
 

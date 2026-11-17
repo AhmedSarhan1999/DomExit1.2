@@ -57,6 +57,7 @@ export default defineConfig({
     nativeCompressionPlugin(),
   ],
   build: {
+    sourcemap: false,
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {

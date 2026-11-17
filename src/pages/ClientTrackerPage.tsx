@@ -14,6 +14,7 @@ import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { BuyerCandidate, DealTrack, DocumentMetadata, Employee, Lot } from '../types';
+import { securityLogger } from '../dal/telemetry/securityLogger';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -73,15 +74,42 @@ export const ClientTrackerPage: React.FC = () => {
       return;
     }
     const loadedDeal = await DealsRepository.getById(targetId);
-    setDeal(loadedDeal);
 
     if (!loadedDeal) {
+      setDeal(null);
       setLot(null);
       setOffers([]);
       setDocs([]);
       setLoading(false);
       return;
     }
+
+    // IDOR Defense (DomExit Shield 2): Verify user is either deal participant or platform staff
+    const isStaff = Boolean(user && (user.role === 'owner' || user.role === 'employee' || user.role === 'admin' || user.activeRole === 'owner' || user.activeRole === 'employee'));
+    const isDealParticipant = Boolean(
+      user &&
+        (user.id === loadedDeal.sellerUserId ||
+          user.clientCode?.toUpperCase() === loadedDeal.sellerClientCode?.toUpperCase() ||
+          user.id === loadedDeal.buyerUserId ||
+          user.clientCode?.toUpperCase() === loadedDeal.buyerClientCode?.toUpperCase())
+    );
+
+    if (!isStaff && !isDealParticipant) {
+      securityLogger.log(
+        'IDOR_ACCESS_DENIED',
+        `Попытка несанкционированного доступа к сделке #${targetId} (Пользователь: ${user?.clientCode || 'Аноним'})`,
+        'high',
+        user?.clientCode
+      );
+      setDeal(null);
+      setLot(null);
+      setOffers([]);
+      setDocs([]);
+      setLoading(false);
+      return;
+    }
+
+    setDeal(loadedDeal);
 
     const lotCode = loadedDeal.lotCode;
     const [loadedLot, lotOffers, vaultDocs, emps] = await Promise.all([
