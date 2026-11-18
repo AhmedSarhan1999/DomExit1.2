@@ -90,6 +90,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ydb-proxy/, ''),
       },
+      '/yandex-passport-proxy': {
+        target: 'https://login.yandex.ru',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/yandex-passport-proxy/, ''),
+      },
     },
   },
 })

@@ -105,55 +105,137 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Listen for Yandex OAuth redirect hash token (#access_token=...)
+  // Listen for Yandex OAuth redirect hash/query token or error
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const hash = window.location.hash;
-    if (hash && (hash.includes('access_token=') || hash.includes('token='))) {
-      const cleanHash = hash.replace(/^#/, '');
-      const params = new URLSearchParams(cleanHash);
-      const token = params.get('access_token') || params.get('token');
-      if (token) {
-        handleYandexAuthCallback(token);
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+
+    if (!hash && !search) return;
+
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
+    const searchParams = new URLSearchParams(search.replace(/^\?/, ''));
+
+    const oauthError = hashParams.get('error') || searchParams.get('error');
+    const oauthErrorDesc = hashParams.get('error_description') || searchParams.get('error_description');
+
+    if (oauthError) {
+      console.warn('[AuthContext] Yandex OAuth returned error:', oauthError, oauthErrorDesc);
+      const friendlyMsg =
+        oauthError === 'access_denied'
+          ? 'Вход через Яндекс ID отменен пользователем.'
+          : `Ошибка авторизации через Яндекс ID: ${oauthErrorDesc || oauthError}`;
+      setAuthError(friendlyMsg);
+      setIsAuthModalOpen(true);
+      if (window.history?.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
       }
+      return;
+    }
+
+    const token =
+      hashParams.get('access_token') ||
+      hashParams.get('token') ||
+      searchParams.get('access_token') ||
+      searchParams.get('token');
+
+    if (token) {
+      handleYandexAuthCallback(token);
     }
   }, []);
 
   const loginWithYandex = () => {
+    if (typeof window === 'undefined') return;
+
+    // Preserve the current path before redirecting to Yandex OAuth
+    if (
+      !sessionStorage.getItem('domexit_return_url') &&
+      window.location.pathname !== '/' &&
+      window.location.pathname !== '/auth'
+    ) {
+      sessionStorage.setItem('domexit_return_url', window.location.pathname + window.location.search);
+    }
+
     const clientId = import.meta.env.VITE_YANDEX_OAUTH_CLIENT_ID || '72f6de11197d4e9da68ea1fec90c72e1';
-    const configuredRedirect = import.meta.env.VITE_YANDEX_OAUTH_REDIRECT_URI;
-    const redirectUri =
-      configuredRedirect || (typeof window !== 'undefined' ? `${window.location.origin}/` : 'https://domexit-official.netlify.app/');
+    
+    // Dynamic redirect URI: keep on localhost when developing locally
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '0.0.0.0';
+
+    const originWithSlash = window.location.origin.endsWith('/')
+      ? window.location.origin
+      : `${window.location.origin}/`;
+
+    const redirectUri = isLocalhost
+      ? originWithSlash
+      : (import.meta.env.VITE_YANDEX_OAUTH_REDIRECT_URI || originWithSlash);
+
     const yandexAuthUrl = `https://oauth.yandex.ru/authorize?response_type=token&client_id=${clientId}&redirect_uri=${encodeURIComponent(
       redirectUri
     )}`;
-    if (typeof window !== 'undefined') {
-      window.location.href = yandexAuthUrl;
-    }
+
+    window.location.href = yandexAuthUrl;
   };
 
   const handleYandexAuthCallback = async (accessToken: string) => {
     setLoading(true);
     setAuthError(null);
     try {
-      const res = await fetch('https://login.yandex.ru/info?format=json', {
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-        },
-      });
+      let yandexUser: any = null;
+      let directError: any = null;
 
-      if (!res.ok) {
-        throw new Error(`Ошибка ответа Yandex OAuth API (${res.status})`);
+      // 1. Direct fetch to Yandex Passport API
+      try {
+        const directRes = await fetch('https://login.yandex.ru/info?format=json', {
+          headers: {
+            Authorization: `OAuth ${accessToken}`,
+          },
+        });
+        if (directRes.ok) {
+          yandexUser = await directRes.json();
+        } else {
+          console.warn('[AuthContext] Direct Yandex OAuth API returned non-OK status:', directRes.status);
+          directError = new Error(`Direct API returned status ${directRes.status}`);
+        }
+      } catch (err) {
+        console.warn('[AuthContext] Direct fetch to login.yandex.ru failed (network/CSP), falling back to proxy:', err);
+        directError = err;
       }
 
-      const yandexUser = await res.json();
-      const rawEmail = (yandexUser.default_email || `${yandexUser.id}@yandex.ru`).trim().toLowerCase();
+      // 2. Resilient fallback to reverse proxy (/yandex-passport-proxy)
+      if (!yandexUser) {
+        try {
+          const proxyRes = await fetch('/yandex-passport-proxy/info?format=json', {
+            headers: {
+              Authorization: `OAuth ${accessToken}`,
+            },
+          });
+          if (proxyRes.ok) {
+            yandexUser = await proxyRes.json();
+          } else {
+            throw new Error(`Ошибка ответа Yandex OAuth API (${proxyRes.status})`);
+          }
+        } catch (proxyErr) {
+          console.error('[AuthContext] Both direct and proxy Yandex info requests failed:', proxyErr);
+          throw (directError || proxyErr);
+        }
+      }
+
+      const rawEmail = (
+        yandexUser.default_email ||
+        yandexUser.emails?.[0] ||
+        `${yandexUser.id}@yandex.ru`
+      ).trim().toLowerCase();
+
       const displayName =
         yandexUser.real_name ||
         yandexUser.display_name ||
         `${yandexUser.first_name || ''} ${yandexUser.last_name || ''}`.trim() ||
         'Пользователь Яндекс';
+
       const phone = yandexUser.default_phone?.number || '+7 (999) 000-00-00';
       const avatarId = yandexUser.default_avatar_id;
       const avatarUrl = avatarId
@@ -161,7 +243,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : undefined;
 
       // Check if user exists in YDB via UsersRepository
-      let profile = await UsersRepository.getByEmail(rawEmail);
+      let profile: UserProfile | null = null;
+      try {
+        profile = await UsersRepository.getByEmail(rawEmail);
+      } catch (dbErr) {
+        console.warn('[AuthContext] UsersRepository.getByEmail notice for Yandex user:', dbErr);
+      }
 
       const isMasterOwner = MASTER_OWNER_EMAILS.some((e) => e.toLowerCase() === rawEmail);
       const isTestStaff = TEST_STAFF_EMAILS.some((e) => e.toLowerCase() === rawEmail);
@@ -203,9 +290,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await persistUserState(profile!);
 
-      // Clean up URL hash without full reload
+      // Clean up URL hash and search params without full reload
       if (typeof window !== 'undefined' && window.history?.replaceState) {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        window.history.replaceState(null, '', window.location.pathname);
       }
 
       if (successCallback) successCallback();
@@ -214,6 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       console.warn('[AuthContext] Yandex OAuth callback error:', err);
       setAuthError(err?.message || 'Ошибка авторизации через Яндекс ID');
+      setIsAuthModalOpen(true);
     } finally {
       setLoading(false);
     }
