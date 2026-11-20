@@ -37,6 +37,11 @@ export interface SubmitSellerExitParams {
   city: RussianCityCode;
   district: string;
   streetAddress?: string;
+  metroName?: string;
+  metroTime?: number | string;
+  metroTransport?: 'walk' | 'transport';
+  coordinates?: { lat: number; lng: number };
+  todayDeveloperPrice?: number;
   complexName: string;
   developer: string;
   developerInn?: string;
@@ -45,8 +50,10 @@ export interface SubmitSellerExitParams {
   rooms: Lot['rooms'];
   floor: number;
   totalFloors: number;
+  ceilingHeightM?: number;
   finishing?: Lot['finishing'];
   deliveryYear?: number;
+  deliveryDate?: string;
   escrowBank?: Lot['escrowBank'];
   contractPriceRub: number;
   paidAmountRub: number;
@@ -56,6 +63,9 @@ export interface SubmitSellerExitParams {
   sellerBanks?: string[];
   seller_banks?: string[];
   documentIds: string[];
+  photos?: string[];
+  sellerUploadedPhotos?: string[];
+  matCapitalUsed?: boolean;
   referredByPartnerCode?: string;
   preliminaryReferralId?: string;
 }
@@ -103,7 +113,10 @@ export class SellerRequestsRepository {
     const dealId = `DEAL-${new Date().getFullYear()}-${numericSuffix}`;
 
     const remainingDebtRub = Math.max(0, params.contractPriceRub - params.paidAmountRub);
-    const todayDeveloperPrice = Math.round(params.contractPriceRub * 1.24);
+    const todayDeveloperPrice =
+      params.todayDeveloperPrice && params.todayDeveloperPrice > params.contractPriceRub
+        ? params.todayDeveloperPrice
+        : Math.round(params.contractPriceRub * 1.24);
     const serviceCommissionRub = Math.round(params.contractPriceRub * 0.025);
     const quarterlyInstallment = Math.max(95000, Math.round(remainingDebtRub / 24));
 
@@ -122,6 +135,50 @@ export class SellerRequestsRepository {
       lotTags.push('Ожидает аккредитации банков');
     }
 
+    const streetAddress = params.streetAddress?.trim() || districtGeo.defaultStreetRu;
+
+    // Handle Metro station parity: prioritize user manual entry, enrich with line color and mode
+    let metroStations = districtGeo.metroStations || [];
+    if (params.metroName && params.metroName.trim()) {
+      const travelTimeNum = Number(params.metroTime) || 10;
+      const isWalk = params.metroTransport !== 'transport';
+      const userStation = {
+        name: params.metroName.trim(),
+        travelTimeText: `${travelTimeNum} мин. ${isWalk ? 'пешком' : 'транспортом'}`,
+        mode: isWalk ? ('walk' as const) : ('drive' as const),
+        lineColor: params.city === 'msk' ? '#ED1B35' : '#0078C9',
+      };
+      metroStations = [
+        userStation,
+        ...(districtGeo.metroStations || []).filter(
+          (s) => s.name.toLowerCase() !== userStation.name.toLowerCase()
+        ),
+      ];
+    }
+
+    // Coordinates: prioritize explicit seller/Yandex coordinates, else subtle deterministic district anchor
+    const coordinates =
+      params.coordinates && params.coordinates.lat && params.coordinates.lng
+        ? params.coordinates
+        : {
+            lat: Number((districtGeo.coordinates.lat + 0.0012).toFixed(5)),
+            lng: Number((districtGeo.coordinates.lng + 0.0015).toFixed(5)),
+          };
+
+    // User Photos & Media
+    const userPhotos =
+      params.sellerUploadedPhotos && params.sellerUploadedPhotos.length > 0
+        ? params.sellerUploadedPhotos
+        : params.photos && params.photos.length > 0
+        ? params.photos
+        : [];
+    const defaultCover =
+      'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1000&q=80';
+    const defaultGallery = [
+      'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
+    ];
+
     const newLot: Lot = {
       id: lotId,
       lotCode,
@@ -136,27 +193,24 @@ export class SellerRequestsRepository {
       favoritesCount: 0,
       city: params.city,
       district: params.district || districtGeo.nameRu,
-      streetAddress: params.streetAddress || districtGeo.defaultStreetRu,
+      streetAddress,
       areaM2: params.areaM2,
       rooms: params.rooms,
       floor: params.floor,
       totalFloors: Math.max(params.totalFloors, params.floor),
-      ceilingHeightM: params.contractPriceRub / Math.max(params.areaM2, 25) > 310000 ? 3.05 : 2.78,
+      ceilingHeightM:
+        params.ceilingHeightM ||
+        (params.contractPriceRub / Math.max(params.areaM2, 25) > 310000 ? 3.05 : 2.78),
       districtAvgPricePerM2: districtGeo.avgMarketPricePerM2,
-      coordinates: {
-        lat: Number((districtGeo.coordinates.lat + (Math.random() - 0.5) * 0.008).toFixed(5)),
-        lng: Number((districtGeo.coordinates.lng + (Math.random() - 0.5) * 0.01).toFixed(5)),
-      },
-      metroStations: districtGeo.metroStations,
-      deliveryDate: `4 кв. ${params.deliveryYear || 2026} г.`,
+      coordinates,
+      metroStations,
+      deliveryDate: params.deliveryDate || `4 кв. ${params.deliveryYear || 2026} г.`,
       deliveryYear: params.deliveryYear || 2026,
       finishing: params.finishing || 'clean',
-      imageUrl:
-        'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1000&q=80',
-      galleryImages: [
-        'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
-      ],
+      imageUrl: userPhotos.length > 0 ? userPhotos[0] : defaultCover,
+      galleryImages: userPhotos.length > 0 ? userPhotos : defaultGallery,
+      sellerUploadedPhotos: userPhotos,
+      approvedGalleryImages: userPhotos.slice(0, 2),
       constructionReadinessPercent: 80,
       dduContractPrice: params.contractPriceRub,
       cashPaidBySeller: params.paidAmountRub,
@@ -189,7 +243,7 @@ export class SellerRequestsRepository {
         passedChecksCount: params.documentIds.length >= 4 ? 38 : 28,
         totalChecksCount: 42,
         antiBankruptcyIndex: 96,
-        maternalCapitalUsed: false,
+        maternalCapitalUsed: Boolean(params.matCapitalUsed),
         spousalConsentNotarized: true,
         fsspDebtRub: 0,
         efrsbBankruptcyStatus: 'clean',
@@ -227,6 +281,18 @@ export class SellerRequestsRepository {
       sellerInn: params.sellerInn,
       city: params.city,
       district: newLot.district,
+      streetAddress: newLot.streetAddress,
+      metroName: params.metroName,
+      metroTime: params.metroTime,
+      metroTransport: params.metroTransport,
+      coordinates: newLot.coordinates,
+      todayDeveloperPrice: newLot.todayDeveloperPrice,
+      deliveryDate: newLot.deliveryDate,
+      finishing: newLot.finishing,
+      ceilingHeightM: newLot.ceilingHeightM,
+      photos: userPhotos,
+      sellerUploadedPhotos: userPhotos,
+      matCapitalUsed: Boolean(params.matCapitalUsed),
       complexName: newLot.complexName,
       developer: params.developer,
       developerInn: params.developerInn,

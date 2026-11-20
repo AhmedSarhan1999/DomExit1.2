@@ -231,6 +231,14 @@ export interface SellerExitRequest {
   sellerInn: string;
   city: RussianCityCode;
   district: string;
+  streetAddress?: string;
+  metroName?: string;
+  metroTime?: number | string;
+  metroTransport?: 'walk' | 'transport';
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
   complexName: string;
   developer: string;
   developerInn?: string;
@@ -239,15 +247,22 @@ export interface SellerExitRequest {
   rooms: Lot['rooms'];
   floor: number;
   totalFloors: number;
+  ceilingHeightM?: number;
+  finishing?: string;
+  deliveryDate?: string;
   contractPriceRub: number;
   paidAmountRub: number;
   remainingDebtRub: number;
+  todayDeveloperPrice?: number;
   exitRoute: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
   isNegotiable?: boolean;
   is_negotiable?: boolean;
   sellerBanks?: string[];
   seller_banks?: string[];
   documentIds: string[];
+  photos?: string[];
+  sellerUploadedPhotos?: string[];
+  matCapitalUsed?: boolean;
   status: 'pending_owner_review' | 'approved_assigned' | 'docs_requested' | 'rejected';
   rejectionReason?: string;
   requestedDocsList?: string[];

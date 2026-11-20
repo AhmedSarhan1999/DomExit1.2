@@ -44,14 +44,14 @@ export const AdminPackagingPage: React.FC = () => {
 
   // 152-FZ Privacy & Floor
   const [hideFloor, setHideFloor] = useState<boolean>(true);
-  const [floorRangeText, setFloorRangeText] = useState<string>('7–10 этаж');
+  const [floorRangeText, setFloorRangeText] = useState<string>('');
 
   // Spatial & Transport
   const [city, setCity] = useState<RussianCityCode>('spb');
   const [district, setDistrict] = useState<string>('');
   const [streetAddress, setStreetAddress] = useState<string>('');
   const [metroName, setMetroName] = useState<string>('');
-  const [metroTime, setMetroTime] = useState<string>('12 мин.');
+  const [metroTime, setMetroTime] = useState<string>('');
   const [metroMode, setMetroMode] = useState<'walk' | 'drive'>('walk');
 
   // Technical Specs
@@ -94,14 +94,21 @@ export const AdminPackagingPage: React.FC = () => {
 
     // 152-FZ
     setHideFloor(data.ownerDossier?.hideExactFloor ?? true);
-    setFloorRangeText(data.ownerDossier?.floorRangeDisplay || '7–10 этаж');
+    const computedFloorRange =
+      data.floor > 0
+        ? `${Math.max(1, data.floor - 1)}–${Math.min(
+            data.totalFloors || data.floor + 2,
+            data.floor + 1
+          )} этаж`
+        : '';
+    setFloorRangeText(data.ownerDossier?.floorRangeDisplay || computedFloorRange);
 
     // Spatial
     setCity(data.city || 'spb');
     setDistrict(data.district || '');
     setStreetAddress(data.streetAddress || '');
     if (data.metroStations && data.metroStations.length > 0) {
-      setMetroName(data.metroStations[0].name);
+      setMetroName(data.metroStations[0].name || '');
       setMetroTime(data.metroStations[0].travelTimeText || '');
       setMetroMode(data.metroStations[0].mode || 'walk');
     } else {
@@ -236,11 +243,20 @@ export const AdminPackagingPage: React.FC = () => {
   const buildUpdatedLotData = (): Lot => {
     if (!lot) throw new Error('No active lot');
 
-    const metroList: MetroStationInfo[] = metroName
+    const cleanMetroTime = metroTime.trim();
+    const formattedMetroTime = cleanMetroTime
+      ? cleanMetroTime.includes('мин')
+        ? cleanMetroTime
+        : `${cleanMetroTime} мин. ${metroMode === 'walk' ? 'пешком' : 'транспортом'}`
+      : metroMode === 'walk'
+      ? '10 мин. пешком'
+      : '10 мин. транспортом';
+
+    const metroList: MetroStationInfo[] = metroName.trim()
       ? [
           {
-            name: metroName,
-            travelTimeText: metroTime.includes('мин') ? metroTime : `${metroTime} мин. ${metroMode === 'walk' ? 'пешком' : 'транспортом'}`,
+            name: metroName.trim(),
+            travelTimeText: formattedMetroTime,
             mode: metroMode,
             lineColor: city === 'msk' ? '#ED1B35' : '#0078C9',
           },
@@ -701,7 +717,7 @@ export const AdminPackagingPage: React.FC = () => {
                             type="text"
                             value={metroTime}
                             onChange={(e) => setMetroTime(e.target.value)}
-                            placeholder="12 мин."
+                            placeholder="10 мин."
                             className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold focus:bg-white focus:border-emerald-500"
                           />
                         </div>

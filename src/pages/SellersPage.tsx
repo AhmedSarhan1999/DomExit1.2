@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatRubles } from '../utils/formatters';
@@ -55,6 +55,8 @@ import {
   Download,
   MapPin,
   Building2,
+  Train,
+  Compass,
 } from 'lucide-react';
 
 export const SellersPage: React.FC = () => {
@@ -69,9 +71,24 @@ export const SellersPage: React.FC = () => {
     () => `U-${Math.floor(12000 + Math.random() * 87000)}`
   );
 
-  // Geographic & Property Parameters (Phase 1)
+  // Geographic & Property Parameters (Phase 1 & 2)
   const [locationRegion, setLocationRegion] = useState<RussianCityCode>('spb');
   const [district, setDistrict] = useState<string>('Приморский район');
+  const [streetAddress, setStreetAddress] = useState<string>('');
+  const [metroName, setMetroName] = useState<string>('');
+  const [metroTime, setMetroTime] = useState<string>('10');
+  const [metroTransport, setMetroTransport] = useState<'walk' | 'transport'>('walk');
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | undefined>(undefined);
+
+  // Field interaction tracking (no aggressive red borders on initial render)
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const markTouched = (field: string) => {
+    setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  };
+
+  // Double-submit prevention lock
+  const submitLockRef = useRef<boolean>(false);
+
   const [accreditedDevelopers, setAccreditedDevelopers] = useState<AccreditedDeveloper[]>([]);
   const [isAddingNewDeveloper, setIsAddingNewDeveloper] = useState<boolean>(false);
   const [developerName, setDeveloperName] = useState<string>('');
@@ -205,6 +222,7 @@ export const SellersPage: React.FC = () => {
 
     const devCheck = validateTextEntityName(developerName, 'Наименование застройщика');
     if (!devCheck.valid) {
+      markTouched('developerName');
       setStep1Error(language === 'ru' ? devCheck.messageRu! : devCheck.messageEn!);
       return;
     }
@@ -212,6 +230,7 @@ export const SellersPage: React.FC = () => {
     if (isAddingNewDeveloper) {
       const cleanDevInn = developerInn.replace(/\D/g, '');
       if (cleanDevInn.length !== 10 && cleanDevInn.length !== 12) {
+        markTouched('developerInn');
         setStep1Error(
           language === 'ru'
             ? 'Для нового застройщика укажите корректный ИНН юридического лица (10 цифр).'
@@ -223,11 +242,13 @@ export const SellersPage: React.FC = () => {
 
     const complexCheck = validateTextEntityName(complexName, 'Название жилого комплекса');
     if (!complexCheck.valid) {
+      markTouched('complexName');
       setStep1Error(language === 'ru' ? complexCheck.messageRu! : complexCheck.messageEn!);
       return;
     }
 
     if (usedMatkap === 'yes') {
+      markTouched('usedMatkap');
       setStep1Error(
         language === 'ru'
           ? 'Объекты с использованием материнского капитала требуют предварительного разрешения органов опеки и не принимаются на платформу DomExit.'
@@ -238,6 +259,7 @@ export const SellersPage: React.FC = () => {
 
     const dduCheck = validateDduOrLotCode(dduCode);
     if (!dduCheck.valid) {
+      markTouched('dduCode');
       setStep1Error(language === 'ru' ? dduCheck.messageRu! : dduCheck.messageEn!);
       return;
     }
@@ -247,6 +269,7 @@ export const SellersPage: React.FC = () => {
     const parsedTotalFloors = Number(totalFloors);
 
     if (!Number.isFinite(parsedArea) || parsedArea < 16 || parsedArea > 500) {
+      markTouched('areaM2');
       setStep1Error(
         language === 'ru'
           ? 'Укажите корректную площадь квартиры (от 16 до 500 м²).'
@@ -262,6 +285,8 @@ export const SellersPage: React.FC = () => {
       parsedTotalFloors < parsedFloor ||
       parsedTotalFloors > 110
     ) {
+      markTouched('floor');
+      markTouched('totalFloors');
       setStep1Error(
         language === 'ru'
           ? 'Проверьте корректность этажа и общей этажности корпуса (этаж не может превышать этажность дома).'
@@ -271,6 +296,8 @@ export const SellersPage: React.FC = () => {
     }
 
     if (!financialValidation.valid) {
+      markTouched('contractPrice');
+      markTouched('paidAmount');
       setStep1Error(
         language === 'ru'
           ? financialValidation.paidErrorRu || financialValidation.contractErrorRu!
@@ -281,10 +308,12 @@ export const SellersPage: React.FC = () => {
 
     if (isAddingNewDeveloper) {
       if (!developerName.trim()) {
+        markTouched('developerName');
         setStep1Error('Укажите наименование нового застройщика.');
         return;
       }
       if (!isValidInn(developerInn)) {
+        markTouched('developerInn');
         setStep1Error(
           getInnValidationError(developerInn) ||
             'Укажите корректный ИНН застройщика (10 цифр для юрлиц или 12 для ИП).'
@@ -315,11 +344,13 @@ export const SellersPage: React.FC = () => {
 
     const nameCheck = validateTextEntityName(sellerName, 'ФИО дольщика');
     if (!nameCheck.valid) {
+      markTouched('sellerName');
       setStep2Error(language === 'ru' ? nameCheck.messageRu! : nameCheck.messageEn!);
       return;
     }
 
     if (!isValidRussianPhone(sellerPhone)) {
+      markTouched('sellerPhone');
       setStep2Error(
         language === 'ru'
           ? 'Введите телефон в едином российском формате: +7 (XXX) XXX-XX-XX.'
@@ -330,6 +361,7 @@ export const SellersPage: React.FC = () => {
 
     const innCheck = validateIndividualInn(sellerInn, true);
     if (!innCheck.valid) {
+      markTouched('sellerInn');
       setStep2Error(language === 'ru' ? innCheck.messageRu! : innCheck.messageEn!);
       return;
     }
@@ -355,6 +387,9 @@ export const SellersPage: React.FC = () => {
 
   const handleSubmitFinal = async () => {
     setStep3Error(null);
+    if (submitLockRef.current || isSubmitting) {
+      return;
+    }
     if (usedMatkap === 'yes') {
       setStep3Error(
         language === 'ru'
@@ -382,6 +417,7 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
+    submitLockRef.current = true;
     setIsSubmitting(true);
     try {
       await withAsyncTimeout(
@@ -404,6 +440,12 @@ export const SellersPage: React.FC = () => {
             sellerInn: sellerInn.trim(),
             city: locationRegion,
             district,
+            streetAddress: streetAddress.trim() || undefined,
+            metroName: metroName.trim() || undefined,
+            metroTime: metroTime ? Number(metroTime) || 10 : undefined,
+            metroTransport,
+            coordinates,
+            todayDeveloperPrice: todayMarketPrice > 0 ? todayMarketPrice : undefined,
             complexName: complexName.trim(),
             developer: developerName.trim(),
             developerInn: developerInn.trim() || undefined,
@@ -418,6 +460,9 @@ export const SellersPage: React.FC = () => {
             isNegotiable,
             sellerBanks,
             documentIds: vaultDocs.map((d) => d.id),
+            photos: uploadedPhotos,
+            sellerUploadedPhotos: uploadedPhotos,
+            matCapitalUsed: false,
             referredByPartnerCode: partnerRefCode.trim() || undefined,
           });
 
@@ -481,6 +526,7 @@ export const SellersPage: React.FC = () => {
       setStep3Error(err?.message || ASYNC_NETWORK_TIMEOUT_MESSAGE);
     } finally {
       setIsSubmitting(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -615,7 +661,7 @@ export const SellersPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Hierarchical Russian Region & District Selectors */}
+                {/* Hierarchical Russian Region, District, Address & Metro */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1.5 flex items-center space-x-1">
@@ -650,6 +696,85 @@ export const SellersPage: React.FC = () => {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* Complete Location Address Input */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center space-x-1">
+                      <Compass className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{language === 'ru' ? 'Адрес объекта: улица, дом / корпус' : 'Property Address: Street, House / Building'}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={streetAddress}
+                      onChange={(e) => setStreetAddress(e.target.value)}
+                      onBlur={() => markTouched('streetAddress')}
+                      placeholder="Например: Комендантский пр-т, д. 62, к. 1"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Nearest Metro Station */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center space-x-1">
+                      <Train className="w-3.5 h-3.5 text-sky-600" />
+                      <span>{language === 'ru' ? 'Ближайшая станция метро' : 'Nearest Metro Station'}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={metroName}
+                      onChange={(e) => setMetroName(e.target.value)}
+                      onBlur={() => markTouched('metroName')}
+                      placeholder="Например: Комендантский проспект"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Travel Time & Mode */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center space-x-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{language === 'ru' ? 'Время и способ до метро' : 'Time & Mode to Metro'}</span>
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <div className="relative w-1/2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={metroTime}
+                          onChange={(e) => setMetroTime(sanitizeDigitsOnly(e.target.value, 2))}
+                          placeholder="10"
+                          className="w-full px-3 py-2.5 pr-8 rounded-xl border border-slate-300 bg-white text-xs font-mono font-bold text-slate-900 placeholder:text-slate-400 text-center focus:outline-none focus:border-emerald-500"
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 font-bold">
+                          мин
+                        </span>
+                      </div>
+                      <div className="w-1/2 flex rounded-xl border border-slate-300 bg-white p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setMetroTransport('walk')}
+                          className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                            metroTransport === 'walk'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Пешком
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMetroTransport('transport')}
+                          className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                            metroTransport === 'transport'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Транспорт
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -776,6 +901,7 @@ export const SellersPage: React.FC = () => {
                             type="text"
                             value={developerName}
                             onChange={(e) => setDeveloperName(e.target.value)}
+                            onBlur={() => markTouched('developerName')}
                             placeholder="Например: СК «Северный Горизонт»"
                             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
                           />
@@ -789,7 +915,8 @@ export const SellersPage: React.FC = () => {
                             maxLength={12}
                             value={developerInn}
                             onChange={(e) => setDeveloperInn(sanitizeDigitsOnly(e.target.value))}
-                            placeholder="7813654902"
+                            onBlur={() => markTouched('developerInn')}
+                            placeholder="Например: 7813654902"
                             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
                           />
                         </div>
@@ -809,8 +936,9 @@ export const SellersPage: React.FC = () => {
                       type="text"
                       value={complexName}
                       onChange={(e) => setComplexName(e.target.value)}
-                      placeholder="ЖК «Чистое Небо»"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:border-emerald-500"
+                      onBlur={() => markTouched('complexName')}
+                      placeholder="Например: ЖК «Чистое Небо»"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-semibold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
@@ -825,8 +953,9 @@ export const SellersPage: React.FC = () => {
                       type="text"
                       value={dduCode}
                       onChange={(e) => setDduCode(e.target.value)}
-                      placeholder="ДДУ-78/10566"
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
+                      onBlur={() => markTouched('dduCode')}
+                      placeholder="Например: ДДУ-78/10566"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
@@ -858,7 +987,9 @@ export const SellersPage: React.FC = () => {
                       onChange={(e) =>
                         setAreaM2(e.target.value.replace(/[^0-9.]/g, '').slice(0, 6))
                       }
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
+                      onBlur={() => markTouched('areaM2')}
+                      placeholder="Например: 42.5"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
@@ -872,7 +1003,8 @@ export const SellersPage: React.FC = () => {
                         inputMode="numeric"
                         value={floor}
                         onChange={(e) => setFloor(sanitizeDigitsOnly(e.target.value, 3))}
-                        className="w-1/2 px-2.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-center focus:outline-none focus:border-emerald-500"
+                        onBlur={() => markTouched('floor')}
+                        className="w-1/2 px-2.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-center placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                         placeholder="9"
                       />
                       <span className="text-slate-400 font-bold">/</span>
@@ -881,7 +1013,8 @@ export const SellersPage: React.FC = () => {
                         inputMode="numeric"
                         value={totalFloors}
                         onChange={(e) => setTotalFloors(sanitizeDigitsOnly(e.target.value, 3))}
-                        className="w-1/2 px-2.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-center focus:outline-none focus:border-emerald-500"
+                        onBlur={() => markTouched('totalFloors')}
+                        className="w-1/2 px-2.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-center placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                         placeholder="24"
                       />
                     </div>
@@ -900,15 +1033,17 @@ export const SellersPage: React.FC = () => {
                       type="text"
                       inputMode="numeric"
                       value={contractPriceStr}
+                      placeholder="Например: 10 500 000"
                       onChange={(e) => setContractPriceStr(sanitizeDigitsOnly(e.target.value, 10))}
-                      className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold focus:outline-none ${
-                        financialValidation.contractErrorRu
-                          ? 'border-rose-400 bg-rose-50/40'
-                          : 'border-slate-300 focus:border-emerald-500'
+                      onBlur={() => markTouched('contractPrice')}
+                      className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none transition-colors ${
+                        touched.contractPrice && financialValidation.contractErrorRu
+                          ? 'border-rose-400 bg-rose-50/40 text-slate-900'
+                          : 'border-slate-300 bg-white text-slate-900 focus:border-emerald-500'
                       }`}
                     />
                     <span className="text-[11px] text-slate-500 font-mono block mt-1">
-                      {formatRubles(contractPrice)}
+                      {contractPrice > 0 ? formatRubles(contractPrice) : '—'}
                     </span>
                   </div>
 
@@ -927,27 +1062,37 @@ export const SellersPage: React.FC = () => {
                       type="text"
                       inputMode="numeric"
                       value={paidAmountStr}
+                      placeholder="Например: 3 500 000"
                       onChange={(e) => setPaidAmountStr(sanitizeDigitsOnly(e.target.value, 9))}
-                      className={`w-full px-4 py-3 rounded-xl border-2 text-sm font-mono font-bold focus:outline-none ${
-                        financialValidation.paidErrorRu
-                          ? 'border-rose-500 bg-rose-50/40'
-                          : 'border-emerald-500/80'
+                      onBlur={() => markTouched('paidAmount')}
+                      className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none transition-colors ${
+                        touched.paidAmount && financialValidation.paidErrorRu
+                          ? 'border-rose-500 bg-rose-50/40 text-slate-900'
+                          : 'border-slate-300 bg-white text-slate-900 focus:border-emerald-500'
                       }`}
                     />
                     <span className="text-[11px] text-emerald-700 font-mono font-bold block mt-1">
-                      На руки 100%: {formatRubles(paidAmount)} • Остаток долга:{' '}
-                      {formatRubles(Math.max(0, contractPrice - paidAmount))}
+                      {paidAmount > 0 ? (
+                        <>
+                          На руки 100%: {formatRubles(paidAmount)} • Остаток долга:{' '}
+                          {formatRubles(Math.max(0, contractPrice - paidAmount))}
+                        </>
+                      ) : (
+                        <span className="text-slate-400 font-normal">Сумма к получению на аккредитив</span>
+                      )}
                     </span>
                   </div>
                 </div>
 
-                {!financialValidation.valid && (
-                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold">
-                    {language === 'ru'
-                      ? financialValidation.paidErrorRu || financialValidation.contractErrorRu
-                      : financialValidation.paidErrorEn || financialValidation.contractErrorEn}
-                  </div>
-                )}
+                {(touched.contractPrice || touched.paidAmount || step1Error) &&
+                  !financialValidation.valid &&
+                  (contractPrice > 0 || paidAmount > 0) && (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold">
+                      {language === 'ru'
+                        ? financialValidation.paidErrorRu || financialValidation.contractErrorRu
+                        : financialValidation.paidErrorEn || financialValidation.contractErrorEn}
+                    </div>
+                  )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -960,10 +1105,15 @@ export const SellersPage: React.FC = () => {
                       type="text"
                       inputMode="numeric"
                       value={todayMarketPriceStr}
+                      placeholder={
+                        contractPrice > 0
+                          ? `Например: ${Math.round(contractPrice * 1.24)}`
+                          : 'Например: 13 200 000'
+                      }
                       onChange={(e) =>
                         setTodayMarketPriceStr(sanitizeDigitsOnly(e.target.value, 10))
                       }
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-semibold focus:outline-none focus:border-emerald-500"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-semibold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
@@ -1179,12 +1329,16 @@ export const SellersPage: React.FC = () => {
                     </span>
                   </div>
                   <div className="text-2xl font-black text-rose-600 tracking-tight font-mono">
-                    -{formatRubles(devPenalty)}
+                    {contractPrice > 0 ? `-${formatRubles(devPenalty)}` : '—'}
                   </div>
                   <p className="text-[11px] text-rose-800/80">
-                    {language === 'ru'
-                      ? 'Прямая безвозвратная потеря из внесенных средств при расторжении'
-                      : 'Direct non-refundable loss from deposited capital'}
+                    {contractPrice > 0
+                      ? language === 'ru'
+                        ? 'Прямая безвозвратная потеря из внесенных средств при расторжении'
+                        : 'Direct non-refundable loss from deposited capital'
+                      : language === 'ru'
+                      ? 'Укажите стоимость ДДУ для расчета возможного штрафа'
+                      : 'Enter DDU contract price to calculate penalty'}
                   </p>
                 </div>
 
@@ -1200,12 +1354,16 @@ export const SellersPage: React.FC = () => {
                     </span>
                   </div>
                   <div className="text-2xl font-black text-emerald-700 tracking-tight font-mono">
-                    {formatRubles(cleanReturnDomExit)}
+                    {paidAmount > 0 ? formatRubles(cleanReturnDomExit) : '—'}
                   </div>
                   <p className="text-[11px] text-emerald-800/80">
-                    {language === 'ru'
-                      ? 'Полная выплата с аккредитива Сбербанка / ВТБ в день регистрации Росреестра'
-                      : 'Full payout from Sberbank / VTB escrow on Rosreestr registration day'}
+                    {paidAmount > 0
+                      ? language === 'ru'
+                        ? 'Полная выплата с аккредитива Сбербанка / ВТБ в день регистрации Росреестра'
+                        : 'Full payout from Sberbank / VTB escrow on Rosreestr registration day'
+                      : language === 'ru'
+                      ? 'Укажите выплаченную застройщику сумму'
+                      : 'Enter amount paid to developer'}
                   </p>
                 </div>
 
@@ -1216,7 +1374,7 @@ export const SellersPage: React.FC = () => {
                       : 'YOUR NET BENEFIT (Capital Preserved)'}
                   </span>
                   <div className="text-3xl font-black text-white tracking-tight font-mono">
-                    +{formatRubles(netFamilyBenefit)}
+                    {contractPrice > 0 ? `+${formatRubles(netFamilyBenefit)}` : '—'}
                   </div>
 
                   <div className="space-y-1 pt-2 border-t border-emerald-500/50 text-[11px]">
@@ -1229,7 +1387,9 @@ export const SellersPage: React.FC = () => {
                     <div className="flex justify-between text-emerald-100">
                       <span>Дисконт для нового покупателя:</span>
                       <span className="font-bold text-white">
-                        {formatRubles(Math.max(0, todayMarketPrice - contractPrice))}
+                        {contractPrice > 0 && todayMarketPrice > contractPrice
+                          ? formatRubles(todayMarketPrice - contractPrice)
+                          : '—'}
                       </span>
                     </div>
                   </div>
@@ -1276,8 +1436,9 @@ export const SellersPage: React.FC = () => {
                     type="text"
                     value={sellerName}
                     onChange={(e) => setSellerName(e.target.value)}
-                    placeholder={language === 'ru' ? 'Иванов Иван Иванович' : 'Full Name'}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold focus:outline-none focus:border-emerald-500"
+                    onBlur={() => markTouched('sellerName')}
+                    placeholder={language === 'ru' ? 'Например: Иванов Иван Иванович' : 'Full Name'}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
@@ -1290,6 +1451,7 @@ export const SellersPage: React.FC = () => {
                       type="tel"
                       value={sellerPhone}
                       onChange={(e) => setSellerPhone(formatRussianPhoneInput(e.target.value))}
+                      onBlur={() => markTouched('sellerPhone')}
                       placeholder="+7 (911) 409-44-12"
                       className={`w-full px-4 py-3 rounded-xl border bg-white text-sm font-mono font-bold focus:outline-none ${
                         isValidRussianPhone(sellerPhone)
@@ -1308,8 +1470,9 @@ export const SellersPage: React.FC = () => {
                       inputMode="numeric"
                       value={sellerInn}
                       onChange={(e) => setSellerInn(sanitizeDigitsOnly(e.target.value, 12))}
-                      placeholder="781432994102"
-                      className={`w-full px-4 py-3 rounded-xl border bg-white text-sm font-mono font-bold focus:outline-none ${
+                      onBlur={() => markTouched('sellerInn')}
+                      placeholder="Например: 781432994102"
+                      className={`w-full px-4 py-3 rounded-xl border bg-white text-sm font-mono font-bold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none ${
                         validateRussianInn(sellerInn).valid
                           ? 'border-emerald-400'
                           : 'border-slate-300 focus:border-emerald-500'
