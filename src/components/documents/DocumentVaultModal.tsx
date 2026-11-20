@@ -180,7 +180,7 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
         return (
           <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold">
             <Clock className="w-3.5 h-3.5 text-amber-600" />
-            <span>{language === 'ru' ? 'На проверке комплаенса' : 'Under Compliance Review'}</span>
+            <span>{language === 'ru' ? 'На проверке' : 'Under Review'}</span>
           </span>
         );
       default:
@@ -694,8 +694,8 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
         <div className="bg-white border-t border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
           <div className="text-[11px] text-slate-500">
             {language === 'ru'
-              ? `Всего файлов в контейнере: ${documents.length} • Хранилище: IndexedDB / Yandex Object Storage S3 Adapter`
-              : `Total files in container: ${documents.length} • Storage: Yandex Object Storage S3 Adapter`}
+              ? `Всего файлов: ${documents.length}`
+              : `Total files: ${documents.length}`}
           </div>
           <button
             type="button"

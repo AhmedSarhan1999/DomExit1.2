@@ -3,6 +3,7 @@ import { initialLots } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { EmployeesRepository } from './EmployeesRepository';
+import { PropertyLifecycleService } from '../../services/propertyLifecycleService';
 
 const COLLECTION = 'lots';
 
@@ -23,10 +24,16 @@ export class LotsRepository {
     isVipInvestor?: boolean;
     includePendingApproval?: boolean;
   }): Promise<Lot[]> {
-    if (filter?.includePendingApproval) {
-      await this.reconcileOrphanDeals();
-    }
     let list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+
+    // Strict deduplication guard
+    const seenCodes = new Set<string>();
+    list = list.filter((l) => {
+      const code = (l.lotCode || l.id || '').toUpperCase();
+      if (!code || seenCodes.has(code)) return false;
+      seenCodes.add(code);
+      return true;
+    });
 
     if (filter) {
       if (!filter.includePendingApproval) {
@@ -181,103 +188,7 @@ export class LotsRepository {
     });
   }
 
-  /**
-   * Reconciles orphan deals that exist in deals table but are missing from lots table.
-   */
-  static async reconcileOrphanDeals(): Promise<void> {
-    try {
-      const deals = await DatabaseGateway.getAll<{ id: string; lotCode?: string; complexName?: string; lotTitle?: string; developer?: string; city?: any; district?: string; sellerReturnRub?: number; discountRub?: number; sellerUserId?: string; sellerClientCode?: string; sellerName?: string; clientName?: string }>('deals', []);
-      const lots = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
-      const lotCodes = new Set(lots.map((l) => l.lotCode?.toUpperCase()).filter(Boolean));
 
-      for (const d of deals) {
-        if (d.lotCode && !lotCodes.has(d.lotCode.toUpperCase())) {
-          const cleanSuffix = d.lotCode.replace(/[^0-9]/g, '') || String(Date.now()).slice(-5);
-          const reconstructedLot: Lot = {
-            id: `lot-sync-${Date.now()}-${cleanSuffix}`,
-            lotCode: d.lotCode,
-            complexName: d.complexName || d.lotTitle || `ЖК «${d.lotCode}»`,
-            developer: d.developer || 'Застройщик',
-            developerAccreditationStatus: 'pending_bank_accreditation',
-            publishedAt: new Date().toISOString(),
-            viewsCount: 1,
-            favoritesCount: 0,
-            city: d.city || 'spb',
-            district: d.district || 'Приморский район',
-            streetAddress: d.district || 'Санкт-Петербург',
-            areaM2: 50,
-            rooms: '1-room',
-            floor: 5,
-            totalFloors: 16,
-            ceilingHeightM: 2.78,
-            coordinates: { lat: 59.988, lng: 30.225 },
-            deliveryDate: '4 кв. 2026 г.',
-            deliveryYear: 2026,
-            finishing: 'clean',
-            imageUrl: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1000&q=80',
-            galleryImages: [
-              'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
-            ],
-            sellerUploadedPhotos: [],
-            approvedGalleryImages: [],
-            constructionReadinessPercent: 80,
-            dduContractPrice: (d.sellerReturnRub || 3000000) + (d.discountRub || 2000000),
-            cashPaidBySeller: d.sellerReturnRub || 3000000,
-            remainingInstallmentDebt: d.discountRub || 2000000,
-            todayDeveloperPrice: (d.sellerReturnRub || 3000000) + (d.discountRub || 2000000) * 1.3,
-            installmentQuarterlyPayment: 0,
-            serviceCommissionRate: 2.5,
-            serviceCommissionRub: Math.round(((d.sellerReturnRub || 3000000) + (d.discountRub || 2000000)) * 0.025),
-            isVerified: false,
-            isUrgentExit: false,
-            isNegotiable: false,
-            isFeatured: false,
-            escrowBank: 'Сбербанк',
-            sellerBanks: ['Сбербанк', 'ВТБ'],
-            tags: ['Переуступка 214-ФЗ', 'Эскроу Сбербанк'],
-            status: 'draft',
-            currentStage: 1,
-            approvalStatus: 'pending_owner_approval',
-            sellerUserId: d.sellerUserId || '',
-            sellerClientCode: d.sellerClientCode || '',
-            sellerName: d.sellerName || '',
-            documentIds: [],
-            legalPassport: {
-              passedChecksCount: 28,
-              totalChecksCount: 42,
-              antiBankruptcyIndex: 96,
-              maternalCapitalUsed: false,
-              spousalConsentNotarized: true,
-              fsspDebtRub: 0,
-              efrsbBankruptcyStatus: 'clean',
-              nbkiScore: 780,
-              pdnPercent: 25,
-              developerConsentObtained: false,
-              rosreestrEsignSpeedHours: 48,
-            },
-            ownerDossier: {
-              fullNameMasked: d.clientName || 'Правообладатель ДДУ',
-              phoneMasked: '+7 (999) ***-**-**',
-              dduNumber: `№ ДДУ-${d.lotCode}`,
-              apartmentNumber: 'Скрыто до аккредитива (152-ФЗ)',
-              hideExactFloor: true,
-              floorRangeDisplay: '4–6 этаж',
-            },
-            curator: {
-              name: 'Дежурный комплаенс-офис DomExit',
-              role: 'Первичный правовой аудит 214-ФЗ',
-              phone: '+7 (812) 409-32-00',
-              telegram: '@domexit_legal',
-            },
-          };
-          await DatabaseGateway.save<Lot>(COLLECTION, reconstructedLot);
-          lotCodes.add(d.lotCode.toUpperCase());
-        }
-      }
-    } catch (err) {
-      console.warn('[LotsRepository] Auto-reconciliation notice:', err);
-    }
-  }
 
   static async getByAssignedEmployee(employeeId: string): Promise<Lot[]> {
     const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
@@ -765,66 +676,7 @@ export class LotsRepository {
   ): Promise<boolean> {
     const lot = await this.getByCode(lotCode);
     const targetLotCode = lot?.lotCode || lotCode;
-
-    // 1. Remove lot
-    if (lot) {
-      await DatabaseGateway.remove(COLLECTION, lot.id);
-    }
-
-    // 2. Remove deals
-    try {
-      const deals = await DatabaseGateway.query<{ id: string; lotCode: string }>(
-        'deals',
-        (d) => d.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
-      );
-      for (const d of deals) {
-        await DatabaseGateway.remove('deals', d.id);
-      }
-    } catch {}
-
-    // 3. Remove seller requests
-    try {
-      const reqs = await DatabaseGateway.query<{ id: string; lotCode: string }>(
-        'seller_requests',
-        (r) => r.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
-      );
-      for (const r of reqs) {
-        await DatabaseGateway.remove('seller_requests', r.id);
-      }
-    } catch {}
-
-    // 4. Remove candidates
-    try {
-      const cands = await DatabaseGateway.query<{ id: string; lotCode: string }>(
-        'candidates',
-        (c) => c.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
-      );
-      for (const c of cands) {
-        await DatabaseGateway.remove('candidates', c.id);
-      }
-    } catch {}
-
-    // 5. Remove developer accreditation requests
-    try {
-      const devReqs = await DatabaseGateway.query<{ id: string; lotCode: string }>(
-        'developer_accreditation_requests',
-        (dr) => dr.lotCode?.toUpperCase() === targetLotCode.toUpperCase()
-      );
-      for (const dr of devReqs) {
-        await DatabaseGateway.remove('developer_accreditation_requests', dr.id);
-      }
-    } catch {}
-
-    await AuditLogsRepository.addLog({
-      lotCode: targetLotCode,
-      operatorName,
-      operatorRole: 'owner',
-      actionType: 'deal_cancelled_relisted',
-      title: `Объект #${targetLotCode} и связанная сделка удалены`,
-      description: `Лот, сделка и сопутствующие заявки безвозвратно удалены оператором ${operatorName}.`,
-    });
-
-    return true;
+    return PropertyLifecycleService.deletePropertyCascade(targetLotCode, operatorName);
   }
 
   static async update(lot: Lot): Promise<Lot> {

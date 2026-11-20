@@ -380,7 +380,14 @@ export const ClientPortalPage: React.FC = () => {
       }
     }
 
-    setSellerLots(effectiveSellerLots);
+    const seenSellerCodes = new Set<string>();
+    const deduplicatedSellerLots = effectiveSellerLots.filter((l) => {
+      const code = (l.lotCode || l.id || '').toUpperCase();
+      if (!code || seenSellerCodes.has(code)) return false;
+      seenSellerCodes.add(code);
+      return true;
+    });
+    setSellerLots(deduplicatedSellerLots);
     setSellerDeals(mySellerDeals);
     setSellerRequests(mySellerReqs);
 

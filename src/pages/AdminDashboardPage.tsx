@@ -480,8 +480,16 @@ export const AdminDashboardPage: React.FC = () => {
       return rank(a) - rank(b);
     });
 
+    const seenLotCodes = new Set<string>();
+    const deduplicatedLots = sortedLots.filter((l) => {
+      const code = (l.lotCode || l.id || '').toUpperCase();
+      if (!code || seenLotCodes.has(code)) return false;
+      seenLotCodes.add(code);
+      return true;
+    });
+
     setKpis(kpiData);
-    setLots(sortedLots);
+    setLots(deduplicatedLots);
     setSellerRequests(sellerReqs);
     setEmployees(empData);
     setCandidates(candData);

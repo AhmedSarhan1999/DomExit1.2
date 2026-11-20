@@ -268,7 +268,7 @@ export const AdminMatchmakerPage: React.FC = () => {
 
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 text-[11px] block font-sans">
-                      Остаток в рассрочку:
+                      Остаток по ДДУ:
                     </span>
                     <span className="text-base font-black text-slate-700 mt-0.5 block">
                       {formatRubles(lot.remainingInstallmentDebt)}

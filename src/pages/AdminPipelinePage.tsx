@@ -85,7 +85,14 @@ export const AdminPipelinePage: React.FC = () => {
 
         : await DealsRepository.getAll();
 
-      setDeals(data);
+      const seenDealKeys = new Set<string>();
+      const deduplicatedDeals = data.filter((d) => {
+        const key = (d.dealId || d.id || d.lotCode || '').toUpperCase();
+        if (!key || seenDealKeys.has(key)) return false;
+        seenDealKeys.add(key);
+        return true;
+      });
+      setDeals(deduplicatedDeals);
 
     }
 

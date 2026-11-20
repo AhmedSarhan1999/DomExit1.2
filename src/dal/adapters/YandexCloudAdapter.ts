@@ -283,6 +283,39 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
     let res: Response | null = null;
     let lastErr: any = null;
 
+    // 0. Try Netlify Serverless Function first if in browser
+    if (isBrowser) {
+      try {
+        let binaryStr = '';
+        const len = payloadBytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binaryStr += String.fromCharCode(payloadBytes[i]);
+        }
+        const base64Data = window.btoa(binaryStr);
+
+        const netlifyRes = await fetch('/.netlify/functions/s3-upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            objectKey: safeKey,
+            contentType,
+            base64Data,
+          }),
+        });
+
+        if (netlifyRes.ok) {
+          const json = await netlifyRes.json();
+          if (json.url || json.objectKey) {
+            return json.url || `${this.config.storageEndpoint}/${this.config.storageBucket}/${safeKey}`;
+          }
+        }
+      } catch (fnErr) {
+        // Fall through to presigned / proxy
+      }
+    }
+
     // 1. Try Presigned PUT first (standard browser body PUT without custom auth headers that fail CORS preflight)
     try {
       const presignedPutUrl = await this.getPresignedPutUrl(safeKey, 3600);

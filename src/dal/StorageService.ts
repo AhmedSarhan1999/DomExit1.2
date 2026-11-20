@@ -6,6 +6,7 @@ import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 import { downloadDocumentFile } from '../utils/downloadManager';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { validateFileSignature } from '../utils/fileSignatureValidator';
+import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
 const IDB_NAME = 'domexit_yandex_s3_emulator';
 const IDB_VERSION = 1;
@@ -385,6 +386,8 @@ class YandexS3CompatibleStorageService implements IStorageService {
 
     const previewDataUrl = await createImageThumbnail(dataUrl, file.type || 'application/octet-stream');
 
+    const isProd = useEnvironmentStore.getState().isProduction;
+
     // 1. Live Upload directly to Yandex Object Storage (S3 API)
     let cloudUrl = `https://storage.yandexcloud.net/${bucket}/${objectKey}`;
     try {
@@ -394,19 +397,26 @@ class YandexS3CompatibleStorageService implements IStorageService {
         file.type || 'application/octet-stream'
       );
     } catch (err) {
-      console.warn('[StorageService] Live Yandex Object Storage upload warning, keeping local fallback:', err);
+      console.warn('[StorageService] Live Yandex Object Storage upload error:', err);
+      if (isProd) {
+        throw new Error(
+          'Не удалось загрузить файл в защищенное хранилище Yandex Object Storage (152-ФЗ). Пожалуйста, повторите попытку.'
+        );
+      }
     }
 
-    // 2. Store binary payload inside local IndexedDB S3 Object Store as resilient backup
-    await putS3Object({
-      s3Uri,
-      bucket,
-      objectKey,
-      mimeType: file.type || 'application/octet-stream',
-      dataUrl,
-      sizeBytes: file.size,
-      createdAt: nowIso,
-    });
+    // 2. Store binary payload inside local IndexedDB S3 Object Store as resilient backup only in sandbox/demo mode
+    if (!isProd) {
+      await putS3Object({
+        s3Uri,
+        bucket,
+        objectKey,
+        mimeType: file.type || 'application/octet-stream',
+        dataUrl,
+        sizeBytes: file.size,
+        createdAt: nowIso,
+      });
+    }
 
     // 3. Store lightweight metadata inside YDB / DAL documents_vault
     const metadata: DocumentMetadata = {
@@ -478,25 +488,36 @@ class YandexS3CompatibleStorageService implements IStorageService {
   }
 
   async resolveObjectDataUrl(doc: DocumentMetadata): Promise<string> {
-    // 1. Check local IndexedDB S3 Object Store FIRST (real binary dataUrl saved on upload)
-    const s3Uri = `s3://${doc.bucket}/${doc.objectKey}`;
-    const stored = await getS3Object(s3Uri);
-    if (stored && stored.dataUrl) {
-      return stored.dataUrl;
-    }
-    // 2. Check inline dataUrl if attached
-    if ((doc as any).dataUrl && typeof (doc as any).dataUrl === 'string' && (doc as any).dataUrl.startsWith('data:')) {
-      return (doc as any).dataUrl;
-    }
-    // 3. Generate live Presigned GET URL from Yandex Object Storage S3 (152-FZ Compliant)
+    const isProd = useEnvironmentStore.getState().isProduction;
+
+    // 1. In production, use Netlify serverless streaming endpoint or live S3 presigned URL
     if (doc.objectKey) {
+      const safeKey = doc.objectKey.startsWith('/') ? doc.objectKey.slice(1) : doc.objectKey;
+      if (typeof window !== 'undefined' && isProd) {
+        return `/.netlify/functions/s3-download?key=${encodeURIComponent(safeKey)}`;
+      }
       try {
-        const presigned = await YandexCloudAdapter.getPresignedGetUrl(doc.objectKey, 7200);
+        const presigned = await YandexCloudAdapter.getPresignedGetUrl(safeKey, 7200);
         if (presigned) return presigned;
       } catch (err) {
         console.warn('[StorageService] Error generating presigned GET URL:', err);
       }
     }
+
+    // 2. Check local IndexedDB S3 Object Store for demo / offline development
+    if (!isProd) {
+      const s3Uri = `s3://${doc.bucket}/${doc.objectKey}`;
+      const stored = await getS3Object(s3Uri);
+      if (stored && stored.dataUrl) {
+        return stored.dataUrl;
+      }
+    }
+
+    // 3. Check inline dataUrl if attached
+    if ((doc as any).dataUrl && typeof (doc as any).dataUrl === 'string' && (doc as any).dataUrl.startsWith('data:')) {
+      return (doc as any).dataUrl;
+    }
+
     // 4. Live cloudUrl
     if (doc.cloudUrl && doc.cloudUrl.startsWith('http')) {
       return doc.cloudUrl;

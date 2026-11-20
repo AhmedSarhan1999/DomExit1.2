@@ -60,7 +60,14 @@ export const AdminClosingPage: React.FC = () => {
       ? await DealsRepository.getByEmployee(currentEmployeeId)
       : await DealsRepository.getAll();
 
-    setAccessibleDeals(pool);
+    const seenDealKeys = new Set<string>();
+    const deduplicatedPool = pool.filter((d) => {
+      const k = (d.dealId || d.id || d.lotCode || '').toUpperCase();
+      if (!k || seenDealKeys.has(k)) return false;
+      seenDealKeys.add(k);
+      return true;
+    });
+    setAccessibleDeals(deduplicatedPool);
 
     const targetId = (dealId || '').toUpperCase();
     const found = targetId

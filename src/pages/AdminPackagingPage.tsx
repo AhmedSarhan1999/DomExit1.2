@@ -182,6 +182,14 @@ export const AdminPackagingPage: React.FC = () => {
         }
       }
 
+      const seenPoolCodes = new Set<string>();
+      pool = pool.filter((l) => {
+        const c = (l.lotCode || l.id || '').toUpperCase();
+        if (!c || seenPoolCodes.has(c)) return false;
+        seenPoolCodes.add(c);
+        return true;
+      });
+
       setAccessibleLots(pool);
 
       if (matched) {

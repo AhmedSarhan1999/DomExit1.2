@@ -349,6 +349,7 @@ export interface BuyerCandidate {
 
 export interface DealTrack {
   id: string;
+  lotId?: string;
   bankName?: string;
   dealId: string; // e.g. DEAL-2025-10566
   lotCode: string;
