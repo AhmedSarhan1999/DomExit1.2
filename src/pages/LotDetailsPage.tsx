@@ -14,7 +14,7 @@ import { resolveLotGeoDetails } from '../data/russianGeography';
 import { formatRubles, formatPercent } from '../utils/formatters';
 import { BookingModal } from '../components/booking/BookingModal';
 import { SmartMortgageCalculator } from '../components/lot/SmartMortgageCalculator';
-import { LotMiniMap } from '../components/lot/LotMiniMap';
+import { YandexLotMap } from '../components/maps/YandexLotMap';
 import { PublicLegalReportModal } from '../components/lot/PublicLegalReportModal';
 import { LotDetailsSkeleton } from '../components/common/Skeletons';
 import {
@@ -865,7 +865,7 @@ export const LotDetailsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Dynamic Infrastructure, Metro Stations & Interactive Leaflet Mini-Map */}
+            {/* Dynamic Infrastructure, Metro Stations & Interactive Yandex Map */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -909,12 +909,14 @@ export const LotDetailsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Embedded Interactive Leaflet Map */}
-              <LotMiniMap
+              {/* Interactive Yandex Map with 5 Infrastructure Category Explorers */}
+              <YandexLotMap
                 lat={geo.coordinates.lat}
                 lng={geo.coordinates.lng}
                 complexName={lot.complexName}
                 streetAddress={`${lot.district}, ${geo.streetAddress}`}
+                metroStations={geo.metroStations}
+                isSafeRadius={Boolean(lot.ownerDossier?.hideExactFloor)}
               />
             </div>
 

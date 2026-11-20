@@ -7,7 +7,7 @@ import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { RUSSIAN_REGIONS, getDistrictsForRegion, getRegionByCode } from '../data/russianGeography';
 import { LotCard } from '../components/catalog/LotCard';
-import { CatalogMapView } from '../components/catalog/CatalogMapView';
+import { YandexCatalogMap } from '../components/maps/YandexCatalogMap';
 import { AdvancedFilterDrawer } from '../components/catalog/AdvancedFilterDrawer';
 import { QuickMatchModal } from '../components/catalog/QuickMatchModal';
 import { VipSubscriptionModal } from '../components/vip/VipSubscriptionModal';
@@ -727,7 +727,7 @@ export const OpportunitiesPage: React.FC = () => {
           )
         ) : viewMode === 'map' ? (
           <div className="py-2">
-            <CatalogMapView
+            <YandexCatalogMap
               lots={lots}
               selectedCity={selectedCity}
               onSelectCity={(cityCode) => handleCityChange(cityCode)}

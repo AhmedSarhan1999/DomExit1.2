@@ -31,6 +31,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
+import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -53,6 +54,7 @@ export const AdminPackagingPage: React.FC = () => {
   const [metroName, setMetroName] = useState<string>('');
   const [metroTime, setMetroTime] = useState<string>('');
   const [metroMode, setMetroMode] = useState<'walk' | 'drive'>('walk');
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | undefined>(undefined);
 
   // Technical Specs
   const [complexName, setComplexName] = useState<string>('');
@@ -107,6 +109,7 @@ export const AdminPackagingPage: React.FC = () => {
     setCity(data.city || 'spb');
     setDistrict(data.district || '');
     setStreetAddress(data.streetAddress || '');
+    setCoordinates(data.coordinates);
     if (data.metroStations && data.metroStations.length > 0) {
       setMetroName(data.metroStations[0].name || '');
       setMetroTime(data.metroStations[0].travelTimeText || '');
@@ -272,6 +275,7 @@ export const AdminPackagingPage: React.FC = () => {
       city,
       district,
       streetAddress,
+      coordinates: coordinates || lot.coordinates,
       areaM2,
       rooms: rooms as any,
       floor,
@@ -690,12 +694,29 @@ export const AdminPackagingPage: React.FC = () => {
 
                       <div className="sm:col-span-2">
                         <label className="block text-slate-500 mb-1 font-semibold">Улица и номер дома (адрес):</label>
-                        <input
-                          type="text"
+                        <AddressAutocompleteInput
                           value={streetAddress}
-                          onChange={(e) => setStreetAddress(e.target.value)}
+                          onChange={setStreetAddress}
+                          cityCode={city}
                           placeholder="Комендантский пр., д. 58"
-                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold focus:bg-white focus:border-emerald-500"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold focus:bg-white focus:border-emerald-500 text-xs"
+                          onSelectAddress={(details) => {
+                            setStreetAddress(details.address);
+                            if (details.coordinates) {
+                              setCoordinates(details.coordinates);
+                            }
+                            if (details.nearestMetro) {
+                              setMetroName(details.nearestMetro.name);
+                              const travelMatch = details.nearestMetro.travelTimeText.match(/^(\d+)/);
+                              if (travelMatch) {
+                                setMetroTime(travelMatch[1]);
+                              }
+                              setMetroMode(details.nearestMetro.mode);
+                            }
+                            if (details.district && !district) {
+                              setDistrict(details.district);
+                            }
+                          }}
                         />
                       </div>
 

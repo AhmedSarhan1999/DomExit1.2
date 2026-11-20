@@ -35,6 +35,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { ConsentCheckboxes, ConsentState } from '../components/compliance/ConsentCheckboxes';
 import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
+import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
 import { RUSSIAN_BANKS, DEFAULT_SETTLEMENT_BANKS } from '../data/russianBanks';
 import {
@@ -698,19 +699,44 @@ export const SellersPage: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* Complete Location Address Input */}
+                  {/* Complete Location Address Input with Yandex Suggest & Geocoder */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center space-x-1">
                       <Compass className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{language === 'ru' ? 'Адрес объекта: улица, дом / корпус' : 'Property Address: Street, House / Building'}</span>
                     </label>
-                    <input
-                      type="text"
+                    <AddressAutocompleteInput
                       value={streetAddress}
-                      onChange={(e) => setStreetAddress(e.target.value)}
+                      onChange={setStreetAddress}
                       onBlur={() => markTouched('streetAddress')}
+                      cityCode={locationRegion}
                       placeholder="Например: Комендантский пр-т, д. 62, к. 1"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+                      onSelectAddress={(details) => {
+                        setStreetAddress(details.address);
+                        if (details.coordinates) {
+                          setCoordinates(details.coordinates);
+                        }
+                        if (details.nearestMetro) {
+                          setMetroName(details.nearestMetro.name);
+                          const travelMatch = details.nearestMetro.travelTimeText.match(/^(\d+)/);
+                          if (travelMatch) {
+                            setMetroTime(travelMatch[1]);
+                          }
+                          setMetroTransport(
+                            details.nearestMetro.mode === 'drive' ? 'transport' : 'walk'
+                          );
+                        }
+                        if (details.district) {
+                          const matchedDist = regionDistricts.find(
+                            (d) =>
+                              d.nameRu.toLowerCase().includes(details.district!.toLowerCase()) ||
+                              details.district!.toLowerCase().includes(d.nameRu.toLowerCase())
+                          );
+                          if (matchedDist) {
+                            setDistrict(matchedDist.nameRu);
+                          }
+                        }
+                      }}
                     />
                   </div>
 
