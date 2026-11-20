@@ -90,7 +90,7 @@ export const AdminSidebar: React.FC = () => {
     {
       path: '/admin/legal-audit',
       matchPrefix: '/admin/legal-audit',
-      label: language === 'ru' ? 'Юридический аудит (42 пункта)' : 'Legal Audit (42 Checks)',
+      label: language === 'ru' ? 'Юридический аудит (5 разделов)' : 'Legal Audit (5 Sections)',
       icon: Scale,
       roles: ['owner', 'employee'],
     },

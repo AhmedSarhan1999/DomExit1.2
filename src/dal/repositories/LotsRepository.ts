@@ -4,6 +4,7 @@ import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { EmployeesRepository } from './EmployeesRepository';
 import { PropertyLifecycleService } from '../../services/propertyLifecycleService';
+import { swrCache } from '../cache/SWRCache';
 
 const COLLECTION = 'lots';
 
@@ -237,6 +238,7 @@ export class LotsRepository {
     }
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -356,6 +358,7 @@ export class LotsRepository {
         bio: employee.bio,
       };
       await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
     }
   }
 
@@ -367,6 +370,7 @@ export class LotsRepository {
     if (!lot) return null;
     lot.status = status;
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
     return lot;
   }
 
@@ -396,6 +400,7 @@ export class LotsRepository {
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -447,6 +452,7 @@ export class LotsRepository {
     }
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -497,6 +503,7 @@ export class LotsRepository {
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -531,6 +538,7 @@ export class LotsRepository {
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -560,6 +568,7 @@ export class LotsRepository {
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -583,12 +592,16 @@ export class LotsRepository {
     if (!lot) return null;
 
     lot.approvedGalleryImages = approvedGalleryImages;
+    lot.images = approvedGalleryImages;
+    lot.galleryImages = approvedGalleryImages;
     if (approvedGalleryImages.length > 0) {
-      lot.galleryImages = approvedGalleryImages;
       lot.imageUrl = approvedGalleryImages[0];
+    } else {
+      lot.imageUrl = '';
     }
     if (sellerUploadedPhotos) {
       lot.sellerUploadedPhotos = sellerUploadedPhotos;
+      lot.sellerSubmittedImages = sellerUploadedPhotos;
     }
 
     lot.curatorOperationsLog = lot.curatorOperationsLog || [];
@@ -600,6 +613,8 @@ export class LotsRepository {
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -623,6 +638,7 @@ export class LotsRepository {
     lot.isPublished = false;
     lot.status = 'draft';
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,
@@ -650,6 +666,7 @@ export class LotsRepository {
     lot.rejectionReason = reason;
     lot.blockedReason = reason;
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
 
     try {
       const deals = await DatabaseGateway.query<{ id: string; lotCode: string; status?: string }>(
@@ -683,18 +700,160 @@ export class LotsRepository {
     return PropertyLifecycleService.deletePropertyCascade(targetLotCode, operatorName);
   }
 
+  static invalidateLotCache(lotCode?: string): void {
+    swrCache.invalidatePrefix('getAll:lots');
+    swrCache.invalidatePrefix('getAll:demo_lots');
+    if (lotCode) {
+      const codeUpper = lotCode.trim().toUpperCase();
+      swrCache.invalidatePrefix(`getById:lots:${lotCode}`);
+      swrCache.invalidatePrefix(`getById:demo_lots:${lotCode}`);
+      swrCache.invalidatePrefix(`getById:lots:${codeUpper}`);
+      swrCache.invalidatePrefix(`getById:demo_lots:${codeUpper}`);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('domexit:dal_updated', {
+          detail: {
+            baseCollection: 'lots',
+            collectionName: 'lots',
+            id: lotCode,
+            timestamp: Date.now(),
+          },
+        })
+      );
+    }
+  }
+
+  static invalidateLotsListCache(): void {
+    this.invalidateLotCache();
+  }
+
+  static async patchLot(lotCode: string, patch: Partial<Lot>): Promise<Lot | null> {
+    if (!lotCode) return null;
+    const existing = await this.getByCode(lotCode);
+    if (!existing) return null;
+
+    const merged: Lot = {
+      ...existing,
+      ...patch,
+      ownerDossier: patch.ownerDossier
+        ? { ...existing.ownerDossier, ...patch.ownerDossier }
+        : existing.ownerDossier,
+      legalPassport: patch.legalPassport
+        ? { ...existing.legalPassport, ...patch.legalPassport }
+        : existing.legalPassport,
+      coordinates: patch.coordinates || existing.coordinates,
+      images:
+        patch.images ??
+        patch.approvedGalleryImages ??
+        existing.images ??
+        existing.approvedGalleryImages ??
+        existing.galleryImages ??
+        [],
+      approvedGalleryImages:
+        patch.approvedGalleryImages ??
+        patch.images ??
+        existing.approvedGalleryImages ??
+        existing.images ??
+        existing.galleryImages ??
+        [],
+      galleryImages:
+        patch.galleryImages ??
+        patch.approvedGalleryImages ??
+        patch.images ??
+        existing.galleryImages ??
+        existing.images ??
+        [],
+      sellerUploadedPhotos:
+        patch.sellerUploadedPhotos ??
+        patch.sellerSubmittedImages ??
+        existing.sellerUploadedPhotos ??
+        existing.sellerSubmittedImages ??
+        [],
+      sellerSubmittedImages:
+        patch.sellerSubmittedImages ??
+        patch.sellerUploadedPhotos ??
+        existing.sellerSubmittedImages ??
+        existing.sellerUploadedPhotos ??
+        [],
+      legalAuditAxes: patch.legalAuditAxes ?? existing.legalAuditAxes,
+    };
+
+    if (merged.images && merged.images.length > 0 && !merged.imageUrl) {
+      merged.imageUrl = merged.images[0];
+    }
+
+    await DatabaseGateway.save<Lot>(COLLECTION, merged);
+    this.invalidateLotCache(lotCode);
+    return merged;
+  }
+
   static async update(lot: Lot): Promise<Lot> {
-    await DatabaseGateway.save<Lot>(COLLECTION, lot);
-    return lot;
+    const code = lot.lotCode || lot.id;
+    const existing = code ? await this.getByCode(code) : null;
+    const merged: Lot = existing
+      ? {
+          ...existing,
+          ...lot,
+          ownerDossier: lot.ownerDossier
+            ? { ...existing.ownerDossier, ...lot.ownerDossier }
+            : existing.ownerDossier,
+          legalPassport: lot.legalPassport
+            ? { ...existing.legalPassport, ...lot.legalPassport }
+            : existing.legalPassport,
+          legalAuditAxes: lot.legalAuditAxes ?? existing.legalAuditAxes,
+          images:
+            lot.images ??
+            lot.approvedGalleryImages ??
+            existing.images ??
+            existing.approvedGalleryImages ??
+            existing.galleryImages ??
+            [],
+          approvedGalleryImages:
+            lot.approvedGalleryImages ??
+            lot.images ??
+            existing.approvedGalleryImages ??
+            existing.images ??
+            existing.galleryImages ??
+            [],
+          galleryImages:
+            lot.galleryImages ??
+            lot.approvedGalleryImages ??
+            lot.images ??
+            existing.galleryImages ??
+            existing.images ??
+            [],
+          sellerUploadedPhotos:
+            lot.sellerUploadedPhotos ??
+            lot.sellerSubmittedImages ??
+            existing.sellerUploadedPhotos ??
+            existing.sellerSubmittedImages ??
+            [],
+          sellerSubmittedImages:
+            lot.sellerSubmittedImages ??
+            lot.sellerUploadedPhotos ??
+            existing.sellerSubmittedImages ??
+            existing.sellerUploadedPhotos ??
+            [],
+        }
+      : lot;
+
+    if (merged.images && merged.images.length > 0 && !merged.imageUrl) {
+      merged.imageUrl = merged.images[0];
+    }
+
+    await DatabaseGateway.save<Lot>(COLLECTION, merged);
+    this.invalidateLotCache(merged.lotCode || merged.id);
+    return merged;
   }
 
   static async save(lot: Lot): Promise<Lot> {
-    await DatabaseGateway.save<Lot>(COLLECTION, lot);
-    return lot;
+    return this.update(lot);
   }
 
   static async add(lot: Lot): Promise<Lot> {
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode || lot.id);
     return lot;
   }
 
@@ -713,6 +872,7 @@ export class LotsRepository {
       lot.favoritesCount = 12 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
     }
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
     return lot;
   }
 
@@ -725,6 +885,7 @@ export class LotsRepository {
         : 12 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
     lot.favoritesCount = Math.max(0, baseFavs + delta);
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
+    this.invalidateLotCache(lot.lotCode);
     return lot;
   }
 }

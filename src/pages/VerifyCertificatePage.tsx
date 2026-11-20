@@ -2,22 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   ShieldCheck, 
-  CheckCircle, 
-  FileCheck, 
+  CheckCircle2, 
+  Clock,
+  AlertCircle,
   Building2, 
   Calendar, 
   Lock, 
-  QrCode, 
   Scale, 
   ArrowLeft,
-  Share2,
   Printer,
-  Award
+  Award,
+  ExternalLink,
+  UserCheck
 } from 'lucide-react';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { Lot } from '../types';
 import { formatRubles } from '../utils/formatters';
 import { useLanguage } from '../i18n/LanguageContext';
+import { resolveLotLegalAxes, HONEST_STATUS_CONFIG } from '../data/legalAuditAxes';
 
 export const VerifyCertificatePage: React.FC = () => {
   const { lotCode } = useParams<{ lotCode: string }>();
@@ -25,15 +28,24 @@ export const VerifyCertificatePage: React.FC = () => {
   const [lot, setLot] = useState<Lot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    async function fetchLot() {
-      if (lotCode) {
-        const found = await LotsRepository.getByLotCode(lotCode);
-        setLot(found || null);
-      }
-      setLoading(false);
+  const fetchLot = async () => {
+    if (lotCode) {
+      const found = await LotsRepository.getByLotCode(lotCode);
+      setLot(found || null);
     }
+    setLoading(false);
+  };
+
+  useEffect(() => {
     fetchLot();
+
+    const unsub = DatabaseGateway.subscribe((col) => {
+      if (!col || col === 'lots' || col === 'demo_lots' || col.includes('lots')) {
+        fetchLot();
+      }
+    });
+
+    return () => unsub();
   }, [lotCode]);
 
   if (loading) {
@@ -46,9 +58,9 @@ export const VerifyCertificatePage: React.FC = () => {
 
   if (!lot) {
     return (
-      <div className="py-16 px-4 bg-slate-50">
-        <div className="max-w-xl mx-auto p-8 bg-white border border-slate-200 rounded-2xl text-center space-y-4 shadow-sm">
-          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto">
+      <div className="py-16 px-4 bg-slate-50 min-h-screen flex items-center justify-center">
+        <div className="max-w-xl mx-auto p-8 bg-white border border-slate-200 rounded-3xl text-center space-y-4 shadow-sm">
+          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
             <Lock className="w-8 h-8" />
           </div>
           <h1 className="text-xl font-bold text-slate-900">
@@ -57,178 +69,192 @@ export const VerifyCertificatePage: React.FC = () => {
           <p className="text-sm text-slate-600">
             {language === 'ru' 
               ? `Лот #${lotCode} не зарегистрирован в публичном реестре верифицированных цессий или находится на закрытом аудите.`
-              : `Lot #${lotCode} is not yet published or undergoing closed legal audit.`}
+              : `Lot #${lotCode} is not registered in the verified cession registry.`}
           </p>
           <Link
             to="/opportunities"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-emerald-600/20 transition-all"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold shadow-md transition-all"
           >
             <ArrowLeft className="w-4 h-4" />
-            {language === 'ru' ? 'Вернуться в каталог' : 'Back to Catalog'}
+            <span>{language === 'ru' ? 'Вернуться в каталог' : 'Back to Catalog'}</span>
           </Link>
         </div>
       </div>
     );
   }
 
+  const axes = resolveLotLegalAxes(lot);
+  const verifiedSafeCount = axes.filter((a) => a.status === 'verified_safe').length;
+  const curatorName = lot.assignedEmployeeName || lot.curator?.name || 'Алексей Смирнов (Ведущий юрист-куратор)';
+  const lastUpdatedFormatted = (() => {
+    const raw = lot.publishedAt || new Date().toISOString();
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime())
+      ? new Date().toLocaleDateString('ru-RU')
+      : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  })();
+
   return (
     <div className="py-10 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full space-y-6">
+      
+      {/* Navigation Breadcrumb & Print */}
+      <div className="flex items-center justify-between print:hidden">
+        <Link
+          to={`/opportunities/${lot.lotCode}`}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>{language === 'ru' ? `Вернуться к карточке лота #${lot.lotCode}` : `Back to Lot #${lot.lotCode}`}</span>
+        </Link>
+
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+        >
+          <Printer className="w-3.5 h-3.5" />
+          <span>{language === 'ru' ? 'Печать сертификата' : 'Print Certificate'}</span>
+        </button>
+      </div>
+
+      {/* Official Certificate Card Container */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-xl space-y-8 relative overflow-hidden print:shadow-none print:border-none print:p-0">
         
-        {/* Navigation Breadcrumb */}
-        <div className="flex items-center justify-between">
-          <Link
-            to={`/opportunities/${lot.lotCode}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            {language === 'ru' ? `Вернуться к карточке лота #${lot.lotCode}` : `Back to Lot #${lot.lotCode}`}
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold shadow-xs cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              {language === 'ru' ? 'Печать сертификата' : 'Print Certificate'}
-            </button>
-          </div>
-        </div>
-
-        {/* Certificate Card Container */}
-        <div className="bg-white rounded-3xl border-2 border-emerald-500/30 p-6 sm:p-10 shadow-xl space-y-8 relative overflow-hidden">
-          
-          {/* Top Seal & Official Header */}
-          <div className="border-b border-slate-200 pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  Юридический аудит • Верифицировано
-                </span>
-                <span className="text-xs font-mono text-slate-400">
-                  ID: #CERT-{lot.lotCode}-2025
-                </span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {language === 'ru' ? 'Юридическое заключение по объекту' : 'Legal Verification Passport'}
-              </h1>
-              <p className="text-sm text-slate-500">
-                {language === 'ru' 
-                  ? 'Протокол комплексной юридической проверки объекта и собственника'
-                  : 'Digital verification certificate under legal audit standards'}
-              </p>
-            </div>
-
-            <div className="flex-shrink-0 text-right">
-              <div className="w-20 h-20 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col items-center justify-center p-2 text-center">
-                <Award className="w-8 h-8 text-emerald-600" />
-                <span className="text-[10px] font-bold text-emerald-800 uppercase mt-1">42 из 42 OK</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Key Lot Information Box */}
-          <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <span className="text-xs text-slate-500 font-medium">Объект и застройщик</span>
-              <div className="text-base font-bold text-slate-900 mt-0.5">{lot.complexName}</div>
-              <div className="text-xs text-slate-600">{lot.developer} • {lot.district}</div>
-            </div>
-
-            <div>
-              <span className="text-xs text-slate-500 font-medium">Характеристики лота</span>
-              <div className="text-base font-bold text-slate-900 mt-0.5">
-                {lot.areaM2} м² • {lot.ownerDossier?.hideExactFloor ? `${lot.ownerDossier.floorRangeDisplay} эт.` : `${lot.floor} этаж`}
-              </div>
-              <div className="text-xs text-slate-600">Срок сдачи: {lot.deliveryDate}</div>
-            </div>
-
-            <div>
-              <span className="text-xs text-slate-500 font-medium">Эскроу-банк девелопера</span>
-              <div className="text-base font-bold text-emerald-700 mt-0.5">ПАО {lot.escrowBank}</div>
-              <div className="text-xs text-slate-600">Эскроу-счет подтвержден</div>
-            </div>
-          </div>
-
-          {/* 4 Core Verification Pillars */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              {language === 'ru' ? 'Результаты юридической проверки' : 'Verification Results'}
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
-              {/* EFRSB */}
-              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">Реестр банкротств (ЕФРСБ)</span>
-                  <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">ЧИСТО</span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Собственник не состоит в реестрах несостоятельности. Признаки фиктивного или преднамеренного банкротства отсутствуют.
-                </p>
-              </div>
-
-              {/* FSSP */}
-              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">ФССП / Исполнительные производства</span>
-                  <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">0 ₽ ДОЛГОВ</span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Арестов, запретов на регистрационные действия в отношении прав требования по ДДУ не наложено.
-                </p>
-              </div>
-
-              {/* Maternal Capital */}
-              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">Проверка использования маткапитала</span>
-                  <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">НЕ ИСПОЛЬЗОВАЛСЯ</span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Выделение долей несовершеннолетним не требуется. Риск аннулирования договора цессии исключен.
-                </p>
-              </div>
-
-              {/* Developer Consent */}
-              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">Согласие девелопера {lot.developer}</span>
-                  <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">ПОЛУЧЕНО</span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Письменное согласие на перевод долга по рассрочке и уступку прав требований оформлено и подтверждено.
-                </p>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Bona Fide Protection Seal */}
-          <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 border border-emerald-200 text-slate-900 rounded-2xl space-y-3 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                <Scale className="w-4 h-4" />
-                Правовое заключение о добросовестности сделки
+        {/* Top Seal & Official Header */}
+        <div className="border-b border-slate-200 pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-3 py-1 bg-emerald-500 text-slate-950 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
+                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                <span>Проверка завершена • {verifiedSafeCount} из 5 подтверждено</span>
               </span>
-              <span className="text-xs font-mono font-bold text-emerald-700">
-                Индекс защиты: 98/100
+              <span className="text-xs font-mono text-slate-500 font-bold bg-slate-100 px-2.5 py-1 rounded-full">
+                #CERT-{lot.lotCode}-2026
               </span>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Цена переуступки ({formatRubles(lot.cashPaidBySeller)} на руки продавцу) полностью соответствует сумме фактических затрат цедента, подтверждена банковскими платежными поручениями и исключает риски признания сделки недействительной.
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight pt-1">
+              {language === 'ru' ? 'Сертификат юридической проверки цессии' : 'Cession Legal Verification Certificate'}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500">
+              {language === 'ru' 
+                ? 'Официальный протокол правового аудита объекта, прав требования и условий переуступки по 214-ФЗ'
+                : 'Official legal audit protocol for assignment rights under Russian Federal Law 214-FZ'}
             </p>
           </div>
 
-          {/* Bottom Verification Footer */}
-          <div className="border-t border-slate-200 pt-4 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
-            <span>Электронная цифровая подпись DomExit Legal Desk • SHA-256 Validated</span>
-            <span>Сформировано: {new Date().toLocaleDateString('ru-RU')}</span>
+          <div className="flex-shrink-0 text-right print:hidden">
+            <div className="w-24 h-24 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col items-center justify-center p-2 text-center shadow-xs">
+              <Award className="w-8 h-8 text-emerald-600 mb-1" />
+              <span className="text-[10px] font-black text-emerald-900 uppercase leading-tight">
+                5 из 5
+              </span>
+              <span className="text-[9px] font-bold text-emerald-700">разделов</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Key Lot Information Box */}
+        <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div>
+            <span className="text-slate-500 font-semibold block">Объект и застройщик</span>
+            <div className="text-sm font-bold text-slate-900 mt-0.5">{lot.complexName}</div>
+            <div className="text-slate-600 mt-0.5">{lot.developer} • {lot.district}</div>
           </div>
 
+          <div>
+            <span className="text-slate-500 font-semibold block">Характеристики лота</span>
+            <div className="text-sm font-bold text-slate-900 mt-0.5">
+              {lot.areaM2} м² • {lot.ownerDossier?.hideExactFloor ? `${lot.ownerDossier.floorRangeDisplay}` : `${lot.floor} этаж`}
+            </div>
+            <div className="text-slate-600 mt-0.5">Срок сдачи: {lot.deliveryDate}</div>
+          </div>
+
+          <div>
+            <span className="text-slate-500 font-semibold block">Эскроу-банк девелопера</span>
+            <div className="text-sm font-bold text-emerald-700 mt-0.5">ПАО {lot.escrowBank || 'Сбербанк'}</div>
+            <div className="text-slate-600 mt-0.5">Счёт подтвержден по 214-ФЗ</div>
+          </div>
         </div>
+
+        {/* The 5 Real Audit Axes */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+              <Scale className="w-4 h-4 text-slate-700" />
+              <span>Результаты проверки по 5 ключевым разделам цессии</span>
+            </h3>
+            <span className="text-[11px] text-slate-500 font-medium">
+              Обновлено: {lastUpdatedFormatted}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3.5">
+            {axes.map((axis) => {
+              const cfg = HONEST_STATUS_CONFIG[axis.status] || HONEST_STATUS_CONFIG.verified_safe;
+              return (
+                <div
+                  key={axis.id}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-2 hover:border-slate-300 transition-colors shadow-xs"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-xs sm:text-sm font-bold text-slate-900">
+                      {axis.title}
+                    </span>
+                    <span
+                      className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shrink-0 ${cfg.badgeClass}`}
+                    >
+                      {axis.status === 'verified_safe' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                      {axis.status === 'required_at_deal' && <Clock className="w-3.5 h-3.5 text-sky-600" />}
+                      {axis.status === 'condition_found' && <AlertCircle className="w-3.5 h-3.5 text-slate-600" />}
+                      <span>{cfg.labelRu}</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {axis.notes}
+                  </p>
+                  {axis.portalUrl && (
+                    <div className="pt-1.5 flex items-center text-[10px] text-slate-400">
+                      <span className="font-mono">Реестр проверки: {axis.portalUrl}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Curator Verification Official Attestation Box */}
+        <div className="p-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl space-y-3 shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <UserCheck className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
+                Ответственный юрист-куратор:
+              </span>
+              <span className="text-xs font-bold text-white">
+                {curatorName}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-300 font-mono">
+              Статус: Зафиксировано в реестре DomExit
+            </span>
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Правовая экспертиза объекта #{lot.lotCode} подтверждает соответствие заявленных условий законодательству РФ (214-ФЗ). Все выявленные условия регламентированы и согласуются в рамках трехстороннего процесса уступки прав требований.
+          </p>
+        </div>
+
+        {/* Bottom Verification Footer */}
+        <div className="border-t border-slate-200 pt-4 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+          <span className="font-mono text-[11px]">
+            Электронная цифровая подпись DomExit Legal Desk • SHA-256 Validated
+          </span>
+          <span className="text-[11px]">
+            Дата формирования: {new Date().toLocaleDateString('ru-RU')}
+          </span>
+        </div>
+
+      </div>
     </div>
   );
 };

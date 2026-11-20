@@ -29,6 +29,10 @@ import {
   Ban,
   Trash2,
   Shield,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  RefreshCw,
 } from 'lucide-react';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
@@ -147,19 +151,25 @@ export const AdminPackagingPage: React.FC = () => {
     const banks = (data as any).seller_banks || data.sellerBanks;
     setSellerBanks(Array.isArray(banks) && banks.length > 0 ? banks : DEFAULT_SETTLEMENT_BANKS);
 
-    // Media: Real seller photos prioritized 100%
+    // Media: Distinct seller raw submissions vs admin-approved public photos
     const sPhotos =
-      data.sellerUploadedPhotos && data.sellerUploadedPhotos.length > 0
+      data.sellerSubmittedImages && data.sellerSubmittedImages.length > 0
+        ? data.sellerSubmittedImages
+        : data.sellerUploadedPhotos && data.sellerUploadedPhotos.length > 0
         ? data.sellerUploadedPhotos
-        : data.galleryImages || [];
+        : [];
     setSellerPhotos(sPhotos);
 
     const aPhotos =
-      data.approvedGalleryImages && data.approvedGalleryImages.length > 0
+      data.images && data.images.length > 0
+        ? data.images
+        : data.approvedGalleryImages && data.approvedGalleryImages.length > 0
         ? data.approvedGalleryImages
-        : sPhotos;
+        : data.galleryImages && data.galleryImages.length > 0
+        ? data.galleryImages
+        : [];
     setApprovedPhotos(aPhotos);
-    setCoverImageUrl(data.imageUrl || aPhotos[0] || sPhotos[0] || '');
+    setCoverImageUrl(data.imageUrl || aPhotos[0] || '');
   };
 
   useEffect(() => {
@@ -209,51 +219,95 @@ export const AdminPackagingPage: React.FC = () => {
   const devPricePerM2 = Math.round(todayDevPrice / Math.max(areaM2, 1));
 
   const handleTogglePhotoApproval = (photoUrl: string) => {
-    setApprovedPhotos((prev) =>
-      prev.includes(photoUrl) ? prev.filter((p) => p !== photoUrl) : [...prev, photoUrl]
-    );
+    setApprovedPhotos((prev) => {
+      if (prev.includes(photoUrl)) {
+        const next = prev.filter((p) => p !== photoUrl);
+        if (coverImageUrl === photoUrl) {
+          setCoverImageUrl(next[0] || '');
+        }
+        return next;
+      } else {
+        const next = [...prev, photoUrl];
+        if (!coverImageUrl) {
+          setCoverImageUrl(photoUrl);
+        }
+        return next;
+      }
+    });
   };
 
   const handleSetCoverPhoto = (photoUrl: string) => {
     setCoverImageUrl(photoUrl);
-    if (!approvedPhotos.includes(photoUrl)) {
-      setApprovedPhotos((prev) => [...prev, photoUrl]);
-    }
-    setNotificationMsg('Главная фотография обложки обновлена!');
+    setApprovedPhotos((prev) => {
+      const filtered = prev.filter((p) => p !== photoUrl);
+      return [photoUrl, ...filtered];
+    });
+    setNotificationMsg('Главная фотография обложки обновлена (будет первой в каталоге)!');
     setTimeout(() => setNotificationMsg(null), 3000);
+  };
+
+  const handleDeletePhoto = (photoUrl: string) => {
+    if (!confirm('Удалить эту фотографию из галереи объекта?')) return;
+    setApprovedPhotos((prev) => {
+      const next = prev.filter((p) => p !== photoUrl);
+      if (coverImageUrl === photoUrl) {
+        setCoverImageUrl(next[0] || '');
+      }
+      return next;
+    });
+    setSellerPhotos((prev) => prev.filter((p) => p !== photoUrl));
+    setNotificationMsg('Фотография удалена.');
+    setTimeout(() => setNotificationMsg(null), 3000);
+  };
+
+  const handleMovePhoto = (photoUrl: string, direction: 'left' | 'right') => {
+    setApprovedPhotos((prev) => {
+      const index = prev.indexOf(photoUrl);
+      if (index === -1) return prev;
+      const targetIndex = direction === 'left' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[targetIndex];
+      next[targetIndex] = temp;
+      if (targetIndex === 0 || index === 0) {
+        setCoverImageUrl(next[0]);
+      }
+      return next;
+    });
   };
 
   const handleUploadHdMedia = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files[0] && lot) {
-      const file = files[0];
-
+    if (files && files.length > 0 && lot) {
       try {
-        const savedDoc = await StorageService.uploadDocument({
-          file,
-          category: 'additional',
-          categoryLabelRu: `HD-рендер упаковки: ${file.name}`,
-          entityType: 'lot',
-          entityId: lot.lotCode,
-          uploadedByUid: user?.id || 'curator-packaging',
-          clientCode: user?.clientCode || 'DEX-STAFF',
-        });
+        setNotificationMsg('Загрузка фото в Yandex S3...');
+        const newAddedUrls: string[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const savedDoc = await StorageService.uploadDocument({
+            file,
+            category: 'additional',
+            categoryLabelRu: `HD-фото упаковки: ${file.name}`,
+            entityType: 'lot',
+            entityId: lot.lotCode,
+            uploadedByUid: user?.id || 'curator-packaging',
+            clientCode: user?.clientCode || 'DEX-STAFF',
+          });
 
-        const reader = new FileReader();
-        reader.onload = () => {
-          const newPhoto =
-            typeof reader.result === 'string'
-              ? reader.result
-              : savedDoc.previewDataUrl || lot.imageUrl;
-          setSellerPhotos((prev) => [...prev, newPhoto]);
-          setApprovedPhotos((prev) => [...prev, newPhoto]);
-          if (!coverImageUrl) setCoverImageUrl(newPhoto);
-          setNotificationMsg(
-            `HD-рендер «${file.name}» загружен и включен в фото-пакет!`
-          );
-          setTimeout(() => setNotificationMsg(null), 4000);
-        };
-        reader.readAsDataURL(file);
+          const uploadedUrl = savedDoc.cloudUrl || savedDoc.file_url || savedDoc.url || savedDoc.previewDataUrl || '';
+          if (uploadedUrl) {
+            newAddedUrls.push(uploadedUrl);
+          }
+        }
+
+        if (newAddedUrls.length > 0) {
+          setSellerPhotos((prev) => [...prev, ...newAddedUrls]);
+          setApprovedPhotos((prev) => [...prev, ...newAddedUrls]);
+          setCoverImageUrl((prev) => prev || newAddedUrls[0]);
+          setNotificationMsg(`Загружено ${newAddedUrls.length} фото в Yandex S3 и включено в каталог!`);
+        }
+        setTimeout(() => setNotificationMsg(null), 4000);
       } catch (err) {
         console.error('Packaging media upload error:', err);
         showDownloadToast('Ошибка загрузки файла в хранилище. Пожалуйста, повторите попытку.', 'error');
@@ -318,9 +372,11 @@ export const AdminPackagingPage: React.FC = () => {
       sellerBanks,
       seller_banks: sellerBanks,
       imageUrl: effectiveCover,
+      images: approvedPhotos,
       approvedGalleryImages: approvedPhotos,
-      galleryImages: approvedPhotos.length > 0 ? approvedPhotos : [effectiveCover],
+      galleryImages: approvedPhotos.length > 0 ? approvedPhotos : (effectiveCover ? [effectiveCover] : []),
       sellerUploadedPhotos: sellerPhotos,
+      sellerSubmittedImages: sellerPhotos,
       ownerDossier: {
         ...lot.ownerDossier,
         hideExactFloor: hideFloor,
@@ -331,10 +387,19 @@ export const AdminPackagingPage: React.FC = () => {
 
   const handleSaveDraft = async () => {
     if (!lot) return;
+    const isLive = lot.isPublished || lot.status === 'available' || lot.status === 'in_deal';
     const updatedLot = buildUpdatedLotData();
+    if (isLive) {
+      updatedLot.isPublished = true;
+      if (updatedLot.status === 'draft') updatedLot.status = 'available';
+    }
     await LotsRepository.update(updatedLot);
     setLot(updatedLot);
-    setNotificationMsg('Черновик упаковки успешно сохранен (без изменения статуса публикации).');
+    setNotificationMsg(
+      isLive
+        ? 'Объявление моментально обновлено и синхронизировано с каталогом!'
+        : 'Черновик упаковки успешно сохранен (без изменения статуса публикации).'
+    );
     setTimeout(() => setNotificationMsg(null), 4000);
   };
 
@@ -508,9 +573,20 @@ export const AdminPackagingPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleSaveDraft}
-                    className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition-colors cursor-pointer"
+                    className={`px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                      lot.isPublished || lot.status === 'available' || lot.status === 'in_deal'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
                   >
-                    Сохранить черновик
+                    {lot.isPublished || lot.status === 'available' || lot.status === 'in_deal' ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Сохранить и обновить объявление</span>
+                      </>
+                    ) : (
+                      <span>Сохранить черновик</span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1154,97 +1230,206 @@ export const AdminPackagingPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Card 5: Media Gallery & Cover Image Selection */}
+                  {/* Card 5: Multi-Photo Admin Curation & Media Manager */}
                   <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                      <div>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                          Галерея, планировка и главная обложка ({sellerPhotos.length})
-                        </h3>
-                        <p className="text-[11px] text-slate-500">
-                          Кликните звездочку, чтобы сделать фото главной обложкой. Отметьте фото для каталога.
-                        </p>
-                      </div>
+                    {(() => {
+                      const allAvailablePhotos = Array.from(new Set([...approvedPhotos, ...sellerPhotos]));
+                      const approvedCount = approvedPhotos.length;
+                      const hiddenCount = allAvailablePhotos.length - approvedCount;
 
-                      <label className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer transition-colors flex items-center space-x-1 border border-slate-200">
-                        <Upload className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Загрузить HD-файл</span>
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={handleUploadHdMedia}
-                          accept="image/*"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {sellerPhotos.map((photo, index) => {
-                        const isApproved = approvedPhotos.includes(photo);
-                        const isCover = coverImageUrl === photo;
-                        return (
-                          <div
-                            key={index}
-                            className={`relative rounded-2xl overflow-hidden border-2 transition-all p-1 bg-white ${
-                              isCover
-                                ? 'border-amber-500 shadow-md ring-2 ring-amber-300'
-                                : isApproved
-                                ? 'border-emerald-500 shadow-xs'
-                                : 'border-slate-200 opacity-60'
-                            }`}
-                          >
-                            <div className="aspect-video rounded-xl overflow-hidden bg-slate-100 relative group">
-                              <img
-                                src={photo}
-                                alt={`Фото ${index + 1}`}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
-                                }}
-                              />
-                              <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[9px] px-2 py-0.5 rounded-full font-mono">
-                                {index === 0 ? 'Планировка' : `Фото ${index + 1}`}
-                              </span>
-                              {isCover && (
-                                <span className="absolute top-1.5 right-1.5 bg-amber-500 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow-xs flex items-center space-x-0.5">
-                                  <Star className="w-2.5 h-2.5 fill-current" />
-                                  <span>Обложка</span>
+                      return (
+                        <>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                  Медиа-пакет и галерея объекта ({allAvailablePhotos.length})
+                                </h3>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  В каталоге: {approvedCount}
                                 </span>
-                              )}
+                                {hiddenCount > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                    Скрыто: {hiddenCount}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Управляйте показом: одобряйте проверенные кадры, назначайте обложку и меняйте порядок в каталоге.
+                              </p>
                             </div>
 
-                            <div className="pt-2 px-1 flex items-center justify-between">
-                              <label className="flex items-center space-x-1.5 cursor-pointer text-xs">
+                            <div className="flex items-center gap-2 shrink-0">
+                              <label className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer transition-colors flex items-center space-x-1.5 shadow-xs">
+                                <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Загрузить фото в S3</span>
                                 <input
-                                  type="checkbox"
-                                  checked={isApproved}
-                                  onChange={() => handleTogglePhotoApproval(photo)}
-                                  className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer"
+                                  type="file"
+                                  className="hidden"
+                                  multiple
+                                  onChange={handleUploadHdMedia}
+                                  accept="image/*"
                                 />
-                                <span
-                                  className={`text-[11px] font-bold ${
-                                    isApproved ? 'text-emerald-700' : 'text-slate-500'
-                                  }`}
-                                >
-                                  {isApproved ? 'В каталог' : 'Исключено'}
-                                </span>
                               </label>
 
-                              {!isCover && (
+                              {allAvailablePhotos.length > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => handleSetCoverPhoto(photo)}
-                                  className="text-[10px] font-bold text-amber-600 hover:text-amber-700 hover:underline cursor-pointer"
-                                  title="Сделать главной обложкой карточки"
+                                  onClick={() => {
+                                    setApprovedPhotos(allAvailablePhotos);
+                                    if (!coverImageUrl) setCoverImageUrl(allAvailablePhotos[0]);
+                                    setNotificationMsg('Все фотографии одобрены для показа в каталоге!');
+                                    setTimeout(() => setNotificationMsg(null), 3000);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer transition-colors"
+                                  title="Одобрить все фото"
                                 >
-                                  Сделать главной
+                                  Одобрить все
                                 </button>
                               )}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          {allAvailablePhotos.length === 0 ? (
+                            <div className="py-10 text-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 space-y-2">
+                              <Upload className="w-8 h-8 text-slate-400 mx-auto" />
+                              <span className="text-xs font-bold text-slate-700 block">
+                                Фотографии объекта еще не загружены
+                              </span>
+                              <span className="text-[11px] text-slate-500 block max-w-sm mx-auto">
+                                Нажмите «Загрузить фото в S3», чтобы добавить рендеры и фотографии корпуса с вашего устройства.
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                              {allAvailablePhotos.map((photo, index) => {
+                                const isApproved = approvedPhotos.includes(photo);
+                                const isCover = (coverImageUrl === photo) || (!coverImageUrl && approvedPhotos[0] === photo);
+                                const approvedIndex = approvedPhotos.indexOf(photo);
+                                const isFromSeller = sellerPhotos.includes(photo);
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className={`relative rounded-2xl overflow-hidden border-2 transition-all p-2 bg-white flex flex-col justify-between ${
+                                      isCover
+                                        ? 'border-amber-500 shadow-md ring-2 ring-amber-300'
+                                        : isApproved
+                                        ? 'border-emerald-500 shadow-xs'
+                                        : 'border-slate-200 opacity-60 hover:opacity-100'
+                                    }`}
+                                  >
+                                    <div className="aspect-video rounded-xl overflow-hidden bg-slate-100 relative group">
+                                      <img
+                                        src={photo}
+                                        alt={`Фото ${index + 1}`}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          e.currentTarget.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+                                        }}
+                                      />
+                                      
+                                      <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
+                                        <span className="bg-black/75 text-white text-[9px] px-2 py-0.5 rounded-full font-mono">
+                                          {isFromSeller ? 'От продавца' : 'Студия'}
+                                        </span>
+                                        {isApproved && (
+                                          <span className="bg-emerald-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold">
+                                            Позиция #{approvedIndex + 1}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {isCover && (
+                                        <span className="absolute top-1.5 right-1.5 bg-amber-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-black shadow-xs flex items-center space-x-1">
+                                          <Star className="w-2.5 h-2.5 fill-current" />
+                                          <span>Обложка</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Action Toolbar for this Photo */}
+                                    <div className="pt-2 space-y-1.5">
+                                      <div className="flex items-center justify-between gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTogglePhotoApproval(photo)}
+                                          className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 transition-colors cursor-pointer ${
+                                            isApproved
+                                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                          }`}
+                                        >
+                                          {isApproved ? (
+                                            <>
+                                              <EyeOff className="w-3 h-3 text-slate-500" />
+                                              <span>Скрыть</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Eye className="w-3 h-3 text-emerald-600" />
+                                              <span>Одобрить</span>
+                                            </>
+                                          )}
+                                        </button>
+
+                                        {!isCover && isApproved && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSetCoverPhoto(photo)}
+                                            className="text-[10px] font-bold text-amber-600 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg border border-amber-200 transition-colors cursor-pointer flex items-center space-x-1"
+                                            title="Сделать главной обложкой карточки"
+                                          >
+                                            <Star className="w-2.5 h-2.5 fill-amber-500" />
+                                            <span>Обложка</span>
+                                          </button>
+                                        )}
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeletePhoto(photo)}
+                                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                          title="Удалить фотографию"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+
+                                      {/* Reordering Controls in Approved Queue */}
+                                      {isApproved && approvedPhotos.length > 1 && (
+                                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px] text-slate-500">
+                                          <span>Порядок в галерее:</span>
+                                          <div className="flex items-center space-x-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleMovePhoto(photo, 'left')}
+                                              disabled={approvedIndex === 0}
+                                              className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                                              title="Переместить влево"
+                                            >
+                                              <ChevronLeft className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleMovePhoto(photo, 'right')}
+                                              disabled={approvedIndex === approvedPhotos.length - 1}
+                                              className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                                              title="Переместить вправо"
+                                            >
+                                              <ChevronRight className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1383,9 +1568,20 @@ export const AdminPackagingPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleSaveDraft}
-                        className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-200 transition-colors shadow-xs cursor-pointer"
+                        className={`w-full py-2.5 rounded-xl font-bold text-xs border transition-colors shadow-xs cursor-pointer flex items-center justify-center space-x-1.5 ${
+                          lot.isPublished || lot.status === 'available' || lot.status === 'in_deal'
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
                       >
-                        Сохранить черновик
+                        {lot.isPublished || lot.status === 'available' || lot.status === 'in_deal' ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Сохранить и обновить объявление</span>
+                          </>
+                        ) : (
+                          <span>Сохранить черновик</span>
+                        )}
                       </button>
                     </div>
                   </div>

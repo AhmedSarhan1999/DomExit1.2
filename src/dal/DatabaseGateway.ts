@@ -124,7 +124,7 @@ class DatabaseGatewayController {
 
     const handleCustom = (e: Event) => {
       const custom = e as CustomEvent<{ collectionName?: string; baseCollection?: string }>;
-      listener(custom.detail?.collectionName || custom.detail?.baseCollection);
+      listener(custom.detail?.baseCollection || custom.detail?.collectionName);
     };
 
     const handleEnvChanged = () => {

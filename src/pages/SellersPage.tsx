@@ -514,10 +514,12 @@ export const SellersPage: React.FC = () => {
           }
 
           if (uploadedPhotos.length > 0) {
-            result.lot.imageUrl = uploadedPhotos[0];
-            result.lot.galleryImages = uploadedPhotos;
             result.lot.sellerUploadedPhotos = uploadedPhotos;
-            result.lot.approvedGalleryImages = uploadedPhotos.slice(0, 2);
+            result.lot.sellerSubmittedImages = uploadedPhotos;
+            result.lot.imageUrl = '';
+            result.lot.images = [];
+            result.lot.galleryImages = [];
+            result.lot.approvedGalleryImages = [];
             if (todayMarketPrice > contractPrice) {
               result.lot.todayDeveloperPrice = todayMarketPrice;
             }

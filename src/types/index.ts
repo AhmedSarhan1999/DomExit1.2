@@ -39,6 +39,7 @@ export interface Lot {
   deliveryYear: number;
   finishing: 'clean' | 'whitebox' | 'without' | 'turnkey' | string;
   imageUrl: string;
+  images?: string[];
   galleryImages: string[];
   constructionReadinessPercent: number; // e.g. 82%
 
@@ -92,6 +93,7 @@ export interface Lot {
 
   // Seller photos & packaging approval
   sellerUploadedPhotos?: string[];
+  sellerSubmittedImages?: string[];
   approvedGalleryImages?: string[];
 
   // Additional documents requested by legal curator

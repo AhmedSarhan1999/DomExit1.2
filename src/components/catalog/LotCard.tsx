@@ -29,6 +29,11 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
     lot.todayDeveloperPrice > 0 ? (savingsRub / lot.todayDeveloperPrice) * 100 : 0;
 
   const lotStatus = lot.status || 'available';
+  const cardImage =
+    lot.imageUrl ||
+    (lot.images && lot.images[0]) ||
+    (lot.approvedGalleryImages && lot.approvedGalleryImages[0]) ||
+    '';
   const floorLabel = lot.ownerDossier?.hideExactFloor
     ? `${lot.ownerDossier.floorRangeDisplay} ${language === 'ru' ? 'эт.' : 'fl.'}`
     : language === 'ru'
@@ -40,9 +45,9 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
       
       {/* Top Image Container */}
       <div className="relative h-56 overflow-hidden bg-slate-100 aspect-[16/9]">
-        {lot.imageUrl ? (
+        {cardImage ? (
           <img
-            src={lot.imageUrl}
+            src={cardImage}
             alt={lot.complexName}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"

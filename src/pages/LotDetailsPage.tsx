@@ -209,7 +209,9 @@ export const LotDetailsPage: React.FC = () => {
 
   const geo = resolveLotGeoDetails(lot);
   const gallery = (
-    lot.approvedGalleryImages && lot.approvedGalleryImages.length > 0
+    lot.images && lot.images.length > 0
+      ? lot.images
+      : lot.approvedGalleryImages && lot.approvedGalleryImages.length > 0
       ? lot.approvedGalleryImages
       : lot.galleryImages && lot.galleryImages.length > 0
       ? lot.galleryImages
@@ -798,22 +800,19 @@ export const LotDetailsPage: React.FC = () => {
                 </span>
               </div>
 
+              {/* Dynamic verified badges strictly from axes that passed inspection */}
               <div className="flex flex-wrap gap-2 text-xs">
-                {[
-                  'ДДУ проверен в Росреестре',
-                  'Риски банкротства (ЕФРСБ / ФССП) отсутствуют',
-                  `Эскроу ПАО ${lot.escrowBank}`,
-                  'Маткапитал 0 ₽',
-                  'Согласование цессии по регламенту застройщика',
-                ].map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-slate-100 text-slate-800 font-semibold"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{tag}</span>
-                  </span>
-                ))}
+                {resolveLotLegalAxes(lot)
+                  .filter((axis) => axis.status === 'verified_safe')
+                  .map((axis) => (
+                    <span
+                      key={axis.id}
+                      className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-semibold"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{axis.shortLabel}</span>
+                    </span>
+                  ))}
               </div>
 
               {/* 5 Real Audit Axes Breakdown */}
@@ -864,7 +863,7 @@ export const LotDetailsPage: React.FC = () => {
                   className="py-3 px-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold text-xs flex items-center justify-center space-x-2 transition-colors"
                 >
                   <Award className="w-4 h-4 text-emerald-700" />
-                  <span>Сертификат юридической проверки</span>
+                  <span>Сертификат юридической проверки (в реестре)</span>
                 </Link>
               </div>
 
