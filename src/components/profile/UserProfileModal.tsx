@@ -25,7 +25,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { formatRussianPhoneInput, isValidRussianPhone } from '../../utils/validators';
+import { formatRussianPhoneInput, isValidRussianPhone, validateIndividualInn, sanitizeDigitsOnly } from '../../utils/validators';
 import { UserProfile, Employee } from '../../types';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
 import { LotsRepository } from '../../dal/repositories/LotsRepository';
@@ -77,6 +77,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [name, setName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [telegram, setTelegram] = useState<string>('');
+  const [inn, setInn] = useState<string>('');
   const [photoURL, setPhotoURL] = useState<string>('');
   const [customPhotoInput, setCustomPhotoInput] = useState<string>('');
 
@@ -100,6 +101,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       setName(currentUser.name || '');
       setPhone(currentUser.phone || '+7 ');
       setTelegram(currentUser.telegram || '');
+      setInn(currentUser.inn || '');
       setPhotoURL(currentUser.photoURL || '');
       setCustomPhotoInput(currentUser.photoURL || '');
       setCurrentPassword('');
@@ -108,7 +110,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       setSuccessMessage(null);
       setErrorMessage(null);
     }
-  }, [currentUser.name, currentUser.phone, currentUser.photoURL, currentUser.telegram, isOpen]);
+  }, [currentUser.name, currentUser.phone, currentUser.photoURL, currentUser.telegram, currentUser.inn, isOpen]);
 
   if (!isOpen) return null;
 
@@ -177,6 +179,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       return;
     }
 
+    const cleanInn = inn.trim();
+    if (cleanInn) {
+      const innCheck = validateIndividualInn(cleanInn, true);
+      if (!innCheck.valid) {
+        setErrorMessage(innCheck.messageRu || 'ИНН физического лица должен содержать ровно 12 цифр');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       if (updateUserProfile) {
@@ -184,6 +195,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           name: cleanName,
           phone: cleanPhone,
           telegram: telegram.trim(),
+          inn: cleanInn || undefined,
           photoURL: photoURL.trim() || undefined,
         });
       }
@@ -415,6 +427,26 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
                   Используется для двухфакторных SMS-кодов и согласования договоров уступки прав.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  ИНН физического лица (12 цифр)
+                </label>
+                <div className="relative">
+                  <FileCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={inn}
+                    onChange={(e) => setInn(sanitizeDigitsOnly(e.target.value, 12))}
+                    placeholder="Например: 781432994102"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Используется для автоматической сверки по базам ФССП/ЕФРСБ и автозаполнения в договорах цессии.
                 </p>
               </div>
 

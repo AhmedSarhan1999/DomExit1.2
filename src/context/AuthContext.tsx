@@ -64,7 +64,7 @@ interface AuthContextType {
   ) => Promise<UserProfile>;
   refreshUserProfile: () => Promise<void>;
   updateUserProfile: (
-    data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL'>>
+    data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL' | 'inn'>>
   ) => Promise<UserProfile>;
   updateUserPassword: (currentPass: string, newPass: string) => Promise<void>;
 }
@@ -964,7 +964,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUserProfile = async (
-    data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL'>>
+    data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL' | 'inn'>>
   ): Promise<UserProfile> => {
     if (!user) throw new Error('Пользователь не авторизован');
     const updated: UserProfile = {

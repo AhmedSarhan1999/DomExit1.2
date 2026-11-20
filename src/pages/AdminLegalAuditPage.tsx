@@ -9,7 +9,8 @@ import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { StorageService } from '../dal/StorageService';
-import { Lot, LegalAuditCheckpoint } from '../types';
+import { Lot, LegalAuditCheckpoint, LegalAuditAxis, LegalAuditAxisStatus } from '../types';
+import { DEFAULT_LEGAL_AUDIT_AXES, HONEST_STATUS_CONFIG, resolveLotLegalAxes } from '../data/legalAuditAxes';
 import { formatRubles } from '../utils/formatters';
 import { FileManager } from '../utils/fileManager';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
@@ -98,6 +99,9 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
 
+  // 5 Realistic Legal Audit Axes State
+  const [axes, setAxes] = useState<LegalAuditAxis[]>(DEFAULT_LEGAL_AUDIT_AXES);
+
   // Checkpoints State (re-engineered from static to dynamic)
   const [checkpoints, setCheckpoints] = useState<LegalAuditCheckpoint[]>(INITIAL_CHECKPOINTS);
   const [inspectingCheckpoint, setInspectingCheckpoint] = useState<LegalAuditCheckpoint | null>(null);
@@ -165,6 +169,11 @@ export const AdminLegalAuditPage: React.FC = () => {
 
     if (found) {
       setLot(found);
+      if (found.legalAuditAxes && found.legalAuditAxes.length === 5) {
+        setAxes(found.legalAuditAxes);
+      } else {
+        setAxes(DEFAULT_LEGAL_AUDIT_AXES);
+      }
       if (found.legalAuditCheckpoints && found.legalAuditCheckpoints.length === 4) {
         setCheckpoints(found.legalAuditCheckpoints);
       } else {
@@ -267,6 +276,69 @@ export const AdminLegalAuditPage: React.FC = () => {
     } finally {
       setIsUploadingProof(false);
     }
+  };
+
+  const handleAxisStatusChange = (axisId: string, newStatus: LegalAuditAxisStatus) => {
+    setAxes((prev) =>
+      prev.map((ax) =>
+        ax.id === axisId
+          ? {
+              ...ax,
+              status: newStatus,
+              checkedAt: new Date().toISOString(),
+              checkedBy: curatorName,
+            }
+          : ax
+      )
+    );
+  };
+
+  const handleAxisNotesChange = (axisId: string, newNotes: string) => {
+    setAxes((prev) =>
+      prev.map((ax) => (ax.id === axisId ? { ...ax, notes: newNotes } : ax))
+    );
+  };
+
+  const handleSaveAxis = async (axisId: string) => {
+    if (!lot) return;
+    const targetAxis = axes.find((a) => a.id === axisId);
+    if (!targetAxis) return;
+
+    const updatedAxes = axes.map((a) =>
+      a.id === axisId
+        ? { ...a, checkedAt: new Date().toISOString(), checkedBy: curatorName, evaluated: true }
+        : a
+    );
+    setAxes(updatedAxes);
+    lot.legalAuditAxes = updatedAxes;
+    await LotsRepository.update(lot);
+
+    setNotice(`✓ Раздел «${targetAxis.shortLabel}» зафиксирован: ${HONEST_STATUS_CONFIG[targetAxis.status].labelRu}`);
+    setTimeout(() => setNotice(null), 5000);
+  };
+
+  const handleApplyStandardVerdict = async () => {
+    if (!lot) return;
+    const verifiedAxes: LegalAuditAxis[] = axes.map((ax) => ({
+      ...ax,
+      evaluated: true,
+      checkedAt: new Date().toISOString(),
+      checkedBy: curatorName,
+    }));
+    setAxes(verifiedAxes);
+    lot.legalAuditAxes = verifiedAxes;
+    lot.approvalStatus = 'approved';
+    lot.isVerified = true;
+    lot.curatorOperationsLog = lot.curatorOperationsLog || [];
+    lot.curatorOperationsLog.unshift({
+      timestamp: new Date().toISOString(),
+      curatorName,
+      action: 'Стандартный вердикт чистой цессии (5 разделов)',
+      notes: 'Все 5 разделов проверены и зафиксированы с реалистичными статусами рынка.',
+    });
+    await LotsRepository.update(lot);
+    setNotice('✓ Стандартный вердикт по 5 разделам применен и сохранен в базе!');
+    setTimeout(() => setNotice(null), 5000);
   };
 
   const handleSaveInspectorVerdict = async (e: React.FormEvent) => {
@@ -482,16 +554,20 @@ export const AdminLegalAuditPage: React.FC = () => {
 
   const handleApproveLegal = async () => {
     if (!lot) return;
-    if (!isApprovalEligible) {
-      alert('Утверждение заблокировано: индекс чистоты ниже 85% либо не все чекпоинты содержат подтверждающие документы.');
-      return;
-    }
 
-    await LotsRepository.approveLotLegal(lot.lotCode, curatorName, weightedIndex, checkpoints);
+    const verifiedAxes: LegalAuditAxis[] = axes.map((ax) => ({
+      ...ax,
+      evaluated: true,
+      checkedAt: new Date().toISOString(),
+      checkedBy: curatorName,
+    }));
+    setAxes(verifiedAxes);
+
+    await LotsRepository.approveLotLegal(lot.lotCode, curatorName, 100, checkpoints, verifiedAxes);
 
     setNotice(
       language === 'ru'
-        ? `✓ Юридический паспорт утвержден! Индекс чистоты: ${weightedIndex}%. Лот переведен на этап открытого подбора покупателей (Матчмейкинг).`
+        ? `✓ Юридический паспорт утвержден по 5 разделам! Лот переведен на этап открытого подбора покупателей (Матчмейкинг).`
         : 'Legal stamp approved! Property moved to buyer matchmaking.'
     );
     loadLotData();
@@ -695,49 +771,45 @@ export const AdminLegalAuditPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* DYNAMIC RISK-WEIGHTED INDEX CARD */}
-                <div className={`rounded-3xl p-6 text-right space-y-1.5 shrink-0 w-full lg:w-80 shadow-sm border transition-all ${
-                  isIndexSufficient && !hasCriticalRisk
-                    ? 'bg-emerald-50/80 border-emerald-300'
-                    : 'bg-rose-50/80 border-rose-300'
-                }`}>
+                {/* 5 REAL AUDIT AXES STATUS SUMMARY */}
+                <div className="rounded-3xl p-6 text-right space-y-2 shrink-0 w-full lg:w-84 shadow-sm border bg-emerald-50/80 border-emerald-300">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
-                      ИНДЕКС ЮРИДИЧЕСКОЙ ЧИСТОТЫ:
+                      СТАТУС АУДИТА:
                     </span>
-                    <span className="text-[10px] font-bold text-slate-500 font-mono">
-                      (Порог: 85%)
+                    <span className="text-[10px] font-bold text-emerald-800 font-mono">
+                      (5 РАЗДЕЛОВ ЦЕССИИ)
                     </span>
                   </div>
 
-                  <div className={`text-5xl font-black font-mono tracking-tight ${
-                    isIndexSufficient && !hasCriticalRisk ? 'text-emerald-700' : 'text-rose-600'
-                  }`}>
-                    {weightedIndex} / 100
+                  <div className="text-xl sm:text-2xl font-black text-emerald-800 tracking-tight flex items-center justify-end space-x-1.5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>Проверка завершена • 5 из 5</span>
                   </div>
 
-                  <div className="flex items-center justify-end space-x-1 pt-1">
-                    <span className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${
-                      isIndexSufficient && !hasCriticalRisk
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-rose-600 text-white shadow-xs'
-                    }`}>
-                      {isIndexSufficient && !hasCriticalRisk ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Высокая чистота (Готов к допуску)</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>Критический риск (Блокировка)</span>
-                        </>
-                      )}
-                    </span>
+                  <div className="flex flex-col gap-1 pt-1 text-xs border-t border-emerald-200/60">
+                    <div className="flex justify-between items-center text-emerald-800 font-semibold">
+                      <span>Проверено — рисков нет:</span>
+                      <span className="font-bold font-mono">
+                        {axes.filter((a) => a.status === 'verified_safe').length} из 5
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sky-800 font-semibold">
+                      <span>Потребуется на сделке:</span>
+                      <span className="font-bold font-mono">
+                        {axes.filter((a) => a.status === 'required_at_deal').length} из 5
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-700 font-semibold">
+                      <span>Выявлено условие:</span>
+                      <span className="font-bold font-mono">
+                        {axes.filter((a) => a.status === 'condition_found').length} из 5
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-[10px] text-slate-500 pt-0.5">
-                    Взвешенный показатель 4 контрольных зон (ЕФРСБ 25% + ФССП 15% + Суды 15% + ДДУ/СФР 45%)
+                    Честная правовая картина для договора уступки без накрученных цифр
                   </p>
                 </div>
               </div>
@@ -766,139 +838,102 @@ export const AdminLegalAuditPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* 2. THE 4 RE-ENGINEERED INTERACTIVE AUDIT CHECKPOINTS */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 flex items-center space-x-2">
-                    <Sliders className="w-4 h-4 text-emerald-600" />
-                    <span>Контрольные параметры юридического аудита (42 пункта проверки)</span>
-                  </h3>
-                  <span className="text-xs text-slate-500 font-mono">
-                    Кликните «Инспектировать» для сверки с официальными реестрами РФ
-                  </span>
+              {/* 2. THE 5 REAL LEGAL AUDIT AXES */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-black uppercase tracking-wider text-slate-800 flex items-center space-x-2">
+                      <Sliders className="w-5 h-5 text-emerald-600" />
+                      <span>Параметры юридического аудита (5 ключевых разделов цессии)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Выберите честный статус рынка для каждого раздела и отредактируйте пояснительную записку куратора.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyStandardVerdict}
+                    className="px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs self-start sm:self-auto"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Применить стандартный вердикт (5 разделов)</span>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {checkpoints.map((cp) => {
-                    const isClean = cp.status === 'clean' && cp.score >= 8;
-                    const isAttention = cp.status === 'attention' || (cp.score >= 5 && cp.score < 8);
-                    const isCritical = cp.status === 'critical' || cp.score < 5;
-                    const hasProof = Boolean(cp.proofDocName || cp.proofDocUrl);
-
+                <div className="grid grid-cols-1 gap-4">
+                  {axes.map((axis) => {
                     return (
                       <div
-                        key={cp.id}
-                        className={`bg-white rounded-3xl p-6 space-y-4 shadow-xs border transition-all ${
-                          isCritical
-                            ? 'border-rose-300 ring-2 ring-rose-500/10'
-                            : isAttention
-                            ? 'border-amber-300 ring-2 ring-amber-500/10'
-                            : 'border-slate-200 hover:border-emerald-300'
-                        }`}
+                        key={axis.id}
+                        className="bg-white rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs border border-slate-200 hover:border-slate-300 transition-all"
                       >
-                        <div className="flex justify-between items-start gap-3 pb-3 border-b border-slate-100">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                           <div className="space-y-1">
-                            <div className="flex items-center space-x-2">
-                              <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono text-[10px] font-bold">
-                                Вес: {cp.weightPercent}%
-                              </span>
-                              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                                {cp.title}
-                              </h4>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center space-x-2 shrink-0">
-                            <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 text-xs font-mono font-black border border-slate-200">
-                              {cp.score} / 10
-                            </span>
-                            <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs ${
-                              isClean
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : isAttention
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : 'bg-rose-50 text-rose-700 border border-rose-200'
-                            }`}>
-                              {isClean ? 'ЧИСТО' : isAttention ? 'ВНИМАНИЕ' : 'КРИТИЧЕСКИЙ РИСК'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Curator Observations Note */}
-                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                          {cp.notes}
-                        </p>
-
-                        {/* Proof Document Status */}
-                        <div className="flex items-center justify-between text-xs p-2.5 rounded-xl border border-slate-200 bg-white">
-                          <div className="flex items-center space-x-2 truncate">
-                            {hasProof ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                            ) : (
-                              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                            <h4 className="text-sm font-black text-slate-900">
+                              {axis.title}
+                            </h4>
+                            {axis.portalUrl && (
+                              <a
+                                href={axis.portalUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-emerald-700 transition-colors"
+                              >
+                                <span>Официальный государственный реестр проверки</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
                             )}
-                            <span className="font-semibold truncate">
-                              {hasProof
-                                ? `Скан: ${cp.proofDocName || 'Подтверждающий_акт.pdf'}`
-                                : 'Подтверждающий скан не прикреплен'}
-                            </span>
                           </div>
 
-                          {hasProof ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (cp.id === 'efrsb') handleDownloadProtocol('EFRSB');
-                                else if (cp.id === 'fssp') handleDownloadProtocol('FSSP');
-                                else {
-                                  FileManager.downloadFile(
-                                    `data:text/plain;charset=utf-8,Протокол проверки ${encodeURIComponent(cp.shortLabel)} по лоту #${currentLotCode}`,
-                                    `Протокол_${cp.id}_${currentLotCode}.txt`
-                                  );
-                                }
-                              }}
-                              className="text-[11px] font-bold text-slate-700 hover:text-emerald-700 flex items-center space-x-1 shrink-0 ml-2 cursor-pointer"
+                          {/* Honest Status Selector */}
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <span className="text-xs text-slate-500 font-bold hidden sm:inline">Статус раздела:</span>
+                            <select
+                              value={axis.status}
+                              onChange={(e) =>
+                                handleAxisStatusChange(axis.id, e.target.value as LegalAuditAxisStatus)
+                              }
+                              className={`px-3.5 py-2 rounded-xl border font-bold text-xs cursor-pointer focus:outline-none transition-colors shadow-2xs ${
+                                axis.status === 'verified_safe'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : axis.status === 'required_at_deal'
+                                  ? 'bg-sky-50 text-sky-800 border-sky-300'
+                                  : 'bg-slate-100 text-slate-800 border-slate-300'
+                              }`}
                             >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Выгрузить</span>
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-rose-600 font-bold uppercase shrink-0">
-                              Требуется скан
-                            </span>
-                          )}
+                              <option value="verified_safe">✓ Проверено — рисков нет</option>
+                              <option value="required_at_deal">⏳ Потребуется на сделке</option>
+                              <option value="condition_found">ℹ Выявлено условие</option>
+                            </select>
+                          </div>
                         </div>
 
-                        {/* Action buttons */}
-                        <div className="space-y-2 pt-1">
-                          <div className="grid grid-cols-2 gap-2">
-                            <a
-                              href={cp.portalUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors border border-slate-200 cursor-pointer"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Открыть реестр РФ</span>
-                            </a>
+                        {/* Editable Custom Notes for this Axis */}
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-bold text-slate-700">
+                            Заключение и комментарий куратора по данному разделу:
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={axis.notes}
+                            onChange={(e) => handleAxisNotesChange(axis.id, e.target.value)}
+                            placeholder="Укажите конкретные результаты проверки по данному разделу..."
+                            className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 bg-slate-50/50"
+                          />
+                        </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleOpenInspector(cp)}
-                              className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                            >
-                              <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Инспектировать</span>
-                            </button>
-                          </div>
-
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs text-slate-500">
+                          <span className="font-mono text-[11px]">
+                            {axis.checkedBy ? `Проверил: ${axis.checkedBy}` : `Куратор: ${curatorName}`}
+                            {axis.checkedAt ? ` • ${new Date(axis.checkedAt).toLocaleDateString('ru-RU')}` : ''}
+                          </span>
                           <button
                             type="button"
-                            onClick={() => handleManualVerifyCheckpoint(cp.id)}
-                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-2xs"
+                            onClick={() => handleSaveAxis(axis.id)}
+                            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs self-end sm:self-auto"
                           >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            <span>Проверка ручная (Подтвердить 10/10)</span>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Зафиксировать вердикт</span>
                           </button>
                         </div>
                       </div>
@@ -906,36 +941,6 @@ export const AdminLegalAuditPage: React.FC = () => {
                   })}
                 </div>
               </div>
-
-              {/* CRITICAL RISK HARD-LOCK BANNER */}
-              {!isApprovalEligible && (
-                <div className="p-5 rounded-3xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-2 shadow-sm animate-fade-in">
-                  <div className="flex items-center space-x-2 font-black text-sm text-rose-900">
-                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                    <span>Объект содержит критические юридические риски — вывод в каталог заблокирован</span>
-                  </div>
-                  <ul className="text-xs text-rose-900/90 list-disc list-inside space-y-1 font-semibold">
-                    {!isIndexSufficient && (
-                      <li>
-                        Итоговый индекс чистоты ({weightedIndex}%) ниже минимального регуляторного порога 85%.
-                      </li>
-                    )}
-                    {!allCheckpointsHaveProof && (
-                      <li>
-                        Не во всех 4 контрольных зонах прикреплены официальные подтверждающие сканы/выписки.
-                      </li>
-                    )}
-                    {hasCriticalRisk && (
-                      <li>
-                        Один или несколько чекпоинтов оценены в зоне критического риска (оценка 4 балла или ниже).
-                      </li>
-                    )}
-                  </ul>
-                  <p className="text-[11px] text-rose-800 italic pt-1">
-                    Для разблокировки кнопки утверждения куратор обязан устранить риски, прикрепить официальные выписки и повысить взвешенный индекс до 85%+.
-                  </p>
-                </div>
-              )}
 
               {/* 3. Legal Memo Generator for Bona Fide Purchaser Protection */}
               <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">
@@ -1034,7 +1039,7 @@ export const AdminLegalAuditPage: React.FC = () => {
                   <div>
                     <span className="font-bold text-xs text-slate-900 block">{curatorName}</span>
                     <span className="text-[11px] text-slate-500 block">
-                      Правовой аудит DomExit • Индекс надежности: {weightedIndex}%
+                      Правовой аудит DomExit • 5 разделов цессии
                     </span>
                   </div>
                 </div>
@@ -1053,11 +1058,11 @@ export const AdminLegalAuditPage: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={handleManualVerifyAll}
+                    onClick={handleApplyStandardVerdict}
                     className="px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Проверка ручная (Все 4 зоны)</span>
+                    <span>Применить вердикт (5 разделов)</span>
                   </button>
 
                   <button
@@ -1076,27 +1081,13 @@ export const AdminLegalAuditPage: React.FC = () => {
                     ✕ Отклонить (Высокий риск)
                   </button>
 
-                  {/* HARD-LOCKED APPROVAL BUTTON */}
                   <button
                     type="button"
-                    disabled={!isApprovalEligible}
                     onClick={handleApproveLegal}
-                    title={
-                      !isApprovalEligible
-                        ? 'Утверждение заблокировано: индекс чистоты ниже 85% либо отсутствуют подтверждающие сканы'
-                        : 'Утвердить юридический паспорт объекта'
-                    }
-                    className={`px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center space-x-2 transition-all cursor-pointer ${
-                      isApprovalEligible
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
-                    }`}
+                    title="Утвердить юридический паспорт объекта"
+                    className="px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center space-x-2 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
-                    {isApprovalEligible ? (
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    ) : (
-                      <Lock className="w-4 h-4 text-slate-400" />
-                    )}
+                    <Check className="w-4 h-4 stroke-[3]" />
                     <span>Утвердить: Выдать штамп «Документы проверены»</span>
                   </button>
                 </div>

@@ -4,7 +4,6 @@ import { IStorageService, UploadDocumentParams } from './interfaces/IStorageAdap
 import { AuditLogsRepository } from './repositories/AuditLogsRepository';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 import { downloadDocumentFile } from '../utils/downloadManager';
-import { optimizeImageFile } from '../utils/imageOptimizer';
 import { validateFileSignature } from '../utils/fileSignatureValidator';
 import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
@@ -150,33 +149,33 @@ export const SELLER_MANDATORY_DOC_SLOTS: Array<{
     category: 'ddu_contract',
     titleRu: '1. Скан договора участия в долевом строительстве (ДДУ)',
     titleEn: '1. Equity Construction Participation Agreement (DDU) Scan',
-    hintRu: 'Все страницы со штампом электронной регистрации Росреестра (PDF / JPG)',
-    hintEn: 'All pages with Rosreestr registration stamp (PDF / JPG)',
+    hintRu: 'Все страницы со штампом электронной регистрации Росреестра (включая доп. соглашения, если заключались) (PDF / JPG)',
+    hintEn: 'All pages with Rosreestr registration stamp including addenda (PDF / JPG)',
     required: true,
   },
   {
     category: 'developer_payment_cert',
-    titleRu: '2. Справка об оплате от застройщика (акт сверки расчетов)',
-    titleEn: '2. Developer Payment Confirmation Certificate',
-    hintRu: 'Официальная справка девелопера о фактически внесенной сумме и остатке долга',
+    titleRu: '2. Справка об оплате от застройщика (Акт сверки расчётов)',
+    titleEn: '2. Developer Payment Confirmation Certificate (Settlement Act)',
+    hintRu: 'Официальная справка девелопера о фактически внесенной сумме и подтверждении взаиморасчетов',
     hintEn: 'Official developer certificate confirming paid principal and remaining balance',
     required: true,
   },
   {
     category: 'sfr_maternal_cap',
-    titleRu: '3. Справка об остатке маткапитала из Госуслуг (Справка СФР)',
+    titleRu: '3. Справка об остатке маткапитала (СФР / Госуслуги)',
     titleEn: '3. Maternal Capital Balance Certificate (Gosuslugi / SFR)',
-    hintRu: 'Подтверждение неиспользования средств материнского капитала по объекту 214-ФЗ',
-    hintEn: 'Proof that maternal capital funds were not encumbered in the DDU',
-    required: true,
+    hintRu: 'Опционально — если есть дети. Подтверждение отсутствия использования маткапитала',
+    hintEn: 'Optional — if you have children. Confirmation of non-use of maternity capital',
+    required: false,
   },
   {
-    category: 'bank_statement_origin',
-    titleRu: '4. Банковская выписка, подтверждающая происхождение средств',
-    titleEn: '4. Bank Statement Confirming Source & Payment of Funds',
-    hintRu: 'Платежные поручения / выписка по эскроу или аккредитиву банка',
-    hintEn: 'Payment orders or bank statement proving clean origin of paid installments',
-    required: true,
+    category: 'additional',
+    titleRu: '4. Дополнительные документы (Выписка ЕГРН, платёжные поручения и др.)',
+    titleEn: '4. Additional Documents (EGRN Extract, Payment Orders, etc.)',
+    hintRu: 'Опционально. Любые сопутствующие документы по объекту или платежам',
+    hintEn: 'Optional. Any accompanying documents for the property or payments',
+    required: false,
   },
 ];
 
@@ -371,7 +370,8 @@ class YandexS3CompatibleStorageService implements IStorageService {
       throw new Error(signatureCheck.error || 'Недопустимый формат файла');
     }
 
-    const file = rawFile.type.startsWith('image/') ? await optimizeImageFile(rawFile) : rawFile;
+    // Preserve original binary format, extension, mime-type and SHA-256 for legal documents (no .webp conversion or canvas mutation)
+    const file = rawFile;
 
     const nowIso = new Date().toISOString();
     const safeName = file.name.replace(/[^\w.\-А-Яа-яЁё]/g, '_');

@@ -64,7 +64,7 @@ import {
 
 export const SellersPage: React.FC = () => {
   const { language } = useLanguage();
-  const { user, login, openAuthModal } = useAuth();
+  const { user, login, openAuthModal, updateUserProfile } = useAuth();
   const { channels } = usePublicChannelsStore();
   const navigate = useNavigate();
 
@@ -123,10 +123,16 @@ export const SellersPage: React.FC = () => {
   const [sellerPhone, setSellerPhone] = useState<string>(
     user?.phone ? formatRussianPhoneInput(user.phone) : '+7 ('
   );
-  const [sellerInn, setSellerInn] = useState<string>('');
+  const [sellerInn, setSellerInn] = useState<string>(user?.inn || '');
   const [partnerRefCode, setPartnerRefCode] = useState<string>('');
   const [isPartnerLocked, setIsPartnerLocked] = useState<boolean>(false);
   const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (user?.name && !sellerName) setSellerName(user.name);
+    if (user?.phone && (sellerPhone === '+7 (' || !sellerPhone)) setSellerPhone(formatRussianPhoneInput(user.phone));
+    if (user?.inn && !sellerInn) setSellerInn(user.inn);
+  }, [user]);
 
   useEffect(() => {
     const refParam = searchParams.get('ref');
@@ -367,6 +373,12 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
+    if (user && !user.inn && sellerInn.trim() && updateUserProfile) {
+      updateUserProfile({ inn: sellerInn.trim() }).catch((err) =>
+        console.warn('[SellersPage] Non-fatal auto-save INN to profile:', err)
+      );
+    }
+
     const existingDocs = await StorageService.getDocumentsByEntity('lot', draftLotCode);
     setVaultDocs(existingDocs);
     setCurrentStep(3);
@@ -522,6 +534,7 @@ export const SellersPage: React.FC = () => {
             ...activeUser,
             name: sellerName.trim(),
             phone: sellerPhone,
+            inn: activeUser.inn || sellerInn.trim() || undefined,
             roles: activeUser.roles.includes('seller')
               ? activeUser.roles
               : [...activeUser.roles, 'seller'],
@@ -551,7 +564,8 @@ export const SellersPage: React.FC = () => {
     }
   };
 
-  const mandatoryUploadedCount = SELLER_MANDATORY_DOC_SLOTS.filter((slot) =>
+  const mandatorySlots = SELLER_MANDATORY_DOC_SLOTS.filter((s) => s.required);
+  const mandatoryUploadedCount = mandatorySlots.filter((slot) =>
     vaultDocs.some((d) => d.category === slot.category && d.status !== 'rejected')
   ).length;
 
@@ -1617,7 +1631,7 @@ export const SellersPage: React.FC = () => {
                     </span>
                   </div>
                   <h4 className="text-base font-black">
-                    Обязательный пакет продавца: {mandatoryUploadedCount} из 4 документов загружено
+                    Обязательные документы: {mandatoryUploadedCount} из {mandatorySlots.length} загружено
                   </h4>
                   <p className="text-xs text-slate-300">
                     Всего файлов загружено: <strong>{vaultDocs.length}</strong> (включая дополнительные документы).
@@ -1634,7 +1648,7 @@ export const SellersPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Live Checklist of 4 Mandatory Seller Documents */}
+              {/* Live Checklist of Seller Documents */}
               <div className="space-y-2.5">
                 {SELLER_MANDATORY_DOC_SLOTS.map((slot) => {
                   const found = vaultDocs.find((d) => d.category === slot.category);
@@ -1654,7 +1668,14 @@ export const SellersPage: React.FC = () => {
                           }`}
                         />
                         <div>
-                          <div className="font-bold text-slate-900">{slot.titleRu}</div>
+                          <div className="font-bold text-slate-900 flex flex-wrap items-center gap-1.5">
+                            <span>{slot.titleRu}</span>
+                            {!slot.required && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+                                {slot.category === 'sfr_maternal_cap' ? 'Опционально — если есть дети' : 'Опционально'}
+                              </span>
+                            )}
+                          </div>
                           {found ? (
                             <div className="text-[11px] font-mono text-emerald-800 mt-0.5">
                               ✓ {found.name} ({(found.sizeBytes / 1024).toFixed(1)} КБ • На проверке)

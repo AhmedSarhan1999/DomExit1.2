@@ -3,6 +3,8 @@ import { firebaseAdapterInstance } from './adapters/FirebaseAdapter';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 import { resolveCollectionName, isIsolatedCollection } from './config/collectionResolver';
 import { useEnvironmentStore } from '../stores/useEnvironmentStore';
+import { swrCache } from './cache/SWRCache';
+import { requestDeduplicator } from './cache/requestDeduplicator';
 
 /**
  * Central Transitional Data Access Layer Gateway (DAL)
@@ -33,6 +35,10 @@ class DatabaseGatewayController {
 
   async save<T extends { id: string }>(collectionName: string, entity: T): Promise<T> {
     const resolvedName = resolveCollectionName(collectionName);
+    swrCache.invalidatePrefix(`getAll:${resolvedName}`);
+    swrCache.invalidatePrefix(`getAll:${collectionName}`);
+    swrCache.invalidatePrefix(`getById:${resolvedName}:${entity.id}`);
+    swrCache.invalidatePrefix(`getById:${collectionName}:${entity.id}`);
     const saved = await this.activeAdapter.saveEntity(resolvedName, entity);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
@@ -48,7 +54,17 @@ class DatabaseGatewayController {
     const resolvedName = resolveCollectionName(collectionName);
     const isProd = useEnvironmentStore.getState().isProduction;
     const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
-    return this.activeAdapter.getAllEntities(resolvedName, effectiveSeedFallback);
+    const cacheKey = `getAll:${resolvedName}`;
+    const ttlMs = 30_000; // 30s TTL with SWR background revalidation
+
+    return swrCache.getOrFetch<T[]>(
+      cacheKey,
+      () =>
+        requestDeduplicator.dedupe(cacheKey, () =>
+          this.activeAdapter.getAllEntities(resolvedName, effectiveSeedFallback)
+        ),
+      ttlMs
+    );
   }
 
   getById<T extends { id: string }>(
@@ -59,7 +75,17 @@ class DatabaseGatewayController {
     const resolvedName = resolveCollectionName(collectionName);
     const isProd = useEnvironmentStore.getState().isProduction;
     const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
-    return this.activeAdapter.getEntityById(resolvedName, id, effectiveSeedFallback);
+    const cacheKey = `getById:${resolvedName}:${id}`;
+    const ttlMs = 30_000;
+
+    return swrCache.getOrFetch<T | null>(
+      cacheKey,
+      () =>
+        requestDeduplicator.dedupe(cacheKey, () =>
+          this.activeAdapter.getEntityById(resolvedName, id, effectiveSeedFallback)
+        ),
+      ttlMs
+    );
   }
 
   query<T extends { id: string }>(
@@ -75,6 +101,10 @@ class DatabaseGatewayController {
 
   async remove(collectionName: string, id: string): Promise<boolean> {
     const resolvedName = resolveCollectionName(collectionName);
+    swrCache.invalidatePrefix(`getAll:${resolvedName}`);
+    swrCache.invalidatePrefix(`getAll:${collectionName}`);
+    swrCache.invalidatePrefix(`getById:${resolvedName}:${id}`);
+    swrCache.invalidatePrefix(`getById:${collectionName}:${id}`);
     const removed = await this.activeAdapter.removeEntity(resolvedName, id);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(

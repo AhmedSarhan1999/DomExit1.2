@@ -120,6 +120,25 @@ class ClientSWRCache {
     }
   }
 
+  /**
+   * Clears the entire cache (in-memory and session storage).
+   */
+  clear(): void {
+    this.memoryCache.clear();
+    try {
+      const toRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(this.storagePrefix)) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach((k) => sessionStorage.removeItem(k));
+    } catch {
+      // Ignore
+    }
+  }
+
   private async revalidateInBackground<T>(
     key: string,
     fetcher: () => Promise<T>,
@@ -127,7 +146,16 @@ class ClientSWRCache {
   ): Promise<void> {
     try {
       const freshData = await fetcher();
+      const current = this.get<T>(key);
+      const hasChanged = JSON.stringify(freshData) !== JSON.stringify(current?.data);
       this.set(key, freshData, ttlMs);
+      if (hasChanged && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('domexit:dal_updated', {
+            detail: { cacheKey: key, revalidated: true },
+          })
+        );
+      }
     } catch (err) {
       console.warn(`[SWRCache] Background revalidation failed for ${key}:`, err);
     }
@@ -136,16 +164,26 @@ class ClientSWRCache {
 
 export const swrCache = new ClientSWRCache();
 
-// Automatically invalidate cached collection queries when DAL updates
+// Automatically invalidate cached collection queries when DAL updates or environment toggles
 if (typeof window !== 'undefined') {
   window.addEventListener('domexit:dal_updated', (e: Event) => {
     try {
       const detail = (e as CustomEvent).detail;
+      if (detail?.revalidated) {
+        return; // Avoid loop
+      }
       if (detail?.baseCollection) {
         swrCache.invalidatePrefix(detail.baseCollection);
+      }
+      if (detail?.collectionName) {
+        swrCache.invalidatePrefix(detail.collectionName);
       }
     } catch {
       // Ignore
     }
+  });
+
+  window.addEventListener('domexit:environment_changed', () => {
+    swrCache.clear();
   });
 }

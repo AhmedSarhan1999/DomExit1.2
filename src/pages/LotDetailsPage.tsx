@@ -11,6 +11,7 @@ import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepo
 import { DevelopersRepository } from '../dal/repositories/DevelopersRepository';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { resolveLotGeoDetails } from '../data/russianGeography';
+import { resolveLotLegalAxes, HONEST_STATUS_CONFIG } from '../data/legalAuditAxes';
 import { formatRubles, formatPercent } from '../utils/formatters';
 import { BookingModal } from '../components/booking/BookingModal';
 import { SmartMortgageCalculator } from '../components/lot/SmartMortgageCalculator';
@@ -43,6 +44,7 @@ import {
   Eye,
   Calendar,
   Building2,
+  AlertCircle,
 } from 'lucide-react';
 
 const FALLBACK_LOT_IMAGE =
@@ -206,8 +208,15 @@ export const LotDetailsPage: React.FC = () => {
   }
 
   const geo = resolveLotGeoDetails(lot);
-  const gallery =
-    lot.galleryImages && lot.galleryImages.length > 0 ? lot.galleryImages : [lot.imageUrl];
+  const gallery = (
+    lot.approvedGalleryImages && lot.approvedGalleryImages.length > 0
+      ? lot.approvedGalleryImages
+      : lot.galleryImages && lot.galleryImages.length > 0
+      ? lot.galleryImages
+      : lot.imageUrl
+      ? [lot.imageUrl]
+      : []
+  ).filter(Boolean);
 
   const savingsRub = lot.todayDeveloperPrice - lot.dduContractPrice;
   const savingsPercent =
@@ -475,58 +484,77 @@ export const LotDetailsPage: React.FC = () => {
             
             {/* Media Gallery */}
             <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm space-y-4">
-              <div className="relative h-72 sm:h-96 rounded-2xl overflow-hidden bg-slate-100 aspect-[16/10]">
-                <img
-                  src={gallery[activeImageIndex % gallery.length] || lot.imageUrl || FALLBACK_LOT_IMAGE}
-                  alt={lot.complexName}
-                  className="w-full h-full object-cover"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  onError={(e) => {
-                    e.currentTarget.src = FALLBACK_LOT_IMAGE;
-                  }}
-                />
-                <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 text-slate-800 border border-slate-200/60 shadow-xs backdrop-blur-md text-xs font-bold">
-                  {lot.constructionReadinessPercent}% готовности корпуса
-                </span>
-                <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-slate-900/85 text-white text-xs font-bold backdrop-blur-md">
-                  {lot.developer}
-                </span>
-              </div>
+              {gallery.length === 0 ? (
+                <div className="relative h-72 sm:h-96 rounded-2xl overflow-hidden bg-slate-100 flex flex-col items-center justify-center border border-dashed border-slate-300 text-slate-500 p-6 text-center space-y-2">
+                  <Building2 className="w-12 h-12 text-slate-400 stroke-1" />
+                  <span className="text-sm font-bold text-slate-700">Фотографии загружаются</span>
+                  <span className="text-xs text-slate-500 max-w-sm">
+                    Куратор готовит визуализацию, рендеры и планировки объекта для публикации в каталоге.
+                  </span>
+                  <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 text-slate-800 border border-slate-200/60 shadow-xs backdrop-blur-md text-xs font-bold">
+                    {lot.constructionReadinessPercent}% готовности корпуса
+                  </span>
+                  <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-slate-900/85 text-white text-xs font-bold backdrop-blur-md">
+                    {lot.developer}
+                  </span>
+                </div>
+              ) : (
+                <div className="relative h-72 sm:h-96 rounded-2xl overflow-hidden bg-slate-100 aspect-[16/10]">
+                  <img
+                    src={gallery[activeImageIndex % gallery.length]}
+                    alt={lot.complexName}
+                    className="w-full h-full object-cover"
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                  />
+                  <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 text-slate-800 border border-slate-200/60 shadow-xs backdrop-blur-md text-xs font-bold">
+                    {lot.constructionReadinessPercent}% готовности корпуса
+                  </span>
+                  <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-slate-900/85 text-white text-xs font-bold backdrop-blur-md">
+                    {lot.developer}
+                  </span>
+                </div>
+              )}
 
-              <div className="grid grid-cols-4 gap-3">
-                {['Архитектура ЖК', 'Планировка и корпус', 'Интерьер / Холл', 'Предпросмотр'].map(
-                  (label, idx) => (
+              {/* Dynamic Thumbnails Strip: Hidden if single image or 0 images; shows actual count only */}
+              {gallery.length > 1 && (
+                <div
+                  className={`grid gap-3 ${
+                    gallery.length === 2
+                      ? 'grid-cols-2'
+                      : gallery.length === 3
+                      ? 'grid-cols-3'
+                      : 'grid-cols-4 sm:grid-cols-6'
+                  }`}
+                >
+                  {gallery.map((imgUrl, idx) => (
                     <button
-                      key={label}
+                      key={idx}
                       type="button"
-                      onClick={() => setActiveImageIndex(idx % gallery.length)}
-                      className={`rounded-xl overflow-hidden border-2 p-1 text-center transition-all ${
-                        activeImageIndex === idx % gallery.length
-                          ? 'border-emerald-500 bg-emerald-50'
+                      onClick={() => setActiveImageIndex(idx)}
+                      className={`rounded-xl overflow-hidden border-2 p-1 text-center transition-all cursor-pointer ${
+                        activeImageIndex === idx
+                          ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20'
                           : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
-                      <div className="h-16 rounded-lg overflow-hidden bg-slate-100 mb-1 aspect-[16/9]">
+                      <div className="h-16 rounded-lg overflow-hidden bg-slate-100 aspect-[16/9]">
                         <img
-                          src={gallery[idx % gallery.length] || FALLBACK_LOT_IMAGE}
-                          alt={label}
+                          src={imgUrl}
+                          alt={`Фото ${idx + 1}`}
                           className="w-full h-full object-cover"
                           loading="lazy"
                           decoding="async"
-                          onError={(e) => {
-                            e.currentTarget.src = FALLBACK_LOT_IMAGE;
-                          }}
                         />
                       </div>
-                      <span className="text-[11px] font-bold text-slate-700 block truncate">
-                        {label}
+                      <span className="text-[11px] font-bold text-slate-700 block truncate mt-0.5">
+                        Фото {idx + 1}
                       </span>
                     </button>
-                  )
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Technical Specifications & Price per m² Benchmark Card */}
@@ -764,18 +792,19 @@ export const LotDetailsPage: React.FC = () => {
                     Юридический паспорт цессии #{lot.lotCode}
                   </h3>
                 </div>
-                <span className="px-3 py-1.5 rounded-full bg-emerald-500 text-slate-950 text-xs font-black shadow-md">
-                  42 из 42 пунктов проверки пройдено
+                <span className="px-3 py-1.5 rounded-full bg-emerald-500 text-slate-950 text-xs font-black shadow-md flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                  <span>Проверка завершена • 5 из 5 разделов</span>
                 </span>
               </div>
 
               <div className="flex flex-wrap gap-2 text-xs">
                 {[
-                  'Чистый выход из сделки',
-                  'Проверен по ФССП и ЕФРСБ',
+                  'ДДУ проверен в Росреестре',
+                  'Риски банкротства (ЕФРСБ / ФССП) отсутствуют',
                   `Эскроу ПАО ${lot.escrowBank}`,
-                  'Справка СФР: маткапитал 0 ₽',
-                  `Согласие ${lot.developer} подтверждено`,
+                  'Маткапитал 0 ₽',
+                  'Согласование цессии по регламенту застройщика',
                 ].map((tag) => (
                   <span
                     key={tag}
@@ -787,34 +816,36 @@ export const LotDetailsPage: React.FC = () => {
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <span className="font-bold text-slate-900 block">Статус оплаты дольщиком:</span>
-                  <p className="text-slate-600">
-                    {formatRubles(lot.cashPaidBySeller)} официально выплачено застройщику {lot.developer}. Подтверждено оригиналом акта сверки взаиморасчетов.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <span className="font-bold text-slate-900 block">Семейное право и СФР:</span>
-                  <p className="text-slate-600">
-                    Материнский капитал не привлекался (выписка Госуслуги / СФР верифицирована). Обязательства по выделению детских долей отсутствуют.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <span className="font-bold text-slate-900 block">Антибанкротный индекс:</span>
-                  <p className="text-slate-600">
-                    Индекс безопасности: {lot.legalPassport?.antiBankruptcyIndex || 98}/100. Исполнительные производства ФССП отсутствуют.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                  <span className="font-bold text-slate-900 block">Безопасные расчеты:</span>
-                  <p className="text-slate-600">
-                    Безотзывный банковский аккредитив в ПАО {lot.escrowBank}. Раскрытие в пользу продавца строго после регистрации уступки в Росреестре.
-                  </p>
-                </div>
+              {/* 5 Real Audit Axes Breakdown */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                {resolveLotLegalAxes(lot).map((axis) => {
+                  const cfg = HONEST_STATUS_CONFIG[axis.status] || HONEST_STATUS_CONFIG.verified_safe;
+                  return (
+                    <div
+                      key={axis.id}
+                      className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1.5">
+                        <span className="font-bold text-slate-900 block leading-tight">
+                          {axis.title}
+                        </span>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          {axis.notes}
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between">
+                        <span
+                          className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.badgeClass}`}
+                        >
+                          {axis.status === 'verified_safe' && <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />}
+                          {axis.status === 'required_at_deal' && <Clock className="w-3 h-3 text-sky-600 shrink-0" />}
+                          {axis.status === 'condition_found' && <AlertCircle className="w-3 h-3 text-slate-600 shrink-0" />}
+                          <span>{cfg.labelRu}</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Action Buttons: Digital Certificate & Public Legal Report */}
@@ -1058,24 +1089,8 @@ export const LotDetailsPage: React.FC = () => {
                         Права требования зарегистрированы в Росреестре.
                       </p>
                     </div>
-                    <Link
-                      to={similarDistrictUrl}
-                      className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center space-x-2 text-center"
-                    >
-                      <span>Смотреть похожие лоты в этом районе</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </Link>
                   </div>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => setIsReportModalOpen(true)}
-                  className="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Публичное юридическое заключение</span>
-                </button>
               </div>
             </div>
 

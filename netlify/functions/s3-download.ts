@@ -1,7 +1,17 @@
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-function getS3Client() {
+// Module-scope cached client across warm serverless container invocations
+let cachedS3Client: S3Client | null = null;
+let clientCreatedTimestamp = 0;
+const CLIENT_MAX_AGE_MS = 15 * 60 * 1000; // 15-minute refresh boundary
+
+function getS3Client(): S3Client {
+  const now = Date.now();
+  if (cachedS3Client && now - clientCreatedTimestamp < CLIENT_MAX_AGE_MS) {
+    return cachedS3Client;
+  }
+
   const endpoint =
     process.env.VITE_YANDEX_STORAGE_ENDPOINT ||
     process.env.YANDEX_STORAGE_ENDPOINT ||
@@ -19,7 +29,7 @@ function getS3Client() {
     process.env.YANDEX_SECRET_ACCESS_KEY ||
     '';
 
-  return new S3Client({
+  cachedS3Client = new S3Client({
     endpoint,
     region,
     credentials: {
@@ -28,6 +38,9 @@ function getS3Client() {
     },
     forcePathStyle: true,
   });
+  clientCreatedTimestamp = now;
+
+  return cachedS3Client;
 }
 
 const CORS_HEADERS = {

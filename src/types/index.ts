@@ -154,6 +154,7 @@ export interface Lot {
   };
 
   legalAuditCheckpoints?: LegalAuditCheckpoint[];
+  legalAuditAxes?: LegalAuditAxis[];
 
   // Masked owner dossier (152-ФЗ)
   ownerDossier: {
@@ -185,7 +186,8 @@ export type DocumentCategory =
   | 'mortgage_approval'
   | 'buyer_cash_statement'
   | 'rosreestr_extract'
-  | 'additional';
+  | 'additional'
+  | 'additional_documents';
 
 export type DocumentReviewStatus = 'uploaded' | 'under_review' | 'approved' | 'rejected';
 
@@ -289,6 +291,26 @@ export interface LegalAuditCheckpoint {
   evaluated: boolean;
   verifiedAt?: string;
   verifiedBy?: string;
+}
+
+export type LegalAuditAxisStatus = 'verified_safe' | 'required_at_deal' | 'condition_found';
+
+export interface LegalAuditAxis {
+  id:
+    | 'title_encumbrances'
+    | 'bankruptcy_debts'
+    | 'developer_settlement'
+    | 'family_matkap'
+    | 'cession_escrow';
+  title: string;
+  shortLabel: string;
+  status: LegalAuditAxisStatus;
+  notes: string;
+  defaultNotes?: string;
+  portalUrl?: string;
+  evaluated?: boolean;
+  checkedAt?: string;
+  checkedBy?: string;
 }
 
 export interface EscrowChatMessage {
@@ -484,6 +506,7 @@ export interface UserProfile {
   clientCode: string; // e.g. DEX-784105
   name: string;
   phone: string;
+  inn?: string;
   email?: string;
   telegram?: string;
   whatsapp?: string;

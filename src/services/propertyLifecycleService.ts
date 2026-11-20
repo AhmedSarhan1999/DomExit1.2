@@ -148,11 +148,6 @@ export class PropertyLifecycleService {
         : payload.photos && payload.photos.length > 0
         ? payload.photos
         : [];
-    const defaultCover =
-      'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1000&q=80';
-    const defaultGallery = [
-      'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
-    ];
 
     const lot: Lot = {
       id: lotId,
@@ -182,10 +177,10 @@ export class PropertyLifecycleService {
       deliveryDate: payload.deliveryDate || `4 кв. ${payload.deliveryYear || 2026} г.`,
       deliveryYear: payload.deliveryYear || 2026,
       finishing: payload.finishing || 'clean',
-      imageUrl: userPhotos.length > 0 ? userPhotos[0] : defaultCover,
-      galleryImages: userPhotos.length > 0 ? userPhotos : defaultGallery,
+      imageUrl: userPhotos.length > 0 ? userPhotos[0] : '',
+      galleryImages: userPhotos,
       sellerUploadedPhotos: userPhotos,
-      approvedGalleryImages: userPhotos.slice(0, 2),
+      approvedGalleryImages: userPhotos,
       constructionReadinessPercent: 80,
       dduContractPrice: payload.contractPriceRub,
       cashPaidBySeller: payload.paidAmountRub,

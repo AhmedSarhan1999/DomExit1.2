@@ -197,7 +197,8 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
     (d) => !SELLER_MANDATORY_DOC_SLOTS.some((slot) => slot.category === d.category)
   );
 
-  const completedMandatoryCount = SELLER_MANDATORY_DOC_SLOTS.filter((slot) =>
+  const mandatorySlots = SELLER_MANDATORY_DOC_SLOTS.filter((s) => s.required);
+  const completedMandatoryCount = mandatorySlots.filter((slot) =>
     documents.some((d) => d.category === slot.category && d.status !== 'rejected')
   ).length;
 
@@ -251,8 +252,8 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
                 <div>
                   <div className="text-xs font-black text-slate-900">
                     {language === 'ru'
-                      ? `Комплектность обязательного пакета документов: ${completedMandatoryCount} из 4 документов`
-                      : `Mandatory Seller Documents: ${completedMandatoryCount} of 4 documents`}
+                      ? `Комплектность обязательного пакета документов: ${completedMandatoryCount} из ${mandatorySlots.length} документов`
+                      : `Mandatory Seller Documents: ${completedMandatoryCount} of ${mandatorySlots.length} documents`}
                   </div>
                   <div className="text-[11px] text-slate-500">
                     {language === 'ru'
@@ -264,7 +265,7 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
               <div className="w-full sm:w-44 bg-slate-100 h-2.5 rounded-full overflow-hidden">
                 <div
                   className="bg-emerald-600 h-full transition-all duration-300"
-                  style={{ width: `${(completedMandatoryCount / 4) * 100}%` }}
+                  style={{ width: `${(completedMandatoryCount / Math.max(mandatorySlots.length, 1)) * 100}%` }}
                 />
               </div>
             </div>
@@ -298,7 +299,13 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
                             renderStatusBadge(slotDoc)
                           ) : (
                             <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
-                              {language === 'ru' ? 'Обязательный документ' : 'Required'}
+                              {slot.required
+                                ? language === 'ru'
+                                  ? 'Обязательный документ'
+                                  : 'Required'
+                                : slot.category === 'sfr_maternal_cap'
+                                ? 'Опционально — если есть дети'
+                                : 'Опционально'}
                             </span>
                           )}
                         </div>

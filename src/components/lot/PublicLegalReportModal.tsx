@@ -1,6 +1,18 @@
 import React from 'react';
-import { ShieldCheck, CheckCircle2, Lock, FileText, X, Award, Building, UserCheck } from 'lucide-react';
-import { Lot, Employee } from '../../types';
+import {
+  ShieldCheck,
+  CheckCircle2,
+  Lock,
+  FileText,
+  X,
+  Award,
+  UserCheck,
+  Clock,
+  AlertCircle,
+  ExternalLink,
+} from 'lucide-react';
+import { Lot, Employee, LegalAuditAxisStatus } from '../../types';
+import { resolveLotLegalAxes, HONEST_STATUS_CONFIG } from '../../data/legalAuditAxes';
 
 interface PublicLegalReportModalProps {
   isOpen: boolean;
@@ -26,44 +38,21 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
   const curatorName = curator?.name || lot.curator?.name || 'Юридическая служба DomExit';
   const curatorRole = curator?.role || 'Ведущий юрист по сделкам переуступки';
 
-  const auditBlocks = [
-    {
-      id: 1,
-      title: 'Идентификация правообладателя и дееспособность',
-      points: '7 из 7 пунктов',
-      desc: 'Паспортные данные сверены с базой МВД, проверка на дееспособность и нахождение в реестрах экстремистов/террористов пройдена.',
-    },
-    {
-      id: 2,
-      title: 'Легитимность ДДУ и регистрация в Росреестре',
-      points: '8 из 8 пунктов',
-      desc: 'Подлинность договора проверена по выписке ЕГРН. Государственная регистрация подтверждена с отметкой органа регистрации прав.',
-    },
-    {
-      id: 3,
-      title: 'Финансовая чистота и взаиморасчеты с девелопером',
-      points: '7 из 7 пунктов',
-      desc: 'Справка девелопера о полной оплате цены ДДУ проверена, либо зафиксирован точный остаток рассрочки для безопасного перевода долга.',
-    },
-    {
-      id: 4,
-      title: 'Статус эскроу-счета и аккредитация застройщика',
-      points: '7 из 7 пунктов',
-      desc: `Эскроу-счет в уполномоченном банке (${lot.escrowBank}) подтвержден. Застройщик ${lot.developer} имеет действующее разрешение на строительство.`,
-    },
-    {
-      id: 5,
-      title: 'Семейное право, согласие супругов и маткапитал',
-      points: '6 из 6 пунктов',
-      desc: 'Нотариальное согласие супруга(и) либо заявление о холостом статусе проверено. Средства материнского капитала не использовались / согласованы.',
-    },
-    {
-      id: 6,
-      title: 'Отсутствие банкротства, судебных споров и залогов',
-      points: '7 из 7 пунктов',
-      desc: 'Проверка по картотеке арбитражных дел (КАД), базе ФССП и ЕФРСБ подтвердила полное отсутствие судебных споров и процедур банкротства.',
-    },
-  ];
+  const axes = resolveLotLegalAxes(lot);
+
+  const renderStatusBadge = (status: LegalAuditAxisStatus) => {
+    const cfg = HONEST_STATUS_CONFIG[status] || HONEST_STATUS_CONFIG.verified_safe;
+    return (
+      <span
+        className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${cfg.badgeClass}`}
+      >
+        {status === 'verified_safe' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+        {status === 'required_at_deal' && <Clock className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
+        {status === 'condition_found' && <AlertCircle className="w-3.5 h-3.5 text-slate-600 shrink-0" />}
+        <span>{cfg.labelRu}</span>
+      </span>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
@@ -120,7 +109,7 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start space-x-2.5">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <span className="text-xs font-bold text-emerald-950 block">ДДУ проверен в Росреестре</span>
+                <span className="text-xs font-bold text-emerald-950 block">ДДУ в Росреестре</span>
                 <span className="text-[10px] text-emerald-700">Запись ЕГРН подтверждена, обременения отсутствуют</span>
               </div>
             </div>
@@ -128,8 +117,8 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start space-x-2.5">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <span className="text-xs font-bold text-emerald-950 block">Согласие девелопера</span>
-                <span className="text-[10px] text-emerald-700">Получено либо уступка разрешена условиями ДДУ</span>
+                <span className="text-xs font-bold text-emerald-950 block">Банкротные риски</span>
+                <span className="text-[10px] text-emerald-700">ЕФРСБ, картотека судов и ФССП проверены</span>
               </div>
             </div>
 
@@ -137,7 +126,7 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
                 <span className="text-xs font-bold text-emerald-950 block">Эскроу-счет подтвержден</span>
-                <span className="text-[10px] text-emerald-700">{lot.escrowBank} (эскроу-счет)</span>
+                <span className="text-[10px] text-emerald-700">ПАО {lot.escrowBank} (эскроу-агент)</span>
               </div>
             </div>
           </div>
@@ -157,39 +146,53 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
               </div>
             </div>
             <div className="hidden sm:block text-right">
-              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+              <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-bold border border-emerald-200">
                 <Award className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Юридическая экспертиза</span>
+                <span>Проверка завершена • 5 из 5 разделов</span>
               </span>
             </div>
           </div>
 
-          {/* 42 Checkpoints Breakdown */}
+          {/* 5 Real Audit Axes */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-emerald-600" />
-                <span>Чек-лист правового комплаенса (42 пункта из 42)</span>
+                <span>Правовой аудит цессии (5 разделов)</span>
               </h3>
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                100% Успешно
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                Проверка завершена • 5 из 5 разделов
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {auditBlocks.map((block) => (
-                <div key={block.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-900 block leading-tight">
-                      {block.id}. {block.title}
+            <div className="space-y-3">
+              {axes.map((axis) => (
+                <div
+                  key={axis.id}
+                  className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2 hover:border-slate-300 transition-colors"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900 leading-tight">
+                      {axis.title}
                     </span>
-                    <span className="text-[10px] font-mono font-bold text-emerald-600 shrink-0 ml-2">
-                      {block.points}
-                    </span>
+                    <div className="shrink-0">{renderStatusBadge(axis.status)}</div>
                   </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    {block.desc}
+                  <p className="text-xs text-slate-600 leading-relaxed bg-white p-3 rounded-xl border border-slate-200/60">
+                    {axis.notes}
                   </p>
+                  {axis.portalUrl && (
+                    <div className="flex justify-end pt-0.5">
+                      <a
+                        href={axis.portalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1 text-[11px] font-semibold text-slate-500 hover:text-emerald-700 transition-colors"
+                      >
+                        <span>Государственный реестр проверки</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

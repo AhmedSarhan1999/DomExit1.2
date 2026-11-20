@@ -464,7 +464,8 @@ export class LotsRepository {
     lotCode: string,
     curatorName: string,
     customAntiBankruptcyIndex?: number,
-    checkpoints?: any[]
+    checkpoints?: any[],
+    legalAuditAxes?: any[]
   ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
@@ -479,6 +480,9 @@ export class LotsRepository {
     }
     if (checkpoints) {
       lot.legalAuditCheckpoints = checkpoints;
+    }
+    if (legalAuditAxes) {
+      lot.legalAuditAxes = legalAuditAxes;
     }
     if (lot.additionalDocsRequested) {
       lot.additionalDocsRequested.status = 'resolved';
