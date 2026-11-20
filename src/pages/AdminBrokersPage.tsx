@@ -244,7 +244,7 @@ export const AdminBrokersPage: React.FC = () => {
                 {formatRubles(totalPaidRub || 0)}
               </div>
               <p className="text-[11px] text-emerald-800 font-semibold">
-                ✓ Проведено по безналичному расчету (152-ФЗ)
+                ✓ Проведено по безналичному расчету
               </p>
             </div>
 
@@ -297,7 +297,7 @@ export const AdminBrokersPage: React.FC = () => {
                 <option value="all">Все категории партнеров</option>
                 <option value="mortgage_broker">Ипотечные брокеры</option>
                 <option value="developer_cancellation">Отделы отмен застройщиков</option>
-                <option value="lawyer">Юристы 214-ФЗ</option>
+                <option value="lawyer">Юристы по недвижимости</option>
                 <option value="trade_in_developer">Трейд-ин агентства</option>
               </select>
 
@@ -382,7 +382,7 @@ export const AdminBrokersPage: React.FC = () => {
                             <span className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 text-[10px] font-bold border border-purple-200">
                               {partner.category === 'mortgage_broker' && 'Ипотечный брокер'}
                               {partner.category === 'developer_cancellation' && 'Отдел отмен застройщика'}
-                              {partner.category === 'lawyer' && 'Юрист 214-ФЗ'}
+                              {partner.category === 'lawyer' && 'Юрист по недвижимости'}
                               {partner.category === 'trade_in_developer' && 'Трейд-ин партнер'}
                               {!['mortgage_broker', 'developer_cancellation', 'lawyer', 'trade_in_developer'].includes(partner.category) && partner.category}
                             </span>
@@ -538,7 +538,7 @@ export const AdminBrokersPage: React.FC = () => {
                   >
                     <option value="mortgage_broker">Ипотечный брокер</option>
                     <option value="developer_cancellation">Отдел отмен застройщика</option>
-                    <option value="lawyer">Юрист 214-ФЗ</option>
+                    <option value="lawyer">Юрист по недвижимости</option>
                     <option value="trade_in_developer">Трейд-ин партнер</option>
                   </select>
                 </div>
@@ -793,7 +793,7 @@ export const AdminBrokersPage: React.FC = () => {
                 </div>
 
                 <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 text-[11px] text-purple-950">
-                  Настоящий акт фиксирует состояние расчетов между платформой «DomExit» и партнером на текущую дату. Выплата комиссионного вознаграждения осуществляется безналичным расчетом в соответствии со статьей 152-ФЗ и агентским соглашением.
+                  Настоящий акт фиксирует состояние расчетов между платформой «DomExit» и партнером на текущую дату. Выплата комиссионного вознаграждения осуществляется безналичным расчетом в соответствии с агентским соглашением.
                 </div>
               </div>
             ) : (

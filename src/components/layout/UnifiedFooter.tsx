@@ -67,7 +67,7 @@ export const UnifiedFooter: React.FC = () => {
               </li>
               <li>
                 <Link to="/knowledge" className="text-slate-600 hover:text-emerald-600 transition-colors">
-                  {language === 'ru' ? 'База знаний (214-ФЗ, 140-ФЗ)' : 'Legal Knowledge Hub'}
+                  {language === 'ru' ? 'База знаний по переуступкам' : 'Knowledge Hub'}
                 </Link>
               </li>
               <li>
@@ -177,14 +177,14 @@ export const UnifiedFooter: React.FC = () => {
 
           <div className="flex flex-col lg:flex-row items-center justify-between gap-4 pt-3 text-[11px] text-slate-500 border-t border-slate-200/80">
             <div>
-              © 2026 {profile.shortName}. Все права защищены. Сервис аккредитован для расчетов по 214-ФЗ.
+              © 2026 {profile.shortName}. Все права защищены. Безопасные расчеты через банковский аккредитив.
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
               <Link to="/legal" className="hover:text-emerald-700 underline font-semibold text-emerald-900">
                 Правовой центр
               </Link>
               <Link to="/legal/privacy" className="hover:text-emerald-700 underline">
-                Политика 152-ФЗ
+                Политика конфиденциальности
               </Link>
               <Link to="/legal/terms" className="hover:text-emerald-700 underline">
                 Пользовательское соглашение

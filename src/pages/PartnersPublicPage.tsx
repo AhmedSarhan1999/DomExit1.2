@@ -145,8 +145,8 @@ export const PartnersPublicPage: React.FC = () => {
           </div>
           <div>
             <span className="text-xs text-slate-500">Безопасность</span>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">214-ФЗ</div>
-            <span className="text-[11px] text-slate-500">Эскроу Сбербанк / ВТБ</span>
+            <div className="text-2xl font-black text-slate-900 mt-0.5">Эскроу</div>
+            <span className="text-[11px] text-slate-500">Сбербанк / ВТБ</span>
           </div>
         </div>
       </div>
@@ -187,7 +187,7 @@ export const PartnersPublicPage: React.FC = () => {
               </div>
               <h3 className="font-bold text-slate-900 text-sm">Юристам и адвокатам</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Обеспечьте доверителю защиту от исполнительных производств и штрафов девелопера через согласованную цессию по ст. 11 214-ФЗ.
+                Обеспечьте доверителю защиту от исполнительных производств и штрафов девелопера через согласованную уступку прав.
               </p>
             </div>
 
@@ -361,7 +361,7 @@ export const PartnersPublicPage: React.FC = () => {
                   </div>
 
                   <p className="text-[11px] text-slate-400 text-center">
-                    Нажимая кнопку, вы соглашаетесь с регламентом B2B-выплат и защитой персональных данных 152-ФЗ.
+                    Нажимая кнопку, вы соглашаетесь с регламентом B2B-выплат и политикой конфиденциальности.
                   </p>
                 </form>
               </>

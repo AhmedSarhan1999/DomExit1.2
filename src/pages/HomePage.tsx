@@ -260,7 +260,7 @@ export const HomePage: React.FC = () => {
               <div>
                 <h4 className="text-xs font-bold text-slate-900 uppercase">{t.statsBar.stage3}</h4>
                 <p className="text-[11px] text-slate-600 mt-0.5">
-                  {language === 'ru' ? 'Аккредитив Сбера / ВТБ с раскрытием после Росреестра' : 'Sber/VTB letter of credit released after Rosreestr'}
+                  {language === 'ru' ? 'Аккредитив Сбербанка / ВТБ с раскрытием после Росреестра' : 'Sber/VTB letter of credit released after Rosreestr'}
                 </p>
               </div>
             </div>
@@ -358,7 +358,7 @@ export const HomePage: React.FC = () => {
                   <td className="py-4 px-6 text-emerald-950 bg-[#ECFDF5]">
                     <div className="flex items-start space-x-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span className="font-semibold">{language === 'ru' ? 'Институциональный регламент уступки по ст. 11 214-ФЗ' : 'Institutional protocol under Art. 11 Law 214-FZ'}</span>
+                      <span className="font-semibold">{language === 'ru' ? 'Регламентированный безопасный процесс переуступки' : 'Institutional safe assignment process'}</span>
                     </div>
                   </td>
                 </tr>
@@ -571,7 +571,7 @@ export const HomePage: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>{language === 'ru' ? 'Официальный аккредитив Сбербанка / ВТБ' : 'Official Sberbank / VTB Letter of Credit'}</span>
+                  <span>{language === 'ru' ? 'Банковский безопасный аккредитив (Сбербанк / ВТБ)' : 'Bank Escrow / Letter of Credit (Sberbank / VTB)'}</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -719,8 +719,8 @@ export const HomePage: React.FC = () => {
                     </div>
                     <p className="text-[11px] text-slate-500 text-center">
                       {language === 'ru'
-                        ? 'Нажимая кнопку, вы подтверждаете конфиденциальность по 152-ФЗ. Никакого спама.'
-                        : 'By clicking submit, you confirm confidentiality per 152-FZ. No spam.'}
+                        ? 'Нажимая кнопку, вы подтверждаете согласие с политикой конфиденциальности. Никакого спама.'
+                        : 'By clicking submit, you confirm agreement with privacy policy. No spam.'}
                     </p>
                   </div>
 

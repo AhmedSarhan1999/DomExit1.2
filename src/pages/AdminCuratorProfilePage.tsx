@@ -28,7 +28,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [name, setName] = useState<string>('Алексей Смирнов');
-  const [role, setRole] = useState<string>('Ведущий юрист по 214-ФЗ и эскроу-сделкам');
+  const [role, setRole] = useState<string>('Ведущий юрист по переуступкам и эскроу-расчетам');
   const [phone, setPhone] = useState<string>('+7 (812) 409-32-11');
   const [telegram, setTelegram] = useState<string>('@domexit_smirnov');
   const [maxProfile, setMaxProfile] = useState<string>('+7 (812) 409-32-11');
@@ -36,7 +36,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
   );
   const [bio, setBio] = useState<string>(
-    '11 лет опыта в сопровождении сделок по 214-ФЗ, аккредитивам Сбербанка и ВТБ. Провел более 320 успешных уступок прав требований без судебных рисков.'
+    '11 лет опыта в сопровождении сделок с недвижимостью, аккредитивам Сбербанка и ВТБ. Провел более 320 успешных уступок прав требований без судебных рисков.'
   );
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -295,7 +295,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
               {/* Bio & Experience */}
               <div className="text-xs">
                 <label className="block font-bold text-slate-700 mb-1">
-                  Профессиональное резюме и опыт (214-ФЗ, банки, эскроу):
+                  Профессиональное резюме и опыт:
                 </label>
                 <textarea
                   rows={4}
@@ -364,7 +364,7 @@ export const AdminCuratorProfilePage: React.FC = () => {
                   <span>Безопасность учетной записи и смена пароля</span>
                 </h3>
                 <span className="text-slate-500 text-xs font-semibold">
-                  152-ФЗ / ГОСТ Р 57580
+                  Защищенный контур
                 </span>
               </div>
 

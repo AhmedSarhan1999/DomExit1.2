@@ -37,7 +37,7 @@ export const KnowledgeHubPage: React.FC = () => {
 
   const categories = [
     { id: 'all', label: 'Все статьи' },
-    { id: 'ddu', label: 'Рассрочки и 214-ФЗ' },
+    { id: 'ddu', label: 'Рассрочки и ДДУ' },
     { id: 'law140', label: '140-ФЗ и Залог' },
     { id: 'matkapital', label: 'Материнский капитал' },
     { id: 'mortgage', label: 'Семейная ипотека 6%' },

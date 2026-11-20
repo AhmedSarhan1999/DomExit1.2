@@ -183,7 +183,7 @@ export const ConsentGateModal: React.FC = () => {
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Фиксация согласия (ГОСТ)...</span>
+                <span>Фиксация согласия...</span>
               </>
             ) : (
               <span>Принять и продолжить</span>

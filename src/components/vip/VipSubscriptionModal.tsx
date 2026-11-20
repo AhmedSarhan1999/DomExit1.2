@@ -67,7 +67,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
           : 'Full priority access to all upcoming DDU exit lots 48 hours before general release.',
       features: [
         language === 'ru' ? '48 часов форы перед общим каталогом' : '48-hour head start before public catalog',
-        language === 'ru' ? 'Доступ к проверенным документам 214-ФЗ' : 'Direct access to verified 214-FZ documents',
+        language === 'ru' ? 'Доступ к проверенным документам сделки' : 'Direct access to verified transaction documents',
         language === 'ru' ? 'Персональный куратор и быстрое бронирование' : 'Personal curator & instant reservation',
         language === 'ru' ? 'Пуш-уведомления о новых срочных выходах' : 'Push alerts on urgent distressed exits',
       ],

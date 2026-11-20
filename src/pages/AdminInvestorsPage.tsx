@@ -84,7 +84,7 @@ const INITIAL_POOLS: InstitutionalPoolPackage[] = [
     expectedMarginRub: 49000000,
     targetIrr: '28.2% годовых',
     holdingPeriodMonths: 18,
-    strategyDescription: 'Прямой оптовый выкуп отказных квартир строительных компаний (Setl Group, ЛСР) единым пулом с банковским эскроу-аккредитивом.',
+    strategyDescription: 'Прямой оптовый выкуп отказных квартир строительных компаний (Сетл Групп, ЛСР) единым пулом с банковским эскроу-аккредитивом.',
     recommendedDepositoryBank: 'Банк ДОМ.РФ',
   },
 ];
@@ -194,7 +194,7 @@ export const AdminInvestorsPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <AdminHeader
           title="Институциональные инвесторы и B2B фонды"
-          subtitle="Контур управления крупным капиталом, пакетными пулами выкупа ДДУ со скидкой 22-30% и верификацией B2B аккредитации (152-ФЗ)"
+          subtitle="Контур управления крупным капиталом, пакетными пулами выкупа ДДУ со скидкой 22-30% и верификацией B2B аккредитации"
         />
 
         <div className="p-4 sm:p-6 space-y-6 max-w-[1500px] w-full">
@@ -406,7 +406,7 @@ export const AdminInvestorsPage: React.FC = () => {
                               </div>
                               <span className="inline-flex items-center space-x-1 text-[10px] text-emerald-700 font-bold mt-0.5">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>NDA 152-ФЗ подписан</span>
+                                <span>Соглашение о конфиденциальности подписано</span>
                               </span>
                             </td>
 
@@ -578,7 +578,7 @@ export const AdminInvestorsPage: React.FC = () => {
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs">
               <div>
                 <h3 className="text-base font-black text-slate-900">
-                  Институциональные правила аккредитации инвесторов (214-ФЗ)
+                  Правила аккредитации инвесторов
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Специальный правовой режим для инвесторов категории B2B и юридических лиц:

@@ -74,7 +74,7 @@ export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) =>
 
         <div className="space-y-2">
           <span className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[11px] font-bold uppercase tracking-widest inline-block">
-            Контур безопасности 152-ФЗ
+            Контур безопасности
           </span>
           <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
             Доступ ограничен

@@ -28,7 +28,7 @@ export const ConsentCheckboxes: React.FC<ConsentCheckboxesProps> = ({
       <div className="flex items-center space-x-2 text-slate-800 font-bold border-b border-slate-200 pb-2">
         <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
         <span className="text-[11px] uppercase tracking-wider text-slate-600">
-          Правовое согласие и защита данных (152-ФЗ и 38-ФЗ)
+          Правовое согласие и защита данных
         </span>
       </div>
 

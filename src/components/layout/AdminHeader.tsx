@@ -69,12 +69,12 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
           </div>
 
           <div className="flex items-center space-x-3">
-            {/* Live Yandex Cloud YDB & S3 Diagnostic Badge */}
+            {/* Clean Platform Service Status Indicator */}
             <button
               type="button"
               onClick={checkYdb}
               disabled={isCheckingYdb}
-              title="Нажмите для активного тестирования Yandex Cloud YDB Document API & S3"
+              title="Нажмите для проверки статуса сервисов"
               className={`hidden sm:inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all cursor-pointer shadow-2xs ${
                 ydbStatus?.ok
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/20'
@@ -86,30 +86,22 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
               <span
                 className={`w-2 h-2 rounded-full ${
                   ydbStatus?.ok
-                    ? 'bg-emerald-500 animate-pulse'
+                    ? 'bg-emerald-500'
                     : ydbStatus === null
-                    ? 'bg-amber-400 animate-ping'
+                    ? 'bg-amber-400 animate-pulse'
                     : 'bg-rose-600'
                 }`}
               />
               <span>
                 {isCheckingYdb
-                  ? 'Проверка YDB & S3...'
+                  ? 'Синхронизация сервисов...'
                   : ydbStatus?.ok
-                  ? `● Yandex YDB & S3: Подключено (Live • ${isProduction ? 'Production' : 'Sandbox'})${
-                      ydbStatus.latencyMs ? ` [${ydbStatus.latencyMs}мс]` : ''
-                    }`
+                  ? 'Сервисы платформы активны'
                   : ydbStatus
-                  ? `● Yandex YDB & S3: Ошибка (${ydbStatus.error || ydbStatus.message})`
-                  : 'Подключение к YDB...'}
+                  ? 'Сбой подключения к данным'
+                  : 'Инициализация...'}
               </span>
             </button>
-
-            {/* Banking API indicator */}
-            <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Сбер / ВТБ Эскроу: Онлайн</span>
-            </div>
 
             {/* Dual RU/EN language switcher in admin */}
             <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 text-xs font-semibold">

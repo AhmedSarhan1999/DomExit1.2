@@ -186,7 +186,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
     FileManager.downloadFile(fileName, blobUrl);
 
     setExportNotice(
-      `Выгружено записей в CSV-реестр ГОСТ/152-ФЗ: ${filteredLogs.length} (${fileName})`
+      `Выгружено записей в CSV-реестр: ${filteredLogs.length} (${fileName})`
     );
     setTimeout(() => setExportNotice(null), 4000);
   };
@@ -206,8 +206,8 @@ export const AdminArchiveLogsPage: React.FC = () => {
           }
           subtitle={
             isEmployee
-              ? 'Персональный журнал операционных действий по закрепленным за вами объектам (152-ФЗ)'
-              : 'Сквозной реестр юридических, банковских и операционных действий с фиксацией точного времени по ГОСТ'
+              ? 'Персональный журнал операционных действий по закрепленным за вами объектам'
+              : 'Сквозной реестр юридических, банковских и операционных действий с фиксацией времени'
           }
         />
 
@@ -278,7 +278,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
                 <option value="legal_approved">Юр. одобрение (42/42)</option>
                 <option value="legal_rejected">Юр. отклонение</option>
                 <option value="doc_requested">Запрос доп. документов</option>
-                <option value="document_vault_action">Проверка документов в S3-сейфе</option>
+                <option value="document_vault_action">Проверка документов в хранилище</option>
                 <option value="packaging_published">Публикация в каталоге</option>
                 <option value="vip_telegram_broadcast">VIP Telegram-рассылка</option>
                 <option value="buyer_bid_submitted">Предложения покупателей</option>
@@ -320,7 +320,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
                 {isEmployee && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
                     <ShieldCheck className="w-3 h-3" />
-                    Контур куратора 152-ФЗ
+                    Контур куратора
                   </span>
                 )}
               </div>

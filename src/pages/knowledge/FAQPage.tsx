@@ -43,7 +43,7 @@ export const FAQPage: React.FC = () => {
 
   const categories = [
     { id: 'all', label: 'Все вопросы' },
-    { id: 'installments_ddu', label: 'Рассрочки и 214-ФЗ' },
+    { id: 'installments_ddu', label: 'Рассрочки и ДДУ' },
     { id: 'mortgage_banks', label: 'Ипотека и эскроу' },
     { id: 'law140_pledge', label: '140-ФЗ и Залог' },
     { id: 'matkapital_escrow', label: 'Материнский капитал' },

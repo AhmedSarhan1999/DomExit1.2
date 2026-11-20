@@ -278,8 +278,8 @@ export const OpportunitiesPage: React.FC = () => {
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
                 <span>
                   {language === 'ru'
-                    ? 'Верифицированный реестр переуступок 214-ФЗ • 7 регионов РФ'
-                    : 'Verified 214-FZ Assignment Registry • 7 Russian Regions'}
+                    ? 'Верифицированный каталог переуступок • 7 регионов РФ'
+                    : 'Verified Assignment Catalog • 7 Russian Regions'}
                 </span>
               </span>
               <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
@@ -289,8 +289,8 @@ export const OpportunitiesPage: React.FC = () => {
               </h1>
               <p className="text-xs sm:text-sm text-slate-600">
                 {language === 'ru'
-                  ? 'Каждый лот прошел комплексную проверку по 42 параметрам. Покупка по цене старого договора ДДУ с защитой персональных данных 152-ФЗ.'
-                  : 'Every property vetted by 42 parameters. Buy at original DDU contract price with 152-FZ privacy protection.'}
+                  ? 'Каждый лот прошел комплексную проверку по 42 параметрам. Покупка по цене старого договора ДДУ с защитой персональных данных.'
+                  : 'Every property vetted by 42 parameters. Buy at original DDU contract price with privacy protection.'}
               </p>
             </div>
           </div>
@@ -326,7 +326,7 @@ export const OpportunitiesPage: React.FC = () => {
                 </span>
               </span>
               <span className="text-[11px] text-slate-400 mt-0.5 block">
-                {language === 'ru' ? 'Проверенные счета эскроу 214-ФЗ' : 'Verified 214-FZ Escrow'}
+                {language === 'ru' ? 'Безопасные счета эскроу' : 'Verified Escrow Accounts'}
               </span>
             </div>
 
@@ -675,13 +675,13 @@ export const OpportunitiesPage: React.FC = () => {
               </div>
               <div className="max-w-xl mx-auto space-y-2">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 uppercase tracking-wider">
-                  ПЕРВИЧНЫЙ РЕЕСТР ПЕРЕУСТУПОК 214-ФЗ
+                  КАТАЛОГ ПЕРЕУСТУПОК
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900">
                   Каталог лотов формируется
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  Каталог лотов формируется — ведется юридический аудит первых объектов по 214-ФЗ и 140-ФЗ. Вы можете подать заявку на безопасный выход из ДДУ или запросить подбор встречного лота.
+                  Каталог лотов формируется — ведется юридический аудит первых объектов. Вы можете подать заявку на безопасный выход из ДДУ или запросить подбор встречного лота.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">

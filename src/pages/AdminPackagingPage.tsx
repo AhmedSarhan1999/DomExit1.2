@@ -393,7 +393,7 @@ export const AdminPackagingPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <AdminHeader
           title={`Студия упаковки и публикации лота #${lot?.lotCode || '—'}`}
-          subtitle="Полное редактирование карточки, изоляция персональных данных (152-ФЗ) и Financial Truth Engine"
+          subtitle="Полное редактирование карточки объекта, конфиденциальность данных и финансовые расчеты"
         />
 
         {notificationMsg && (
@@ -552,7 +552,7 @@ export const AdminPackagingPage: React.FC = () => {
                       <div className="flex items-center space-x-2 text-rose-600">
                         <Lock className="w-4 h-4" />
                         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                          Закрытое досье собственника (152-ФЗ Защищено)
+                          Закрытое досье собственника (Конфиденциально)
                         </h3>
                       </div>
                       <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200 text-[10px] font-bold">
@@ -1013,7 +1013,7 @@ export const AdminPackagingPage: React.FC = () => {
                             className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:border-emerald-500"
                           >
                             <option value="developer_template">Типовой шаблон застройщика (Обязательное условие ДДУ)</option>
-                            <option value="domexit_template">Шаблон юристов DomExit (Стандарт 214-ФЗ / 140-ФЗ)</option>
+                            <option value="domexit_template">Типовой шаблон юристов DomExit</option>
                           </select>
                           <span className="text-[10px] text-slate-500 mt-1 block">
                             Юридический отдел готовит проект договора по регламенту застройщика.
@@ -1232,7 +1232,7 @@ export const AdminPackagingPage: React.FC = () => {
                           className="w-full h-full object-cover"
                         />
                         <span className="absolute top-2 left-2 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold text-[10px] shadow-xs">
-                          152-ФЗ Документы проверены
+                          Документы проверены
                         </span>
                         <span className="absolute top-2 right-2 px-2.5 py-0.5 rounded-full bg-black/70 text-white font-mono text-[10px]">
                           #{lot.lotCode}
@@ -1284,7 +1284,7 @@ export const AdminPackagingPage: React.FC = () => {
                       </div>
                       <div className="space-y-0.5">
                         <span className="font-bold text-slate-900 block">
-                          ГОСТ-паспорт лота #{lot.lotCode}
+                          Юридический паспорт лота #{lot.lotCode}
                         </span>
                         <Link
                           to={`/verify/${lot.lotCode}`}

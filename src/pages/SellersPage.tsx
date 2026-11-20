@@ -230,8 +230,8 @@ export const SellersPage: React.FC = () => {
     if (usedMatkap === 'yes') {
       setStep1Error(
         language === 'ru'
-          ? 'В соответствии с 256-ФЗ, объекты с использованием материнского капитала требуют разрешения органов опеки и не принимаются на платформу DomExit.'
-          : 'According to 256-FZ, units bought with maternity capital are not accepted on DomExit.'
+          ? 'Объекты с использованием материнского капитала требуют предварительного разрешения органов опеки и не принимаются на платформу DomExit.'
+          : 'Units bought with maternity capital require guardianship approval and are not accepted on DomExit.'
       );
       return;
     }
@@ -358,7 +358,7 @@ export const SellersPage: React.FC = () => {
     if (usedMatkap === 'yes') {
       setStep3Error(
         language === 'ru'
-          ? 'Отправка заявки заблокирована: переуступка прав по ДДУ с маткапиталом не поддерживается (256-ФЗ).'
+          ? 'Отправка заявки заблокирована: переуступка прав по ДДУ с использованием материнского капитала не поддерживается.'
           : 'Submission blocked: maternity capital exits are not accepted.'
       );
       return;
@@ -367,7 +367,7 @@ export const SellersPage: React.FC = () => {
     if (vaultDocs.length === 0) {
       setStep3Error(
         language === 'ru'
-          ? 'Загрузите хотя бы основной документ (Скан договора ДДУ / Справку об оплате) через облачный сейф документов перед отправкой.'
+          ? 'Загрузите хотя бы основной документ (Скан договора ДДУ / Справку об оплате) в хранилище документов перед отправкой.'
           : 'Please upload at least your DDU scan in the Document Vault before submitting.'
       );
       return;
@@ -376,8 +376,8 @@ export const SellersPage: React.FC = () => {
     if (!consents.pdProcessing || !consents.termsAgreed) {
       setStep3Error(
         language === 'ru'
-          ? 'Пожалуйста, подтвердите согласие на обработку персональных данных (152-ФЗ) и согласие с условиями сервиса перед отправкой.'
-          : 'Please accept personal data processing (152-FZ) and terms of service before submitting.'
+          ? 'Пожалуйста, подтвердите согласие на обработку персональных данных и согласие с условиями сервиса перед отправкой.'
+          : 'Please accept personal data processing and terms of service before submitting.'
       );
       return;
     }
@@ -498,8 +498,8 @@ export const SellersPage: React.FC = () => {
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span>
                 {language === 'ru'
-                  ? 'Экспресс-аудит договоров цессии по 214-ФЗ • 7 регионов РФ'
-                  : '214-FZ Express Assignment Audit • 7 Russian Regions'}
+                  ? 'Экспресс-аудит договоров цессии и рассрочки • 7 регионов РФ'
+                  : 'Express Assignment Audit • 7 Russian Regions'}
               </span>
             </span>
             <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
@@ -550,7 +550,7 @@ export const SellersPage: React.FC = () => {
                         : currentStep === 2
                         ? 'Верификация дольщика (ФИО, телефон РФ, ИНН)'
                         : currentStep === 3
-                        ? 'Облачный сейф документов (Yandex S3 / 152-ФЗ)'
+                        ? 'Защищенное хранилище документов сделки'
                         : 'Заявка зарегистрирована в реестре сделок'
                     }`
                   : `Step ${currentStep} of 4`}
@@ -570,8 +570,8 @@ export const SellersPage: React.FC = () => {
                 <Lock className="w-4 h-4 text-sky-600 shrink-0" />
                 <span>
                   {language === 'ru'
-                    ? 'Конфиденциальный шлюз по ГОСТ Р 57580 и 152-ФЗ. Точный этаж и номер квартиры маскируются в публичном каталоге.'
-                    : 'Encrypted gateway per GOST R 57580 & 152-FZ. Exact floor and apartment number are masked publicly.'}
+                    ? 'Конфиденциальный сервис платформы. Точный этаж и номер квартиры маскируются в публичном каталоге.'
+                    : 'Confidential service. Exact floor and apartment number are masked in the public catalog.'}
                 </span>
               </div>
               <span className="font-mono font-bold text-indigo-800 bg-white px-2.5 py-0.5 rounded border border-sky-200">
@@ -658,7 +658,7 @@ export const SellersPage: React.FC = () => {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-bold text-slate-800">
-                        {language === 'ru' ? 'Застройщик (Реестр 214-ФЗ) *' : 'Developer *'}
+                        {language === 'ru' ? 'Застройщик *' : 'Developer *'}
                       </label>
                       <button
                         type="button"
@@ -669,14 +669,14 @@ export const SellersPage: React.FC = () => {
                             setDeveloperInn('');
                           } else {
                             setIsAddingNewDeveloper(false);
-                            setDeveloperName(accreditedDevelopers[0]?.name || 'Setl Group');
+                            setDeveloperName(accreditedDevelopers[0]?.name || 'Сетл Групп');
                             setDeveloperInn(accreditedDevelopers[0]?.inn || '7810245481');
                           }
                         }}
                         className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
                       >
                         {isAddingNewDeveloper
-                          ? '← Выбрать из реестра аккредитованных'
+                          ? '← Выбрать из списка застройщиков'
                           : '+ Добавить нового застройщика'}
                       </button>
                     </div>
@@ -976,14 +976,14 @@ export const SellersPage: React.FC = () => {
                       onChange={(e) => setExitRoute(e.target.value as any)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold focus:outline-none focus:border-emerald-500"
                     >
-                      <option value="ddu_assignment">Классическая уступка 214-ФЗ (100% возврат)</option>
+                      <option value="ddu_assignment">Классическая уступка прав (100% возврат)</option>
                       <option value="fast_cash">Срочный выход за 5–7 дней (приоритетный пул)</option>
                       <option value="trade_in_6">Обмен / Перевод на Семейную ипотеку 6%</option>
                     </select>
                   </div>
                 </div>
 
-                {/* 256-FZ Maternal Capital Check (Deal-Breaker) */}
+                {/* Maternal Capital Check (Deal-Breaker) */}
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
@@ -991,7 +991,7 @@ export const SellersPage: React.FC = () => {
                       <span>Использовался ли материнский капитал (Маткапитал) при оплате договора ДДУ?</span>
                     </label>
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                      256-ФЗ
+                      Маткапитал
                     </span>
                   </div>
 
@@ -1025,7 +1025,7 @@ export const SellersPage: React.FC = () => {
                         <AlertTriangle className={`w-4 h-4 ${usedMatkap === 'yes' ? 'text-rose-600' : 'text-slate-400'}`} />
                         <span>Да, использовался</span>
                       </span>
-                      <span className="text-[10px] font-semibold text-rose-700">Ограничение 256-ФЗ</span>
+                      <span className="text-[10px] font-semibold text-rose-700">Ограничение платформы</span>
                     </button>
                   </div>
 
@@ -1033,10 +1033,10 @@ export const SellersPage: React.FC = () => {
                     <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-2 animate-fade-in">
                       <div className="flex items-center space-x-2 font-bold text-xs text-rose-900">
                         <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span>Ограничение 256-ФЗ: Переуступка прав невозможна</span>
+                        <span>Переуступка прав с материнским капиталом не осуществляется</span>
                       </div>
                       <p className="text-xs text-rose-800 leading-relaxed">
-                        В соответствии с 256-ФЗ, переуступка прав по ДДУ с использованием материнского капитала требует предварительного разрешения органов опеки и выделения долей детям в готовом жилье. В целях защиты покупателей и соблюдения сроков сделки платформа DomExit не принимает такие объекты в работу.
+                        Переуступка прав по ДДУ с использованием материнского капитала требует предварительного разрешения органов опеки и обязательного выделения долей детям. В целях защиты участников и соблюдения регламента сроков платформа DomExit не принимает такие объекты в работу.
                       </p>
                     </div>
                   )}
@@ -1252,8 +1252,8 @@ export const SellersPage: React.FC = () => {
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-bold text-slate-900">
                   {language === 'ru'
-                    ? 'Идентификация правообладателя ДДУ (152-ФЗ)'
-                    : 'DDU Holder Verification (152-FZ)'}
+                    ? 'Идентификация правообладателя ДДУ'
+                    : 'DDU Holder Verification'}
                 </h3>
                 <p className="text-xs text-slate-500">
                   Данные используются строго для автоматической сверки по базам ФССП и ЕФРСБ и подготовки согласия застройщика.
@@ -1370,7 +1370,7 @@ export const SellersPage: React.FC = () => {
                   onClick={handleGoToStep3}
                   className="px-6 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-all flex items-center space-x-2 shadow-xs cursor-pointer"
                 >
-                  <span>Открыть сейф документов 214-ФЗ</span>
+                  <span>Открыть хранилище документов</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1383,11 +1383,11 @@ export const SellersPage: React.FC = () => {
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-slate-900">
                   {language === 'ru'
-                    ? 'Формирование юридического досье в Yandex Object Storage (S3)'
-                    : 'Legal Dossier Upload (Yandex Object Storage S3)'}
+                    ? 'Загрузка документов для юридической проверки'
+                    : 'Legal Documents Upload'}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Загрузите обязательные документы дольщика по 214-ФЗ. Каждый файл сохраняется с SHA-256 подписью и доступен для мгновенного предпросмотра.
+                  Загрузите обязательные документы дольщика. Каждый файл сохраняется в защищенном контуре и доступен для проверки юристом.
                 </p>
               </div>
 
@@ -1404,14 +1404,14 @@ export const SellersPage: React.FC = () => {
                   <div className="flex items-center space-x-2">
                     <HardDrive className="w-5 h-5 text-emerald-400" />
                     <span className="text-xs font-mono font-bold text-emerald-300">
-                      s3://{StorageService.defaultBucket}/{draftLotCode}
+                      Досье #{draftLotCode}
                     </span>
                   </div>
                   <h4 className="text-base font-black">
                     Обязательный пакет продавца: {mandatoryUploadedCount} из 4 документов загружено
                   </h4>
                   <p className="text-xs text-slate-300">
-                    Всего файлов в защищенном контейнере: <strong>{vaultDocs.length}</strong> (включая дополнительные документы).
+                    Всего файлов загружено: <strong>{vaultDocs.length}</strong> (включая дополнительные документы).
                   </p>
                 </div>
 
@@ -1622,7 +1622,7 @@ export const SellersPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Документов в облачном сейфе S3:</span>
+                  <span className="text-slate-500">Документов к заявке:</span>
                   <span className="font-bold text-indigo-700">{vaultDocs.length} шт.</span>
                 </div>
               </div>
@@ -1665,15 +1665,15 @@ export const SellersPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <ShieldCheck className="w-6 h-6 text-emerald-600" />
-            <h4 className="font-bold text-sm text-slate-900">214-ФЗ регламентирован</h4>
+            <h4 className="font-bold text-sm text-slate-900">Государственная регистрация</h4>
             <p className="text-xs text-slate-600">
-              Сделка регистрируется государством в Росреестре строго по ст. 11 Федерального закона № 214-ФЗ.
+              Сделка и уступка прав регистрируются в Росреестре с полной юридической защитой участников.
             </p>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-            <h4 className="font-bold text-sm text-slate-900">Сбербанк & ВТБ аккредитив</h4>
+            <h4 className="font-bold text-sm text-slate-900">Сбербанк / ВТБ аккредитив</h4>
             <p className="text-xs text-slate-600">
               Деньги депонируются покупателем до подписания договора и выплачиваются продавцу автоматически.
             </p>

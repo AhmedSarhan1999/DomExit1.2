@@ -73,7 +73,7 @@ const VALID_TABS: PortalTab[] = ['buyer', 'seller', 'favorites', 'partner', 'con
 
 const STAGE_LABEL_RU: Record<DealTrack['stage'], string> = {
   initial_audit: '1. Первичный комплаенс',
-  document_check: '2. Правовой аудит 214-ФЗ',
+  document_check: '2. Правовой аудит документов',
   packaging: '3. Упаковка и публикация',
   buyer_matching: '4. Подбор покупателя',
   closing_escrow: '5. Аккредитив и Эскроу',
@@ -223,7 +223,7 @@ export const ClientPortalPage: React.FC = () => {
   const [refClientName, setRefClientName] = useState<string>('');
   const [refClientPhone, setRefClientPhone] = useState<string>('+7 (');
   const [refComplexName, setRefComplexName] = useState<string>('');
-  const [refDeveloper, setRefDeveloper] = useState<string>('Setl Group');
+  const [refDeveloper, setRefDeveloper] = useState<string>('Сетл Групп');
   const [refPaidAmount, setRefPaidAmount] = useState<number>(2800000);
   const [refDduPrice, setRefDduPrice] = useState<number>(10500000);
   const [partnerError, setPartnerError] = useState<string | null>(null);
@@ -437,7 +437,7 @@ export const ClientPortalPage: React.FC = () => {
         );
 
         setActionNotice(
-          `Документ «${meta.name}» сохранен в S3-сейфе и отправлен куратору на проверку!`
+          `Документ «${meta.name}» успешно загружен и отправлен куратору на проверку!`
         );
         await loadData();
         setTimeout(() => setActionNotice(null), 6000);
@@ -536,7 +536,7 @@ export const ClientPortalPage: React.FC = () => {
     setCompletionError(null);
 
     if (!completionDocMeta) {
-      setCompletionError('Пожалуйста, загрузите реальный скан или фото договора ДДУ в S3-хранилище.');
+      setCompletionError('Пожалуйста, загрузите скан или фото договора ДДУ.');
       return;
     }
 
@@ -576,7 +576,7 @@ export const ClientPortalPage: React.FC = () => {
     handleSelectTab('seller');
 
     setActionNotice(
-      `Договор ДДУ сохранен в S3! Создан лот #${lot.lotCode} и направлен на верификацию Владельцу платформы.`
+      `Договор ДДУ успешно загружен! Создан лот #${lot.lotCode} и направлен на верификацию.`
     );
     await loadData();
     setTimeout(() => setActionNotice(null), 6000);
@@ -677,7 +677,7 @@ export const ClientPortalPage: React.FC = () => {
                     {displayName}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider">
-                    214-ФЗ • 152-ФЗ Верифицирован
+                    Верифицированный профиль
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
@@ -719,8 +719,8 @@ export const ClientPortalPage: React.FC = () => {
 
             <div className="flex items-center space-x-3">
               <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Yandex S3 / Эскроу: Активен</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>Безопасный контур</span>
               </div>
 
               <button
@@ -882,7 +882,7 @@ export const ClientPortalPage: React.FC = () => {
                     Партнер «{pendingPreliminaryReqs[0].partnerName}» открыл предварительный запрос на чистый выход
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-700 mt-1">
-                    Объект: {pendingPreliminaryReqs[0].complexName} ({pendingPreliminaryReqs[0].developer}). Загрузите скан ДДУ в защищенное S3-хранилище для запуска аудита.
+                    Объект: {pendingPreliminaryReqs[0].complexName} ({pendingPreliminaryReqs[0].developer}). Загрузите скан ДДУ в защищенное хранилище для запуска аудита.
                   </p>
                 </div>
               </div>
@@ -1034,7 +1034,7 @@ export const ClientPortalPage: React.FC = () => {
                             <span className="font-bold text-slate-800">{bid.readinessTimeline}</span>
                           </div>
                           <div>
-                            <span className="text-slate-500 block text-[11px]">Документ в S3-сейфе:</span>
+                            <span className="text-slate-500 block text-[11px]">Документ к заявке:</span>
                             {bid.documentId || bid.bankApprovalDocUrl ? (
                               <button
                                 type="button"
@@ -1189,7 +1189,7 @@ export const ClientPortalPage: React.FC = () => {
                                       className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
                                     >
                                       <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                                      <span>Хранилище S3</span>
+                                      <span>Документы сделки</span>
                                     </button>
                                   </div>
                                 </div>
@@ -1219,7 +1219,7 @@ export const ClientPortalPage: React.FC = () => {
                     У вас пока нет выставленных объектов ДДУ
                   </h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Если у вас есть строящаяся квартира по договору ДДУ (214-ФЗ) и вы хотите безопасно уступить права через банковский аккредитив без штрафов застройщика — подайте заявку на экспресс-выход.
+                    Если у вас есть строящаяся квартира по договору ДДУ и вы хотите безопасно уступить права через банковский аккредитив без штрафов застройщика — подайте заявку на экспресс-выход.
                   </p>
                 </div>
                 <Link
@@ -1266,7 +1266,7 @@ export const ClientPortalPage: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black uppercase">
-                      Требуется действие продавца • Комплаенс 214-ФЗ
+                      Требуется действие продавца • Проверка документов
                     </span>
                     <h3 className="text-base sm:text-lg font-black text-slate-950">
                       Куратор запросил дополнительные документы по лоту #{activeSellerLot.lotCode}
@@ -1291,8 +1291,8 @@ export const ClientPortalPage: React.FC = () => {
                     <Upload className="w-4 h-4 text-emerald-400" />
                     <span>
                       {isUploadingRequestedDoc
-                        ? 'Шифрование S3...'
-                        : 'Загрузить запрошенный файл в S3'}
+                        ? 'Загрузка...'
+                        : 'Загрузить запрошенный файл'}
                     </span>
                   </button>
                 </div>
@@ -1306,7 +1306,7 @@ export const ClientPortalPage: React.FC = () => {
                   Заявка по лоту #{activeSellerLot.lotCode} отклонена комплаенсом
                 </span>
                 <p>
-                  Причина: {activeSellerLot.rejectionReason || activeSellerRequest?.rejectionReason || 'Несоответствие критериям 214-ФЗ'}
+                  Причина: {activeSellerLot.rejectionReason || activeSellerRequest?.rejectionReason || 'Несоответствие критериям отбора'}
                 </p>
               </div>
             )}
@@ -1375,7 +1375,7 @@ export const ClientPortalPage: React.FC = () => {
                 {/* Live 5-Step Timeline */}
                 <div className="space-y-3">
                   <div className="flex flex-wrap justify-between items-center gap-2 text-xs font-bold text-slate-700">
-                    <span>Текущая стадия сделки ({activeSellerDeal?.dealId || 'Реестр 214-ФЗ'}):</span>
+                    <span>Текущая стадия сделки ({activeSellerDeal?.dealId || 'В обработке'}):</span>
                     <div className="flex items-center space-x-3">
                       <span className="text-emerald-700">
                         {activeSellerDeal
@@ -1425,13 +1425,13 @@ export const ClientPortalPage: React.FC = () => {
                       );
                     })}
                   </div>
-                  {activeSellerDeal?.escrowWorkflow && (
+                  {enableBankPortal && activeSellerDeal?.escrowWorkflow && (
                     <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                       <div className="flex items-center space-x-2 font-bold text-emerald-950">
                         <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                         <span>
                           {activeSellerDeal.escrowWorkflow.step === 'curator_review' &&
-                            'Банковский шлюз СБР: Подготовка пакета документов куратором перед передачей в банк'}
+                            'Подготовка пакета документов куратором перед передачей в банк'}
                           {activeSellerDeal.escrowWorkflow.step === 'bank_escrow_deposit' &&
                             'Шаг 1: Документы переданы в банк • Ожидается подтверждение депонирования средств покупателя на СБР'}
                           {activeSellerDeal.escrowWorkflow.step === 'signing_photos' &&
@@ -1479,7 +1479,7 @@ export const ClientPortalPage: React.FC = () => {
                           'Комплаенс-деск DomExit'}
                       </span>
                       <span className="text-emerald-700 font-semibold block text-[11px]">
-                        {activeSellerLot.curator?.role || curator?.role || 'Юрист по 214-ФЗ'}
+                        {activeSellerLot.curator?.role || curator?.role || 'Ведущий юрист'}
                       </span>
                     </div>
                   </div>
@@ -1528,13 +1528,13 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Live Yandex S3 Cloud Document Vault */}
+                {/* Live Document Vault */}
                 <div className="space-y-3 pt-4 border-t border-slate-100">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h4 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
                       <FolderLock className="w-4 h-4 text-emerald-600" />
                       <span>
-                        Защищенный сейф документов (Yandex S3 Bucket • {sellerVaultDocs.length} файлов):
+                        Документы по объекту ({sellerVaultDocs.length} загружено):
                       </span>
                     </h4>
                     <button
@@ -1543,13 +1543,13 @@ export const ClientPortalPage: React.FC = () => {
                       className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Открыть сейф документов S3</span>
+                      <span>Открыть хранилище документов</span>
                     </button>
                   </div>
 
                   {sellerVaultDocs.length === 0 ? (
                     <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-2 text-xs text-slate-500">
-                      <p>Документы по данному лоту еще не загружены в облачный сейф.</p>
+                      <p>Документы по данному лоту еще не загружены в хранилище.</p>
                       <button
                         type="button"
                         onClick={() => setIsSellerVaultOpen(true)}
@@ -1620,7 +1620,7 @@ export const ClientPortalPage: React.FC = () => {
                     <span>Избранные объекты ({favoriteLots.length})</span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Сохраненные лоты с живым отслеживанием статуса сделки в реестре 214-ФЗ.
+                    Сохраненные лоты с оперативным отслеживанием статуса сделки.
                   </p>
                 </div>
                 <Link
@@ -1894,7 +1894,7 @@ export const ClientPortalPage: React.FC = () => {
                     <input
                       type="text"
                       required
-                      placeholder="Setl Group"
+                      placeholder="Сетл Групп"
                       value={refDeveloper}
                       onChange={(e) => setRefDeveloper(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
@@ -2269,7 +2269,7 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-950 text-base">
-                      Подтверждение заявки и загрузка ДДУ в S3
+                      Подтверждение заявки и загрузка ДДУ
                     </h3>
                     <span className="text-xs text-slate-500 font-mono">
                       ID клиента: {selectedReqForCompletion.clientCode}
@@ -2317,7 +2317,7 @@ export const ClientPortalPage: React.FC = () => {
                     <Upload className="w-6 h-6 text-amber-600 mx-auto" />
                     <p className="text-xs text-slate-600">
                       {completionDocMeta
-                        ? `✓ Сохранено в S3: ${completionDocMeta.name} (${(
+                        ? `✓ Файл загружен: ${completionDocMeta.name} (${(
                             completionDocMeta.sizeBytes / 1024
                           ).toFixed(0)} КБ)`
                         : 'Выберите реальный файл со своего устройства (PDF, JPG, PNG)'}

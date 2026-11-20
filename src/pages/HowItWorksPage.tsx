@@ -31,7 +31,7 @@ export const HowItWorksPage: React.FC = () => {
           <div className="space-y-3 max-w-3xl mx-auto">
             <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700">
               <ShieldCheck className="w-4 h-4" />
-              <span>{language === 'ru' ? 'Стандарт безопасной переуступки 214-ФЗ' : '214-FZ Safe Assignment Standard'}</span>
+              <span>{language === 'ru' ? 'Стандарт безопасной переуступки' : 'Safe Assignment Standard'}</span>
             </span>
             <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
               {language === 'ru'
@@ -99,7 +99,7 @@ export const HowItWorksPage: React.FC = () => {
                 {language === 'ru' ? 'Банки топ-10 РФ' : 'Top 10 Russian Banks'}
               </span>
               <span className="text-[11px] text-slate-500 mt-0.5 block">
-                {language === 'ru' ? 'Сбербанк, ВТБ, Альфа' : 'Sberbank, VTB, Alfa'}
+                {language === 'ru' ? 'Сбербанк, ВТБ, Альфа-Банк' : 'Sberbank, VTB, Alfa-Bank'}
               </span>
             </div>
 
@@ -178,8 +178,8 @@ export const HowItWorksPage: React.FC = () => {
                     </h4>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
                       {language === 'ru'
-                        ? 'Безопасная передача скана ДДУ и справки о взаиморасчетах через закрытый шлюз по 152-ФЗ. Юристы проводят экспресс-аудит за 2 часа.'
-                        : 'Encrypted transfer under 152-FZ. Attorneys run express compliance check in 2 hours.'}
+                        ? 'Безопасная передача скана ДДУ и справки о взаиморасчетах через защищенный контур. Юристы проводят экспресс-аудит за 2 часа.'
+                        : 'Encrypted document transfer. Attorneys run express compliance check in 2 hours.'}
                     </p>
                   </div>
                 </div>
@@ -324,7 +324,7 @@ export const HowItWorksPage: React.FC = () => {
                     </h4>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
                       {language === 'ru'
-                        ? 'Мы берем на себя взаимодействие с застройщиком (Setl Group, ПИК, ЛСР). Получаем официальное согласие девелопера на уступку.'
+                        ? 'Мы берем на себя взаимодействие с застройщиком (Сетл Групп, ПИК, ЛСР). Получаем официальное согласие девелопера на уступку.'
                         : 'We obtain formal written approval directly from the developer.'}
                     </p>
                   </div>
@@ -410,7 +410,7 @@ export const HowItWorksPage: React.FC = () => {
                 </span>
                 <h4 className="text-sm font-bold text-slate-900">Росреестр</h4>
                 <p className="text-xs text-slate-600">
-                  Электронная регистрация перехода прав по 214-ФЗ с усиленной ЭЦП в течение 48 часов.
+                  Электронная регистрация перехода прав с усиленной ЭЦП в течение 48 часов.
                 </p>
               </div>
 
@@ -480,7 +480,7 @@ export const HowItWorksPage: React.FC = () => {
             </div>
             <h3 className="text-base font-bold text-slate-900">100% конфиденциальность</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Персональные данные изолированы по стандарту ГОСТ Р 57580. Номер квартиры и этаж скрываются от публичного доступа.
+              Персональные данные надежно защищены. Номер квартиры и этаж скрываются от публичного доступа.
             </p>
           </div>
 
@@ -490,7 +490,7 @@ export const HowItWorksPage: React.FC = () => {
             </div>
             <h3 className="text-base font-bold text-slate-900">Полная защита от банкротства</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Формируем официальную правовую справку добросовестного приобретателя по ст. 61.2 ФЗ-127, исключая любые риски оспаривания.
+              Формируем правовое заключение добросовестного приобретателя, исключающее любые риски оспаривания сделки.
             </p>
           </div>
 

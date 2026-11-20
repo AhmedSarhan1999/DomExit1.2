@@ -291,7 +291,7 @@ export const ArticleDetailPage: React.FC = () => {
                       type="text"
                       value={calcComplex}
                       onChange={(e) => setCalcComplex(e.target.value)}
-                      placeholder="Например: ЖК Чистое Небо / Setl Group"
+                      placeholder="Например: ЖК Чистое Небо / Сетл Групп"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
@@ -306,7 +306,7 @@ export const ArticleDetailPage: React.FC = () => {
                     onChange={(e) => setCalcType(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    <option value="installment_ddu">Беспроцентная рассрочка застройщика (214-ФЗ)</option>
+                    <option value="installment_ddu">Беспроцентная рассрочка застройщика</option>
                     <option value="mortgage_pledge">Ипотека в банке / продажа по 140-ФЗ</option>
                     <option value="matkapital">Использован материнский капитал</option>
                     <option value="family_mortgage_replacement">Переуступка по Семейной ипотеке 6%</option>
@@ -325,7 +325,7 @@ export const ArticleDetailPage: React.FC = () => {
               <div className="flex items-center space-x-2 text-[11px] text-slate-400 border-t border-slate-800 pt-3">
                 <Lock className="w-3.5 h-3.5 text-emerald-400" />
                 <span>
-                  Конфиденциально. Экспресс-оценка в течение 24 часов в строгом соответствии с 152-ФЗ.
+                  Конфиденциально. Экспресс-оценка объекта в течение 24 часов.
                 </span>
               </div>
             </div>

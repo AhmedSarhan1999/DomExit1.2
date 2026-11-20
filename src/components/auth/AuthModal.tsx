@@ -85,7 +85,7 @@ export const AuthModal: React.FC = () => {
         if (!consents.pdProcessing || !consents.termsAgreed) {
           setLocalError(
             language === 'ru'
-              ? 'Для регистрации необходимо подтвердить согласие на обработку ПД (152-ФЗ) и принять Пользовательское соглашение'
+              ? 'Для регистрации необходимо подтвердить согласие на обработку персональных данных и принять Пользовательское соглашение'
               : 'Please accept terms and personal data processing to register'
           );
           return;
@@ -158,7 +158,7 @@ export const AuthModal: React.FC = () => {
           <div className="space-y-1.5">
             <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>{language === 'ru' ? 'Единая защищенная авторизация 214-ФЗ' : 'Unified Secure 214-FZ Auth'}</span>
+              <span>{language === 'ru' ? 'Единая защищенная авторизация' : 'Unified Secure Auth'}</span>
             </div>
             
             <h2 className="text-2xl font-black text-slate-950 tracking-tight">
@@ -197,8 +197,8 @@ export const AuthModal: React.FC = () => {
             </button>
             <p className="text-[10px] text-center text-slate-500">
               {language === 'ru'
-                ? 'Быстрый и защищенный вход в соответствии с 149-ФЗ и 152-ФЗ'
-                : 'Instant secure domestic authorization under 149-FZ & 152-FZ'}
+                ? 'Быстрый и защищенный вход через аккаунт Яндекс'
+                : 'Instant secure domestic authorization via Yandex'}
             </p>
           </div>
 
@@ -484,8 +484,8 @@ export const AuthModal: React.FC = () => {
           {/* Privacy Footnote */}
           <p className="text-[10px] text-slate-400 text-center leading-snug">
             {language === 'ru'
-              ? 'Авторизация защищена протоколом 152-ФЗ и 149-ФЗ. Данные синхронизируются с защищенной базой данных Yandex Cloud.'
-              : 'Protected under 152-FZ & 149-FZ. Synchronized with Yandex Cloud database.'}
+              ? 'Авторизация защищена современными протоколами шифрования. Данные сохраняются в защищенном облачном контуре.'
+              : 'Secure authorization. Data is synchronized with a protected cloud perimeter.'}
           </p>
 
         </div>

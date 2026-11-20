@@ -107,7 +107,7 @@ export const CookieConsentBanner: React.FC = () => {
               </div>
               <div className="space-y-1 text-xs text-slate-600 max-w-3xl leading-relaxed">
                 <div className="font-black text-slate-900 text-sm flex items-center space-x-2">
-                  <span>Файлы Cookie и конфиденциальность (152-ФЗ РФ)</span>
+                  <span>Файлы Cookie и конфиденциальность</span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
                     Safe Browsing
                   </span>
@@ -207,7 +207,7 @@ export const CookieConsentBanner: React.FC = () => {
                   <div className="font-bold text-slate-900">Аналитика и веб-визор (Анонимно)</div>
                   <p className="text-slate-500 text-[11px]">
                     Сбор обезличенной статистики посещаемости с автоматической маскировкой IP-адресов
-                    по стандарту 152-ФЗ.
+                    в соответствии с политикой конфиденциальности.
                   </p>
                 </div>
                 <input

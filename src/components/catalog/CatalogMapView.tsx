@@ -72,7 +72,7 @@ export const CatalogMapView: React.FC<CatalogMapViewProps> = ({
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO | DomExit 214-ФЗ Гео-Реестр',
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO | DomExit Гео-Каталог',
       subdomains: 'abcd',
       maxZoom: 19,
     }).addTo(map);
@@ -397,7 +397,7 @@ export const CatalogMapView: React.FC<CatalogMapViewProps> = ({
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block">Этаж (152-ФЗ)</span>
+                  <span className="text-[10px] text-slate-400 block">Этаж</span>
                   <span className="font-bold text-slate-900">
                     {selectedLot.ownerDossier?.hideExactFloor
                       ? selectedLot.ownerDossier.floorRangeDisplay

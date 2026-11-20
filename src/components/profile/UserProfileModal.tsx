@@ -208,7 +208,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           photoUrl: photoURL.trim() || existingEmp?.photoUrl,
           bio:
             existingEmp?.bio ||
-            'Сертифицированный специалист по сделкам с уступкой прав по 214-ФЗ и аккредитивным расчетам.',
+            'Специалист по сделкам с уступкой прав и аккредитивным расчетам.',
           activeLotsCount: existingEmp?.activeLotsCount || 0,
           closedDealsCount: existingEmp?.closedDealsCount || 0,
           avgSpeedDays: existingEmp?.avgSpeedDays || 8.0,
@@ -293,7 +293,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {roleDisplay} • 214-ФЗ / 152-ФЗ
+                {roleDisplay} • Верифицирован
               </p>
             </div>
           </div>
@@ -449,7 +449,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   <Lock className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Email защищен протоколом 152-ФЗ. Для смены почты обратитесь к куратору комплаенса.
+                  Для смены адреса электронной почты обратитесь в службу поддержки.
                 </p>
               </div>
             </form>
@@ -659,7 +659,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600">Правовой аудит 214-ФЗ:</span>
+                  <span className="text-xs font-bold text-slate-600">Правовой аудит:</span>
                   <span className="text-xs text-emerald-700 font-bold flex items-center space-x-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Верифицирован</span>

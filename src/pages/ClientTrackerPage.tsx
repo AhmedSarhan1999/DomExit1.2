@@ -230,7 +230,7 @@ export const ClientTrackerPage: React.FC = () => {
 
           <div className="space-y-2">
             <span className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[11px] font-bold uppercase tracking-widest inline-block">
-              Контур защиты 152-ФЗ
+              Защищенный контур
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               Доступ к сделке ограничен
@@ -346,11 +346,11 @@ export const ClientTrackerPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Синхронизировано с реестром 214-ФЗ</span>
+                <span>Юридическая проверка пройдена</span>
               </span>
               <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[11px] font-bold">
                 <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-                <span>Эскроу {lot?.escrowBank ? `ПАО ${lot.escrowBank}` : 'Банк-партнер 214-ФЗ'}</span>
+                <span>Эскроу-банк: {lot?.escrowBank ? `ПАО ${lot.escrowBank}` : 'Согласован'}</span>
               </span>
             </div>
 
@@ -390,7 +390,7 @@ export const ClientTrackerPage: React.FC = () => {
                   {curator?.name || deal?.curatorName || 'Назначается куратор платформы'}
                 </span>
                 <span className="text-[11px] text-emerald-700 font-semibold block">
-                  {curator?.role || 'Ведущий юрист по 214-ФЗ'}
+                  {curator?.role || 'Ведущий юрист'}
                 </span>
               </div>
             </div>
@@ -506,7 +506,7 @@ export const ClientTrackerPage: React.FC = () => {
                       <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                       <span>
                         {deal.escrowWorkflow.step === 'curator_review' &&
-                          'Шлюз СБР: Подготовка пакета документов куратором к передаче в уполномоченный банк'}
+                          'Подготовка пакета документов куратором перед передачей в банк'}
                         {deal.escrowWorkflow.step === 'bank_escrow_deposit' &&
                           'Шаг 1 синхронизирован: Документы переданы в банк • Открывается аккредитив СБР'}
                         {deal.escrowWorkflow.step === 'signing_photos' &&
@@ -594,7 +594,7 @@ export const ClientTrackerPage: React.FC = () => {
                       className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
                     >
                       <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Сейф документов (152-ФЗ)</span>
+                      <span>Документы сделки</span>
                     </button>
                   </div>
                 </div>
@@ -694,7 +694,7 @@ export const ClientTrackerPage: React.FC = () => {
               <div className="space-y-0.5">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-1.5">
                   <FolderLock className="w-4 h-4 text-emerald-600" />
-                  <span>Защищенный сейф документов (Yandex S3 • 152-ФЗ)</span>
+                  <span>Документы по объекту сделки</span>
                 </h3>
                 <span className="text-[11px] text-slate-500">
                   Загружено документов: {docs.length}
@@ -706,7 +706,7 @@ export const ClientTrackerPage: React.FC = () => {
                 className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center space-x-1.5 cursor-pointer shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Управление сейфом</span>
+                <span>Управление документами</span>
               </button>
             </div>
 
@@ -790,7 +790,7 @@ export const ClientTrackerPage: React.FC = () => {
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
               <span className="text-slate-600">Застройщик и банк эскроу:</span>
               <span className="font-bold text-slate-900">
-                {lot?.developer || '—'} • {lot?.escrowBank ? `ПАО ${lot.escrowBank}` : 'Банк-партнер 214-ФЗ'}
+                {lot?.developer || '—'} • {lot?.escrowBank ? `ПАО ${lot.escrowBank}` : 'Банк-партнер'}
               </span>
             </div>
 

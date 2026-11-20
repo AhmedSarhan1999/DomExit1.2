@@ -114,7 +114,7 @@ export const VipCatalogPage: React.FC = () => {
               Закрытая витрина раннего доступа (48 часов)
             </h1>
             <p className="text-sm sm:text-base text-slate-600 max-w-3xl leading-relaxed">
-              Эксклюзивные переуступки по 214-ФЗ напрямую от дольщиков по цене договора без посредников и наценок за 48 часов до публикации в открытом каталоге.
+              Эксклюзивные переуступки напрямую от дольщиков по цене договора без посредников и наценок за 48 часов до публикации в открытом каталоге.
             </p>
           </div>
         </div>
@@ -168,7 +168,7 @@ export const VipCatalogPage: React.FC = () => {
                 <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1.5">
                   <div className="flex items-center space-x-2 text-sky-800 font-bold text-sm">
                     <ShieldCheck className="w-4 h-4 text-sky-600" />
-                    <span>Чистый аудит 214-ФЗ</span>
+                    <span>Полный юридический аудит</span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
                     Все лоты прошли 42 пункта юридической проверки: отсутствие арестов ФССП, чистая кредитная история и согласие застройщика.

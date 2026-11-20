@@ -172,8 +172,8 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
           <div>
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">
               {language === 'ru'
-                ? 'Прозрачная ипотечная студия • Замещение долга 214-ФЗ'
-                : 'Transparent Mortgage Studio • 214-FZ Debt Substitution'}
+                ? 'Ипотечный калькулятор • Перевод долга по ДДУ'
+                : 'Mortgage Calculator • DDU Debt Transfer'}
             </span>
             <h3 className="text-lg sm:text-xl font-extrabold text-slate-900">
               {language === 'ru'

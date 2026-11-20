@@ -117,7 +117,7 @@ export const AdminPartnersBotPage: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
           <AdminHeader
             title="Инвесторы VIP и Партнерская сеть"
-            subtitle="Контур финансового управления Владельца платформы (152-ФЗ)"
+            subtitle="Контур финансового управления Владельца платформы"
           />
           <div className="p-8 max-w-2xl mx-auto my-auto">
             <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-xs text-center space-y-4">
@@ -125,7 +125,7 @@ export const AdminPartnersBotPage: React.FC = () => {
                 <Lock className="w-7 h-7" />
               </div>
               <h2 className="text-xl font-bold text-slate-900">
-                Доступ ограничен регламентом 152-ФЗ (Только Владелец / CEO)
+                Доступ ограничен (Только Владелец / CEO)
               </h2>
               <p className="text-sm text-slate-600 leading-relaxed">
                 Реестр партнерских выплат B2B, финансовые комиссии и закрытый VIP-клуб инвесторов доступны исключительно в контуре Владельца платформы. Для назначения куратора или просмотра объектов используйте рабочий стол.
@@ -533,7 +533,7 @@ export const AdminPartnersBotPage: React.FC = () => {
                     </p>
                   </div>
                   <span className="text-xs font-mono font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                    Гарантия выкупа и 214-ФЗ
+                    Гарантия выкупа и надежность
                   </span>
                 </div>
 

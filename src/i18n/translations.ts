@@ -109,7 +109,7 @@ export const translations: Record<'ru' | 'en', TranslationDict> = {
       wantSell: 'Хочу продать',
     },
     footer: {
-      legalDescription: 'Платформа безопасной переуступки прав требований по 214-ФЗ. Институциональный стандарт защиты прав дольщиков и покупателей в Санкт-Петербурге и Москве.',
+      legalDescription: 'Платформа безопасной переуступки прав требований и выхода из рассрочек. Надежная защита прав участников сделок в Санкт-Петербурге, Москве и регионах РФ.',
       tgChannel: 'Telegram Канал',
       navTitle: 'Навигация',
       urgentBuyout: 'Срочный выкуп и переуступка',
@@ -154,8 +154,8 @@ export const translations: Record<'ru' | 'en', TranslationDict> = {
     statsBar: {
       lotsCount: '9,227 ЛОТОВ В БАЗЕ',
       assetsVolume: '133 млрд ₽ АКТИВОВ',
-      bankAccreditation: 'Аккредитация в топ-10 банках РФ',
-      escrowEndorsement: 'Эскроу и аккредитивы ЦБ РФ',
+      bankAccreditation: 'Взаимодействие с топ-10 банками РФ',
+      escrowEndorsement: 'Безопасные расчеты через эскроу',
       rosreestrEndorsement: 'Прямая регистрация в Росреестре',
       stage1: 'ЭТАП 01: Юридический аудит ДДУ',
       stage2: 'ЭТАП 02: Подбор пула покупателей',
@@ -247,8 +247,8 @@ export const translations: Record<'ru' | 'en', TranslationDict> = {
     statsBar: {
       lotsCount: '9,227 ACTIVE LOTS',
       assetsVolume: '133B ₽ ASSETS REGISTRY',
-      bankAccreditation: 'Accreditation with Top 10 Russian Banks',
-      escrowEndorsement: 'Escrows & Letters of Credit per Central Bank',
+      bankAccreditation: 'Partnership with Top 10 Russian Banks',
+      escrowEndorsement: 'Secure Settlements via Escrow & SBR',
       rosreestrEndorsement: 'Direct Rosreestr Digital Title Escrow',
       stage1: 'STAGE 01: Legal Audit of DDU Contract',
       stage2: 'STAGE 02: Buyer Pool Matching',

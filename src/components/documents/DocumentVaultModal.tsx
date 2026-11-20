@@ -52,7 +52,7 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
   mode = 'seller',
   canUpload = true,
   canReview = false,
-  reviewerName = 'Куратор комплаенса 214-ФЗ',
+  reviewerName = 'Куратор юридической службы',
   onDocumentsChanged,
 }) => {
   const { language } = useLanguage();
@@ -214,11 +214,11 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black tracking-tight">
                   {language === 'ru'
-                    ? 'Защищенный облачный сейф документов (152-ФЗ)'
-                    : 'Secure Cloud Document Vault (152-FZ)'}
+                    ? 'Защищенное хранилище документов сделки'
+                    : 'Secure Document Vault'}
                 </h3>
-                <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 font-mono text-[10px] font-bold">
-                  s3://{StorageService.defaultBucket}/{entityId}
+                <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-[10px] font-bold">
+                  Защищенный контур
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5 flex items-center space-x-2">
@@ -226,7 +226,7 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
                 <span>
                   {entityTitle
                     ? `${entityTitle} • Клиент ${clientCode}`
-                    : `Yandex Object Storage S3 Compatible • Клиент ${clientCode}`}
+                    : `Документы к сделке • Клиент ${clientCode}`}
                 </span>
               </p>
             </div>
@@ -251,13 +251,13 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
                 <div>
                   <div className="text-xs font-black text-slate-900">
                     {language === 'ru'
-                      ? `Комплектность обязательного досье продавца по 214-ФЗ: ${completedMandatoryCount} из 4 документов`
-                      : `Mandatory Seller Dossier (214-FZ): ${completedMandatoryCount} of 4 documents`}
+                      ? `Комплектность обязательного пакета документов: ${completedMandatoryCount} из 4 документов`
+                      : `Mandatory Seller Documents: ${completedMandatoryCount} of 4 documents`}
                   </div>
                   <div className="text-[11px] text-slate-500">
                     {language === 'ru'
-                      ? 'Файлы шифруются контрольной суммой SHA-256 и размещаются в изолированном S3-контейнере.'
-                      : 'Files are hashed with SHA-256 and stored in an isolated S3 bucket container.'}
+                      ? 'Все документы надежно защищены и хранятся в закрытом контуре сделки.'
+                      : 'All documents are safely encrypted and stored in the secure transaction vault.'}
                   </div>
                 </div>
               </div>

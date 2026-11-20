@@ -104,19 +104,19 @@ export const VerifyCertificatePage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  ГОСТ Р 57580 • Верифицировано
+                  Юридический аудит • Верифицировано
                 </span>
                 <span className="text-xs font-mono text-slate-400">
                   ID: #CERT-{lot.lotCode}-2025
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {language === 'ru' ? 'Юридический паспорт цессии' : 'Legal Verification Passport'}
+                {language === 'ru' ? 'Юридическое заключение по объекту' : 'Legal Verification Passport'}
               </h1>
               <p className="text-sm text-slate-500">
                 {language === 'ru' 
-                  ? 'Цифровой протокол комплексной проверки объекта и собственника по стандарту 214-ФЗ'
-                  : 'Digital verification certificate under Federal Law 214-FZ standards'}
+                  ? 'Протокол комплексной юридической проверки объекта и собственника'
+                  : 'Digital verification certificate under legal audit standards'}
               </p>
             </div>
 
@@ -137,7 +137,7 @@ export const VerifyCertificatePage: React.FC = () => {
             </div>
 
             <div>
-              <span className="text-xs text-slate-500 font-medium">Характеристики лота (152-ФЗ)</span>
+              <span className="text-xs text-slate-500 font-medium">Характеристики лота</span>
               <div className="text-base font-bold text-slate-900 mt-0.5">
                 {lot.areaM2} м² • {lot.ownerDossier?.hideExactFloor ? `${lot.ownerDossier.floorRangeDisplay} эт.` : `${lot.floor} этаж`}
               </div>
@@ -147,14 +147,14 @@ export const VerifyCertificatePage: React.FC = () => {
             <div>
               <span className="text-xs text-slate-500 font-medium">Эскроу-банк девелопера</span>
               <div className="text-base font-bold text-emerald-700 mt-0.5">ПАО {lot.escrowBank}</div>
-              <div className="text-xs text-slate-600">Счет открыт по 214-ФЗ</div>
+              <div className="text-xs text-slate-600">Эскроу-счет подтвержден</div>
             </div>
           </div>
 
           {/* 4 Core Verification Pillars */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              {language === 'ru' ? 'Результаты автоматической проверки баз данных РФ' : 'Russian Federal Registry Verification Results'}
+              {language === 'ru' ? 'Результаты юридической проверки' : 'Verification Results'}
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -162,7 +162,7 @@ export const VerifyCertificatePage: React.FC = () => {
               {/* EFRSB */}
               <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">ЕФРСБ / Банкротство (ст. 213.4 ФЗ-127)</span>
+                  <span className="text-xs font-bold text-slate-900">Реестр банкротств (ЕФРСБ)</span>
                   <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">ЧИСТО</span>
                 </div>
                 <p className="text-xs text-slate-600">
@@ -173,7 +173,7 @@ export const VerifyCertificatePage: React.FC = () => {
               {/* FSSP */}
               <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">ФССП РФ / Исполнительные производства</span>
+                  <span className="text-xs font-bold text-slate-900">ФССП / Исполнительные производства</span>
                   <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">0 ₽ ДОЛГОВ</span>
                 </div>
                 <p className="text-xs text-slate-600">
@@ -184,7 +184,7 @@ export const VerifyCertificatePage: React.FC = () => {
               {/* Maternal Capital */}
               <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">Материнский капитал (СФР)</span>
+                  <span className="text-xs font-bold text-slate-900">Проверка использования маткапитала</span>
                   <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">НЕ ИСПОЛЬЗОВАЛСЯ</span>
                 </div>
                 <p className="text-xs text-slate-600">
@@ -199,7 +199,7 @@ export const VerifyCertificatePage: React.FC = () => {
                   <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold">ПОЛУЧЕНО</span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Письменное согласие на перевод долга по рассрочке и уступку прав требований оформлено по регламенту ст. 11 214-ФЗ.
+                  Письменное согласие на перевод долга по рассрочке и уступку прав требований оформлено и подтверждено.
                 </p>
               </div>
 
@@ -211,14 +211,14 @@ export const VerifyCertificatePage: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
                 <Scale className="w-4 h-4" />
-                Правовое обоснование добросовестности (ст. 302 ГК РФ)
+                Правовое заключение о добросовестности сделки
               </span>
               <span className="text-xs font-mono font-bold text-emerald-700">
                 Индекс защиты: 98/100
               </span>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Цена переуступки ({formatRubles(lot.cashPaidBySeller)} на руки продавцу) полностью соответствует сумме фактических затрат цедента, подтверждена банковскими платежными поручениями и исключает квалификацию сделки как подозрительной по ст. 61.2 Закона о банкротстве.
+              Цена переуступки ({formatRubles(lot.cashPaidBySeller)} на руки продавцу) полностью соответствует сумме фактических затрат цедента, подтверждена банковскими платежными поручениями и исключает риски признания сделки недействительной.
             </p>
           </div>
 

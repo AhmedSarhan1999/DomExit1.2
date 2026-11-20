@@ -169,7 +169,7 @@ export const BankPortalPage: React.FC = () => {
   const [devItMortgage6, setDevItMortgage6] = useState<boolean>(true);
   const [devMaxPdnPercent, setDevMaxPdnPercent] = useState<40 | 50 | 60>(50);
   const [devDecisionNotes, setDevDecisionNotes] = useState<string>(
-    'Проектная декларация 214-ФЗ и эскроу-модель соответствуют требованиям банка'
+    'Проектная декларация и эскроу-модель соответствуют требованиям банка'
   );
 
   // New Bank Staff Modal State
@@ -1083,7 +1083,7 @@ export const BankPortalPage: React.FC = () => {
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">
-                  DomExit • Шлюз Банка-Партнёра (214-ФЗ / СБР)
+                  DomExit • Шлюз Банка-Партнёра (Эскроу / СБР)
                 </span>
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
                   LIVE ESCROW GATEWAY
@@ -1680,7 +1680,7 @@ export const BankPortalPage: React.FC = () => {
                           className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
                         >
                           <FolderOpen className="w-4 h-4 text-emerald-600" />
-                          <span>Досье S3 и штамп Росреестра</span>
+                          <span>Документы и штамп Росреестра</span>
                         </button>
 
                         {(step === 'bank_escrow_deposit' || step === 'curator_review') && (
@@ -1726,7 +1726,7 @@ export const BankPortalPage: React.FC = () => {
                               className="px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
                             >
                               <FileCheck className="w-4 h-4 text-indigo-700" />
-                              <span>Просмотреть штамп Росреестра и документы (S3 Хранилище)</span>
+                              <span>Просмотреть штамп Росреестра и документы</span>
                             </button>
                             <button
                               type="button"
@@ -2012,7 +2012,7 @@ export const BankPortalPage: React.FC = () => {
                   Согласование проектного финансирования и объектов малых подрядчиков ({tenantSpecialRequests.length})
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Индивидуальный кредитный андеррайтинг, проверка смет в S3 Document Vault и назначение проектных ставок
+                  Индивидуальный кредитный андеррайтинг, проверка смет и назначение проектных ставок
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -2182,7 +2182,7 @@ export const BankPortalPage: React.FC = () => {
                                 className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-2xs"
                               >
                                 <Eye className="w-4 h-4 text-emerald-600" />
-                                <span>Досье и сметы S3</span>
+                                <span>Досье и сметы</span>
                               </button>
 
                               {req.status === 'pending' && (
@@ -2615,7 +2615,7 @@ export const BankPortalPage: React.FC = () => {
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-                  Согласование проектного финансирования (214-ФЗ / Эскроу)
+                  Согласование проектного финансирования (Эскроу)
                 </span>
                 <h3 className="text-lg font-black text-slate-900 mt-0.5">
                   {selectedSpecialReq.projectTitle || selectedSpecialReq.complexName} (Лот #{selectedSpecialReq.lotCode})
@@ -2661,7 +2661,7 @@ export const BankPortalPage: React.FC = () => {
                   className="w-full py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
                 >
                   <Eye className="w-4 h-4 text-emerald-600" />
-                  <span>Просмотреть проектную документацию и смету в S3 Vault</span>
+                  <span>Просмотреть проектную документацию и смету</span>
                 </button>
               </div>
             </div>

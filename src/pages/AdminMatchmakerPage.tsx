@@ -163,7 +163,7 @@ export const AdminMatchmakerPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <AdminHeader
           title={`Матчмейкер и ежедневный отбор покупателей — Лот #${lot?.lotCode || currentLotCode}`}
-          subtitle="Ежедневное окно рассмотрения предложений: проверка банковских справок S3 и отбор лучшего покупателя"
+          subtitle="Ежедневное окно рассмотрения предложений: проверка банковских справок и отбор лучшего покупателя"
         />
 
         {successToast && (
@@ -200,7 +200,7 @@ export const AdminMatchmakerPage: React.FC = () => {
                 Нет активных сделок на аудите — ожидаются входящие заявки от дольщиков
               </p>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Новые лоты появятся здесь автоматически после прохождения юридического комплаенса и первичного аудита 214-ФЗ.
+                Новые лоты появятся здесь автоматически после прохождения юридического комплаенса и первичного юридического аудита.
               </p>
             </div>
           ) : (
@@ -240,7 +240,7 @@ export const AdminMatchmakerPage: React.FC = () => {
                       className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
                     >
                       <HardDrive className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Сейф справок покупателей (S3)</span>
+                      <span>Документы покупателей</span>
                     </button>
 
                     <select
@@ -580,7 +580,7 @@ export const AdminMatchmakerPage: React.FC = () => {
 
                 <div className="text-center pb-3 border-b border-slate-200">
                   <span className="font-bold text-xs uppercase tracking-wider text-slate-700 block">
-                    ЦЕНТР ЭЛЕКТРОННОЙ ВЕРИФИКАЦИИ ЛИКВИДНОСТИ (214-ФЗ)
+                    ЦЕНТР ЭЛЕКТРОННОЙ ВЕРИФИКАЦИИ ЛИКВИДНОСТИ
                   </span>
                   <span className="text-[10px] text-slate-500">
                     {previewCandidate.bankApprovalDocName ||

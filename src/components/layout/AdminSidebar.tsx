@@ -83,7 +83,7 @@ export const AdminSidebar: React.FC = () => {
     {
       path: '/admin/packaging',
       matchPrefix: '/admin/packaging',
-      label: language === 'ru' ? 'Каталог и упаковка 152-ФЗ' : 'Packaging Studio 152-FZ',
+      label: language === 'ru' ? 'Каталог и упаковка лотов' : 'Packaging Studio',
       icon: PackageCheck,
       roles: ['owner', 'employee'],
     },
@@ -171,7 +171,7 @@ export const AdminSidebar: React.FC = () => {
         <p className="text-[10px] text-slate-400 mt-1">
           {isOwner
             ? 'Полный доступ: выручка 2.5%, новые заявки, назначение сотрудников'
-            : 'Изоляция 152-ФЗ: только назначенные вам объекты и прямые заявки'}
+            : 'Рабочий контур: только назначенные вам объекты и заявки'}
         </p>
       </div>
 

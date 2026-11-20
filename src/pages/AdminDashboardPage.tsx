@@ -336,7 +336,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [showAddEmpModal, setShowAddEmpModal] = useState<boolean>(false);
   const [newEmpEmail, setNewEmpEmail] = useState<string>('');
   const [newEmpName, setNewEmpName] = useState<string>('');
-  const [newEmpRole, setNewEmpRole] = useState<string>('Куратор по 214-ФЗ');
+  const [newEmpRole, setNewEmpRole] = useState<string>('Куратор сделок');
   const [newEmpPhone, setNewEmpPhone] = useState<string>('+7 (812) 409-32-00');
   const [newEmpTg, setNewEmpTg] = useState<string>('@domexit_');
   const [newEmpPerms] = useState<string[]>(['legal_audit', 'packaging', 'matchmaker', 'closing']);
@@ -513,7 +513,7 @@ export const AdminDashboardPage: React.FC = () => {
             operatorName,
             operatorRole: 'owner',
             actionType: 'company_profile_updated',
-            title: 'Обновлены официальные реквизиты компании (152-ФЗ / 38-ФЗ)',
+            title: 'Обновлены официальные реквизиты компании',
             description: `Обновлены реквизиты ООО «ДОМЭКЗИТ» (ИНН ${legalForm.inn}, КПП ${legalForm.kpp}, ОГРН ${legalForm.ogrn}). Изменения применены ко всем 26 юридическим документам и сквозному интерфейсу.`,
           });
           setLegalSaveSuccess(true);
@@ -644,7 +644,7 @@ export const AdminDashboardPage: React.FC = () => {
     await SellerRequestsRepository.requestAdditionalDocs(
       modalLot.lotCode,
       lotRequestedDocs,
-      lotDocsNotes.trim() || 'Требуется загрузить читаемые оригиналы сканов для верификации по 214-ФЗ.',
+      lotDocsNotes.trim() || 'Требуется загрузить читаемые оригиналы сканов для юридической верификации.',
       operatorName
     );
     showToast(`Запрос дополнительных документов отправлен продавцу по лоту #${modalLot.lotCode}!`);
@@ -1132,7 +1132,7 @@ export const AdminDashboardPage: React.FC = () => {
           subtitle={
             isOwner
               ? 'Генеральный обзор платформы: верификация новых продавцов, партнеров и VIP-инвесторов, назначение кураторов и учет комиссии 2.5%'
-              : `Куратор: ${operatorName} | Строгая изоляция 152-ФЗ: только закрепленные лоты и прямые заявки покупателей`
+              : `Куратор: ${operatorName} | Конфиденциальный контур: только закрепленные лоты и заявки покупателей`
           }
         />
 
@@ -1199,7 +1199,7 @@ export const AdminDashboardPage: React.FC = () => {
                       </span>
                       <span className="text-xs font-semibold text-slate-600">
                         {isProduction
-                          ? 'Промышленный контур 214-ФЗ'
+                          ? 'Основной рабочий контур'
                           : 'Тестовый симуляционный контур'}
                       </span>
                     </div>
@@ -1373,8 +1373,8 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
                 <span className="text-[11px] text-slate-500">
                   {isOwner
-                    ? 'Доступны: глобальная выручка 2.5%, верификация сейфов документов (Yandex S3), одобрение продавцов/партнеров/VIP-инвесторов.'
-                    : 'Финансовая выручка платформы и чужие сделки скрыты (152-ФЗ). Доступны только назначенные вам объекты.'}
+                    ? 'Доступны: глобальная комиссия 2.5%, верификация документов, одобрение продавцов/партнеров/VIP-инвесторов.'
+                    : 'Финансовые показатели платформы и чужие сделки скрыты. Доступны только назначенные вам объекты.'}
                 </span>
               </div>
             </div>
@@ -1496,7 +1496,7 @@ export const AdminDashboardPage: React.FC = () => {
                   }`}
                 >
                   <Building2 className="w-4 h-4" />
-                  <span>6. Профиль компании, соцсети и ИБ (152-ФЗ)</span>
+                  <span>6. Профиль компании и безопасность</span>
                 </button>
                 <button
                   type="button"
@@ -1765,7 +1765,7 @@ export const AdminDashboardPage: React.FC = () => {
                       )}
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Проверьте загруженные продавцом оригиналы ДДУ/СФР в облачном сейфе (Yandex S3), закрепите куратора, запросите доп. документы или отклоните с причиной.
+                      Проверьте загруженные продавцом оригиналы ДДУ/СФР в хранилище документов, закрепите куратора, запросите доп. документы или отклоните с причиной.
                     </p>
                   </div>
                   <span className="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">
@@ -1886,7 +1886,7 @@ export const AdminDashboardPage: React.FC = () => {
                                   }}
                                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs border border-slate-200 transition-colors cursor-pointer"
                                 >
-                                  Анкета и Сейф S3
+                                  Анкета и документы
                                 </button>
 
                                 <select
@@ -2212,7 +2212,7 @@ export const AdminDashboardPage: React.FC = () => {
                     </p>
                   </div>
                   <span className="text-[11px] font-mono text-slate-400">
-                    Аккредитация 214-ФЗ
+                    Верификация застройщика
                   </span>
                 </div>
 
@@ -3043,7 +3043,7 @@ export const AdminDashboardPage: React.FC = () => {
                     <div>
                       <div className="flex items-center space-x-2">
                         <h3 className="text-base sm:text-lg font-black text-slate-900">
-                          Правовой профиль и реквизиты компании (152-ФЗ / 38-ФЗ)
+                          Правовой профиль и реквизиты компании
                         </h3>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
                           Роскомнадзор 2026 Ready
@@ -3062,7 +3062,7 @@ export const AdminDashboardPage: React.FC = () => {
                       target="_blank"
                       className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center space-x-1"
                     >
-                      <span>Политика 152-ФЗ</span>
+                      <span>Политика конфиденциальности</span>
                       <ExternalLink className="w-3 h-3 text-slate-400" />
                     </Link>
                     <Link
@@ -3657,7 +3657,7 @@ export const AdminDashboardPage: React.FC = () => {
                       <span>Шлюз ИИ-маскирования персональных данных (AI Data Masking / Роскомнадзор)</span>
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Принудительная деперсонализация российских персональных данных перед передачей во внешние нейросетевые сервисы (ГОСТ Р 57580).
+                      Принудительная деперсонализация персональных данных перед передачей во внешние сервисы обработки.
                     </p>
                   </div>
                   <span className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 self-start sm:self-auto">
@@ -3742,7 +3742,7 @@ export const AdminDashboardPage: React.FC = () => {
 
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1 shadow-xs">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    ИЗОЛЯЦИЯ КОНТУРА 152-ФЗ
+                    КОНФИДЕНЦИАЛЬНЫЙ КОНТУР
                   </span>
                   <div className="text-3xl font-black text-emerald-700">100% активна</div>
                   <p className="text-xs text-slate-500">Доступ строго по назначению</p>
@@ -3758,7 +3758,7 @@ export const AdminDashboardPage: React.FC = () => {
                       <span>Объекты в вашей непосредственной ответственности ({employeeLots.length})</span>
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Управляйте упаковкой 152-ФЗ, юридическим аудитом (42 пункта) и ежедневным отбором покупателей.
+                      Управляйте упаковкой объектов, юридическим аудитом (42 параметра) и отбором покупателей.
                     </p>
                   </div>
                 </div>
@@ -3801,7 +3801,7 @@ export const AdminDashboardPage: React.FC = () => {
                               to={`/admin/packaging/${lot.lotCode}`}
                               className="py-2 px-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 transition-colors shadow-2xs"
                             >
-                              📦 Упаковка 152-ФЗ
+                              📦 Упаковка лота
                             </Link>
                             <Link
                               to={`/admin/legal-audit/${lot.lotCode}`}
@@ -3992,7 +3992,7 @@ export const AdminDashboardPage: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2 text-amber-900 font-bold">
                         <Lock className="w-4 h-4 text-amber-700" />
-                        <span>Персональные данные дольщика (контур Владельца 152-ФЗ):</span>
+                        <span>Персональные данные дольщика:</span>
                       </div>
                       {(sReq?.referredByPartnerCode || modalLot.referredByPartnerCode) && (
                         <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[10px] font-bold">
@@ -4033,7 +4033,7 @@ export const AdminDashboardPage: React.FC = () => {
                     <div className="space-y-0.5">
                       <span className="font-bold text-indigo-950 flex items-center space-x-1.5">
                         <HardDrive className="w-4 h-4 text-indigo-600" />
-                        <span>Облачный сейф документов (Yandex Object Storage S3)</span>
+                        <span>Хранилище документов объекта</span>
                       </span>
                       <p className="text-[11px] text-indigo-800/80">
                         Просмотр, скачивание и индивидуальное утверждение сканов ДДУ, справок об оплате и СФР.
@@ -4198,7 +4198,7 @@ export const AdminDashboardPage: React.FC = () => {
                         className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl space-y-3"
                       >
                         <label className="block font-bold text-rose-950">
-                          Причина отклонения заявки продавца (214-ФЗ / 127-ФЗ) *:
+                          Причина отклонения заявки продавца *:
                         </label>
                         <textarea
                           rows={3}
@@ -4284,7 +4284,7 @@ export const AdminDashboardPage: React.FC = () => {
                 className="w-full py-2.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <HardDrive className="w-4 h-4 text-indigo-600" />
-                <span>Открыть сейф документов партнера (Yandex S3)</span>
+                <span>Открыть документы партнера</span>
               </button>
 
               <div className="flex gap-2">
@@ -4580,7 +4580,7 @@ export const AdminDashboardPage: React.FC = () => {
                   onChange={(e) => setNewEmpRole(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold text-slate-800"
                 >
-                  <option value="Куратор по 214-ФЗ">Куратор по 214-ФЗ (Координатор сделок)</option>
+                  <option value="Куратор сделок">Куратор сделок (Координатор)</option>
                   <option value="Старший юрист комплаенса">Старший юрист комплаенса (42 проверки)</option>
                   <option value="Кредитный офицер банка">Кредитный офицер банка-партнера</option>
                   <option value="Совладелец (Co-Owner)">Совладелец платформы (Co-Owner)</option>
@@ -4691,7 +4691,7 @@ export const AdminDashboardPage: React.FC = () => {
                   onChange={(e) => setEditEmpRole(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold text-slate-800"
                 >
-                  <option value="Куратор по 214-ФЗ">Куратор по 214-ФЗ (Координатор сделок)</option>
+                  <option value="Куратор сделок">Куратор сделок (Координатор)</option>
                   <option value="Старший юрист комплаенса">Старший юрист комплаенса (42 проверки)</option>
                   <option value="Кредитный офицер банка">Кредитный офицер банка-партнера</option>
                   <option value="Ведущий куратор отдела выходов">Ведущий куратор отдела выходов</option>

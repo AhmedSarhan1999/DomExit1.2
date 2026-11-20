@@ -73,7 +73,7 @@ const INITIAL_CHECKPOINTS: LegalAuditCheckpoint[] = [
   },
   {
     id: 'ddu_sfr',
-    title: '4. Аудит ДДУ, СФР Маткапитал и Ограничения застройщика (214-ФЗ)',
+    title: '4. Аудит ДДУ, выписки СФР и ограничений застройщика',
     shortLabel: 'ДДУ / СФР Маткапитал / Застройщик',
     weightPercent: 45, // СФР 25% + ДДУ 20%
     portalUrl: 'https://sfr.gov.ru/',
@@ -242,7 +242,7 @@ export const AdminLegalAuditPage: React.FC = () => {
 
         setEditProofName(meta.name);
         setEditProofUrl(meta.cloudUrl || '');
-        setNotice(`✓ Документ «${meta.name}» успешно загружен в S3-сейф!`);
+        setNotice(`✓ Документ «${meta.name}» успешно загружен в хранилище!`);
         setTimeout(() => setNotice(null), 4000);
       }
     } catch (err) {
@@ -328,7 +328,7 @@ export const AdminLegalAuditPage: React.FC = () => {
         ? `ПРОТОКОЛ АВТОМАТИЗИРОВАННОЙ ПРОВЕРКИ ЕФРСБ / ФЕДРЕСУРС (127-ФЗ)\n` +
           `==============================================================\n` +
           `Объект: Лот #${lot.lotCode} (${lot.complexName})\n` +
-          `Дольщик (152-ФЗ): ${lot.ownerDossier.fullNameMasked}\n` +
+          `Дольщик: ${lot.ownerDossier.fullNameMasked}\n` +
           `ИНН: ${lot.sellerInn || '781432994102'}\n` +
           `Статус банкротства: ЧИСТО (${lot.legalPassport.efrsbBankruptcyStatus.toUpperCase()})\n` +
           `Динамический антибанкротный индекс DomExit: ${weightedIndex} / 100\n` +
@@ -337,7 +337,7 @@ export const AdminLegalAuditPage: React.FC = () => {
         : `ОФИЦИАЛЬНАЯ ВЫПИСКА ИЗ БАЗЫ ИСПОЛНИТЕЛЬНЫХ ПРОИЗВОДСТВ ФССП РФ\n` +
           `==============================================================\n` +
           `Объект: Лот #${lot.lotCode} (${lot.complexName})\n` +
-          `Дольщик (152-ФЗ): ${lot.ownerDossier.fullNameMasked}\n` +
+          `Дольщик: ${lot.ownerDossier.fullNameMasked}\n` +
           `ИНН: ${lot.sellerInn || '781432994102'}\n` +
           `Сумма открытых исполнительных производств: ${formatRubles(lot.legalPassport.fsspDebtRub)}\n` +
           `Запреты на регистрационные действия в Росреестре: ОТСУТСТВУЮТ\n` +
@@ -360,7 +360,7 @@ export const AdminLegalAuditPage: React.FC = () => {
     await LotsRepository.requestAdditionalDocs(
       lot.lotCode,
       selectedDocsList,
-      docsNotes || 'Необходимо предоставить недостающие оригиналы/сканы для прохождения 42 параметров 214-ФЗ',
+      docsNotes || 'Необходимо предоставить недостающие оригиналы/сканы для прохождения юридической проверки',
       curatorName
     );
 
@@ -451,7 +451,7 @@ export const AdminLegalAuditPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <AdminHeader
           title={`Юридический аудит и антибанкротная защита — Лот #${currentLotCode}`}
-          subtitle="Динамический скоринг по 4 интерактивным зонам (ЕФРСБ, ФССП, Суды, ДДУ/СФР), облачный сейф S3 и обоснование цены по 127-ФЗ"
+          subtitle="Комплексный правовой аудит по 42 параметрам, проверка документов и обоснование чистоты сделки"
         />
 
         <div className="p-4 sm:p-6 space-y-6 max-w-[1500px] w-full">
@@ -632,18 +632,18 @@ export const AdminLegalAuditPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Cloud Document Vault Bar (Yandex S3) */}
+              {/* Document Vault Bar */}
               <div className="bg-indigo-950 text-white rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2 text-indigo-300 text-xs font-bold uppercase tracking-wider">
                     <HardDrive className="w-4 h-4" />
-                    <span>ОБЛАЧНЫЙ СЕЙФ ДОКУМЕНТОВ ДОЛЬЩИКА (YANDEX OBJECT STORAGE S3)</span>
+                    <span>ХРАНИЛИЩЕ ДОКУМЕНТОВ ПО ОБЪЕКТУ</span>
                   </div>
                   <h3 className="text-base font-bold">
                     Оригиналы и сканы по лоту #{lot.lotCode} (ДДУ, Справка об оплате, СФР, Выписка)
                   </h3>
                   <p className="text-xs text-indigo-200/80">
-                    Откройте сейф для постраничной сверки реквизитов, утверждения каждого документа или дозагрузки справок.
+                    Откройте хранилище для сверки реквизитов, утверждения каждого документа или загрузки справок.
                   </p>
                 </div>
                 <button
@@ -652,7 +652,7 @@ export const AdminLegalAuditPage: React.FC = () => {
                   className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all shrink-0 flex items-center space-x-2 cursor-pointer"
                 >
                   <FileText className="w-4 h-4" />
-                  <span>Открыть и проверить документы в S3</span>
+                  <span>Открыть и проверить документы</span>
                 </button>
               </div>
 
@@ -661,7 +661,7 @@ export const AdminLegalAuditPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 flex items-center space-x-2">
                     <Sliders className="w-4 h-4 text-emerald-600" />
-                    <span>Интерактивные контрольные зоны юридического аудита (42 параметра 214-ФЗ)</span>
+                    <span>Контрольные параметры юридического аудита (42 пункта проверки)</span>
                   </h3>
                   <span className="text-xs text-slate-500 font-mono">
                     Кликните «Инспектировать» для сверки с официальными реестрами РФ
@@ -913,7 +913,7 @@ export const AdminLegalAuditPage: React.FC = () => {
                   <div>
                     <span className="font-bold text-xs text-slate-900 block">{curatorName}</span>
                     <span className="text-[11px] text-slate-500 block">
-                      Комплаенс и правовой аудит 214-ФЗ / 127-ФЗ • Индекс: {weightedIndex}%
+                      Правовой аудит DomExit • Индекс надежности: {weightedIndex}%
                     </span>
                   </div>
                 </div>

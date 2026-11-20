@@ -22,7 +22,7 @@ export const RUSSIAN_TOP_DEVELOPERS: string[] = [
   'ПИК',
   'Самолёт',
   'ЛСР',
-  'Setl Group',
+  'Сетл Групп',
   'ФСК',
   'Эталон',
   'А101',
@@ -31,7 +31,7 @@ export const RUSSIAN_TOP_DEVELOPERS: string[] = [
   'RBI',
   'КВС',
   'ГК Пионер',
-  'MR Group',
+  'МР Групп',
   'Sminex',
   'Донстрой',
 ];
@@ -116,7 +116,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   },
   {
     id: 'dev-setl-group',
-    name: 'Setl Group',
+    name: 'Сетл Групп',
     inn: '7810245481',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.4, 19.8, 20.4, 19.1, 50, 60, 50, 60),
@@ -197,7 +197,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   },
   {
     id: 'dev-mr-group',
-    name: 'MR Group',
+    name: 'МР Групп',
     inn: '7703512904',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.6, 20.0, 20.4, 19.3, 50, 60, 60, 50),

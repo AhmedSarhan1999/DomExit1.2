@@ -152,8 +152,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (!buyerConsents.pdProcessing || !buyerConsents.termsAgreed) {
       setErrorMsg(
         language === 'ru'
-          ? 'Пожалуйста, подтвердите согласие на обработку персональных данных (152-ФЗ) и согласие с условиями сервиса.'
-          : 'Please accept personal data processing (152-FZ) and terms of service.'
+          ? 'Пожалуйста, подтвердите согласие на обработку персональных данных и согласие с условиями сервиса.'
+          : 'Please accept personal data processing and terms of service.'
       );
       return;
     }
@@ -257,7 +257,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <div className="space-y-1.5">
             <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>{language === 'ru' ? 'Ежедневное окно подачи заявок 214-ФЗ' : 'Daily 214-FZ Application Window'}</span>
+              <span>{language === 'ru' ? 'Ежедневное окно подачи заявок' : 'Daily Application Window'}</span>
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">
               {language === 'ru'
@@ -280,7 +280,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Daily Selection Notice */}
         <div className="p-3.5 bg-sky-50 border border-sky-200 rounded-2xl text-xs text-sky-900 space-y-1">
           <div className="font-bold flex items-center space-x-1.5">
-            <span>Окно приема заявок открыто • Регистрация в S3-реестре</span>
+            <span>Окно приема заявок открыто • Фиксация бронирования</span>
           </div>
           <p className="text-[11px] text-sky-800/90 leading-relaxed">
             Заявка фиксируется с вашим персональным кодом клиента ({user?.clientCode || 'DEX-ID'}) и мгновенно поступает в модуль матчмейкинга ответственного куратора.
@@ -370,7 +370,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-3">
               <div className="text-xs font-bold text-emerald-950 flex items-center space-x-2">
                 <FileCheck className="w-4 h-4 text-emerald-700" />
-                <span>Подтверждение доступной ликвидности (Yandex S3 Vault)</span>
+                <span>Подтверждение доступной ликвидности</span>
               </div>
               <p className="text-[11px] text-slate-600">
                 Загрузите свежую банковскую выписку со счета о наличии средств на сумму не менее {formatRubles(lot.dduContractPrice)}.
@@ -411,7 +411,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-4">
               <div className="text-xs font-bold text-amber-900 flex items-center space-x-2">
                 <FileCheck className="w-4 h-4 text-amber-700" />
-                <span>Подтверждение кредитного лимита банка (214-ФЗ)</span>
+                <span>Подтверждение кредитного лимита банка</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -500,7 +500,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           {/* Mandatory Bank Selection */}
           <div>
             <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-              <span>Эскроу-банк для проведения взаиморасчетов (214-ФЗ) *</span>
+              <span>Эскроу-банк для проведения взаиморасчетов *</span>
               <span className="text-[10px] text-emerald-700 font-bold lowercase">обязательный выбор</span>
             </label>
             <select

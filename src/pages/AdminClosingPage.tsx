@@ -270,7 +270,7 @@ export const AdminClosingPage: React.FC = () => {
       setRosreestrStampDoc(file.name);
     }
 
-    setNotificationMsg(`Файл «${file.name}» загружен в облачный сейф сделки S3!`);
+    setNotificationMsg(`Файл «${file.name}» загружен в хранилище сделки!`);
     setTimeout(() => setNotificationMsg(null), 3500);
   };
 
@@ -380,7 +380,7 @@ export const AdminClosingPage: React.FC = () => {
                     className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs border border-indigo-200 flex items-center space-x-1.5 cursor-pointer"
                   >
                     <HardDrive className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Сейф сделки (S3)</span>
+                    <span>Документы сделки</span>
                   </button>
 
                   <div className="px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 font-bold text-xs flex items-center space-x-1.5">
@@ -724,7 +724,7 @@ export const AdminClosingPage: React.FC = () => {
                             Транш Б — Обязательство по ДДУ (Застройщик)
                           </span>
                           <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold">
-                            214-ФЗ ЭСКРОУ
+                            ЭСКРОУ СБЕР / ВТБ
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-500 block">
@@ -765,14 +765,14 @@ export const AdminClosingPage: React.FC = () => {
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                       <Camera className="w-5 h-5 text-purple-600" />
-                      <span>Фото- и видеофиксация подписания и штамп Росреестра (Yandex S3)</span>
+                      <span>Фотофиксация подписания и отметка Росреестра</span>
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Все загружаемые файлы сохраняются в облачном бакете сделки и доступны офицеру банка в шлюзе.
+                      Все загружаемые файлы сохраняются в защищенном хранилище сделки и доступны офицеру банка в шлюзе.
                     </p>
                   </div>
                   <span className="px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-xs font-bold">
-                    ГОСТ Р 57580 Защищено
+                    Защищенный контур
                   </span>
                 </div>
 
@@ -841,7 +841,7 @@ export const AdminClosingPage: React.FC = () => {
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500">
-                        Хэш SHA-256 зафиксирован в Yandex Object Storage (152-ФЗ).
+                        Хэш SHA-256 зафиксирован в защищенном хранилище.
                       </p>
                     </div>
                   </div>

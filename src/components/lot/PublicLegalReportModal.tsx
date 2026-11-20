@@ -24,7 +24,7 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
     year: 'numeric',
   });
   const curatorName = curator?.name || lot.curator?.name || 'Юридическая служба DomExit';
-  const curatorRole = curator?.role || 'Старший комплаенс-офицер по сделкам переуступки (214-ФЗ)';
+  const curatorRole = curator?.role || 'Ведущий юрист по сделкам переуступки';
 
   const auditBlocks = [
     {
@@ -85,10 +85,10 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             </span>
             <div>
               <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400 block">
-                Государственный стандарт комплаенса (214-ФЗ)
+                Стандарт юридической проверки DomExit
               </span>
               <h2 className="text-lg sm:text-xl font-black text-white">
-                Публичный юридический отчет верификации
+                Публичное юридическое заключение
               </h2>
             </div>
           </div>
@@ -137,7 +137,7 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
                 <span className="text-xs font-bold text-emerald-950 block">Эскроу-счет подтвержден</span>
-                <span className="text-[10px] text-emerald-700">{lot.escrowBank} (ст. 15.4 № 214-ФЗ)</span>
+                <span className="text-[10px] text-emerald-700">{lot.escrowBank} (эскроу-счет)</span>
               </div>
             </div>
           </div>
@@ -159,7 +159,7 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             <div className="hidden sm:block text-right">
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
                 <Award className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Аттестат ЕГРН/214-ФЗ</span>
+                <span>Юридическая экспертиза</span>
               </span>
             </div>
           </div>
@@ -195,17 +195,16 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             </div>
           </div>
 
-          {/* 152-FZ Personal Data Protection Note */}
+          {/* Personal Data Protection Note */}
           <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 flex items-start space-x-3">
             <Lock className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
             <div className="text-xs text-amber-950 space-y-1">
               <span className="font-bold block">
-                Защита персональных данных участников сделки (152-ФЗ РФ)
+                Защита персональных данных участников сделки
               </span>
               <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                В соответствии со ст. 7 Федерального закона № 152-ФЗ «О персональных данных», оригиналы сканов паспортов,
-                ДДУ, платежных поручений и согласий хранятся в защищенном облачном контуре и не публикуются в открытом доступе.
-                Полный нотариальный пакет передается покупателю и банку-эскроу агенту на этапе подписания договора уступки.
+                Оригиналы сканов паспортов, ДДУ, платежных поручений и согласий хранятся в защищенном контуре и не публикуются в открытом доступе.
+                Полный проверенный пакет документов передается покупателю и банку-эскроу агенту на этапе подписания договора уступки.
               </p>
             </div>
           </div>
