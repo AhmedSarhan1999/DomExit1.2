@@ -26,6 +26,11 @@ dist-ssr
 *.sln
 *.sw?
 
+# Local env and keys
+.env.cloud.local
+.env.backend.local
+*.key.json
+
 # Local Netlify folder
 .netlify
 .claude

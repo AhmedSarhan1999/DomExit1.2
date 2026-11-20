@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "cloudId": "b1gbu0q3jqnheri2srsu",
+  "folderId": "b1g46uad3gc3h34k5b0f",
+  "region": "ru-central1",
+  "runtimeServiceAccount": {
+    "id": "aje70eogmpm04c84rsnl",
+    "name": "domexit-runtime-sa"
+  },
+  "production": {
+    "ydbDatabaseId": "etnckg937628mnid7tnb",
+    "ydbDocApiEndpoint": "https://docapi.serverless.yandexcloud.net/ru-central1/b1gbu0q3jqnheri2srsu/etnckg937628mnid7tnb",
+    "publicPhotosBucket": "domexit-storage-vault",
+    "privateDocsBucket": "domexit-private-docs-prod",
+    "webStaticBucket": "domexit-web-prod"
+  },
+  "staging": {
+    "ydbDatabaseId": "etnkpeqnbmb1a6cocipk",
+    "ydbDocApiEndpoint": "https://docapi.serverless.yandexcloud.net/ru-central1/b1gbu0q3jqnheri2srsu/etnkpeqnbmb1a6cocipk",
+    "publicPhotosBucket": "domexit-public-photos-staging",
+    "privateDocsBucket": "domexit-private-docs-staging",
+    "webStaticBucket": "domexit-web-staging"
+  }
+}
