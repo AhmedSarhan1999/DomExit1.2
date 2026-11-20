@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatRubles } from '../utils/formatters';
@@ -26,9 +26,11 @@ import { SecurityIncidentsRepository } from '../dal/repositories/SecurityInciden
 import { CuratorChatRepository } from '../dal/repositories/CuratorChatRepository';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { LegalPoliciesRepository, CANONICAL_POLICY_NAMES, INITIAL_POLICY_TEXTS } from '../dal/repositories/LegalPoliciesRepository';
-import { LegalCmsManager } from '../components/admin/LegalCmsManager';
 import { computeSha256 } from '../utils/crypto';
-import { useEnvironmentStore } from '../stores/useEnvironmentStore';
+
+const LegalCmsManager = React.lazy(() =>
+  import('../components/admin/LegalCmsManager').then((m) => ({ default: m.LegalCmsManager }))
+);
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useCompanyProfileStore } from '../stores/useCompanyProfileStore';
@@ -103,20 +105,7 @@ import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../utils/asyncG
 
 export const AdminDashboardPage: React.FC = () => {
   const { user, switchRole } = useAuth();
-  const { currentEnv, isProduction, toggleEnvironment } = useEnvironmentStore();
   const { enableVipClub, enableBankPortal, toggleFlag } = useFeatureFlagsStore();
-  const canSwitchEnvironment =
-    user?.email === 'amaas9499@gmail.com' || user?.activeRole === 'owner';
-
-  const handleToggleEnvironment = () => {
-    const nextIsProd = !isProduction;
-    toggleEnvironment();
-    showToast(
-      nextIsProd
-        ? 'Активирован Боевой режим (Production) — чистая промышленная база'
-        : 'Активирован Режим песочницы (Sandbox) — демонстрационные данные'
-    );
-  };
 
   const [kpis, setKpis] = useState<KPIStats | null>(null);
   const [lots, setLots] = useState<Lot[]>([]);
@@ -157,7 +146,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [newBankAdminEmail, setNewBankAdminEmail] = useState<string>('');
   const [newBankContactPhone, setNewBankContactPhone] = useState<string>('+7 (800) ');
   const [newBankContactPerson, setNewBankContactPerson] = useState<string>('');
-  const [newBankTempPassword, setNewBankTempPassword] = useState<string>('DomExit2026!');
+  const [newBankTempPassword, setNewBankTempPassword] = useState<string>('');
   const [newBankLogoUrl, setNewBankLogoUrl] = useState<string>('');
   const [isSavingBank, setIsSavingBank] = useState<boolean>(false);
 
@@ -510,7 +499,7 @@ export const AdminDashboardPage: React.FC = () => {
       loadAllData();
     });
     return unsub;
-  }, [user?.activeRole, currentEmployeeId, currentEnv]);
+  }, [user?.activeRole, currentEmployeeId]);
 
   const findSellerRequestForLot = (lotCode: string): SellerExitRequest | undefined =>
     sellerRequests.find((r) => r.lotCode.toUpperCase() === lotCode.toUpperCase());
@@ -1201,85 +1190,6 @@ export const AdminDashboardPage: React.FC = () => {
         )}
 
         <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
-          {/* Master Environment Switcher (Owner Exclusive) */}
-          {canSwitchEnvironment && (
-            <div
-              className={`rounded-2xl border-2 p-4 sm:p-5 shadow-sm transition-all duration-200 ${
-                isProduction
-                  ? 'border-emerald-500 bg-emerald-500/10'
-                  : 'border-amber-400 bg-amber-500/10'
-              }`}
-            >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-start sm:items-center gap-3">
-                  <div
-                    className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${
-                      isProduction
-                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-700'
-                        : 'bg-amber-500/20 border-amber-400 text-amber-700'
-                    }`}
-                  >
-                    {isProduction ? (
-                      <ShieldCheck className="w-6 h-6 text-emerald-700" />
-                    ) : (
-                      <AlertTriangle className="w-6 h-6 text-amber-700" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                          isProduction
-                            ? 'bg-emerald-200 text-emerald-900 border-emerald-300'
-                            : 'bg-amber-200 text-amber-900 border-amber-300'
-                        }`}
-                      >
-                        {isProduction ? 'PRODUCTION • БОЕВОЙ' : 'SANDBOX • ПЕСОЧНИЦА'}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-600">
-                        {isProduction
-                          ? 'Основной рабочий контур'
-                          : 'Тестовый симуляционный контур'}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs sm:text-sm font-medium text-slate-900">
-                      {isProduction ? (
-                        <>
-                          🔒 <strong>БОЕВОЙ РЕЖИМ (PRODUCTION)</strong> — Чистая промышленная база. Все создаваемые лоты, сделки и эскроу-аккаунты являются юридически значимыми.
-                        </>
-                      ) : (
-                        <>
-                          ⚠️ <strong>РЕЖИМ ПЕСОЧНИЦЫ (SANDBOX)</strong> — Отображаются тестовые данные для симуляции и демонстрации. Реальные клиенты не видят эти объекты.
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleToggleEnvironment}
-                  className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer shrink-0 ${
-                    isProduction
-                      ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/20'
-                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                  }`}
-                >
-                  {isProduction ? (
-                    <>
-                      <AlertTriangle className="w-4 h-4 text-slate-950" />
-                      <span>Переключиться в Песочницу (Demo)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-4 h-4 text-white" />
-                      <span>Переключиться в Боевой режим (Production)</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Master Feature Flags Management (Owner Exclusive) */}
           {isOwner && (
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
@@ -1417,16 +1327,6 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
               </div>
             </div>
-
-            {!isProduction && user?.role !== 'employee' && (
-              <button
-                type="button"
-                onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
-                className="px-3.5 py-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors shrink-0 cursor-pointer"
-              >
-                {isOwner ? 'Переключиться в Кабинет Сотрудника' : 'Переключиться в Панель Владельца'}
-              </button>
-            )}
           </div>
 
           {/* =========================================================================
@@ -3807,7 +3707,9 @@ export const AdminDashboardPage: React.FC = () => {
           ========================================================================= */}
           {activeOwnerTab === 'legal_cms' && (
             <div className="space-y-6">
-              <LegalCmsManager />
+              <Suspense fallback={<div className="p-8 text-center text-slate-500 font-medium">Загрузка CMS правовых документов...</div>}>
+                <LegalCmsManager />
+              </Suspense>
             </div>
           )}
         </>

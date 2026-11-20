@@ -1,8 +1,6 @@
 import { UserProfile } from '../../types';
-import { initialUsers } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const COLLECTION = 'users';
 
@@ -43,58 +41,52 @@ export const PROD_SYSTEM_USERS: UserProfile[] = [
 
 export class UsersRepository {
   static async getAll(): Promise<UserProfile[]> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const seed = isProd ? PROD_SYSTEM_USERS : initialUsers;
-    const raw = await DatabaseGateway.getAll<UserProfile>(COLLECTION, seed);
+    const raw = await DatabaseGateway.getAll<UserProfile>(COLLECTION, PROD_SYSTEM_USERS);
 
-    if (isProd) {
-      // In production, strictly filter out any demo/dummy accounts
-      const DEMO_EMAILS_TO_EXCLUDE = new Set([
-        'seller@domexit.ru',
-        'client@domexit.ru',
-        'investor@domexit.ru',
-        'google.user@gmail.com',
-        'aa@domexit.com',
-        'bank@domexit.ru',
-        'alexander@domexit.ru',
-        'morozov@domexit.ru',
-        'romanova@domexit.ru',
-        'voronov@domexit.ru',
-      ]);
+    // Strictly filter out any demo/dummy accounts
+    const DEMO_EMAILS_TO_EXCLUDE = new Set([
+      'seller@domexit.ru',
+      'client@domexit.ru',
+      'investor@domexit.ru',
+      'google.user@gmail.com',
+      'aa@domexit.com',
+      'bank@domexit.ru',
+      'alexander@domexit.ru',
+      'morozov@domexit.ru',
+      'romanova@domexit.ru',
+      'voronov@domexit.ru',
+    ]);
 
-      const filtered = raw.filter((u) => {
-        const email = (u.email || '').toLowerCase().trim();
-        return !DEMO_EMAILS_TO_EXCLUDE.has(email);
-      });
+    const filtered = raw.filter((u) => {
+      const email = (u.email || '').toLowerCase().trim();
+      return !DEMO_EMAILS_TO_EXCLUDE.has(email);
+    });
 
-      // Deduplicate by email
-      const seen = new Set<string>();
-      const deduped: UserProfile[] = [];
-      for (const u of filtered) {
-        const email = (u.email || '').toLowerCase().trim();
-        if (email && seen.has(email)) continue;
-        if (email) seen.add(email);
-        deduped.push(u);
-      }
-
-      // Ensure the 2 production accounts are present
-      for (const p of PROD_SYSTEM_USERS) {
-        const pEmail = (p.email || '').toLowerCase();
-        if (pEmail && !seen.has(pEmail)) {
-          deduped.unshift(p);
-          seen.add(pEmail);
-        }
-      }
-
-      return deduped;
+    // Deduplicate by email
+    const seen = new Set<string>();
+    const deduped: UserProfile[] = [];
+    for (const u of filtered) {
+      const email = (u.email || '').toLowerCase().trim();
+      if (email && seen.has(email)) continue;
+      if (email) seen.add(email);
+      deduped.push(u);
     }
 
-    return raw;
+    // Ensure the 2 production accounts are present
+    for (const p of PROD_SYSTEM_USERS) {
+      const pEmail = (p.email || '').toLowerCase();
+      if (pEmail && !seen.has(pEmail)) {
+        deduped.unshift(p);
+        seen.add(pEmail);
+      }
+    }
+
+    return deduped;
   }
 
   static async getById(userId: string): Promise<UserProfile | null> {
     if (!userId) return null;
-    const direct = await DatabaseGateway.getById<UserProfile>(COLLECTION, userId, initialUsers);
+    const direct = await DatabaseGateway.getById<UserProfile>(COLLECTION, userId, []);
     if (direct) return direct;
     const all = await this.getAll();
     return all.find((u) => u.id === userId) || null;

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, User, Crown, Briefcase, Settings, Database, LogOut } from 'lucide-react';
+import { Bell, User, Settings, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserProfileModal } from '../profile/UserProfileModal';
 import { YandexCloudAdapter } from '../../dal/adapters/YandexCloudAdapter';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 interface AdminHeaderProps {
   title: string;
@@ -15,8 +14,7 @@ interface AdminHeaderProps {
 export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => {
   const navigate = useNavigate();
   const { language, setLanguage } = useLanguage();
-  const { user, switchRole, logout } = useAuth();
-  const { isProduction } = useEnvironmentStore();
+  const { user, logout } = useAuth();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -54,8 +52,6 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
   useEffect(() => {
     checkYdb();
   }, []);
-
-  const isOwner = user?.activeRole === 'owner';
 
   return (
     <>
@@ -124,23 +120,6 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
                 EN
               </button>
             </div>
-
-            {/* Quick Role Switcher (Hidden in production and for employee) */}
-            {!isProduction && user?.role !== 'employee' && (
-              <button
-                type="button"
-                onClick={() => switchRole(isOwner ? 'employee' : 'owner')}
-                className={`hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                  isOwner
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                }`}
-                title="Быстрое переключение роли (Owner / Curator)"
-              >
-                {isOwner ? <Crown className="w-3.5 h-3.5 text-indigo-600" /> : <Briefcase className="w-3.5 h-3.5 text-emerald-600" />}
-                <span>{isOwner ? 'Режим: Владелец' : 'Режим: Куратор'}</span>
-              </button>
-            )}
 
             {/* Notification Bell -> Archive Logs */}
             <Link

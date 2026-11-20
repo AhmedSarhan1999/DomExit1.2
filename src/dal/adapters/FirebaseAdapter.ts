@@ -8,36 +8,6 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import { IDatabaseAdapter } from '../interfaces/IDatabaseAdapter';
-import { isIsolatedCollection } from '../config/collectionResolver';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
-import {
-  initialLots,
-  initialDeals,
-  initialSellerRequests,
-  initialCandidates,
-  initialPartners,
-  initialPartnerBanks,
-  initialBankEmployees,
-  initialSpecialApprovals,
-} from '../seedData';
-
-const DEMO_DEVELOPER_IDS = Array.from({ length: 20 }, (_, i) => `dev-${i + 1}`);
-
-/**
- * Exact set of all mock/demo IDs used in Sandbox seed data.
- * Used to cleanly segregate demo items from genuine user-submitted entities in production mode.
- */
-const DEMO_SEED_ID_SET = new Set<string>([
-  ...initialLots.map((l) => l.id),
-  ...initialDeals.map((d) => d.id),
-  ...initialSellerRequests.map((s) => s.id),
-  ...initialCandidates.map((c) => c.id),
-  ...initialPartners.map((p) => p.id),
-  ...initialPartnerBanks.map((b) => b.id),
-  ...initialBankEmployees.map((be) => be.id),
-  ...initialSpecialApprovals.map((sa) => sa.id),
-  ...DEMO_DEVELOPER_IDS,
-]);
 
 /**
  * Recursively strips `undefined` properties before writing to Firestore,
@@ -107,10 +77,8 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
   ): Promise<T[]> {
     const storageKey = `domexit_fb_${collectionName}`;
     const localCached = this.getCache<T>(collectionName);
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
 
-    // Fetch from live Firestore and merge with local/seed items so newly created or seeded entities are never lost
+    // Fetch from live Firestore and merge with local/seed items so newly created entities are never lost
     try {
       if (db && (db as unknown as { app?: unknown }).app) {
         const colRef = collection(db, collectionName);
@@ -124,19 +92,15 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
             }
           });
 
-          // Merge local cached items that may not yet have flushed or additional non-seed items
+          // Merge local cached items that may not yet have flushed
           for (const localItem of localCached) {
             if (!remoteMap.has(localItem.id)) {
-              if (!isProd || !isIsolatedCollection(collectionName) || !DEMO_SEED_ID_SET.has(localItem.id)) {
-                remoteMap.set(localItem.id, localItem);
-              }
+              remoteMap.set(localItem.id, localItem);
             }
           }
-          if (!isProd || !isIsolatedCollection(collectionName)) {
-            for (const seedItem of effectiveSeedFallback) {
-              if (!remoteMap.has(seedItem.id)) {
-                remoteMap.set(seedItem.id, seedItem);
-              }
+          for (const seedItem of seedFallback) {
+            if (!remoteMap.has(seedItem.id)) {
+              remoteMap.set(seedItem.id, seedItem);
             }
           }
 
@@ -145,13 +109,6 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
             localStorage.setItem(storageKey, JSON.stringify(merged));
           } catch {}
           return merged;
-        } else if (isProd && isIsolatedCollection(collectionName)) {
-          // In production, when remote is empty, preserve ALL non-demo entities created locally
-          const nonSeed = localCached.filter((item) => !DEMO_SEED_ID_SET.has(item.id));
-          try {
-            localStorage.setItem(storageKey, JSON.stringify(nonSeed));
-          } catch {}
-          return nonSeed;
         }
       }
     } catch {
@@ -159,22 +116,9 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
     }
 
     if (localCached.length > 0) {
-      if (isProd && isIsolatedCollection(collectionName)) {
-        // Strip out demo seed items in production mode so production displays zero demo data,
-        // but preserve ALL genuine user-created entities
-        const nonSeed = localCached.filter((item) => !DEMO_SEED_ID_SET.has(item.id));
-        if (nonSeed.length !== localCached.length) {
-          try {
-            localStorage.setItem(storageKey, JSON.stringify(nonSeed));
-          } catch {}
-        }
-        return nonSeed;
-      }
-
-      // Ensure any newly added seed lots/entities appear cleanly in demo mode
-      if (effectiveSeedFallback.length > 0) {
+      if (seedFallback.length > 0) {
         const existingIds = new Set(localCached.map((i) => i.id));
-        const missingSeeds = effectiveSeedFallback.filter((s) => !existingIds.has(s.id));
+        const missingSeeds = seedFallback.filter((s) => !existingIds.has(s.id));
         if (missingSeeds.length > 0) {
           const combined = [...localCached, ...missingSeeds];
           try {
@@ -186,12 +130,12 @@ export class FirebaseDatabaseAdapter implements IDatabaseAdapter {
       return localCached;
     }
 
-    if (effectiveSeedFallback.length > 0) {
+    if (seedFallback.length > 0) {
       try {
-        localStorage.setItem(storageKey, JSON.stringify(effectiveSeedFallback));
+        localStorage.setItem(storageKey, JSON.stringify(seedFallback));
       } catch {}
     }
-    return [...effectiveSeedFallback];
+    return [...seedFallback];
   }
 
   async getEntityById<T extends { id: string }>(

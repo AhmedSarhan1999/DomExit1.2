@@ -38,7 +38,6 @@ import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
-import { initialLots, initialPartners } from '../dal/seedData';
 import { PartnerEntry, Lot, InvestorApplication } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -52,7 +51,7 @@ export const AdminPartnersBotPage: React.FC = () => {
   // Master Operational Tab State (Section 5)
   const [activeOperationalTab, setActiveOperationalTab] = useState<'vip_investors' | 'partners_registry'>('vip_investors');
 
-  const [partners, setPartners] = useState<PartnerEntry[]>(initialPartners);
+  const [partners, setPartners] = useState<PartnerEntry[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
   const [investors, setInvestors] = useState<InvestorApplication[]>([]);
   const [selectedLotCode, setSelectedLotCode] = useState<string>('');
@@ -145,7 +144,19 @@ export const AdminPartnersBotPage: React.FC = () => {
     );
   }
 
-  const selectedLot = lots.find((l) => l.lotCode === selectedLotCode) || lots[0] || initialLots[0];
+  const selectedLot = lots.find((l) => l.lotCode === selectedLotCode) || lots[0] || ({
+    lotCode: '---',
+    complexName: 'Не выбран',
+    developer: '---',
+    district: '---',
+    areaM2: 0,
+    deliveryDate: '---',
+    cashPaidBySeller: 0,
+    remainingInstallmentDebt: 0,
+    todayDeveloperPrice: 0,
+    dduContractPrice: 0,
+    imageUrl: '',
+  } as unknown as Lot);
 
   // Dynamic Live KPIs from DAL Repositories
   const approvedPartners = partners.filter((p) => p.status !== 'rejected');

@@ -1,11 +1,7 @@
 import { Lot, RussianCityCode, SellerExitRequest } from '../../types';
-import { initialSellerRequests } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
-import { getDistrictGeo, getRegionByCode } from '../../data/russianGeography';
 import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
-import { PartnersRepository } from './PartnersRepository';
-import { PartnerRequestsRepository } from './PartnerRequestsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { DevelopersRepository, PARTNER_BANKS } from './DevelopersRepository';
 import { BankPortalRepository } from './BankPortalRepository';
@@ -75,7 +71,7 @@ export class SellerRequestsRepository {
   static async getAll(): Promise<SellerExitRequest[]> {
     const list = await DatabaseGateway.getAll<SellerExitRequest>(
       COLLECTION,
-      initialSellerRequests
+      []
     );
     return [...list].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()

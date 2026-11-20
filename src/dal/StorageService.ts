@@ -5,7 +5,6 @@ import { AuditLogsRepository } from './repositories/AuditLogsRepository';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
 import { downloadDocumentFile } from '../utils/downloadManager';
 import { validateFileSignature } from '../utils/fileSignatureValidator';
-import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
 const IDB_NAME = 'domexit_yandex_s3_emulator';
 const IDB_VERSION = 1;
@@ -179,149 +178,6 @@ export const SELLER_MANDATORY_DOC_SLOTS: Array<{
   },
 ];
 
-const SEEDED_VAULT_DOCUMENTS: DocumentMetadata[] = [
-  {
-    id: 'vault-u10566-ddu',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'sellers/DEX-784105/U-10566/Dogovor_DDU_Chistoe_Nebo_10566.pdf',
-    name: 'Договор_ДДУ_Чистое_Небо_10566.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 1_842_500,
-    uploadedAt: '2026-10-18T10:15:00.000Z',
-    uploadedByUid: 'seed-seller-1',
-    clientCode: 'DEX-784105',
-    entityType: 'lot',
-    entityId: 'U-10566',
-    category: 'ddu_contract',
-    categoryLabelRu: 'Договор участия в долевом строительстве (ДДУ)',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-18T14:20:00.000Z',
-    sha256Hash: '9f84c2b10a77e5d2c318a904e1f77a01',
-    storageDriver: 'indexeddb_s3',
-  },
-  {
-    id: 'vault-u10566-devpay',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'sellers/DEX-784105/U-10566/Spravka_ob_oplate_SetlGroup.pdf',
-    name: 'Справка_об_оплате_SetlGroup_2485230.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 642_100,
-    uploadedAt: '2026-10-18T10:17:00.000Z',
-    uploadedByUid: 'seed-seller-1',
-    clientCode: 'DEX-784105',
-    entityType: 'lot',
-    entityId: 'U-10566',
-    category: 'developer_payment_cert',
-    categoryLabelRu: 'Справка об оплате от застройщика',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-18T14:22:00.000Z',
-    sha256Hash: '4e12a8b90d34f71c89aa2301b890f412',
-    storageDriver: 'indexeddb_s3',
-  },
-  {
-    id: 'vault-u10566-sfr',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'sellers/DEX-784105/U-10566/Spravka_SFR_Gosuslugi_Matkapital.pdf',
-    name: 'Справка_СФР_Госуслуги_Маткапитал_Чисто.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 418_900,
-    uploadedAt: '2026-10-18T10:19:00.000Z',
-    uploadedByUid: 'seed-seller-1',
-    clientCode: 'DEX-784105',
-    entityType: 'lot',
-    entityId: 'U-10566',
-    category: 'sfr_maternal_cap',
-    categoryLabelRu: 'Справка СФР (Госуслуги) о маткапитале',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-18T14:25:00.000Z',
-    sha256Hash: '7b55d1c02f98e12a67bc9012e4f5a833',
-    storageDriver: 'indexeddb_s3',
-  },
-  {
-    id: 'vault-u10566-bank',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'sellers/DEX-784105/U-10566/Vypiska_Sberbank_Proishozhdenie_Sredstv.pdf',
-    name: 'Выписка_Сбербанк_Происхождение_Средств.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 790_320,
-    uploadedAt: '2026-10-18T10:21:00.000Z',
-    uploadedByUid: 'seed-seller-1',
-    clientCode: 'DEX-784105',
-    entityType: 'lot',
-    entityId: 'U-10566',
-    category: 'bank_statement_origin',
-    categoryLabelRu: 'Банковская выписка о происхождении средств',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-18T14:27:00.000Z',
-    sha256Hash: '2c91e0f44a81b3d90012fe78c31a5590',
-    storageDriver: 'indexeddb_s3',
-  },
-  {
-    id: 'vault-c1-statement',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'buyers/DEX-409112/U-10566/Vypiska_Sberbank_Ivan_P_3000000.pdf',
-    name: 'Выписка_Сбербанк_Иван_П_3000000.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 852_400,
-    uploadedAt: '2026-10-19T11:40:00.000Z',
-    uploadedByUid: 'usr-buyer-001',
-    clientCode: 'DEX-409112',
-    entityType: 'buyer_application',
-    entityId: 'U-10566',
-    category: 'buyer_cash_statement',
-    categoryLabelRu: 'Выписка о ликвидности покупателя (ПАО Сбербанк)',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-19T12:00:00.000Z',
-    sha256Hash: 'a71e82bc9034f128d8445102ab98fe01',
-    storageDriver: 'indexeddb_s3',
-  },
-  {
-    id: 'vault-c2-approval',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'buyers/DEX-990088/U-10566/Odobrenie_Ipoteki_Sber_B-412.pdf',
-    name: 'Одобрение_Ипотеки_Сбер_B-412.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 1_120_500,
-    uploadedAt: '2026-10-19T09:15:00.000Z',
-    uploadedByUid: 'usr-investor-001',
-    clientCode: 'DEX-990088',
-    entityType: 'buyer_application',
-    entityId: 'U-10566',
-    category: 'mortgage_approval',
-    categoryLabelRu: 'Банковское одобрение семейной ипотеки (Сбербанк 6%)',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-19T10:00:00.000Z',
-    sha256Hash: '3f90cba7811d092e4451992bcda77102',
-    storageDriver: 'indexeddb_s3',
-  },
-  {
-    id: 'vault-c4-tradein',
-    bucket: DEFAULT_S3_BUCKET,
-    objectKey: 'buyers/DEX-518220/U-10566/Soglasie_Treydin_VTB.pdf',
-    name: 'Согласие_Трейдин_ВТБ.pdf',
-    mimeType: 'application/pdf',
-    sizeBytes: 740_000,
-    uploadedAt: '2026-10-18T14:10:00.000Z',
-    uploadedByUid: 'usr-c4',
-    clientCode: 'DEX-518220',
-    entityType: 'buyer_application',
-    entityId: 'U-10566',
-    category: 'mortgage_approval',
-    categoryLabelRu: 'Согласование программы Трейд-ин (Банк ВТБ)',
-    status: 'approved',
-    reviewedBy: 'Алексей Орлов (Старший юрист)',
-    reviewedAt: '2026-10-18T15:30:00.000Z',
-    sha256Hash: '5e44ba1288cd7019fbc41029da889100',
-    storageDriver: 'indexeddb_s3',
-  },
-];
-
 function buildOfficialFallbackCertificateBlobUrl(doc: DocumentMetadata): string {
   const content = [
     '======================================================================',
@@ -340,7 +196,7 @@ function buildOfficialFallbackCertificateBlobUrl(doc: DocumentMetadata): string 
     doc.reviewedBy ? `Проверил юрист:    ${doc.reviewedBy}` : '',
     `Контрольная сумма: SHA-256 ${doc.sha256Hash || 'GOST-VERIFIED'}`,
     '======================================================================',
-    'Документ прошел криптографическую фиксацию в контуре DomExit 214-ФЗ.',
+    'Документ прошел криптографическую фиксацию в защищенном контуре DomExit.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -386,8 +242,6 @@ class YandexS3CompatibleStorageService implements IStorageService {
 
     const previewDataUrl = await createImageThumbnail(dataUrl, file.type || 'application/octet-stream');
 
-    const isProd = useEnvironmentStore.getState().isProduction;
-
     // 1. Live Upload directly to Yandex Object Storage (S3 API)
     let cloudUrl = `https://storage.yandexcloud.net/${bucket}/${objectKey}`;
     try {
@@ -398,27 +252,12 @@ class YandexS3CompatibleStorageService implements IStorageService {
       );
     } catch (err) {
       console.warn('[StorageService] Live Yandex Object Storage upload error:', err);
-      if (isProd) {
-        throw new Error(
-          'Не удалось загрузить файл в защищенное хранилище Yandex Object Storage (152-ФЗ). Пожалуйста, повторите попытку.'
-        );
-      }
+      throw new Error(
+        'Не удалось загрузить файл в защищенное хранилище Yandex Object Storage (152-ФЗ). Пожалуйста, повторите попытку.'
+      );
     }
 
-    // 2. Store binary payload inside local IndexedDB S3 Object Store as resilient backup only in sandbox/demo mode
-    if (!isProd) {
-      await putS3Object({
-        s3Uri,
-        bucket,
-        objectKey,
-        mimeType: file.type || 'application/octet-stream',
-        dataUrl,
-        sizeBytes: file.size,
-        createdAt: nowIso,
-      });
-    }
-
-    // 3. Store lightweight metadata inside YDB / DAL documents_vault
+    // 2. Store lightweight metadata inside YDB / DAL documents_vault
     const metadata: DocumentMetadata = {
       id: docId,
       bucket,
@@ -458,7 +297,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
   ): Promise<DocumentMetadata[]> {
     const all = await DatabaseGateway.getAll<DocumentMetadata>(
       METADATA_COLLECTION,
-      SEEDED_VAULT_DOCUMENTS
+      []
     );
     return all
       .filter(
@@ -472,7 +311,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
   async getDocumentsByClient(clientCode: string): Promise<DocumentMetadata[]> {
     const all = await DatabaseGateway.getAll<DocumentMetadata>(
       METADATA_COLLECTION,
-      SEEDED_VAULT_DOCUMENTS
+      []
     );
     return all
       .filter((d) => d.clientCode === clientCode)
@@ -483,17 +322,15 @@ class YandexS3CompatibleStorageService implements IStorageService {
     return DatabaseGateway.getById<DocumentMetadata>(
       METADATA_COLLECTION,
       docId,
-      SEEDED_VAULT_DOCUMENTS
+      []
     );
   }
 
   async resolveObjectDataUrl(doc: DocumentMetadata): Promise<string> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-
-    // 1. In production, use Netlify serverless streaming endpoint or live S3 presigned URL
+    // 1. Use Netlify serverless streaming endpoint or live S3 presigned URL
     if (doc.objectKey) {
       const safeKey = doc.objectKey.startsWith('/') ? doc.objectKey.slice(1) : doc.objectKey;
-      if (typeof window !== 'undefined' && isProd) {
+      if (typeof window !== 'undefined') {
         return `/.netlify/functions/s3-download?key=${encodeURIComponent(safeKey)}`;
       }
       try {
@@ -504,21 +341,12 @@ class YandexS3CompatibleStorageService implements IStorageService {
       }
     }
 
-    // 2. Check local IndexedDB S3 Object Store for demo / offline development
-    if (!isProd) {
-      const s3Uri = `s3://${doc.bucket}/${doc.objectKey}`;
-      const stored = await getS3Object(s3Uri);
-      if (stored && stored.dataUrl) {
-        return stored.dataUrl;
-      }
-    }
-
-    // 3. Check inline dataUrl if attached
+    // 2. Check inline dataUrl if attached
     if ((doc as any).dataUrl && typeof (doc as any).dataUrl === 'string' && (doc as any).dataUrl.startsWith('data:')) {
       return (doc as any).dataUrl;
     }
 
-    // 4. Live cloudUrl
+    // 3. Live cloudUrl
     if (doc.cloudUrl && doc.cloudUrl.startsWith('http')) {
       return doc.cloudUrl;
     }

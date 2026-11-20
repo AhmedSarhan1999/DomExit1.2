@@ -1,5 +1,4 @@
 import { DealTrack } from '../../types';
-import { initialDeals } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { CandidatesRepository } from './CandidatesRepository';
@@ -9,7 +8,7 @@ const COLLECTION = 'deals';
 
 export class DealsRepository {
   static async getAll(): Promise<DealTrack[]> {
-    return DatabaseGateway.getAll<DealTrack>(COLLECTION, initialDeals);
+    return DatabaseGateway.getAll<DealTrack>(COLLECTION, []);
   }
 
   static async getById(dealId: string): Promise<DealTrack | null> {

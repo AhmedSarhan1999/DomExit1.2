@@ -1,62 +1,21 @@
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
-
 /**
- * Isolated collections subject to dynamic dual-environment routing (Sandbox vs Production).
- * In Sandbox ('demo') mode, these collections are prepended with `demo_` (e.g. `demo_lots`).
- * In Production ('production') mode, they use the clean canonical names (e.g. `lots`).
+ * Canonical Collection Name Resolver
+ * Standardized single-environment routing. All repositories interact directly
+ * with clean canonical database tables ('lots', 'deals', 'users', etc.).
  */
-export const ISOLATED_COLLECTIONS: readonly string[] = [
-  'lots',
-  'deals',
-  'seller_requests',
-  'buyer_applications',
-  'candidates',
-  'documents_vault',
-  'audit_logs',
-  'partner_preliminary_requests',
-  'escrow_bridge_chats',
-  'bank_special_approvals',
-  'partners',
-  'partner_applications',
-  'investor_applications',
-  'partner_banks',
-  'bank_employees',
-  'user_consents',
-  'user_consent_logs',
-  'developers',
-  'developer_accreditation_requests',
-  'users',
-  'employees',
-  'platform_settings',
-  'deal_messages',
-  'curator_messages',
-];
+export const ISOLATED_COLLECTIONS: readonly string[] = [];
 
 /**
- * Resolves collection name dynamically based on the active environment.
- * Shared infrastructure collections (market_settings, developers, etc.) are strictly preserved.
+ * Resolves collection name to canonical production name.
+ * Strips any legacy 'demo_' prefix if present.
  */
 export function resolveCollectionName(baseCollection: string): string {
-  // If collection is already prefixed with demo_, return as is
-  if (baseCollection.startsWith('demo_')) {
-    return baseCollection;
-  }
-
-  const currentEnv = useEnvironmentStore.getState().currentEnv;
-
-  // Apply sandbox prefix if collection is isolated and current environment is demo
-  if (ISOLATED_COLLECTIONS.includes(baseCollection)) {
-    return currentEnv === 'production' ? baseCollection : `demo_${baseCollection}`;
-  }
-
-  // Shared infrastructure collections (e.g. market_settings) remain unchanged
-  return baseCollection;
+  return baseCollection.replace(/^demo_/, '');
 }
 
 /**
- * Checks if a given collection name is an isolated data collection.
+ * Checks if a given collection name is an isolated data collection (always false in unified architecture).
  */
-export function isIsolatedCollection(collectionName: string): boolean {
-  const base = collectionName.replace(/^demo_/, '');
-  return ISOLATED_COLLECTIONS.includes(base);
+export function isIsolatedCollection(_collectionName: string): boolean {
+  return false;
 }

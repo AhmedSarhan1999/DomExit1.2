@@ -1,5 +1,4 @@
 import { PartnerEntry } from '../../types';
-import { initialPartners } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { UsersRepository } from './UsersRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
@@ -10,7 +9,7 @@ const LEGACY_COLLECTION = 'partners';
 export class PartnersRepository {
   static async getAll(): Promise<PartnerEntry[]> {
     const [canonical, legacy] = await Promise.all([
-      DatabaseGateway.getAll<PartnerEntry>(COLLECTION, initialPartners),
+      DatabaseGateway.getAll<PartnerEntry>(COLLECTION, []),
       DatabaseGateway.getAll<PartnerEntry>(LEGACY_COLLECTION, []),
     ]);
 

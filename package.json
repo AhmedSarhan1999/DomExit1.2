@@ -11,9 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1173.0",
     "@aws-sdk/client-s3": "^3.1173.0",
-    "@aws-sdk/lib-dynamodb": "^3.1173.0",
     "@aws-sdk/s3-request-presigner": "^3.1173.0",
     "firebase": "^13.0.0",
     "lucide-react": "^1.59.0",
@@ -28,9 +26,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "autoprefixer": "^10.6.1",
     "oxlint": "^1.88.0",
-    "postcss": "^8.5.31",
     "tailwindcss": "^4.3.3",
     "typescript": "~7.0.2",
     "vite": "^8.3.4"

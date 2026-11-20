@@ -5,7 +5,6 @@ import {
   PartnerBankEntity,
   BankTabPermission,
 } from '../../types';
-import { initialBankEmployees, initialPartnerBanks, initialSpecialApprovals } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { DealsRepository } from './DealsRepository';
 import { LotsRepository } from './LotsRepository';
@@ -20,7 +19,7 @@ const SPECIAL_APPROVAL_COLLECTION = 'bank_special_approvals';
 export class BankPortalRepository {
   // 0. Partner Banks Management (Task 7)
   static async getAllPartnerBanks(): Promise<PartnerBankEntity[]> {
-    return DatabaseGateway.getAll<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, initialPartnerBanks);
+    return DatabaseGateway.getAll<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, []);
   }
 
   static async addPartnerBank(data: {
@@ -80,7 +79,7 @@ export class BankPortalRepository {
     updates: Partial<PartnerBankEntity>,
     operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
   ): Promise<PartnerBankEntity | null> {
-    const bank = await DatabaseGateway.getById<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, id, initialPartnerBanks);
+    const bank = await DatabaseGateway.getById<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, id, []);
     if (!bank) return null;
     const updated: PartnerBankEntity = {
       ...bank,
@@ -115,7 +114,7 @@ export class BankPortalRepository {
     id: string,
     operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
   ): Promise<boolean> {
-    const bank = await DatabaseGateway.getById<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, id, initialPartnerBanks);
+    const bank = await DatabaseGateway.getById<PartnerBankEntity>(PARTNER_BANKS_COLLECTION, id, []);
     if (!bank) return false;
 
     // Remove bank entity
@@ -141,7 +140,7 @@ export class BankPortalRepository {
 
   // 1. Bank Employees Management
   static async getAllBankEmployees(): Promise<BankEmployee[]> {
-    return DatabaseGateway.getAll<BankEmployee>(BANK_EMP_COLLECTION, initialBankEmployees);
+    return DatabaseGateway.getAll<BankEmployee>(BANK_EMP_COLLECTION, []);
   }
 
   static async addBankEmployee(data: Partial<BankEmployee>): Promise<BankEmployee> {
@@ -200,7 +199,7 @@ export class BankPortalRepository {
 
   // 2. Special Property & Small Contractor Approval Requests (Task 5)
   static async getAllSpecialApprovals(): Promise<SpecialApprovalRequest[]> {
-    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, initialSpecialApprovals);
+    return DatabaseGateway.getAll<SpecialApprovalRequest>(SPECIAL_APPROVAL_COLLECTION, []);
   }
 
   static async addSpecialApproval(

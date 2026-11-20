@@ -3,7 +3,6 @@ import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
-import { initialPartners } from '../dal/seedData';
 import { PartnerEntry } from '../types';
 import { formatRubles } from '../utils/formatters';
 import { formatRussianPhoneInput, isValidRussianPhone } from '../utils/validators';
@@ -34,7 +33,7 @@ import {
 
 export const AdminBrokersPage: React.FC = () => {
   const { user } = useAuth();
-  const [partners, setPartners] = useState<PartnerEntry[]>(initialPartners);
+  const [partners, setPartners] = useState<PartnerEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'developer_cancellation' | 'mortgage_broker' | 'lawyer' | 'trade_in_developer'>('all');
   const [commissionStatusFilter, setCommissionStatusFilter] = useState<'all' | 'in_progress' | 'payable' | 'paid'>('all');

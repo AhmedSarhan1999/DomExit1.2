@@ -164,7 +164,7 @@ class ClientSWRCache {
 
 export const swrCache = new ClientSWRCache();
 
-// Automatically invalidate cached collection queries when DAL updates or environment toggles
+// Automatically invalidate cached collection queries when DAL updates
 if (typeof window !== 'undefined') {
   window.addEventListener('domexit:dal_updated', (e: Event) => {
     try {
@@ -181,9 +181,5 @@ if (typeof window !== 'undefined') {
     } catch {
       // Ignore
     }
-  });
-
-  window.addEventListener('domexit:environment_changed', () => {
-    swrCache.clear();
   });
 }

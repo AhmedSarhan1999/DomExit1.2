@@ -1,10 +1,8 @@
 import { BuyerCandidate } from '../../types';
-import { initialCandidates } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const COLLECTION = 'buyer_applications';
 const LEGACY_COLLECTION = 'candidates';
@@ -12,9 +10,8 @@ const MAX_ACTIVE_BIDS_PER_USER = 3;
 
 export class CandidatesRepository {
   static async getAll(): Promise<BuyerCandidate[]> {
-    const isProd = useEnvironmentStore.getState().isProduction;
     const [canonical, legacy] = await Promise.all([
-      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, isProd ? [] : initialCandidates),
+      DatabaseGateway.getAll<BuyerCandidate>(COLLECTION, []),
       DatabaseGateway.getAll<BuyerCandidate>(LEGACY_COLLECTION, []),
     ]);
 

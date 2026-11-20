@@ -24,28 +24,6 @@ export const YANDEX_REQUIRED_TABLES = [
   'escrow_bridge_chats',
   'partner_preliminary_requests',
   'platform_settings',
-  // Isolated Demo / Sandbox Collections
-  'demo_users',
-  'demo_employees',
-  'demo_lots',
-  'demo_deals',
-  'demo_seller_requests',
-  'demo_buyer_applications',
-  'demo_candidates',
-  'demo_documents_vault',
-  'demo_developers',
-  'demo_developer_accreditation_requests',
-  'demo_partners',
-  'demo_partner_applications',
-  'demo_audit_logs',
-  'demo_user_consents',
-  'demo_investor_applications',
-  'demo_partner_banks',
-  'demo_bank_employees',
-  'demo_bank_special_approvals',
-  'demo_escrow_bridge_chats',
-  'demo_partner_preliminary_requests',
-  'demo_platform_settings',
 ] as const;
 
 export interface YandexCredentialsConfig {
@@ -280,7 +258,6 @@ export async function initYandexTables(): Promise<{ success: boolean; createdCou
       const item: Record<string, any> = {};
       for (const k of Object.keys(u)) item[k] = toDynamoAttribute((u as any)[k]);
       await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'users', Item: item });
-      await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'demo_users', Item: item });
     }
 
     // Seed default Employee in production & demo employees tables
@@ -303,7 +280,6 @@ export async function initYandexTables(): Promise<{ success: boolean; createdCou
     const empItem: Record<string, any> = {};
     for (const k of Object.keys(defaultEmployee)) empItem[k] = toDynamoAttribute((defaultEmployee as any)[k]);
     await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'employees', Item: empItem });
-    await callYdbDocApi('DynamoDB_20120810.PutItem', { TableName: 'demo_employees', Item: empItem });
 
     // Seed default Market Settings
     const defaultMarket: MarketSettings = {

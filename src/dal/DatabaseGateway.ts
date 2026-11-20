@@ -1,8 +1,7 @@
 import { IDatabaseAdapter } from './interfaces/IDatabaseAdapter';
 import { firebaseAdapterInstance } from './adapters/FirebaseAdapter';
 import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
-import { resolveCollectionName, isIsolatedCollection } from './config/collectionResolver';
-import { useEnvironmentStore } from '../stores/useEnvironmentStore';
+import { resolveCollectionName } from './config/collectionResolver';
 import { swrCache } from './cache/SWRCache';
 import { requestDeduplicator } from './cache/requestDeduplicator';
 
@@ -12,8 +11,6 @@ import { requestDeduplicator } from './cache/requestDeduplicator';
  * All UI Components, Contexts, and Repositories communicate strictly through DatabaseGateway.
  * Switching from Firebase Firestore to Yandex Cloud Managed PostgreSQL / YDB requires changing
  * ONLY `activeAdapter` below — zero UI lines touched.
- *
- * Dynamically resolves Sandbox ('demo_*') vs Virgin Production collections based on useEnvironmentStore.
  */
 const defaultProvider = import.meta.env.VITE_DATA_PROVIDER || 'yandex';
 
@@ -52,8 +49,6 @@ class DatabaseGatewayController {
 
   getAll<T extends { id: string }>(collectionName: string, seedFallback: T[] = []): Promise<T[]> {
     const resolvedName = resolveCollectionName(collectionName);
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
     const cacheKey = `getAll:${resolvedName}`;
     const ttlMs = 30_000; // 30s TTL with SWR background revalidation
 
@@ -61,7 +56,7 @@ class DatabaseGatewayController {
       cacheKey,
       () =>
         requestDeduplicator.dedupe(cacheKey, () =>
-          this.activeAdapter.getAllEntities(resolvedName, effectiveSeedFallback)
+          this.activeAdapter.getAllEntities(resolvedName, seedFallback)
         ),
       ttlMs
     );
@@ -73,8 +68,6 @@ class DatabaseGatewayController {
     seedFallback: T[] = []
   ): Promise<T | null> {
     const resolvedName = resolveCollectionName(collectionName);
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
     const cacheKey = `getById:${resolvedName}:${id}`;
     const ttlMs = 30_000;
 
@@ -82,7 +75,7 @@ class DatabaseGatewayController {
       cacheKey,
       () =>
         requestDeduplicator.dedupe(cacheKey, () =>
-          this.activeAdapter.getEntityById(resolvedName, id, effectiveSeedFallback)
+          this.activeAdapter.getEntityById(resolvedName, id, seedFallback)
         ),
       ttlMs
     );
@@ -94,9 +87,7 @@ class DatabaseGatewayController {
     seedFallback: T[] = []
   ): Promise<T[]> {
     const resolvedName = resolveCollectionName(collectionName);
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const effectiveSeedFallback = isProd && isIsolatedCollection(collectionName) ? [] : seedFallback;
-    return this.activeAdapter.queryEntities(resolvedName, predicate, effectiveSeedFallback);
+    return this.activeAdapter.queryEntities(resolvedName, predicate, seedFallback);
   }
 
   async remove(collectionName: string, id: string): Promise<boolean> {
@@ -117,7 +108,7 @@ class DatabaseGatewayController {
   }
 
   /**
-   * Real-time Listener Bus (in-tab CustomEvent + cross-tab StorageEvent + Environment toggle)
+   * Real-time Listener Bus (in-tab CustomEvent + cross-tab StorageEvent)
    */
   subscribe(listener: (collectionName?: string) => void): () => void {
     if (typeof window === 'undefined') return () => {};
@@ -127,28 +118,21 @@ class DatabaseGatewayController {
       listener(custom.detail?.baseCollection || custom.detail?.collectionName);
     };
 
-    const handleEnvChanged = () => {
-      listener();
-    };
-
     const handleStorage = (e: StorageEvent) => {
       if (
         e.key &&
         (e.key.startsWith('domexit_db_') ||
-          e.key.startsWith('domexit_fb_') ||
-          e.key === 'domexit_app_environment')
+          e.key.startsWith('domexit_fb_'))
       ) {
         listener();
       }
     };
 
     window.addEventListener('domexit:dal_updated', handleCustom);
-    window.addEventListener('domexit:environment_changed', handleEnvChanged);
     window.addEventListener('storage', handleStorage);
 
     return () => {
       window.removeEventListener('domexit:dal_updated', handleCustom);
-      window.removeEventListener('domexit:environment_changed', handleEnvChanged);
       window.removeEventListener('storage', handleStorage);
     };
   }

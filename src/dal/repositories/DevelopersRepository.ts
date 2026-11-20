@@ -11,7 +11,6 @@ import {
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const DEVELOPERS_COLLECTION = 'developers';
 const ACCREDITATION_REQUESTS_COLLECTION = 'developer_accreditation_requests';
@@ -374,9 +373,7 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
   }
 
   // Ensure all institutional seed developers are present ONLY in Demo / Sandbox mode
-  const isProd = useEnvironmentStore.getState().isProduction;
-  if (!isProd) {
-    for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
+  for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
       const seedNorm = normalizeDeveloperName(seed.name);
       const seedCleanInn = seed.inn.trim().replace(/\D/g, '');
       const alreadyIn = mergedList.some((m) => {
@@ -388,7 +385,6 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
         mergedList.push({ ...seed });
       }
     }
-  }
 
   // Sort alphabetically by Russian collation and ensure isActive is boolean
   return mergedList
@@ -398,10 +394,9 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
 
 class DevelopersRepositoryController {
   async getAllDevelopers(): Promise<AccreditedDeveloper[]> {
-    const isProd = useEnvironmentStore.getState().isProduction;
     const raw = await DatabaseGateway.getAll<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
-      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+      INITIAL_ACCREDITED_DEVELOPERS
     );
     return deduplicateDevelopers(raw);
   }
@@ -423,18 +418,13 @@ class DevelopersRepositoryController {
     );
     if (found) return found;
 
-    const isProd = useEnvironmentStore.getState().isProduction;
-    if (!isProd) {
-      // Check seed fallback ONLY in demo mode
-      const seed = INITIAL_ACCREDITED_DEVELOPERS.find(
-        (d) =>
-          normalizeDeveloperName(d.name) === norm ||
-          (d.inn && developerName.trim() === d.inn.trim()) ||
-          d.id === developerName
-      );
-      return seed || null;
-    }
-    return null;
+    const seed = INITIAL_ACCREDITED_DEVELOPERS.find(
+      (d) =>
+        normalizeDeveloperName(d.name) === norm ||
+        (d.inn && developerName.trim() === d.inn.trim()) ||
+        d.id === developerName
+    );
+    return seed || null;
   }
 
   async isDeveloperAccredited(developerName: string): Promise<boolean> {
@@ -601,10 +591,9 @@ class DevelopersRepositoryController {
   }
 
   async getAllAccreditationRequests(): Promise<DeveloperAccreditationRequest[]> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    return DatabaseGateway.getAll<DeveloperAccreditationRequest>(
+        return DatabaseGateway.getAll<DeveloperAccreditationRequest>(
       ACCREDITATION_REQUESTS_COLLECTION,
-      isProd ? [] : INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+      []
     );
   }
 
@@ -661,11 +650,10 @@ class DevelopersRepositoryController {
     requestId: string,
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<{ request: DeveloperAccreditationRequest; developer: AccreditedDeveloper } | null> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const req = await DatabaseGateway.getById<DeveloperAccreditationRequest>(
+        const req = await DatabaseGateway.getById<DeveloperAccreditationRequest>(
       ACCREDITATION_REQUESTS_COLLECTION,
       requestId,
-      isProd ? [] : INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+      []
     );
     if (!req) return null;
 
@@ -725,11 +713,10 @@ class DevelopersRepositoryController {
     developerId: string,
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<AccreditedDeveloper | null> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+        const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
       developerId,
-      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+      INITIAL_ACCREDITED_DEVELOPERS
     );
     if (!dev) return null;
 
@@ -752,11 +739,10 @@ class DevelopersRepositoryController {
     developerId: string,
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<boolean> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+        const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
       developerId,
-      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+      INITIAL_ACCREDITED_DEVELOPERS
     );
     const devName = dev?.name || developerId;
     const devInn = dev?.inn || '—';
@@ -779,11 +765,10 @@ class DevelopersRepositoryController {
     updates: { name: string; inn: string },
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<AccreditedDeveloper | null> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+        const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
       developerId,
-      isProd ? [] : INITIAL_ACCREDITED_DEVELOPERS
+      INITIAL_ACCREDITED_DEVELOPERS
     );
     if (!dev) return null;
 
@@ -810,11 +795,10 @@ class DevelopersRepositoryController {
     requestId: string,
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<boolean> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const req = await DatabaseGateway.getById<DeveloperAccreditationRequest>(
+        const req = await DatabaseGateway.getById<DeveloperAccreditationRequest>(
       ACCREDITATION_REQUESTS_COLLECTION,
       requestId,
-      isProd ? [] : INITIAL_DEVELOPER_ACCREDITATION_REQUESTS
+      []
     );
     if (!req) return false;
 

@@ -1,20 +1,8 @@
 import { DatabaseGateway } from './DatabaseGateway';
-import {
-  initialLots,
-  initialDeals,
-  initialCandidates,
-  initialPartners,
-  initialEmployees,
-  initialMarketSettings,
-  initialBankEmployees,
-  initialSellerRequests,
-} from './seedData';
-import { migrateToSandbox } from './scripts/migrateToSandbox';
 import { initYandexTables } from './scripts/initYandexTables';
-import { useEnvironmentStore } from '../stores/useEnvironmentStore';
 
 /**
- * Live Database Auto-Seeder & Migration Controller
+ * Live Database Provisioning & Cleanup Controller
  * Strictly uses DatabaseGateway (IDatabaseAdapter) — zero direct Firestore imports outside Adapter!
  */
 export class DatabaseInitializer {
@@ -31,24 +19,7 @@ export class DatabaseInitializer {
         await initYandexTables();
       }
 
-      // 1. Run dual-environment sandbox migration
-      await migrateToSandbox();
-
-      const isProd = useEnvironmentStore.getState().isProduction;
-
-      // 2. Warm up collections: if in production, isolated collections pass [] so they remain empty!
-      await Promise.all([
-        DatabaseGateway.getAll('lots', isProd ? [] : initialLots),
-        DatabaseGateway.getAll('deals', isProd ? [] : initialDeals),
-        DatabaseGateway.getAll('buyer_applications', isProd ? [] : initialCandidates),
-        DatabaseGateway.getAll('seller_requests', isProd ? [] : initialSellerRequests),
-        DatabaseGateway.getAll('partner_applications', isProd ? [] : initialPartners),
-        DatabaseGateway.getAll('employees', isProd ? [initialEmployees[0]] : initialEmployees),
-        DatabaseGateway.getAll('market_settings', [initialMarketSettings]),
-        DatabaseGateway.getAll('bank_employees', isProd ? [] : initialBankEmployees),
-      ]);
-
-      // 3. Clean up unapproved test developer 'dfdfv' from developers and requests collections
+      // 1. Clean up unapproved test developer 'dfdfv' from developers collection
       try {
         const prodDevs = await DatabaseGateway.getAll<any>('developers', []);
         for (const d of prodDevs) {
@@ -61,26 +32,12 @@ export class DatabaseInitializer {
           }
         }
 
-        const demoDevs = await DatabaseGateway.getAll<any>('demo_developers', []);
-        for (const d of demoDevs) {
-          if (
-            d.name?.toLowerCase().includes('dfdfv') ||
-            d.inn === '7896512304' ||
-            d.id?.includes('dfdfv')
-          ) {
-            await DatabaseGateway.remove('demo_developers', d.id);
-          }
-        }
-
         // Clean local storage cache keys
         if (typeof localStorage !== 'undefined') {
           const cacheKeys = [
             'domexit_db_developers',
             'domexit_ydb_developers',
             'domexit_fb_developers',
-            'domexit_db_demo_developers',
-            'domexit_ydb_demo_developers',
-            'domexit_fb_demo_developers',
             'domexit_ydb_developer_accreditation_requests',
             'domexit_db_developer_accreditation_requests',
           ];
@@ -106,53 +63,21 @@ export class DatabaseInitializer {
         }
 
         // Clean any remaining mock requests from accreditation collections
-        const reqCollections = ['developer_accreditation_requests', 'demo_developer_accreditation_requests'];
-        for (const col of reqCollections) {
-          const reqs = await DatabaseGateway.getAll<any>(col, []);
-          for (const r of reqs) {
-            if (
-              r.id === 'DEV-ACC-dfdfv-test' ||
-              r.developerName?.toLowerCase().includes('dfdfv') ||
-              r.developerInn === '7896512304'
-            ) {
-              await DatabaseGateway.remove(col, r.id);
-            }
+        const reqs = await DatabaseGateway.getAll<any>('developer_accreditation_requests', []);
+        for (const r of reqs) {
+          if (
+            r.id === 'DEV-ACC-dfdfv-test' ||
+            r.developerName?.toLowerCase().includes('dfdfv') ||
+            r.developerInn === '7896512304'
+          ) {
+            await DatabaseGateway.remove('developer_accreditation_requests', r.id);
           }
         }
       } catch (cleanErr) {
         console.warn('[DatabaseInitializer] cleanup notice:', cleanErr);
       }
     } catch (err) {
-      console.warn('[DatabaseInitializer] Non-fatal migration check:', err);
+      console.warn('[DatabaseInitializer] Initialization error:', err);
     }
-  }
-
-  static clearDemoData(): void {
-    const keys = [
-      'domexit_fb_demo_lots',
-      'domexit_fb_demo_deals',
-      'domexit_fb_demo_candidates',
-      'domexit_fb_demo_buyer_applications',
-      'domexit_fb_demo_seller_requests',
-      'domexit_fb_demo_documents_vault',
-      'domexit_fb_lots',
-      'domexit_fb_deals',
-      'domexit_fb_candidates',
-      'domexit_fb_buyer_applications',
-      'domexit_fb_seller_requests',
-      'domexit_fb_partners',
-      'domexit_fb_partner_applications',
-      'domexit_fb_investor_applications',
-      'domexit_fb_bank_credit_limits',
-      'domexit_fb_documents_vault',
-    ];
-    keys.forEach((k) => localStorage.removeItem(k));
-  }
-
-  static resetToDemoData(): void {
-    this.clearDemoData();
-    localStorage.removeItem('domexit_sandbox_migrated_v1');
-    localStorage.removeItem('domexit_sandbox_migrated_v2');
-    window.location.reload();
   }
 }

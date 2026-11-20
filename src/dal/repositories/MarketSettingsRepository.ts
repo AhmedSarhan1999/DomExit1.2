@@ -1,7 +1,16 @@
 import { DistrictYieldConfig, MarketSettings } from '../../types';
-import { initialMarketSettings } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
+
+export const DEFAULT_MARKET_SETTINGS: MarketSettings = {
+  id: 'market_parameters',
+  cbrKeyRatePercent: 21.0,
+  familyMortgageRatePercent: 6.0,
+  developerPenaltyPercent: 15.0,
+  buyerCommissionPercent: 2.5,
+  updatedAt: '2026-10-28T10:00:00.000Z',
+  updatedBy: 'System Default',
+};
 
 const COLLECTION = 'market_settings';
 const DOC_ID = 'market_parameters';
@@ -191,9 +200,9 @@ export class MarketSettingsRepository {
   static async getSettings(): Promise<MarketSettings> {
     if (this.cachedSettings) return this.cachedSettings;
     const settings = await DatabaseGateway.getById<MarketSettings>(COLLECTION, DOC_ID, [
-      initialMarketSettings as MarketSettings,
+      DEFAULT_MARKET_SETTINGS,
     ]);
-    const base = settings || (initialMarketSettings as MarketSettings);
+    const base = settings || DEFAULT_MARKET_SETTINGS;
     this.cachedSettings = {
       ...base,
       districtYieldConfigs: {
@@ -301,6 +310,6 @@ export class MarketSettingsRepository {
     } catch {
       // Fallback to seed
     }
-    return initialMarketSettings as MarketSettings;
+    return DEFAULT_MARKET_SETTINGS;
   }
 }

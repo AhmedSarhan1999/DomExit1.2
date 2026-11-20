@@ -1,8 +1,7 @@
 import React from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
-import { ShieldAlert, ShieldCheck, UserCheck, Crown, ArrowLeft, Loader2, LogIn } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Loader2, LogIn } from 'lucide-react';
 import { securityLogger } from '../../dal/telemetry/securityLogger';
 
 interface AdminRouteGuardProps {
@@ -13,14 +12,10 @@ interface AdminRouteGuardProps {
  * Enterprise Admin Route Guard (SEC-01 & SEC-02)
  *
  * Strictly blocks unauthenticated or non-staff users from accessing /admin/* routes.
- * In development & testing mode (Sandbox), provides an intuitive single-click persona activation
- * so the team can easily audit and test Owner vs Curator capabilities without friction.
- * In Production mode, enforces strict authentication modal without demo buttons.
+ * Enforces clean, strict authentication modal without demo buttons or persona switchers.
  */
 export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) => {
-  const { user, loading, quickDemoLogin, openAuthModal } = useAuth();
-  const { isProduction } = useEnvironmentStore();
-  const showTestSwitchers = !isProduction;
+  const { user, loading, openAuthModal } = useAuth();
 
   const isStaff = Boolean(
     user &&
@@ -84,46 +79,16 @@ export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) =>
           </p>
         </div>
 
-        {/* Sandbox test switchers (Enabled in test/sandbox mode) */}
-        {showTestSwitchers ? (
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60 space-y-3 text-left">
-            <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold border-b border-slate-700/60 pb-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Тестовый контур разработки (Режим симуляции):</span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => quickDemoLogin('owner')}
-                className="w-full px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md"
-              >
-                <Crown className="w-4 h-4 text-amber-300" />
-                <span>Войти как Владелец / CEO (Ahmed Abdallah)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickDemoLogin('employee')}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer border border-slate-600"
-              >
-                <UserCheck className="w-4 h-4 text-emerald-400" />
-                <span>Войти как Куратор сделок (Алексей Смирнов)</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => openAuthModal('Авторизуйтесь для доступа к панели управления')}
-              className="w-full px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-lg transition-all cursor-pointer"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Войти с учетной записью сотрудника</span>
-            </button>
-          </div>
-        )}
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => openAuthModal('Авторизуйтесь для доступа к панели управления')}
+            className="w-full px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-lg transition-all cursor-pointer"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Войти с учетной записью сотрудника</span>
+          </button>
+        </div>
 
         <div>
           <Link

@@ -1,5 +1,4 @@
 import { Lot } from '../../types';
-import { initialLots } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { EmployeesRepository } from './EmployeesRepository';
@@ -25,7 +24,7 @@ export class LotsRepository {
     isVipInvestor?: boolean;
     includePendingApproval?: boolean;
   }): Promise<Lot[]> {
-    let list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    let list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
 
     // Strict deduplication guard
     const seenCodes = new Set<string>();
@@ -156,7 +155,7 @@ export class LotsRepository {
 
   static async getByCode(lotCode: string): Promise<Lot | null> {
     if (!lotCode) return null;
-    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
     const clean = lotCode.trim().toUpperCase();
     const found = list.find(
       (l) => l.lotCode.toUpperCase() === clean || l.id.toUpperCase() === clean
@@ -174,7 +173,7 @@ export class LotsRepository {
     email?: string,
     phone?: string
   ): Promise<Lot[]> {
-    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
     const cleanUid = (uid || '').trim().toLowerCase();
     const cleanCode = (clientCode || '').trim().toLowerCase();
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -192,12 +191,12 @@ export class LotsRepository {
 
 
   static async getByAssignedEmployee(employeeId: string): Promise<Lot[]> {
-    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
     return list.filter((l) => l.assignedEmployeeId === employeeId);
   }
 
   static async getVipLots(): Promise<Lot[]> {
-    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, initialLots);
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
     return list.filter((l) => {
       if (l.approvalStatus === 'rejected' || l.status === 'draft') return false;
       const isWithin48h = l.vipEarlyAccessUntil ? new Date(l.vipEarlyAccessUntil).getTime() > Date.now() : true;

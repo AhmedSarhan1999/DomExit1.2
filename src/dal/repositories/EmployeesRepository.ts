@@ -1,7 +1,5 @@
 import { Employee } from '../../types';
-import { initialEmployees } from '../seedData';
 import { DatabaseGateway } from '../DatabaseGateway';
-import { useEnvironmentStore } from '../../stores/useEnvironmentStore';
 
 const COLLECTION = 'employees';
 
@@ -27,17 +25,12 @@ export const PROD_SYSTEM_EMPLOYEES: Employee[] = [
 
 export class EmployeesRepository {
   static async getAll(): Promise<Employee[]> {
-    const isProd = useEnvironmentStore.getState().isProduction;
-    const seed = isProd ? PROD_SYSTEM_EMPLOYEES : initialEmployees;
-    const raw = await DatabaseGateway.getAll<Employee>(COLLECTION, seed);
-    if (isProd) {
-      const valid = raw.filter((e) => {
-        const email = (e.email || '').toLowerCase().trim();
-        return email === 'amaas9494@gmail.com' || (!email.includes('@domexit.ru') && !email.includes('test'));
-      });
-      return valid.length > 0 ? valid : PROD_SYSTEM_EMPLOYEES;
-    }
-    return raw;
+    const raw = await DatabaseGateway.getAll<Employee>(COLLECTION, PROD_SYSTEM_EMPLOYEES);
+    const valid = raw.filter((e) => {
+      const email = (e.email || '').toLowerCase().trim();
+      return email === 'amaas9494@gmail.com' || (!email.includes('@domexit.ru') && !email.includes('test'));
+    });
+    return valid.length > 0 ? valid : PROD_SYSTEM_EMPLOYEES;
   }
 
   static async getById(employeeId: string): Promise<Employee | null> {

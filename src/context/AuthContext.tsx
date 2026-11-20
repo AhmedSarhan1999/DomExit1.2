@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   signInWithPopup,
   signInWithEmailAndPassword,
@@ -26,8 +26,6 @@ export const TEST_STAFF_EMAILS = [
   'employee@domexit.ru',
   'morozov@domexit.ru',
 ];
-
-export const DEMO_PASSWORD = 'DomExit2026!';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -59,9 +57,6 @@ interface AuthContextType {
   upgradeToPartner: (details?: Partial<PartnerEntry>) => Promise<void>;
   upgradeToInvestor: (details?: Partial<InvestorApplication>) => Promise<void>;
   activateVipSubscription: () => Promise<void>;
-  quickDemoLogin: (
-    role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
-  ) => Promise<UserProfile>;
   refreshUserProfile: () => Promise<void>;
   updateUserProfile: (
     data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL' | 'inn'>>
@@ -514,7 +509,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (ydbProfile) {
           const storedPass = (ydbProfile as any).passwordHash || '';
           const isValidPass =
-            (storedPass ? pass === storedPass : pass === DEMO_PASSWORD) ||
+            (storedPass ? pass === storedPass : false) ||
             (ydbProfile as any).authProvider === 'yandex';
 
           if (isValidPass) {
@@ -657,177 +652,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return updatedUser;
   };
 
-  const quickDemoLogin = async (
-    role: 'owner' | 'employee' | 'bank' | 'partner' | 'investor' | 'seller' | 'buyer'
-  ): Promise<UserProfile> => {
-    setLoading(true);
-    setAuthError(null);
-
-    let demoEmail = 'client@domexit.ru';
-    let profile: UserProfile;
-
-    if (role === 'owner') {
-      demoEmail = 'ceo@domexit.ru';
-      profile = {
-        id: 'usr-owner-001',
-        clientCode: 'DEX-104662',
-        name: 'Ahmed Abdallah (Владелец / CEO)',
-        email: 'amaas9499@gmail.com',
-        phone: '+7 (812) 900-00-01',
-        telegram: '@domexit_owner',
-        role: 'admin',
-        roles: ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'],
-        activeRole: 'owner',
-        isPartnerApproved: true,
-        isInvestorApproved: true,
-        partnerRefCode: 'PARTNER-MASTER-OWNER',
-        favorites: ['U-10566', 'U-14102'],
-        registeredAt: '2025-01-01T00:00:00Z',
-      };
-    } else if (role === 'employee') {
-      demoEmail = 'employee@domexit.ru';
-      profile = {
-        id: 'usr-staff-002',
-        clientCode: 'DEX-000002',
-        name: 'Алексей Смирнов',
-        email: 'amaas9494@gmail.com',
-        phone: '+7 (921) 888-11-22',
-        telegram: '@domexit_smirnov',
-        role: 'employee',
-        roles: ['employee', 'buyer', 'seller'],
-        activeRole: 'employee',
-        assignedEmployeeId: 'emp-1',
-        isPartnerApproved: false,
-        isInvestorApproved: false,
-        favorites: ['U-10566'],
-        registeredAt: '2025-02-01T00:00:00Z',
-      };
-    } else if (role === 'bank') {
-      demoEmail = 'bank@domexit.ru';
-      profile = {
-        id: 'usr-bank-001',
-        clientCode: 'DEX-000004',
-        name: 'Игорь Владимирович Соколов (Сбербанк)',
-        email: 'bank@domexit.ru',
-        phone: '+7 (812) 500-11-00',
-        telegram: '@bank_sber_escrow',
-        role: 'bank',
-        roles: ['bank', 'employee', 'buyer'],
-        activeRole: 'bank',
-        isPartnerApproved: false,
-        isInvestorApproved: false,
-        favorites: [],
-        registeredAt: '2025-02-15T00:00:00Z',
-      };
-    } else if (role === 'partner') {
-      demoEmail = 'partner@domexit.ru';
-      profile = {
-        id: 'usr-partner-001',
-        clientCode: 'DEX-110022',
-        name: 'Елена Кузнецова (Партнер-брокер)',
-        email: 'partner@domexit.ru',
-        phone: '+7 (911) 456-78-90',
-        telegram: '@elena_partner',
-        role: 'partner',
-        roles: ['partner', 'buyer'],
-        activeRole: 'partner',
-        isPartnerApproved: true,
-        isInvestorApproved: false,
-        partnerRefCode: 'PARTNER-SPB-12',
-        favorites: [],
-        registeredAt: '2025-03-05T00:00:00Z',
-      };
-    } else if (role === 'investor') {
-      demoEmail = 'investor@domexit.ru';
-      profile = {
-        id: 'usr-investor-001',
-        clientCode: 'DEX-990088',
-        name: 'Сергей Николаевич (VIP Инвестор)',
-        email: 'investor@domexit.ru',
-        phone: '+7 (921) 777-99-00',
-        telegram: '@sergey_capital',
-        role: 'investor',
-        roles: ['investor', 'buyer'],
-        activeRole: 'investor',
-        isPartnerApproved: false,
-        isInvestorApproved: true,
-        favorites: ['U-14102', 'U-10715'],
-        investorPackagePreference: {
-          budgetMillions: 35,
-          selectedPackage: 'flipping',
-          updatedAt: '2026-10-19T12:00:00Z',
-        },
-        registeredAt: '2025-03-10T00:00:00Z',
-      };
-    } else if (role === 'seller') {
-      demoEmail = 'seller@domexit.ru';
-      profile = {
-        id: 'usr-seller-001',
-        clientCode: 'DEX-784105',
-        name: 'Александр Владимирович Б.',
-        email: 'seller@domexit.ru',
-        phone: '+7 (911) 234-56-78',
-        telegram: '@alex_seller',
-        role: 'seller',
-        roles: ['seller', 'buyer'],
-        activeRole: 'seller',
-        isPartnerApproved: false,
-        isInvestorApproved: false,
-        favorites: ['U-10566'],
-        activeDealId: 'DEAL-2025-10566',
-        registeredAt: '2025-03-01T00:00:00Z',
-      };
-    } else {
-      demoEmail = 'client@domexit.ru';
-      profile = {
-        id: 'usr-buyer-001',
-        clientCode: 'DEX-409112',
-        name: 'Иван Петрович',
-        email: 'client@domexit.ru',
-        phone: '+7 (921) 987-65-43',
-        telegram: '@ivan_buyer',
-        role: 'buyer',
-        roles: ['buyer'],
-        activeRole: 'buyer',
-        isPartnerApproved: false,
-        isInvestorApproved: false,
-        favorites: ['U-10566'],
-        registeredAt: '2025-03-15T00:00:00Z',
-      };
-    }
-
-    try {
-      if (auth && typeof auth.name === 'string') {
-        try {
-          const cred = await signInWithEmailAndPassword(auth, demoEmail, DEMO_PASSWORD);
-          profile.id = cred.user.uid;
-        } catch (authErr: any) {
-          if (
-            authErr?.code === 'auth/user-not-found' ||
-            authErr?.code === 'auth/invalid-credential'
-          ) {
-            try {
-              const cred = await createUserWithEmailAndPassword(auth, demoEmail, DEMO_PASSWORD);
-              profile.id = cred.user.uid;
-            } catch {
-              // Keep deterministic local profile ID
-            }
-          }
-        }
-      }
-    } catch {
-      // Offline / local fallback
-    }
-
-    await persistUserState(profile);
-
-    setLoading(false);
-    if (successCallback) successCallback();
-    closeAuthModal();
-    executeRoleBasedRedirect(profile);
-    return profile;
-  };
-
   const logout = async () => {
     try {
       if (auth && typeof auth.signOut === 'function') {
@@ -884,8 +708,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const switchRole = (
     role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank'
   ) => {
-    // Switching persona via the top Role Switcher loads that distinct persona's canonical account
-    quickDemoLogin(role);
+    if (!user) return;
+    const updatedUser: UserProfile = { ...user, activeRole: role };
+    setUser(updatedUser);
+    persistUserState(updatedUser);
   };
 
   const upgradeToPartner = async (details?: Partial<PartnerEntry>): Promise<void> => {
@@ -1072,7 +898,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         upgradeToPartner,
         upgradeToInvestor,
         activateVipSubscription,
-        quickDemoLogin,
         refreshUserProfile,
         updateUserProfile,
         updateUserPassword,
