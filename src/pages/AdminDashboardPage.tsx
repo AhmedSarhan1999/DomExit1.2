@@ -23,6 +23,8 @@ import {
 } from '../dal/repositories/MarketSettingsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { SecurityIncidentsRepository } from '../dal/repositories/SecurityIncidentsRepository';
+import { CuratorChatRepository } from '../dal/repositories/CuratorChatRepository';
+import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { LegalPoliciesRepository, CANONICAL_POLICY_NAMES, INITIAL_POLICY_TEXTS } from '../dal/repositories/LegalPoliciesRepository';
 import { LegalCmsManager } from '../components/admin/LegalCmsManager';
 import { computeSha256 } from '../utils/crypto';
@@ -219,6 +221,19 @@ export const AdminDashboardPage: React.FC = () => {
   const [isPublishingPolicy, setIsPublishingPolicy] = useState<boolean>(false);
   const [policyPublishSuccess, setPolicyPublishSuccess] = useState<boolean>(false);
 
+  // Incoming curator dialogs & active chat
+  const [curatorDialogs, setCuratorDialogs] = useState<
+    Array<{
+      lotCode: string;
+      dealId?: string;
+      senderName: string;
+      senderRole: string;
+      lastMessage: any;
+      unreadCount: number;
+    }>
+  >([]);
+  const [activeCuratorChatLot, setActiveCuratorChatLot] = useState<string | null>(null);
+
   // Live recalculate SHA-256 when text changes
   useEffect(() => {
     let active = true;
@@ -298,6 +313,22 @@ export const AdminDashboardPage: React.FC = () => {
       setChannelsForm(globalChannels);
     }
   }, [globalChannels]);
+
+  useEffect(() => {
+    async function fetchDialogs() {
+      const isOwner = user?.role === 'owner' || user?.activeRole === 'owner';
+      const d = await CuratorChatRepository.getRecentDialogs(
+        isOwner ? undefined : user?.assignedEmployeeId || user?.id,
+        isOwner
+      );
+      setCuratorDialogs(d);
+    }
+    fetchDialogs();
+    const unsub = CuratorChatRepository.subscribe(() => {
+      fetchDialogs();
+    });
+    return unsub;
+  }, [user]);
 
   // Modal inspection state
   const [modalLot, setModalLot] = useState<Lot | null>(null);
@@ -1743,6 +1774,78 @@ export const AdminDashboardPage: React.FC = () => {
                       </div>
                     </div>
                   )}
+
+                  {/* INCOMING MESSAGES DESK: Curator Direct Chat Messages */}
+                  <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                          <MessageCircle className="w-5 h-5 text-indigo-600" />
+                          <span>Входящие сообщения от клиентов (Чат с куратором)</span>
+                          {curatorDialogs.reduce((sum, d) => sum + d.unreadCount, 0) > 0 && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 text-[11px] font-black animate-pulse">
+                              {curatorDialogs.reduce((sum, d) => sum + d.unreadCount, 0)} непрочитанных
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Прямой канал связи с покупателями и продавцами по объектам и активным сделкам.
+                        </p>
+                      </div>
+                      <span className="px-3 py-1 bg-slate-50 text-slate-700 border border-slate-200 rounded-full text-xs font-medium">
+                        Диалогов: {curatorDialogs.length}
+                      </span>
+                    </div>
+
+                    {curatorDialogs.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400 text-xs">
+                        Нет активных сообщений в чатах с куратором.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {curatorDialogs.map((dialog) => (
+                          <div
+                            key={dialog.lotCode}
+                            className="py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-slate-50/80 px-2 rounded-xl transition-colors"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-mono text-xs font-bold text-slate-900">
+                                  {dialog.lotCode}
+                                </span>
+                                <span className="text-[11px] font-medium text-slate-600">
+                                  {dialog.senderName}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-semibold">
+                                  {dialog.senderRole === 'buyer'
+                                    ? 'Покупатель'
+                                    : dialog.senderRole === 'seller'
+                                    ? 'Продавец'
+                                    : 'Клиент'}
+                                </span>
+                                {dialog.unreadCount > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">
+                                    +{dialog.unreadCount}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-600 truncate max-w-md">
+                                {dialog.lastMessage?.text || 'Новый диалог'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setActiveCuratorChatLot(dialog.lotCode)}
+                              className="shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center space-x-1.5 shadow-xs cursor-pointer"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>Открыть чат</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -5343,6 +5446,17 @@ export const AdminDashboardPage: React.FC = () => {
         canReview={true}
         reviewerName={operatorName}
       />
+
+      {/* Curator Chat Widget Modal */}
+      {activeCuratorChatLot && (
+        <CuratorChatWidget
+          lotCode={activeCuratorChatLot}
+          isOpen={true}
+          onClose={() => setActiveCuratorChatLot(null)}
+          curatorName={operatorName}
+          curatorRole="Куратор платформы DomExit"
+        />
+      )}
     </div>
   );
 };

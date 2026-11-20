@@ -1180,6 +1180,9 @@ export const AdminPackagingPage: React.FC = () => {
                                 src={photo}
                                 alt={`Фото ${index + 1}`}
                                 className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+                                }}
                               />
                               <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[9px] px-2 py-0.5 rounded-full font-mono">
                                 {index === 0 ? 'Планировка' : `Фото ${index + 1}`}
@@ -1264,9 +1267,12 @@ export const AdminPackagingPage: React.FC = () => {
                     <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
                       <div className="h-44 rounded-xl bg-slate-200 overflow-hidden relative">
                         <img
-                          src={coverImageUrl || approvedPhotos[0] || lot.imageUrl}
+                          src={coverImageUrl || approvedPhotos[0] || lot.imageUrl || 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80'}
                           alt="Превью"
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+                          }}
                         />
                         <span className="absolute top-2 left-2 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold text-[10px] shadow-xs">
                           Документы проверены

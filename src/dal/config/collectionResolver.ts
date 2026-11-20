@@ -28,6 +28,8 @@ export const ISOLATED_COLLECTIONS: readonly string[] = [
   'users',
   'employees',
   'platform_settings',
+  'deal_messages',
+  'curator_messages',
 ];
 
 /**

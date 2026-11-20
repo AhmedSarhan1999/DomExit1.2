@@ -16,6 +16,7 @@ import { BookingModal } from '../components/booking/BookingModal';
 import { SmartMortgageCalculator } from '../components/lot/SmartMortgageCalculator';
 import { YandexLotMap } from '../components/maps/YandexLotMap';
 import { PublicLegalReportModal } from '../components/lot/PublicLegalReportModal';
+import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { LotDetailsSkeleton } from '../components/common/Skeletons';
 import {
   ShieldCheck,
@@ -32,6 +33,7 @@ import {
   Send,
   Phone,
   MessageCircle,
+  MessageSquare,
   ArrowRight,
   TrainFront,
   TrendingUp,
@@ -42,6 +44,9 @@ import {
   Calendar,
   Building2,
 } from 'lucide-react';
+
+const FALLBACK_LOT_IMAGE =
+  'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
 
 export const LotDetailsPage: React.FC = () => {
   const { lotCode } = useParams<{ lotCode: string }>();
@@ -62,6 +67,7 @@ export const LotDetailsPage: React.FC = () => {
   const [accordionLawOpen, setAccordionLawOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isCuratorChatOpen, setIsCuratorChatOpen] = useState(false);
   const [bookingSuccessToast, setBookingSuccessToast] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
   const [isDevAccredited, setIsDevAccredited] = useState<boolean>(true);
@@ -471,12 +477,15 @@ export const LotDetailsPage: React.FC = () => {
             <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm space-y-4">
               <div className="relative h-72 sm:h-96 rounded-2xl overflow-hidden bg-slate-100 aspect-[16/10]">
                 <img
-                  src={gallery[activeImageIndex % gallery.length] || lot.imageUrl}
+                  src={gallery[activeImageIndex % gallery.length] || lot.imageUrl || FALLBACK_LOT_IMAGE}
                   alt={lot.complexName}
                   className="w-full h-full object-cover"
                   loading="eager"
                   fetchPriority="high"
                   decoding="async"
+                  onError={(e) => {
+                    e.currentTarget.src = FALLBACK_LOT_IMAGE;
+                  }}
                 />
                 <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 text-slate-800 border border-slate-200/60 shadow-xs backdrop-blur-md text-xs font-bold">
                   {lot.constructionReadinessPercent}% готовности корпуса
@@ -487,7 +496,7 @@ export const LotDetailsPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-4 gap-3">
-                {['Архитектура ЖК', 'Планировка и корпус', 'Интерьер / Холл', 'Благоустройство'].map(
+                {['Архитектура ЖК', 'Планировка и корпус', 'Интерьер / Холл', 'Предпросмотр'].map(
                   (label, idx) => (
                     <button
                       key={label}
@@ -501,11 +510,14 @@ export const LotDetailsPage: React.FC = () => {
                     >
                       <div className="h-16 rounded-lg overflow-hidden bg-slate-100 mb-1 aspect-[16/9]">
                         <img
-                          src={gallery[idx % gallery.length]}
+                          src={gallery[idx % gallery.length] || FALLBACK_LOT_IMAGE}
                           alt={label}
                           className="w-full h-full object-cover"
                           loading="lazy"
                           decoding="async"
+                          onError={(e) => {
+                            e.currentTarget.src = FALLBACK_LOT_IMAGE;
+                          }}
                         />
                       </div>
                       <span className="text-[11px] font-bold text-slate-700 block truncate">
@@ -925,7 +937,17 @@ export const LotDetailsPage: React.FC = () => {
           {/* Right Column (4 cols): Sticky Financial Card, District Link & Curator */}
           <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-24">
             
-            <div className="bg-white rounded-3xl border-2 border-emerald-500 shadow-2xl p-6 sm:p-7 space-y-5">
+            {/* 1. Unified Financial Summary Card */}
+            <div className="bg-white rounded-3xl border-2 border-emerald-500 shadow-xl p-6 sm:p-7 space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="text-base font-black text-slate-950 uppercase tracking-wider">
+                  Финансовая сводка
+                </h3>
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                  0% наценки
+                </span>
+              </div>
+
               <div>
                 <span className="text-xs font-semibold text-slate-500 block">
                   Наличными продавцу сейчас (100% возврат):
@@ -934,7 +956,7 @@ export const LotDetailsPage: React.FC = () => {
                   {formatRubles(lot.cashPaidBySeller)}
                 </div>
                 <span className="text-[11px] text-emerald-700 font-bold block mt-1">
-                  Ровно сумма, выплаченная владельцем — 0% наценки
+                  Ровно сумма, внесенная владельцем — без скрытых надбавок
                 </span>
                 {Boolean(lot.is_negotiable || lot.isNegotiable) && (
                   <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold mt-2">
@@ -962,25 +984,31 @@ export const LotDetailsPage: React.FC = () => {
               </div>
 
               <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  ПРОЗРАЧНЫЙ РАСЧЕТ ПЛАТЕЖЕЙ
-                </span>
+                <div className="flex justify-between text-slate-600">
+                  <span>Полная стоимость квартиры по ДДУ:</span>
+                  <span className="font-semibold text-slate-900">{formatRubles(lot.dduContractPrice)}</span>
+                </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Остаток долга застройщику:</span>
                   <span className="font-semibold text-slate-900">{formatRubles(lot.remainingInstallmentDebt)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>Текущий график рассрочки:</span>
-                  <span className="font-semibold text-slate-900">{formatRubles(lot.installmentQuarterlyPayment)} / кв.</span>
-                </div>
+                {lot.transactionType === 'installment_cession' && (lot.installmentQuarterlyPayment || 0) > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Платеж по графику рассрочки:</span>
+                    <span className="font-semibold text-slate-900">{formatRubles(lot.installmentQuarterlyPayment)} / кв.</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-600">
                   <span>Срок ввода объекта:</span>
                   <span className="font-semibold text-slate-900">{lot.deliveryDate}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Сервисный сбор DomExit (2.5%):</span>
+                  <span>Сервисный сбор платформы (2.5%):</span>
                   <span className="font-semibold text-slate-900">{formatRubles(lot.serviceCommissionRub)}</span>
                 </div>
+                <span className="text-[10px] text-slate-400 block italic">
+                  * Сервисный сбор оплачивается строго после регистрации уступки в Росреестре.
+                </span>
 
                 <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-xl flex justify-between items-center font-bold text-xs mt-3">
                   <span>Итого первый взнос на сделке:</span>
@@ -988,9 +1016,6 @@ export const LotDetailsPage: React.FC = () => {
                     {formatRubles(totalFirstPaymentDeal)}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 text-center">
-                  Полная стоимость квартиры по ДДУ: {formatRubles(lot.dduContractPrice)}
-                </p>
               </div>
 
               {/* Actions based on lot status */}
@@ -1148,6 +1173,16 @@ export const LotDetailsPage: React.FC = () => {
                   );
                 })()}
               </div>
+
+              {/* Curator Direct Chat Button */}
+              <button
+                type="button"
+                onClick={() => setIsCuratorChatOpen(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-2 cursor-pointer mt-1"
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
+                <span>Чат с куратором онлайн</span>
+              </button>
             </div>
 
           </div>
@@ -1188,11 +1223,14 @@ export const LotDetailsPage: React.FC = () => {
                 >
                   <div className="h-40 bg-slate-100 relative overflow-hidden aspect-[16/9]">
                     <img
-                      src={sim.imageUrl}
+                      src={sim.imageUrl || FALLBACK_LOT_IMAGE}
                       alt={sim.complexName}
                       className="w-full h-full object-cover"
                       loading="lazy"
                       decoding="async"
+                      onError={(e) => {
+                        e.currentTarget.src = FALLBACK_LOT_IMAGE;
+                      }}
                     />
                     <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-slate-900/80 text-white text-[10px] font-mono font-bold">
                       #{sim.lotCode}
@@ -1253,6 +1291,20 @@ export const LotDetailsPage: React.FC = () => {
         onClose={() => setIsReportModalOpen(false)}
         lot={lot}
         curator={curatorEmployee}
+      />
+
+      {/* Curator Direct Chat Modal Widget */}
+      <CuratorChatWidget
+        isOpen={isCuratorChatOpen}
+        onClose={() => setIsCuratorChatOpen(false)}
+        lotCode={lot.lotCode}
+        lotTitle={lot.complexName}
+        curatorId={curatorEmployee?.id || lot.assignedEmployeeId}
+        curatorName={curatorEmployee?.name || lot.curator.name}
+        curatorRole={curatorEmployee?.role || lot.curator.role}
+        curatorPhone={curatorEmployee?.phone || lot.curator.phone}
+        curatorTelegram={curatorEmployee?.telegram || lot.curator.telegram}
+        curatorMax={curatorEmployee?.maxProfile || lot.curator.maxProfile}
       />
 
       {/* Success Notification Toast */}

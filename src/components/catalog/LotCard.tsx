@@ -12,6 +12,9 @@ interface LotCardProps {
   lot: Lot;
 }
 
+const FALLBACK_LOT_IMAGE =
+  'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+
 export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
   const { language, t } = useLanguage();
   const { isFavorite, toggleFavorite } = useAuth();
@@ -38,13 +41,16 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
       {/* Top Image Container */}
       <div className="relative h-56 overflow-hidden bg-slate-100 aspect-[16/9]">
         <img
-          src={lot.imageUrl}
+          src={lot.imageUrl || FALLBACK_LOT_IMAGE}
           alt={lot.complexName}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
           decoding="async"
           width="400"
           height="224"
+          onError={(e) => {
+            e.currentTarget.src = FALLBACK_LOT_IMAGE;
+          }}
         />
 
         {/* Top Badges */}

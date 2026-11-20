@@ -331,9 +331,12 @@ export const YandexCatalogMap: React.FC<YandexCatalogMapProps> = ({
 
           <div className="flex gap-3.5 mt-3">
             <img
-              src={selectedLot.imageUrl}
+              src={selectedLot.imageUrl || 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80'}
               alt={selectedLot.complexName}
               className="w-24 h-24 rounded-2xl object-cover shrink-0 border border-slate-200"
+              onError={(e) => {
+                e.currentTarget.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+              }}
             />
             <div className="flex-1 min-w-0 space-y-1">
               <h4 className="font-extrabold text-sm text-slate-950 truncate">

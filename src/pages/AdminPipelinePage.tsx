@@ -17,16 +17,28 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 
-import { DealTrack } from '../types';
+import { DealTrack, Lot, DocumentMetadata } from '../types';
+import { StorageService } from '../dal/StorageService';
+import { CuratorChatRepository } from '../dal/repositories/CuratorChatRepository';
+import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
+import { downloadDocumentFile } from '../utils/downloadManager';
 
 import {
-
   CheckCircle2,
-
   AlertTriangle,
-
   Plus,
-
+  X,
+  MessageSquare,
+  FileText,
+  Download,
+  Eye,
+  ExternalLink,
+  ShieldCheck,
+  Building2,
+  User,
+  Sliders,
+  Clock,
+  ChevronRight,
 } from 'lucide-react';
 
 
@@ -42,6 +54,14 @@ export const AdminPipelinePage: React.FC = () => {
   const [urgentOnly, setUrgentOnly] = useState<boolean>(false);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // CRM Slide-Over Drawer & Curator Chat State
+  const [selectedDealForDrawer, setSelectedDealForDrawer] = useState<DealTrack | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'overview' | 'chat'>('overview');
+  const [drawerLot, setDrawerLot] = useState<Lot | null>(null);
+  const [drawerDocs, setDrawerDocs] = useState<DocumentMetadata[]>([]);
+  const [loadingDrawerDocs, setLoadingDrawerDocs] = useState<boolean>(false);
+  const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
 
 
 
@@ -78,7 +98,52 @@ export const AdminPipelinePage: React.FC = () => {
     });
 
     return unsub;
+  }, [isEmployee, currentEmployeeId]);
 
+  // Load details & documents when a deal is selected in Slide-Over Drawer
+  useEffect(() => {
+    if (!selectedDealForDrawer) {
+      setDrawerLot(null);
+      setDrawerDocs([]);
+      return;
+    }
+    async function loadDrawerDetails() {
+      setLoadingDrawerDocs(true);
+      try {
+        const [lot, docs] = await Promise.all([
+          LotsRepository.getByCode(selectedDealForDrawer!.lotCode),
+          StorageService.getDocumentsByEntity('lot', selectedDealForDrawer!.lotCode),
+        ]);
+        setDrawerLot(lot);
+        setDrawerDocs(docs);
+      } catch (err) {
+        console.warn('Failed to load drawer info:', err);
+      } finally {
+        setLoadingDrawerDocs(false);
+      }
+    }
+    loadDrawerDetails();
+  }, [selectedDealForDrawer]);
+
+  // Track unread messages for badges
+  useEffect(() => {
+    async function loadUnreads() {
+      const dialogs = await CuratorChatRepository.getRecentDialogs(
+        isEmployee ? currentEmployeeId : undefined,
+        !isEmployee
+      );
+      const map: Record<string, number> = {};
+      dialogs.forEach((d) => {
+        map[d.lotCode] = d.unreadCount;
+        if (d.dealId) map[d.dealId] = d.unreadCount;
+      });
+      setUnreadMap(map);
+    }
+    loadUnreads();
+    const unsub = CuratorChatRepository.subscribe(() => {
+      loadUnreads();
+    });
+    return unsub;
   }, [isEmployee, currentEmployeeId]);
 
 
@@ -561,31 +626,27 @@ export const AdminPipelinePage: React.FC = () => {
                         >
 
                           <div className="flex justify-between items-center text-[11px]">
-
                             <span className="font-mono font-bold text-slate-800">
-
                               #{deal.lotCode}
-
                             </span>
 
-                            <span
-
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-
-                                deal.daysLeft <= 6
-
-                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
-
-                                  : 'bg-slate-100 text-slate-600'
-
-                              }`}
-
-                            >
-
-                              {deal.daysLeft === 0 ? 'Закрыто' : `${deal.daysLeft} дн.`}
-
-                            </span>
-
+                            <div className="flex items-center space-x-1.5">
+                              {unreadMap[deal.lotCode] > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[9px] flex items-center space-x-0.5 animate-pulse">
+                                  <MessageSquare className="w-2.5 h-2.5" />
+                                  <span>{unreadMap[deal.lotCode]}</span>
+                                </span>
+                              )}
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  deal.daysLeft <= 6
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {deal.daysLeft === 0 ? 'Закрыто' : `${deal.daysLeft} дн.`}
+                              </span>
+                            </div>
                           </div>
 
 
@@ -698,7 +759,17 @@ export const AdminPipelinePage: React.FC = () => {
 
                           </div>
 
-
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDealForDrawer(deal);
+                              setDrawerTab('overview');
+                            }}
+                            className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold transition-all flex items-center justify-center space-x-1.5 shadow-2xs cursor-pointer"
+                          >
+                            <Sliders className="w-3 h-3 text-emerald-400" />
+                            <span>Панель сделки & Чат</span>
+                          </button>
 
                           {col.next && (
 
@@ -743,6 +814,197 @@ export const AdminPipelinePage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* CRM SLIDE-OVER DRAWER FOR DEAL & CURATOR CHAT */}
+      {selectedDealForDrawer && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-xs animate-fade-in flex justify-end">
+          <div className="w-full max-w-2xl bg-white h-full shadow-2xl border-l border-slate-200 flex flex-col">
+            {/* Drawer Header */}
+            <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white flex items-center justify-between shrink-0">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-xs font-bold border border-emerald-400/30">
+                    #{selectedDealForDrawer.lotCode}
+                  </span>
+                  <span className="text-xs text-slate-300">Сделка {selectedDealForDrawer.dealId}</span>
+                </div>
+                <h3 className="text-lg font-black text-white mt-1">
+                  {selectedDealForDrawer.lotTitle || selectedDealForDrawer.developer}
+                </h3>
+                <p className="text-xs text-slate-300">
+                  Клиент: {selectedDealForDrawer.clientName} • Ответственный: {selectedDealForDrawer.curatorName}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDealForDrawer(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex items-center border-b border-slate-200 px-6 pt-3 bg-slate-50 gap-4 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDrawerTab('overview')}
+                className={`pb-3 text-xs font-bold border-b-2 flex items-center space-x-2 transition-colors cursor-pointer ${
+                  drawerTab === 'overview'
+                    ? 'border-emerald-600 text-emerald-800'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Досье и документы ({drawerDocs.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDrawerTab('chat')}
+                className={`pb-3 text-xs font-bold border-b-2 flex items-center space-x-2 transition-colors cursor-pointer relative ${
+                  drawerTab === 'chat'
+                    ? 'border-emerald-600 text-emerald-800'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-600" />
+                <span>Чат с клиентом</span>
+                {(unreadMap[selectedDealForDrawer.lotCode] || 0) > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[9px]">
+                    {unreadMap[selectedDealForDrawer.lotCode]}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* Drawer Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {drawerTab === 'overview' && (
+                <div className="space-y-6">
+                  {/* Financial Overview */}
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                      Финансовые параметры сделки
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-500 block">Возврат продавцу:</span>
+                        <span className="font-bold text-slate-900 text-sm">
+                          {formatRubles(selectedDealForDrawer.sellerReturnRub)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">Дисконт покупателю:</span>
+                        <span className="font-bold text-emerald-700 text-sm">
+                          -{formatRubles(selectedDealForDrawer.discountRub)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">Маршрут:</span>
+                        <span className="font-bold text-slate-900 text-sm">
+                          {selectedDealForDrawer.route}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <Link
+                      to={`/admin/legal-audit/${selectedDealForDrawer.lotCode}`}
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold text-center flex items-center justify-center space-x-1.5 border border-slate-200"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Юр. аудит</span>
+                    </Link>
+                    <Link
+                      to={`/admin/packaging/${selectedDealForDrawer.lotCode}`}
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold text-center flex items-center justify-center space-x-1.5 border border-slate-200"
+                    >
+                      <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Упаковка</span>
+                    </Link>
+                    <Link
+                      to={`/admin/closing/${selectedDealForDrawer.dealId}`}
+                      className="py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold text-center flex items-center justify-center space-x-1.5 border border-emerald-200"
+                    >
+                      <Building2 className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Эскроу комната</span>
+                    </Link>
+                  </div>
+
+                  {/* Document Vault in Drawer */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center space-x-2">
+                        <FileText className="w-4 h-4 text-emerald-600" />
+                        <span>Документы по сделке в Yandex S3 ({drawerDocs.length})</span>
+                      </h4>
+                    </div>
+
+                    {loadingDrawerDocs ? (
+                      <div className="py-8 text-center text-xs text-slate-500">Загрузка документов из S3...</div>
+                    ) : drawerDocs.length === 0 ? (
+                      <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center text-xs text-slate-500 space-y-1">
+                        <p>В защищенном хранилище пока нет загруженных сканов по лоту #{selectedDealForDrawer.lotCode}.</p>
+                        <p className="text-[11px] text-slate-400">Продавец может загрузить их через Личный кабинет.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {drawerDocs.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="p-3.5 bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
+                          >
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                                <FileText className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-bold text-slate-900 block truncate">{doc.name}</span>
+                                <span className="text-[10px] text-slate-400 block">
+                                  {doc.categoryLabelRu || doc.category} • {(doc.sizeBytes / 1024).toFixed(1)} КБ
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => downloadDocumentFile(doc)}
+                              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center space-x-1.5 shrink-0 transition-colors cursor-pointer"
+                              title="Скачать документ"
+                            >
+                              <Download className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Скачать</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {drawerTab === 'chat' && (
+                <div className="h-[520px]">
+                  <CuratorChatWidget
+                    isOpen={true}
+                    onClose={() => {}}
+                    embedded={true}
+                    lotCode={selectedDealForDrawer.lotCode}
+                    dealId={selectedDealForDrawer.dealId}
+                    lotTitle={selectedDealForDrawer.lotTitle}
+                    curatorId={selectedDealForDrawer.assignedEmployeeId || currentEmployeeId}
+                    curatorName={operatorName}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
 

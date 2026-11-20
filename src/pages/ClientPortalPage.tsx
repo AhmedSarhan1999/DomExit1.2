@@ -51,6 +51,7 @@ import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { UserProfileModal } from '../components/profile/UserProfileModal';
+import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import {
   DealTrack,
   BuyerCandidate,
@@ -217,6 +218,11 @@ export const ClientPortalPage: React.FC = () => {
   const [userConsents, setUserConsents] = useState<ProofOfConsentRecord[]>([]);
   const [copiedConsentSha, setCopiedConsentSha] = useState<string | null>(null);
   const [curator, setCurator] = useState<Employee | null>(null);
+
+  // Curator Chat Widget State
+  const [isCuratorChatOpen, setIsCuratorChatOpen] = useState<boolean>(false);
+  const [activeChatLotCode, setActiveChatLotCode] = useState<string>('');
+  const [activeChatDealId, setActiveChatDealId] = useState<string>('');
 
   // Partner Referral Form State
   const [refClientCode, setRefClientCode] = useState<string>('');
@@ -1142,6 +1148,18 @@ export const ClientPortalPage: React.FC = () => {
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveChatLotCode(bid.lotCode || '');
+                                        setActiveChatDealId(linkedDeal?.dealId || '');
+                                        setIsCuratorChatOpen(true);
+                                      }}
+                                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+                                    >
+                                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>Чат с куратором</span>
+                                    </button>
                                     <a
                                       href={`tel:${curatorPhone.replace(/[^\d+]/g, '')}`}
                                       className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
@@ -1485,6 +1503,17 @@ export const ClientPortalPage: React.FC = () => {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveChatLotCode(activeSellerLot.lotCode);
+                        setIsCuratorChatOpen(true);
+                      }}
+                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs cursor-pointer shadow-xs"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Чат с куратором</span>
+                    </button>
                     {(activeSellerLot.curator?.phone || curator?.phone) && (
                       <a
                         href={`tel:${(activeSellerLot.curator?.phone || curator?.phone || '').replace(/[^\d+]/g, '')}`}
@@ -2422,6 +2451,18 @@ export const ClientPortalPage: React.FC = () => {
       <UserProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      <CuratorChatWidget
+        isOpen={isCuratorChatOpen}
+        onClose={() => setIsCuratorChatOpen(false)}
+        lotCode={activeChatLotCode}
+        dealId={activeChatDealId}
+        curatorName={curator?.name || 'Юридический куратор DomExit'}
+        curatorRole={curator?.role || 'Персональный куратор сделки'}
+        curatorPhone={curator?.phone}
+        curatorTelegram={curator?.telegram}
+        curatorMax={curator?.maxProfile}
       />
     </div>
   );

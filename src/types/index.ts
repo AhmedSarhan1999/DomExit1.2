@@ -914,4 +914,20 @@ export interface ProofOfConsentRecord {
   withdrawnAt?: string;
 }
 
+export interface CuratorMessage {
+  id: string;
+  dealId?: string;
+  lotId?: string;
+  lotCode?: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'buyer' | 'seller' | 'employee' | 'owner';
+  curatorId?: string;
+  text: string;
+  createdAt: string;
+  isRead: boolean;
+  attachmentUrl?: string;
+  attachmentName?: string;
+}
+
 export * from './legal';

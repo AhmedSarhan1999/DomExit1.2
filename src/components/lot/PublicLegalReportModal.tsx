@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, CheckCircle2, Lock, FileText, Printer, X, Award, Building, UserCheck } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, Lock, FileText, X, Award, Building, UserCheck } from 'lucide-react';
 import { Lot, Employee } from '../../types';
 
 interface PublicLegalReportModalProps {
@@ -211,20 +211,11 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-white text-slate-700 text-xs font-bold flex items-center justify-center space-x-2 transition-colors cursor-pointer"
-          >
-            <Printer className="w-4 h-4 text-slate-500" />
-            <span>Распечатать юридическое заключение</span>
-          </button>
-
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-8 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
           >
             Закрыть
           </button>

@@ -11,6 +11,7 @@ import {
   CreditCard,
   Banknote,
   AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { formatRubles } from '../../utils/formatters';
 import {
@@ -554,6 +555,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:border-emerald-500"
               />
             </div>
+          </div>
+
+          {/* Statutory Pricing Notice (Не ниже рыночной цены в ЕГРН) */}
+          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-1.5 shadow-2xs">
+            <div className="flex items-center space-x-2 text-xs font-black text-amber-900">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Юридическое требование: Не ниже рыночной цены в ЕГРН</span>
+            </div>
+            <p className="text-[11px] text-amber-900/90 leading-relaxed">
+              Предлагаемая цена приобретения прав по ДДУ не должна быть ниже рыночной стоимости объекта, зафиксированной в ЕГРН. Это исключает риски оспаривания сделки и подтверждает статус добросовестного приобретателя.
+            </p>
           </div>
 
           {/* Mandatory Green Acknowledgment & 152-FZ / 38-FZ Consents */}

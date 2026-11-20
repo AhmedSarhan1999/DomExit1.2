@@ -1713,6 +1713,9 @@ export const SellersPage: React.FC = () => {
                         src={photo}
                         alt={`Фото ${index + 1}`}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+                        }}
                       />
                       <button
                         type="button"

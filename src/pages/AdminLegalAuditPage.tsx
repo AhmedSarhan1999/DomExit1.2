@@ -299,6 +299,95 @@ export const AdminLegalAuditPage: React.FC = () => {
     setTimeout(() => setNotice(null), 5000);
   };
 
+  /**
+   * Fast 1-click manual verification for an individual checkpoint.
+   * Immediately saves clean verdict and proof to Yandex YDB.
+   */
+  const handleManualVerifyCheckpoint = async (checkpointId: string) => {
+    if (!lot) return;
+
+    const updatedCheckpoints = checkpoints.map((c) => {
+      if (c.id === checkpointId) {
+        return {
+          ...c,
+          score: 10,
+          status: 'clean' as const,
+          evaluated: true,
+          proofDocName: c.proofDocName || `Акт_ручной_проверки_${c.shortLabel.replace(/[\s/]/g, '_')}.pdf`,
+          proofDocUrl: c.proofDocUrl || '',
+          verifiedAt: new Date().toISOString(),
+          verifiedBy: curatorName,
+          notes: c.notes ? `${c.notes} [Проверено вручную юристом: рисков нет]` : 'Проверено вручную старшим юристом: рисков не выявлено.',
+        };
+      }
+      return c;
+    });
+
+    setCheckpoints(updatedCheckpoints);
+
+    const newWeightedIndex = Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(
+          updatedCheckpoints.reduce((sum, cp) => {
+            const scoreNormalized = (cp.score || 0) / 10;
+            return sum + scoreNormalized * cp.weightPercent;
+          }, 0)
+        )
+      )
+    );
+
+    lot.legalAuditCheckpoints = updatedCheckpoints;
+    lot.legalPassport.antiBankruptcyIndex = newWeightedIndex;
+    lot.curatorOperationsLog = lot.curatorOperationsLog || [];
+    lot.curatorOperationsLog.unshift({
+      timestamp: new Date().toISOString(),
+      curatorName,
+      action: `Проверка ручная: ${checkpointId.toUpperCase()}`,
+      notes: `Контрольная точка «${checkpointId}» успешно верифицирована вручную. Индекс: ${newWeightedIndex}%.`,
+    });
+
+    await LotsRepository.update(lot);
+    setNotice(`✓ Проверка ручная выполнена! Контрольная точка «${checkpointId}» подтверждена (10/10). Индекс: ${newWeightedIndex}%`);
+    setTimeout(() => setNotice(null), 5000);
+  };
+
+  /**
+   * Comprehensive manual verification across all 4 checkpoints.
+   * Immediately validates the entire legal package in YDB and unlocks approval.
+   */
+  const handleManualVerifyAll = async () => {
+    if (!lot) return;
+
+    const verified = checkpoints.map((c) => ({
+      ...c,
+      score: 10,
+      status: 'clean' as const,
+      evaluated: true,
+      proofDocName: c.proofDocName || `Акт_ручной_проверки_${c.shortLabel.replace(/[\s/]/g, '_')}.pdf`,
+      proofDocUrl: c.proofDocUrl || '',
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: curatorName,
+      notes: c.notes || 'Проверено вручную: соответствие 214-ФЗ и отсутствие банкротных рисков подтверждено.',
+    }));
+
+    setCheckpoints(verified);
+    lot.legalAuditCheckpoints = verified;
+    lot.legalPassport.antiBankruptcyIndex = 100;
+    lot.curatorOperationsLog = lot.curatorOperationsLog || [];
+    lot.curatorOperationsLog.unshift({
+      timestamp: new Date().toISOString(),
+      curatorName,
+      action: 'Комплексная ручная проверка (Все 4 зоны)',
+      notes: 'Все контрольные зоны подтверждены вручную старшим юристом. Рисков не выявлено. Индекс чистоты 100%.',
+    });
+
+    await LotsRepository.update(lot);
+    setNotice('✓ Проверка ручная успешно проведена по всем 4 контрольным зонам! Блокировки сняты.');
+    setTimeout(() => setNotice(null), 5000);
+  };
+
   const getMemoText = () => {
     const cashStr = formatRubles(lot?.cashPaidBySeller || 0);
     const dduNum = lot?.ownerDossier?.dduNumber || `№ ДДУ-${currentLotCode || '—'}`;
@@ -760,24 +849,35 @@ export const AdminLegalAuditPage: React.FC = () => {
                         </div>
 
                         {/* Action buttons */}
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <a
-                            href={cp.portalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors border border-slate-200 cursor-pointer"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Открыть реестр РФ</span>
-                          </a>
+                        <div className="space-y-2 pt-1">
+                          <div className="grid grid-cols-2 gap-2">
+                            <a
+                              href={cp.portalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors border border-slate-200 cursor-pointer"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Открыть реестр РФ</span>
+                            </a>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenInspector(cp)}
+                              className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+                            >
+                              <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Инспектировать</span>
+                            </button>
+                          </div>
 
                           <button
                             type="button"
-                            onClick={() => handleOpenInspector(cp)}
-                            className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+                            onClick={() => handleManualVerifyCheckpoint(cp.id)}
+                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-2xs"
                           >
-                            <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Инспектировать</span>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Проверка ручная (Подтвердить 10/10)</span>
                           </button>
                         </div>
                       </div>
@@ -929,6 +1029,15 @@ export const AdminLegalAuditPage: React.FC = () => {
                       <span>Запрос спец-одобрения в банк</span>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={handleManualVerifyAll}
+                    className="px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Проверка ручная (Все 4 зоны)</span>
+                  </button>
 
                   <button
                     type="button"
@@ -1124,21 +1233,37 @@ export const AdminLegalAuditPage: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-end space-x-3 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setInspectingCheckpoint(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (inspectingCheckpoint) {
+                      handleManualVerifyCheckpoint(inspectingCheckpoint.id);
+                      setInspectingCheckpoint(null);
+                    }
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold text-xs flex items-center space-x-1.5 cursor-pointer shadow-2xs"
                 >
-                  Отмена
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Проверка ручная (10/10 Чисто)</span>
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center space-x-1.5"
-                >
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Сохранить вердикт инспекции</span>
-                </button>
+
+                <div className="flex items-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setInspectingCheckpoint(null)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center space-x-1.5"
+                  >
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span>Сохранить вердикт инспекции</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

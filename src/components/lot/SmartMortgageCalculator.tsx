@@ -170,19 +170,8 @@ export const SmartMortgageCalculator: React.FC<SmartMortgageCalculatorProps> = (
             <Calculator className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">
-              {language === 'ru'
-                ? 'Ипотечный калькулятор • Перевод долга по ДДУ'
-                : 'Mortgage Calculator • DDU Debt Transfer'}
-            </span>
             <h3 className="text-lg sm:text-xl font-extrabold text-slate-900">
-              {language === 'ru'
-                ? enableBankPortal
-                  ? 'Умный ипотечный калькулятор переуступки'
-                  : 'Расчетный ипотечный калькулятор'
-                : enableBankPortal
-                ? 'Smart Assignment Mortgage Calculator'
-                : 'Estimated Mortgage Calculator'}
+              {language === 'ru' ? 'Ипотечный калькулятор' : 'Mortgage Calculator'}
             </h3>
           </div>
         </div>
