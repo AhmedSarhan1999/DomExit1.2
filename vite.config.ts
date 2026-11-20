@@ -69,9 +69,6 @@ export default defineConfig({
             if (id.includes('lucide-react')) {
               return 'vendor-icons'
             }
-            if (id.includes('firebase')) {
-              return 'vendor-firebase'
-            }
             return 'vendor-lib'
           }
         },
@@ -82,15 +79,10 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
-      '/ydb-proxy': {
-        target: 'https://docapi.serverless.yandexcloud.net',
+      '/api': {
+        target: 'https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ydb-proxy/, ''),
-      },
-      '/yandex-passport-proxy': {
-        target: 'https://login.yandex.ru',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/yandex-passport-proxy/, ''),
+        secure: true,
       },
     },
   },

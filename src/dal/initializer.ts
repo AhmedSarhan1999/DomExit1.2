@@ -1,9 +1,8 @@
 import { DatabaseGateway } from './DatabaseGateway';
-import { initYandexTables } from './scripts/initYandexTables';
 
 /**
  * Live Database Provisioning & Cleanup Controller
- * Strictly uses DatabaseGateway (IDatabaseAdapter) — zero direct Firestore imports outside Adapter!
+ * Strictly uses DatabaseGateway (IDatabaseAdapter).
  */
 export class DatabaseInitializer {
   private static isInitialized = false;
@@ -13,11 +12,6 @@ export class DatabaseInitializer {
     this.isInitialized = true;
 
     try {
-      // 0. Auto-provision & seed Yandex Cloud YDB tables if Yandex provider is active
-      const provider = import.meta.env.VITE_DATA_PROVIDER || 'yandex';
-      if (provider === 'yandex') {
-        await initYandexTables();
-      }
 
       // 1. Clean up unapproved test developer 'dfdfv' from developers collection
       try {

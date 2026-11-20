@@ -33,7 +33,6 @@ import { useAuth } from '../context/AuthContext';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { ConsentState } from '../components/compliance/ConsentCheckboxes';
 import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
-import { YandexCloudAdapter } from '../dal/adapters/YandexCloudAdapter';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
 import { DEFAULT_SETTLEMENT_BANKS } from '../data/russianBanks';
@@ -376,14 +375,13 @@ export const SellersPage: React.FC = () => {
       setIsUploadingPhoto(true);
       try {
         const optimized = await optimizeImageFile(file);
-        const safeName = file.name.replace(/[^\w.\-А-Яа-яЁё]/g, '_');
-        const objectKey = `photos/${draftLotCode}/${Date.now()}_${safeName}`;
-        const s3Url = await YandexCloudAdapter.uploadS3Object(
-          objectKey,
-          optimized,
-          optimized.type || 'image/jpeg'
-        );
-        setUploadedPhotos((prev) => [...prev, s3Url]);
+        const { publicUrl } = await StorageService.uploadPhoto({
+          file: optimized,
+          fileName: file.name,
+          lotCode: draftLotCode,
+          contentType: optimized.type || 'image/webp',
+        });
+        setUploadedPhotos((prev) => [...prev, publicUrl]);
       } catch (err: any) {
         console.error('[SellersPage] Failed to upload photo to S3:', err);
         alert(

@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Bell, User, Settings, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserProfileModal } from '../profile/UserProfileModal';
-import { YandexCloudAdapter } from '../../dal/adapters/YandexCloudAdapter';
+import { apiClient } from '../../services/apiClient';
 
 interface AdminHeaderProps {
   title: string;
@@ -35,13 +35,19 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle }) => 
 
   const checkYdb = async () => {
     setIsCheckingYdb(true);
+    const start = performance.now();
     try {
-      const res = await YandexCloudAdapter.testConnection();
-      setYdbStatus(res);
+      const res = await apiClient.get<{ ok: boolean; env: string; region: string }>('/api/health');
+      const latencyMs = Math.round(performance.now() - start);
+      setYdbStatus({
+        ok: res.ok,
+        message: `Yandex Cloud (${res.region || 'ru-central1'}) [${res.env || 'live'}]`,
+        latencyMs,
+      });
     } catch (err: any) {
       setYdbStatus({
         ok: false,
-        message: 'Сбой соединения',
+        message: 'Сбой соединения с сервером',
         error: err?.message,
       });
     } finally {

@@ -119,7 +119,7 @@ export const ClientTrackerPage: React.FC = () => {
     setDocs(vaultDocs);
 
     if (loadedLot?.assignedEmployeeId) {
-      const assigned = emps.find((e) => e.id === loadedLot.assignedEmployeeId);
+      const assigned = emps.find((e: any) => e.id === loadedLot.assignedEmployeeId);
       setCurator(assigned || emps[0] || null);
     } else if (emps.length > 0) {
       setCurator(emps[0]);

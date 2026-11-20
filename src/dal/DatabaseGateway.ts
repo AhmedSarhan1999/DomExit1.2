@@ -1,33 +1,24 @@
 import { IDatabaseAdapter } from './interfaces/IDatabaseAdapter';
-import { firebaseAdapterInstance } from './adapters/FirebaseAdapter';
-import { YandexCloudAdapter } from './adapters/YandexCloudAdapter';
+import { backendApiAdapterInstance } from './adapters/BackendApiAdapter';
 import { resolveCollectionName } from './config/collectionResolver';
 import { swrCache } from './cache/SWRCache';
 import { requestDeduplicator } from './cache/requestDeduplicator';
 
 /**
- * Central Transitional Data Access Layer Gateway (DAL)
+ * Central Enterprise Data Access Layer Gateway (DAL)
  *
  * All UI Components, Contexts, and Repositories communicate strictly through DatabaseGateway.
- * Switching from Firebase Firestore to Yandex Cloud Managed PostgreSQL / YDB requires changing
- * ONLY `activeAdapter` below — zero UI lines touched.
+ * Powered by BackendApiAdapter connecting to the secure Russian Yandex Cloud Functions backend.
  */
-const defaultProvider = import.meta.env.VITE_DATA_PROVIDER || 'yandex';
-
 class DatabaseGatewayController {
-  private activeAdapter: IDatabaseAdapter =
-    defaultProvider === 'yandex' ? YandexCloudAdapter.getAdapter() : firebaseAdapterInstance;
+  private activeAdapter: IDatabaseAdapter = backendApiAdapterInstance;
 
   get adapter(): IDatabaseAdapter {
     return this.activeAdapter;
   }
 
-  useYandexCloud(): void {
-    this.activeAdapter = YandexCloudAdapter.getAdapter();
-  }
-
-  useFirebase(): void {
-    this.activeAdapter = firebaseAdapterInstance;
+  useBackendApi(): void {
+    this.activeAdapter = backendApiAdapterInstance;
   }
 
   async save<T extends { id: string }>(collectionName: string, entity: T): Promise<T> {
@@ -122,7 +113,7 @@ class DatabaseGatewayController {
       if (
         e.key &&
         (e.key.startsWith('domexit_db_') ||
-          e.key.startsWith('domexit_fb_'))
+          e.key.startsWith('domexit_cache_'))
       ) {
         listener();
       }

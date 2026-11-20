@@ -17,16 +17,11 @@ interface AdminRouteGuardProps {
 export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) => {
   const { user, loading, openAuthModal } = useAuth();
 
+  const staffRoles = new Set(['owner', 'admin', 'employee']);
   const isStaff = Boolean(
     user &&
-      (user.activeRole === 'owner' ||
-        user.activeRole === 'admin' ||
-        user.activeRole === 'employee' ||
-        user.role === 'owner' ||
-        user.role === 'admin' ||
-        user.role === 'employee' ||
-        user.email === 'amaas9499@gmail.com' ||
-        user.email === 'amaas9494@gmail.com')
+      ((user.activeRole && staffRoles.has(user.activeRole)) ||
+        (user.role && staffRoles.has(user.role)))
   );
 
   React.useEffect(() => {

@@ -1,9 +1,9 @@
 /**
- * Transitional Data Access Layer (DAL) — Standard Database Adapter Contract
- * Guarantees 0-line UI/Repository changes when switching from FirebaseAdapter to YandexCloudAdapter (PostgreSQL / YDB).
+ * Standard Database Adapter Contract
+ * Used by DatabaseGateway for data operations.
  */
 export interface IDatabaseAdapter {
-  readonly providerName: 'firebase' | 'yandex_cloud';
+  readonly providerName: 'backend_api';
 
   saveEntity<T extends { id: string }>(
     collectionName: string,

@@ -6,6 +6,8 @@ import { DevelopersRepository, PARTNER_BANKS } from '../dal/repositories/Develop
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
+import { apiClient } from './apiClient';
+import { swrCache } from '../dal/cache/SWRCache';
 
 function maskFullName152Fz(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -429,190 +431,61 @@ export class PropertyLifecycleService {
     const canonicalLotCode = cleanCode.startsWith('U-') ? cleanCode : `U-${numericSuffix}`;
     const expectedDealId = `DEAL-${canonicalLotCode}`;
 
-    // 1. Remove from 'lots'
+    // 1. Call secure server-side cascade delete endpoint (deletes YDB records + physical S3 objects)
     try {
-      const lots = await DatabaseGateway.getAll<Lot>('lots', []);
-      const matchedLots = lots.filter(
-        (l) =>
-          l.id.toUpperCase() === cleanCode ||
-          l.id.toUpperCase() === canonicalLotCode ||
-          l.lotCode.toUpperCase() === cleanCode ||
-          l.lotCode.toUpperCase() === canonicalLotCode
-      );
-      for (const l of matchedLots) {
-        await DatabaseGateway.remove('lots', l.id);
-      }
-    } catch (err) {
-      console.warn('[PropertyLifecycleService] Error removing from lots:', err);
+      await apiClient.delete(`/api/lots/${encodeURIComponent(canonicalLotCode)}/cascade`);
+    } catch (err: any) {
+      console.warn('[PropertyLifecycleService] Server cascade delete endpoint fallback:', err.message);
+      // Fallback direct cleanup if needed
+      try {
+        await DatabaseGateway.remove('lots', canonicalLotCode);
+        await DatabaseGateway.remove('deals', expectedDealId);
+        await DatabaseGateway.remove('seller_requests', `sreq-${canonicalLotCode}`);
+      } catch {}
     }
 
-    // 2. Remove from 'deals'
-    try {
-      const deals = await DatabaseGateway.getAll<DealTrack>('deals', []);
-      const matchedDeals = deals.filter(
-        (d) =>
-          d.id.toUpperCase() === expectedDealId ||
-          d.dealId.toUpperCase() === expectedDealId ||
-          d.lotCode.toUpperCase() === cleanCode ||
-          d.lotCode.toUpperCase() === canonicalLotCode ||
-          d.id.toUpperCase() === cleanCode ||
-          (d.lotId && (d.lotId.toUpperCase() === cleanCode || d.lotId.toUpperCase() === canonicalLotCode))
-      );
-      for (const d of matchedDeals) {
-        await DatabaseGateway.remove('deals', d.id);
-      }
-    } catch (err) {
-      console.warn('[PropertyLifecycleService] Error removing from deals:', err);
+    // 2. Invalidate SWR Cache completely across all related collections
+    const collectionsToInvalidate = [
+      'lots',
+      'deals',
+      'seller_requests',
+      'buyer_applications',
+      'candidates',
+      'documents_vault',
+      'curator_messages',
+      'deal_messages',
+    ];
+    for (const col of collectionsToInvalidate) {
+      swrCache.invalidatePrefix(`getAll:${col}`);
+      swrCache.invalidatePrefix(`getById:${col}`);
     }
 
-    // 3. Remove from 'seller_requests'
-    try {
-      const reqs = await DatabaseGateway.getAll<SellerExitRequest>('seller_requests', []);
-      const matchedReqs = reqs.filter(
-        (r) =>
-          r.lotCode?.toUpperCase() === cleanCode ||
-          r.lotCode?.toUpperCase() === canonicalLotCode ||
-          r.lotId?.toUpperCase() === cleanCode ||
-          r.lotId?.toUpperCase() === canonicalLotCode ||
-          r.id.toUpperCase() === `SREQ-${canonicalLotCode}`
-      );
-      for (const r of matchedReqs) {
-        await DatabaseGateway.remove('seller_requests', r.id);
-      }
-    } catch (err) {
-      console.warn('[PropertyLifecycleService] Error removing from seller_requests:', err);
-    }
-
-    // 4. Remove from 'candidates' and 'buyer_applications'
-    try {
-      const cands = await DatabaseGateway.getAll<{ id: string; lotCode?: string; lotId?: string }>('candidates', []);
-      const matchedCands = cands.filter(
-        (c) =>
-          c.lotCode?.toUpperCase() === cleanCode ||
-          c.lotCode?.toUpperCase() === canonicalLotCode ||
-          c.lotId?.toUpperCase() === cleanCode ||
-          c.lotId?.toUpperCase() === canonicalLotCode
-      );
-      for (const c of matchedCands) {
-        await DatabaseGateway.remove('candidates', c.id);
-      }
-    } catch {}
-
-    try {
-      const buyerApps = await DatabaseGateway.getAll<{ id: string; lotCode?: string; lotId?: string }>('buyer_applications', []);
-      const matchedApps = buyerApps.filter(
-        (a) =>
-          a.lotCode?.toUpperCase() === cleanCode ||
-          a.lotCode?.toUpperCase() === canonicalLotCode ||
-          a.lotId?.toUpperCase() === cleanCode ||
-          a.lotId?.toUpperCase() === canonicalLotCode
-      );
-      for (const a of matchedApps) {
-        await DatabaseGateway.remove('buyer_applications', a.id);
-      }
-    } catch {}
-
-    // 5. Remove from 'documents_vault'
-    try {
-      const docs = await DatabaseGateway.getAll<{ id: string; entityId?: string }>('documents_vault', []);
-      const matchedDocs = docs.filter(
-        (d) =>
-          d.entityId?.toUpperCase() === cleanCode ||
-          d.entityId?.toUpperCase() === canonicalLotCode
-      );
-      for (const d of matchedDocs) {
-        await DatabaseGateway.remove('documents_vault', d.id);
-      }
-    } catch (err) {
-      console.warn('[PropertyLifecycleService] Error removing from documents_vault:', err);
-    }
-
-    // 6. Remove from 'deal_messages'
-    try {
-      const msgs = await DatabaseGateway.getAll<{ id: string; lotId?: string; dealId?: string }>('deal_messages', []);
-      const matchedMsgs = msgs.filter(
-        (m) =>
-          m.lotId?.toUpperCase() === cleanCode ||
-          m.lotId?.toUpperCase() === canonicalLotCode ||
-          m.dealId?.toUpperCase() === expectedDealId
-      );
-      for (const m of matchedMsgs) {
-        await DatabaseGateway.remove('deal_messages', m.id);
-      }
-    } catch {}
-
-    // 7. Remove from developer_accreditation_requests & bank_special_approvals
-    try {
-      const devReqs = await DatabaseGateway.getAll<{ id: string; lotCode?: string }>('developer_accreditation_requests', []);
-      for (const dr of devReqs.filter((d) => d.lotCode?.toUpperCase() === canonicalLotCode)) {
-        await DatabaseGateway.remove('developer_accreditation_requests', dr.id);
-      }
-    } catch {}
-
-    try {
-      const bankApprovals = await DatabaseGateway.getAll<{ id: string; lotCode?: string }>('bank_special_approvals', []);
-      for (const ba of bankApprovals.filter((b) => b.lotCode?.toUpperCase() === canonicalLotCode)) {
-        await DatabaseGateway.remove('bank_special_approvals', ba.id);
-      }
-    } catch {}
-
-    // 8. Purge LocalStorage Caches to guarantee no ghost resurrection on F5
+    // 3. Clear any legacy localStorage cache keys
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        const collectionsToPurge = [
-          'lots',
-          'deals',
-          'seller_requests',
-          'documents_vault',
-          'candidates',
-          'deal_messages',
-          'demo_lots',
-          'demo_deals',
-          'demo_seller_requests',
-          'demo_documents_vault',
-        ];
-
-        for (const col of collectionsToPurge) {
-          const keys = [`domexit_ydb_${col}`, `domexit_cache_${col}`, `domexit_${col}`];
-          for (const k of keys) {
-            const raw = window.localStorage.getItem(k);
-            if (raw) {
-              try {
-                const arr = JSON.parse(raw);
-                if (Array.isArray(arr)) {
-                  const filtered = arr.filter((item: any) => {
-                    const itemCode = (item.lotCode || item.id || item.dealId || item.entityId || '').toUpperCase();
-                    return (
-                      itemCode !== cleanCode &&
-                      itemCode !== canonicalLotCode &&
-                      itemCode !== expectedDealId
-                    );
-                  });
-                  window.localStorage.setItem(k, JSON.stringify(filtered));
-                }
-              } catch {
-                window.localStorage.removeItem(k);
-              }
-            }
-          }
+        for (const col of collectionsToInvalidate) {
+          window.localStorage.removeItem(`domexit_ydb_${col}`);
+          window.localStorage.removeItem(`domexit_cache_${col}`);
+          window.localStorage.removeItem(`domexit_${col}`);
         }
-
-        // Fire global synchronization event
-        window.dispatchEvent(
-          new CustomEvent('domexit:dal_updated', {
-            detail: {
-              collectionName: 'lots',
-              baseCollection: 'lots',
-              id: canonicalLotCode,
-              action: 'cascade_delete',
-            },
-          })
-        );
-      } catch (cacheErr) {
-        console.warn('[PropertyLifecycleService] Local cache purge notice:', cacheErr);
-      }
+      } catch {}
     }
 
+    // 4. Dispatch global synchronizing event for UI reactivity
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('domexit:dal_updated', {
+          detail: {
+            collectionName: 'lots',
+            baseCollection: 'lots',
+            id: canonicalLotCode,
+            action: 'cascade_delete',
+          },
+        })
+      );
+    }
+
+    // 5. Audit log
     try {
       await AuditLogsRepository.addLog({
         lotCode: canonicalLotCode,

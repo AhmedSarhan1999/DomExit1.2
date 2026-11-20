@@ -10,7 +10,7 @@
 
 import { DocumentMetadata, BuyerCandidate } from '../types';
 import { StorageService } from '../dal/StorageService';
-import { YandexCloudAdapter } from '../dal/adapters/YandexCloudAdapter';
+import { apiClient } from '../services/apiClient';
 
 export interface UnifiedDownloadOptions {
   fileName?: string;
@@ -214,8 +214,10 @@ export async function downloadDocumentFile(
         const parts = u.pathname.replace(/^\/+/, '').split('/');
         const key = parts.slice(1).join('/');
         if (key) {
-          const presigned = await YandexCloudAdapter.getPresignedGetUrl(key, 7200);
-          if (presigned) resolvedUrl = presigned;
+          const res = await apiClient.get<{ downloadUrl: string }>(
+            `/api/storage/presign-download?key=${encodeURIComponent(key)}&filename=${encodeURIComponent(resolvedFileName)}`
+          );
+          if (res?.downloadUrl) resolvedUrl = res.downloadUrl;
         }
       } catch (e) {
         console.warn('[downloadManager] Could not presign storage URL:', e);
