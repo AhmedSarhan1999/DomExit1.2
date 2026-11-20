@@ -35,6 +35,8 @@ import { useAuth } from '../context/AuthContext';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { ConsentCheckboxes, ConsentState } from '../components/compliance/ConsentCheckboxes';
 import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
+import { YandexCloudAdapter } from '../dal/adapters/YandexCloudAdapter';
+import { optimizeImageFile } from '../utils/imageOptimizer';
 import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
 import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
 import { RUSSIAN_BANKS, DEFAULT_SETTLEMENT_BANKS } from '../data/russianBanks';
@@ -151,10 +153,8 @@ export const SellersPage: React.FC = () => {
   // Step 3 Cloud Document Vault & Photos (Phase 2)
   const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
   const [vaultDocs, setVaultDocs] = useState<DocumentMetadata[]>([]);
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
-  ]);
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [consents, setConsents] = useState<ConsentState>({
     pdProcessing: false,
     termsAgreed: false,
@@ -372,17 +372,31 @@ export const SellersPage: React.FC = () => {
     setCurrentStep(3);
   };
 
-  const handleAddCustomPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddCustomPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files[0]) {
       const file = files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setUploadedPhotos((prev) => [...prev, reader.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingPhoto(true);
+      try {
+        const optimized = await optimizeImageFile(file);
+        const safeName = file.name.replace(/[^\w.\-А-Яа-яЁё]/g, '_');
+        const objectKey = `photos/${draftLotCode}/${Date.now()}_${safeName}`;
+        const s3Url = await YandexCloudAdapter.uploadS3Object(
+          objectKey,
+          optimized,
+          optimized.type || 'image/jpeg'
+        );
+        setUploadedPhotos((prev) => [...prev, s3Url]);
+      } catch (err: any) {
+        console.error('[SellersPage] Failed to upload photo to S3:', err);
+        alert(
+          language === 'ru'
+            ? 'Сбой загрузки фото в облако S3. Пожалуйста, повторите попытку.'
+            : 'Failed to upload photo to S3. Please try again.'
+        );
+      } finally {
+        setIsUploadingPhoto(false);
+      }
     }
   };
 
@@ -496,6 +510,12 @@ export const SellersPage: React.FC = () => {
               result.lot.todayDeveloperPrice = todayMarketPrice;
             }
             await LotsRepository.update(result.lot);
+          }
+
+          // Strict Persistence Verification: Ensure lot is guaranteed in the database before completing
+          const verifiedLot = await LotsRepository.getByCode(result.lot.lotCode);
+          if (!verifiedLot) {
+            await LotsRepository.add(result.lot);
           }
 
           await login({
@@ -1704,6 +1724,19 @@ export const SellersPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                  {uploadedPhotos.length === 0 && !isUploadingPhoto && (
+                    <div className="col-span-2 sm:col-span-4 p-4 border border-dashed border-slate-300 rounded-xl text-center text-xs text-slate-400">
+                      Нет загруженных фото. Вы можете добавить реальные фотографии квартиры, вида из окна или планировки.
+                    </div>
+                  )}
+
+                  {isUploadingPhoto && (
+                    <div className="col-span-2 sm:col-span-4 p-4 border border-emerald-200 bg-emerald-50/50 rounded-xl text-center text-xs text-emerald-800 flex items-center justify-center space-x-2 font-medium animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                      <span>Загрузка фото в Yandex Object Storage S3...</span>
+                    </div>
+                  )}
+
                   {uploadedPhotos.map((photo, index) => (
                     <div
                       key={index}

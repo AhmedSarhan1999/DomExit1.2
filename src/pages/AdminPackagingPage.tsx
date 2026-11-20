@@ -111,7 +111,8 @@ export const AdminPackagingPage: React.FC = () => {
     setStreetAddress(data.streetAddress || '');
     setCoordinates(data.coordinates);
     if (data.metroStations && data.metroStations.length > 0) {
-      setMetroName(data.metroStations[0].name || '');
+      const cleanStation = (data.metroStations[0].name || '').replace(/^м\.\s*/i, '').replace(/^метро\s*/i, '');
+      setMetroName(cleanStation);
       setMetroTime(data.metroStations[0].travelTimeText || '');
       setMetroMode(data.metroStations[0].mode || 'walk');
     } else {
@@ -146,7 +147,7 @@ export const AdminPackagingPage: React.FC = () => {
     const banks = (data as any).seller_banks || data.sellerBanks;
     setSellerBanks(Array.isArray(banks) && banks.length > 0 ? banks : DEFAULT_SETTLEMENT_BANKS);
 
-    // Media
+    // Media: Real seller photos prioritized 100%
     const sPhotos =
       data.sellerUploadedPhotos && data.sellerUploadedPhotos.length > 0
         ? data.sellerUploadedPhotos
@@ -163,16 +164,25 @@ export const AdminPackagingPage: React.FC = () => {
 
   useEffect(() => {
     async function load() {
-      const pool = isEmployee
+      const isOwner = user?.role === 'owner' || user?.activeRole === 'owner';
+      const isEmp = user?.activeRole === 'employee' && !isOwner;
+      let pool = isEmp
         ? await LotsRepository.getByAssignedEmployee(currentEmployeeId)
         : await LotsRepository.getAll({ includePendingApproval: true });
 
-      setAccessibleLots(pool);
-
       const code = (lotId || '').toUpperCase();
-      const matched = code
-        ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code)
-        : pool[0];
+      let matched: Lot | null = code
+        ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) || null
+        : pool[0] || null;
+
+      if (!matched && code) {
+        matched = (await LotsRepository.getByCode(code)) || null;
+        if (matched && !pool.some((p) => p.lotCode.toUpperCase() === matched!.lotCode.toUpperCase())) {
+          pool = [matched, ...pool];
+        }
+      }
+
+      setAccessibleLots(pool);
 
       if (matched) {
         hydrateLotState(matched);
@@ -181,7 +191,7 @@ export const AdminPackagingPage: React.FC = () => {
       }
     }
     load();
-  }, [lotId, isEmployee, currentEmployeeId]);
+  }, [lotId, isEmployee, currentEmployeeId, user]);
 
   const buyerNetSavings = Math.max(0, todayDevPrice - oldDduPrice);
   const buyerDiscountPercent =
@@ -1294,7 +1304,7 @@ export const AdminPackagingPage: React.FC = () => {
                           </div>
                           {metroName && (
                             <div className="text-[11px] text-emerald-700 font-semibold">
-                              м. {metroName} • {metroTime}
+                              м. {metroName.replace(/^м\.\s*/i, '')} {metroTime ? `• ${metroTime}` : ''}
                             </div>
                           )}
                         </div>

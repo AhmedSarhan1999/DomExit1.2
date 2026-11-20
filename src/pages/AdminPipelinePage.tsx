@@ -940,12 +940,12 @@ export const AdminPipelinePage: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center space-x-2">
                         <FileText className="w-4 h-4 text-emerald-600" />
-                        <span>Документы по сделке в Yandex S3 ({drawerDocs.length})</span>
+                        <span>Документы по сделке ({drawerDocs.length})</span>
                       </h4>
                     </div>
 
                     {loadingDrawerDocs ? (
-                      <div className="py-8 text-center text-xs text-slate-500">Загрузка документов из S3...</div>
+                      <div className="py-8 text-center text-xs text-slate-500">Загрузка документов...</div>
                     ) : drawerDocs.length === 0 ? (
                       <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center text-xs text-slate-500 space-y-1">
                         <p>В защищенном хранилище пока нет загруженных сканов по лоту #{selectedDealForDrawer.lotCode}.</p>

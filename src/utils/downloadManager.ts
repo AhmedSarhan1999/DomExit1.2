@@ -10,6 +10,7 @@
 
 import { DocumentMetadata, BuyerCandidate } from '../types';
 import { StorageService } from '../dal/StorageService';
+import { YandexCloudAdapter } from '../dal/adapters/YandexCloudAdapter';
 
 export interface UnifiedDownloadOptions {
   fileName?: string;
@@ -204,6 +205,21 @@ export async function downloadDocumentFile(
     // Safety fallback: if no URL was found
     if (!resolvedUrl) {
       throw new Error('Файл не найден в хранилище или ссылка недействительна');
+    }
+
+    // Automatically sign Yandex Object Storage URLs with AWS4 Presigned GET for private bucket compliance (152-FZ)
+    if (resolvedUrl.includes('storage.yandexcloud.net') && !resolvedUrl.includes('X-Amz-Signature')) {
+      try {
+        const u = new URL(resolvedUrl);
+        const parts = u.pathname.replace(/^\/+/, '').split('/');
+        const key = parts.slice(1).join('/');
+        if (key) {
+          const presigned = await YandexCloudAdapter.getPresignedGetUrl(key, 7200);
+          if (presigned) resolvedUrl = presigned;
+        }
+      } catch (e) {
+        console.warn('[downloadManager] Could not presign storage URL:', e);
+      }
     }
 
     // Ensure clean filename

@@ -52,6 +52,12 @@
   force = true
 
 [[redirects]]
+  from = "/s3-proxy/*"
+  to = "https://storage.yandexcloud.net/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/yandex-passport-proxy/*"
   to = "https://login.yandex.ru/:splat"
   status = 200

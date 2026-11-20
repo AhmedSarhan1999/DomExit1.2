@@ -207,10 +207,6 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
             <span className="text-slate-400">{language === 'ru' ? 'Остаток застройщику:' : 'Remaining to Dev:'}</span>
             <span className="font-medium text-slate-800">{formatRubles(lot.remainingInstallmentDebt)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">{language === 'ru' ? 'Платеж рассрочки:' : 'Installment payment:'}</span>
-            <span className="font-medium text-slate-800">{formatRubles(lot.installmentQuarterlyPayment)} / кв.</span>
-          </div>
         </div>
 
         {/* Action Button: Emerald CTA */}

@@ -80,6 +80,9 @@ export interface Lot {
   sellerUserId?: string; // ID of the seller user
   sellerClientCode?: string; // DEX-XXXXXX
   sellerInn?: string;
+  sellerName?: string;
+  sellerPhone?: string;
+  sellerEmail?: string;
   buyerUserId?: string;
   buyerName?: string;
   buyerPhone?: string;

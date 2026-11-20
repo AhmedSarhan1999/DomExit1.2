@@ -488,7 +488,16 @@ class YandexS3CompatibleStorageService implements IStorageService {
     if ((doc as any).dataUrl && typeof (doc as any).dataUrl === 'string' && (doc as any).dataUrl.startsWith('data:')) {
       return (doc as any).dataUrl;
     }
-    // 3. Live cloudUrl
+    // 3. Generate live Presigned GET URL from Yandex Object Storage S3 (152-FZ Compliant)
+    if (doc.objectKey) {
+      try {
+        const presigned = await YandexCloudAdapter.getPresignedGetUrl(doc.objectKey, 7200);
+        if (presigned) return presigned;
+      } catch (err) {
+        console.warn('[StorageService] Error generating presigned GET URL:', err);
+      }
+    }
+    // 4. Live cloudUrl
     if (doc.cloudUrl && doc.cloudUrl.startsWith('http')) {
       return doc.cloudUrl;
     }

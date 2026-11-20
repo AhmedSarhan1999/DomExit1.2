@@ -129,23 +129,32 @@ export const AdminLegalAuditPage: React.FC = () => {
   );
   const [selectedBank, setSelectedBank] = useState('Сбербанк');
 
-  const isEmployee = user?.activeRole === 'employee';
+  const isOwner = user?.role === 'owner' || user?.activeRole === 'owner';
+  const isEmployee = user?.activeRole === 'employee' && !isOwner;
   const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
   const curatorName =
     user?.name || (isEmployee ? 'Куратор DomExit (Юрист)' : 'Руководство платформы DomExit');
 
   const loadLotData = async () => {
-    const pool = isEmployee
+    let pool = isEmployee
       ? await LotsRepository.getByAssignedEmployee(currentEmployeeId)
       : await LotsRepository.getAll({ includePendingApproval: true });
 
+    const code = (lotId || '').toUpperCase();
+    let found: Lot | null = code
+      ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) || null
+      : pool[0] || null;
+
+    // If specific lot was requested and not in pool, load it directly by code
+    if (!found && code) {
+      found = await LotsRepository.getByCode(code);
+      if (found && !pool.some((p) => p.lotCode.toUpperCase() === found!.lotCode.toUpperCase())) {
+        pool = [found, ...pool];
+      }
+    }
+
     setAccessibleLots(pool);
 
-    const code = (lotId || '').toUpperCase();
-    const found = code
-      ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code)
-      : pool[0] || null;
-    
     if (found) {
       setLot(found);
       if (found.legalAuditCheckpoints && found.legalAuditCheckpoints.length === 4) {
@@ -571,10 +580,14 @@ export const AdminLegalAuditPage: React.FC = () => {
           {!lot ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2">
               <p className="text-sm font-bold text-slate-800">
-                Нет закрепленных объектов для юридического аудита
+                {isOwner
+                  ? 'Объект для правового аудита не найден или еще не создан'
+                  : 'Нет закрепленных объектов для юридического аудита'}
               </p>
               <p className="text-xs text-slate-500">
-                В изолированном контуре сотрудника доступны только назначенные вам объекты.
+                {isOwner
+                  ? 'Выберите другой объект в реестре или дождитесь поступления новых заявок от продавцов.'
+                  : 'В изолированном контуре сотрудника доступны только назначенные вам объекты.'}
               </p>
             </div>
           ) : (

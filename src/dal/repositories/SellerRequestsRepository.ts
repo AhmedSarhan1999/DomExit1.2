@@ -135,25 +135,23 @@ export class SellerRequestsRepository {
       lotTags.push('Ожидает аккредитации банков');
     }
 
-    const streetAddress = params.streetAddress?.trim() || districtGeo.defaultStreetRu;
+    const streetAddress = params.streetAddress?.trim() || '';
 
-    // Handle Metro station parity: prioritize user manual entry, enrich with line color and mode
-    let metroStations = districtGeo.metroStations || [];
+    // Handle Metro station parity: prioritize user manual entry, strip duplicate "м." prefix
+    let metroStations: Array<{ name: string; travelTimeText: string; mode: 'walk' | 'drive'; lineColor?: string }> = [];
     if (params.metroName && params.metroName.trim()) {
+      const cleanStationName = params.metroName.trim().replace(/^м\.\s*/i, '').replace(/^метро\s*/i, '');
       const travelTimeNum = Number(params.metroTime) || 10;
       const isWalk = params.metroTransport !== 'transport';
       const userStation = {
-        name: params.metroName.trim(),
+        name: cleanStationName,
         travelTimeText: `${travelTimeNum} мин. ${isWalk ? 'пешком' : 'транспортом'}`,
         mode: isWalk ? ('walk' as const) : ('drive' as const),
         lineColor: params.city === 'msk' ? '#ED1B35' : '#0078C9',
       };
-      metroStations = [
-        userStation,
-        ...(districtGeo.metroStations || []).filter(
-          (s) => s.name.toLowerCase() !== userStation.name.toLowerCase()
-        ),
-      ];
+      metroStations = [userStation];
+    } else if (districtGeo.metroStations && districtGeo.metroStations.length > 0) {
+      metroStations = districtGeo.metroStations;
     }
 
     // Coordinates: prioritize explicit seller/Yandex coordinates, else subtle deterministic district anchor
@@ -237,6 +235,8 @@ export class SellerRequestsRepository {
       sellerUserId: params.uid,
       sellerClientCode: params.clientCode,
       sellerInn: params.sellerInn,
+      sellerName: params.sellerName,
+      sellerPhone: params.sellerPhone,
       referredByPartnerCode: params.referredByPartnerCode,
       documentIds: params.documentIds,
       legalPassport: {

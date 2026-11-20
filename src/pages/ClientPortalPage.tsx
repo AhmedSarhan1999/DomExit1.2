@@ -309,7 +309,7 @@ export const ClientPortalPage: React.FC = () => {
       PartnerRequestsRepository.getByPartner(uid, partnerRefCode),
       partnerRefCode ? DealsRepository.getByPartner(partnerRefCode) : Promise.resolve([]),
       EmployeesRepository.getAll(),
-      LotsRepository.getBySeller(uid, clientCode),
+      LotsRepository.getBySeller(uid, clientCode, user?.email, user?.phone),
       DealsRepository.getBySeller(uid, clientCode),
       SellerRequestsRepository.getByUser(uid, clientCode),
       PartnersRepository.getById(uid || clientCode),
@@ -361,15 +361,33 @@ export const ClientPortalPage: React.FC = () => {
       setUserBids([]);
     }
 
-    // Seller lots & deals: strictly user's own lots and deals (no silent mock fallbacks)
-    setSellerLots(mySellerLots);
+    // Seller lots & deals: strictly user's own lots and deals
+    const effectiveSellerLots = [...mySellerLots];
+    for (const deal of mySellerDeals) {
+      if (deal.lotCode && !effectiveSellerLots.some((l) => l.lotCode?.toUpperCase() === deal.lotCode?.toUpperCase())) {
+        const found = lotsData.find((l) => l.lotCode?.toUpperCase() === deal.lotCode?.toUpperCase());
+        if (found) {
+          effectiveSellerLots.push(found);
+        }
+      }
+    }
+    for (const req of mySellerReqs) {
+      if (req.lotCode && !effectiveSellerLots.some((l) => l.lotCode?.toUpperCase() === req.lotCode?.toUpperCase())) {
+        const found = lotsData.find((l) => l.lotCode?.toUpperCase() === req.lotCode?.toUpperCase());
+        if (found) {
+          effectiveSellerLots.push(found);
+        }
+      }
+    }
+
+    setSellerLots(effectiveSellerLots);
     setSellerDeals(mySellerDeals);
     setSellerRequests(mySellerReqs);
 
     const activeCode =
-      selectedSellerLotCode && mySellerLots.some((l) => l.lotCode === selectedSellerLotCode)
+      selectedSellerLotCode && effectiveSellerLots.some((l) => l.lotCode === selectedSellerLotCode)
         ? selectedSellerLotCode
-        : mySellerLots[0]?.lotCode || '';
+        : effectiveSellerLots[0]?.lotCode || '';
     setSelectedSellerLotCode(activeCode);
 
     if (activeCode) {

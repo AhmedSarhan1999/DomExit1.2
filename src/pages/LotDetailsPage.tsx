@@ -992,12 +992,6 @@ export const LotDetailsPage: React.FC = () => {
                   <span>Остаток долга застройщику:</span>
                   <span className="font-semibold text-slate-900">{formatRubles(lot.remainingInstallmentDebt)}</span>
                 </div>
-                {lot.transactionType === 'installment_cession' && (lot.installmentQuarterlyPayment || 0) > 0 && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Платеж по графику рассрочки:</span>
-                    <span className="font-semibold text-slate-900">{formatRubles(lot.installmentQuarterlyPayment)} / кв.</span>
-                  </div>
-                )}
                 <div className="flex justify-between text-slate-600">
                   <span>Срок ввода объекта:</span>
                   <span className="font-semibold text-slate-900">{lot.deliveryDate}</span>

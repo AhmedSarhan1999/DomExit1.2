@@ -74,7 +74,7 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
 
     // 2. Persist to YDB Document API
     try {
-      await callYdbDocApi(
+      const res = await callYdbDocApi(
         'DynamoDB_20120810.PutItem',
         {
           TableName: collectionName,
@@ -82,8 +82,25 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
         },
         this.config
       );
+      if (res && res.status && res.status >= 400) {
+        console.warn(`[YandexCloudAdapter] YDB PutItem failed (${res.status}) on ${collectionName}:`, res.text);
+        if (
+          collectionName.includes('lots') ||
+          collectionName.includes('deals') ||
+          collectionName.includes('seller_requests')
+        ) {
+          throw new Error(`Ошибка записи в таблицу ${collectionName} (${res.status}): ${res.text || 'Сбой YDB'}`);
+        }
+      }
     } catch (err) {
       console.warn(`[YandexCloudAdapter] Error writing to YDB table ${collectionName}:`, err);
+      if (
+        collectionName.includes('lots') ||
+        collectionName.includes('deals') ||
+        collectionName.includes('seller_requests')
+      ) {
+        throw err;
+      }
     }
 
     return entity;
@@ -262,25 +279,172 @@ export class YandexCloudDatabaseAdapter implements IDatabaseAdapter {
 
     const authHeader = `AWS4-HMAC-SHA256 Credential=${this.config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-    const res = await fetch(url.toString(), {
-      method: 'PUT',
-      headers: {
-        'Content-Type': contentType,
-        'x-amz-acl': 'public-read',
-        'x-amz-date': amzDate,
-        'x-amz-content-sha256': payloadHash,
-        Authorization: authHeader,
-      },
-      body: payloadBytes as unknown as BodyInit,
-    });
+    const isBrowser = typeof window !== 'undefined';
+    let res: Response | null = null;
+    let lastErr: any = null;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn(`[YandexCloudAdapter] S3 upload failed (${res.status}):`, errText);
-      throw new Error(`Ошибка загрузки в Yandex Object Storage (${res.status}): ${errText}`);
+    // 1. Try Presigned PUT first (standard browser body PUT without custom auth headers that fail CORS preflight)
+    try {
+      const presignedPutUrl = await this.getPresignedPutUrl(safeKey, 3600);
+      res = await fetch(presignedPutUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': contentType,
+        },
+        body: payloadBytes as unknown as BodyInit,
+      });
+    } catch (err) {
+      lastErr = err;
+    }
+
+    // 2. Fallback: try proxy or direct signed PUT
+    if (!res || !res.ok) {
+      try {
+        const fetchTarget = isBrowser
+          ? `/s3-proxy/${this.config.storageBucket}/${safeKey}`
+          : url.toString();
+        res = await fetch(fetchTarget, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': contentType,
+            'x-amz-acl': 'public-read',
+            'x-amz-date': amzDate,
+            'x-amz-content-sha256': payloadHash,
+            Authorization: authHeader,
+          },
+          body: payloadBytes as unknown as BodyInit,
+        });
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    if (!res || !res.ok) {
+      const errText = res ? await res.text() : String(lastErr);
+      console.warn(`[YandexCloudAdapter] S3 upload failed:`, errText);
+      throw new Error(`Ошибка загрузки в Yandex Object Storage: ${errText}`);
     }
 
     return `${this.config.storageEndpoint}/${this.config.storageBucket}/${safeKey}`;
+  }
+
+  /**
+   * Generates a time-limited Presigned GET URL using AWS4-HMAC-SHA256 query parameters.
+   * Enables secure client-side download/preview of private documents in Yandex Object Storage.
+   */
+  async getPresignedGetUrl(objectKey: string, expiresInSeconds = 3600): Promise<string> {
+    const safeKey = objectKey.startsWith('/') ? objectKey.slice(1) : objectKey;
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.substring(0, 8);
+    const host = 'storage.yandexcloud.net';
+    const canonicalUri = `/${this.config.storageBucket}/${safeKey}`;
+    const credentialScope = `${dateStamp}/${this.config.region}/s3/aws4_request`;
+
+    const queryParams = [
+      ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+      ['X-Amz-Credential', `${this.config.accessKeyId}/${credentialScope}`],
+      ['X-Amz-Date', amzDate],
+      ['X-Amz-Expires', String(expiresInSeconds)],
+      ['X-Amz-SignedHeaders', 'host'],
+    ];
+    queryParams.sort((a, b) => a[0].localeCompare(b[0]));
+    const canonicalQueryString = queryParams
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+
+    const canonicalHeaders = `host:${host}\n`;
+    const signedHeaders = 'host';
+    const payloadHash = 'UNSIGNED-PAYLOAD';
+
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+
+    const enc = new TextEncoder();
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      await sha256Hex(enc.encode(canonicalRequest)),
+    ].join('\n');
+
+    const signingKey = await getS3SigningKey(
+      this.config.secretAccessKey,
+      dateStamp,
+      this.config.region,
+      's3'
+    );
+    const sigBuf = await hmacRaw(signingKey, enc.encode(stringToSign));
+    const signature = Array.from(new Uint8Array(sigBuf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    return `https://${host}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+  }
+
+  /**
+   * Generates a time-limited Presigned PUT URL for seamless browser binary uploads.
+   */
+  async getPresignedPutUrl(objectKey: string, expiresInSeconds = 3600): Promise<string> {
+    const safeKey = objectKey.startsWith('/') ? objectKey.slice(1) : objectKey;
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.substring(0, 8);
+    const host = 'storage.yandexcloud.net';
+    const canonicalUri = `/${this.config.storageBucket}/${safeKey}`;
+    const credentialScope = `${dateStamp}/${this.config.region}/s3/aws4_request`;
+
+    const queryParams = [
+      ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+      ['X-Amz-Credential', `${this.config.accessKeyId}/${credentialScope}`],
+      ['X-Amz-Date', amzDate],
+      ['X-Amz-Expires', String(expiresInSeconds)],
+      ['X-Amz-SignedHeaders', 'host'],
+    ];
+    queryParams.sort((a, b) => a[0].localeCompare(b[0]));
+    const canonicalQueryString = queryParams
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+
+    const canonicalHeaders = `host:${host}\n`;
+    const signedHeaders = 'host';
+    const payloadHash = 'UNSIGNED-PAYLOAD';
+
+    const canonicalRequest = [
+      'PUT',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+
+    const enc = new TextEncoder();
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      await sha256Hex(enc.encode(canonicalRequest)),
+    ].join('\n');
+
+    const signingKey = await getS3SigningKey(
+      this.config.secretAccessKey,
+      dateStamp,
+      this.config.region,
+      's3'
+    );
+    const sigBuf = await hmacRaw(signingKey, enc.encode(stringToSign));
+    const signature = Array.from(new Uint8Array(sigBuf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    return `https://${host}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
   }
 
   getConfig(): YandexCredentialsConfig {
@@ -372,6 +536,14 @@ export class YandexCloudAdapter {
     contentType = 'application/octet-stream'
   ): Promise<string> {
     return this.instance.uploadS3Object(objectKey, data, contentType);
+  }
+
+  static async getPresignedGetUrl(objectKey: string, expiresInSeconds = 3600): Promise<string> {
+    return this.instance.getPresignedGetUrl(objectKey, expiresInSeconds);
+  }
+
+  static async getPresignedPutUrl(objectKey: string, expiresInSeconds = 3600): Promise<string> {
+    return this.instance.getPresignedPutUrl(objectKey, expiresInSeconds);
   }
 
   static async resolveAddress(
