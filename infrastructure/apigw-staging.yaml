@@ -1,0 +1,67 @@
+openapi: 3.0.0
+info:
+  title: DomExit API Gateway Staging
+  version: 1.0.0
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: d4ep633b03be8trc7d28
+        service_account_id: aje70eogmpm04c84rsnl
+  /api/{proxy+}:
+    x-yc-apigateway-any-method:
+      summary: Backend API Router
+      operationId: apiRouter
+      parameters:
+        - name: proxy
+          in: path
+          required: false
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: d4ep633b03be8trc7d28
+        service_account_id: aje70eogmpm04c84rsnl
+  /assets/{file+}:
+    get:
+      summary: Static assets
+      operationId: staticAssets
+      parameters:
+        - name: file
+          in: path
+          required: true
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: object_storage
+        bucket: domexit-web-staging
+        object: assets/{file}
+        service_account_id: aje70eogmpm04c84rsnl
+  /:
+    get:
+      summary: Root Web Page
+      operationId: rootPage
+      x-yc-apigateway-integration:
+        type: object_storage
+        bucket: domexit-web-staging
+        object: index.html
+        service_account_id: aje70eogmpm04c84rsnl
+  /{file+}:
+    get:
+      summary: Web Static SPA Fallback
+      operationId: webStatic
+      parameters:
+        - name: file
+          in: path
+          required: false
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: object_storage
+        bucket: domexit-web-staging
+        object: '{file}'
+        error_object: index.html
+        service_account_id: aje70eogmpm04c84rsnl

@@ -1,0 +1,19 @@
+{
+  "name": "domexit-backend",
+  "version": "1.0.0",
+  "description": "DomExit Real Serverless Backend for Yandex Cloud Functions & API Gateway",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js --footer:js=\"module.exports = { handler };\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.900.0",
+    "@aws-sdk/s3-request-presigner": "^3.900.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}
