@@ -21,7 +21,6 @@ export class LotsRepository {
     urgentOnly?: boolean;
     readyYear?: number;
     status?: 'all' | 'available' | 'processing' | 'closed';
-    isVipInvestor?: boolean;
     includePendingApproval?: boolean;
   }): Promise<Lot[]> {
     let list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
@@ -43,11 +42,6 @@ export class LotsRepository {
           }
           if (l.status === 'draft' || l.status === 'hidden' || l.status === 'blocked') return false;
           if (l.isPublished === false) return false;
-          // Hide VIP exclusive lots from public catalog for 48h
-          if (l.isVipExclusive) {
-            const isWithin48h = l.vipEarlyAccessUntil ? new Date(l.vipEarlyAccessUntil).getTime() > Date.now() : true;
-            if (isWithin48h) return false;
-          }
           return true;
         });
       }
@@ -60,11 +54,7 @@ export class LotsRepository {
         }
 
         if (filter.status === 'processing') {
-          if (!filter.isVipInvestor) {
-            list = list.filter((l) => (l.currentStage || 3) >= 3);
-          } else {
-            list = list.filter((l) => (l.currentStage || 2) >= 2 || l.isEarlyAccessVIP);
-          }
+          list = list.filter((l) => (l.currentStage || 3) >= 3);
         }
       }
 
@@ -195,15 +185,6 @@ export class LotsRepository {
     return list.filter((l) => l.assignedEmployeeId === employeeId);
   }
 
-  static async getVipLots(): Promise<Lot[]> {
-    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
-    return list.filter((l) => {
-      if (l.approvalStatus === 'rejected' || l.status === 'draft') return false;
-      const isWithin48h = l.vipEarlyAccessUntil ? new Date(l.vipEarlyAccessUntil).getTime() > Date.now() : true;
-      return l.isVipExclusive ? isWithin48h : (l.isEarlyAccessVIP || false);
-    });
-  }
-
   static async assignToEmployee(
     lotCode: string,
     employeeId: string,
@@ -264,7 +245,6 @@ export class LotsRepository {
       status: 'available',
       approvalStatus: 'approved',
       isPublished: true,
-      isVipExclusive: false,
       currentStage: 3,
       publishedAt: new Date().toISOString(),
     };
@@ -285,48 +265,6 @@ export class LotsRepository {
       actionType: 'packaging_published',
       title: `Лот #${lot.lotCode} опубликован в открытом каталоге DomExit`,
       description: `Объект упакован по 152-ФЗ и открыт для публичных покупателей.`,
-    });
-    return updated;
-  }
-
-  static async publishToVipCatalog(
-    lotCode: string,
-    operatorName: string,
-    additionalUpdates?: Partial<Lot>
-  ): Promise<Lot | null> {
-    const lot = await this.getByCode(lotCode);
-    if (!lot) return null;
-    const vipExpires = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
-    const updated: Lot = {
-      ...lot,
-      ...additionalUpdates,
-      status: 'available',
-      approvalStatus: 'approved',
-      isPublished: false,
-      isVipExclusive: true,
-      isEarlyAccessVIP: true,
-      earlyAccessHoursLeft: 48,
-      vipEarlyAccessUntil: vipExpires,
-      currentStage: 3,
-      publishedAt: new Date().toISOString(),
-    };
-    await DatabaseGateway.save<Lot>(COLLECTION, updated);
-
-    // Simultaneously advance the linked deal stage to buyer_matching
-    try {
-      const { DealsRepository } = await import('./DealsRepository');
-      await DealsRepository.updateStage(lot.lotCode, 'buyer_matching');
-    } catch (dealErr) {
-      console.warn('[LotsRepository] Non-fatal deal stage sync:', dealErr);
-    }
-
-    await AuditLogsRepository.addLog({
-      lotCode: lot.lotCode,
-      operatorName,
-      operatorRole: 'curator',
-      actionType: 'vip_telegram_broadcast',
-      title: `Лот #${lot.lotCode} опубликован в закрытом VIP-каталоге (ранний доступ 48 часов)`,
-      description: `Объект доступен только резидентам VIP-клуба до ${new Date(vipExpires).toLocaleString('ru-RU')}.`,
     });
     return updated;
   }

@@ -21,7 +21,6 @@ export interface UsersRbacTabProps {
       | 'investor'
       | 'employee'
       | 'owner'
-      | 'bank'
   ) => void;
   showToast: (msg: string) => void;
   showError: (msg: string) => void;
@@ -194,14 +193,12 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
         15000
       );
 
-      let mappedRole: 'employee' | 'owner' | 'bank' = 'employee';
+      let mappedRole: 'employee' | 'owner' = 'employee';
       if (
         newEmpRole.toLowerCase().includes('владелец') ||
         newEmpRole.toLowerCase().includes('co-owner')
       ) {
         mappedRole = 'owner';
-      } else if (newEmpRole.toLowerCase().includes('банк')) {
-        mappedRole = 'bank';
       }
 
       await withAsyncTimeout(
@@ -214,7 +211,7 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
           role: mappedRole === 'owner' ? 'admin' : mappedRole,
           roles:
             mappedRole === 'owner'
-              ? ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer']
+              ? ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer']
               : [mappedRole],
           activeRole: mappedRole,
           isPartnerApproved: true,
@@ -348,9 +345,8 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                         >
                           <option value="owner">👑 Владелец (owner)</option>
                           <option value="employee">👨‍💼 Куратор (employee)</option>
-                          <option value="bank">🏦 Банк-партнер (bank)</option>
                           <option value="partner">🤝 Партнер B2B (partner)</option>
-                          <option value="investor">💎 VIP Инвестор (investor)</option>
+                          <option value="investor">Инвестор (investor)</option>
                           <option value="seller">🏠 Продавец ДДУ (seller)</option>
                           <option value="buyer">🔑 Покупатель (buyer)</option>
                         </select>
@@ -373,7 +369,7 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                                 : 'bg-slate-100 text-slate-400'
                             }`}
                           >
-                            VIP {u.isInvestorApproved ? '✓' : '—'}
+                            Инвестор {u.isInvestorApproved ? '✓' : '—'}
                           </span>
                         </div>
                       </td>
@@ -384,8 +380,6 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                             switchRole(
                               (currentRole === 'admin'
                                 ? 'owner'
-                                : currentRole === 'bank_officer'
-                                ? 'bank'
                                 : currentRole) as
                                 | 'buyer'
                                 | 'seller'
@@ -393,7 +387,6 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                                 | 'investor'
                                 | 'employee'
                                 | 'owner'
-                                | 'bank'
                             )
                           }
                           className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"

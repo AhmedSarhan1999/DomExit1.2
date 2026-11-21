@@ -34,7 +34,6 @@ import {
   Eye,
   RefreshCw,
 } from 'lucide-react';
-import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
 
 export const AdminPackagingPage: React.FC = () => {
@@ -44,7 +43,6 @@ export const AdminPackagingPage: React.FC = () => {
 
   const [lot, setLot] = useState<Lot | null>(null);
   const [accessibleLots, setAccessibleLots] = useState<Lot[]>([]);
-  const [previewTab, setPreviewTab] = useState<'web' | 'telegram'>('web');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
   // 152-FZ Privacy & Floor
@@ -420,25 +418,6 @@ export const AdminPackagingPage: React.FC = () => {
     }
   };
 
-  const handlePublishVipCatalog = async () => {
-    if (!lot) return;
-    const updatedLot = buildUpdatedLotData();
-    const result = await LotsRepository.publishToVipCatalog(
-      lot.lotCode,
-      operatorName,
-      updatedLot
-    );
-    if (result) {
-      setLot(result);
-      setNotificationMsg(
-        `Лот #${lot.lotCode} опубликован в ЗАКРЫТОМ VIP-каталоге (ранний доступ 48 часов)!`
-      );
-      setTimeout(() => setNotificationMsg(null), 5000);
-    }
-  };
-
-  const { enableVipClub } = useFeatureFlagsStore();
-
   const handleUnpublishLot = async () => {
     if (!lot) return;
     if (!confirm(`Снять лот #${lot.lotCode} с публикации в каталоге?`)) return;
@@ -551,15 +530,10 @@ export const AdminPackagingPage: React.FC = () => {
 
                   <div className="flex items-center space-x-2">
                     <span className="text-xs font-bold text-slate-500">Статус:</span>
-                    {lot.isPublished && !lot.isVipExclusive ? (
+                    {lot.isPublished ? (
                       <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs flex items-center space-x-1">
                         <Globe className="w-3 h-3 text-emerald-600" />
                         <span>Опубликован (Открытый)</span>
-                      </span>
-                    ) : lot.isVipExclusive ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold text-xs flex items-center space-x-1">
-                        <Sparkles className="w-3 h-3 text-amber-600" />
-                        <span>В закрытом VIP (48ч)</span>
                       </span>
                     ) : (
                       <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-bold text-xs">
@@ -596,16 +570,6 @@ export const AdminPackagingPage: React.FC = () => {
                     <Globe className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Опубликовать в открытом каталоге</span>
                   </button>
-                  {enableVipClub && (
-                    <button
-                      type="button"
-                      onClick={handlePublishVipCatalog}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Отправить в закрытый VIP-каталог (на 48 часов)</span>
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -1439,32 +1403,8 @@ export const AdminPackagingPage: React.FC = () => {
                   <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs sticky top-6">
                     <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        Живое превью лота ({previewTab === 'web' ? 'Веб-витрина' : 'Telegram VIP'})
+                        Живое превью лота (Веб-витрина)
                       </h3>
-                      <div className="flex p-0.5 bg-slate-100 rounded-lg border border-slate-200 text-[11px] font-semibold">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTab('web')}
-                          className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                            previewTab === 'web'
-                              ? 'bg-white text-emerald-700 shadow-xs'
-                              : 'text-slate-500'
-                          }`}
-                        >
-                          Веб-витрина
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTab('telegram')}
-                          className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                            previewTab === 'telegram'
-                              ? 'bg-white text-sky-600 shadow-xs'
-                              : 'text-slate-500'
-                          }`}
-                        >
-                          Telegram VIP
-                        </button>
-                      </div>
                     </div>
 
                     <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
@@ -1553,17 +1493,6 @@ export const AdminPackagingPage: React.FC = () => {
                         <Globe className="w-4 h-4 text-emerald-400" />
                         <span>Опубликовать в открытом каталоге</span>
                       </button>
-
-                      {enableVipClub && (
-                        <button
-                          type="button"
-                          onClick={handlePublishVipCatalog}
-                          className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                        >
-                          <Send className="w-4 h-4" />
-                          <span>Отправить в закрытый VIP-каталог (на 48 часов)</span>
-                        </button>
-                      )}
 
                       <button
                         type="button"

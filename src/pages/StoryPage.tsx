@@ -274,7 +274,7 @@ export const StoryPage: React.FC = () => {
             <span className="text-emerald-600 font-black text-lg">2024 год</span>
             <h3 className="text-sm font-bold text-slate-900">Запуск платформы и 500 сделок</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Прямая интеграция со шлюзами Росреестра и аккредитивами Сбербанка. Запуск закрытого VIP-клуба раннего доступа для покупателей квартир.
+              Прямая интеграция со шлюзами Росреестра и аккредитивами Сбербанка. Запуск единого сервиса безопасных расчетов и алгоритмического подбора переуступок.
             </p>
           </div>
 
@@ -303,10 +303,10 @@ export const StoryPage: React.FC = () => {
               Предложить квартиру (0%)
             </Link>
             <Link
-              to="/vip-catalog"
+              to="/opportunities"
               className="px-5 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-200 shadow-xs transition-all"
             >
-              Ранний доступ 48ч
+              Каталог квартир
             </Link>
           </div>
         </div>

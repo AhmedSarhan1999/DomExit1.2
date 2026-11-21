@@ -477,7 +477,7 @@ export async function validateCollectionPayload(params: {
     }
 
     if (!isStaff) {
-      const validStatuses = new Set(['active', 'available', 'reserved', 'vip_exclusive']);
+      const validStatuses = new Set(['active', 'available', 'reserved']);
       if (!lot.isApproved || !validStatuses.has(lot.status)) {
         return { valid: false, statusCode: 400, error: `Лот #${lotCode} недоступен для подачи заявок` };
       }

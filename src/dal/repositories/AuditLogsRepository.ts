@@ -72,7 +72,7 @@ const initialLogs: AuditLogEntry[] = [
     dealId: 'DEAL-2025-14102',
     operatorId: 'bank-emp-1',
     operatorName: 'Игорь Владимирович Соколов',
-    operatorRole: 'bank_officer',
+    operatorRole: 'curator',
     actionType: 'escrow_funds_deposited',
     title: 'Сбербанк: Средства по аккредитиву № АК-78402 задепонированы',
     description:

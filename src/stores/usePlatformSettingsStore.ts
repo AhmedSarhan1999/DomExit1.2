@@ -29,7 +29,6 @@ export interface UnifiedPlatformSettings {
   // 7 Communication Channels & Social Links
   telegramChannelUrl: string;
   telegramBotUrl: string;
-  vipClubTelegramUrl: string;
   maxProfileUrl: string;
   vkCommunityUrl: string;
   hotlinePhone: string;
@@ -59,7 +58,6 @@ export const DEFAULT_UNIFIED_SETTINGS: UnifiedPlatformSettings = {
 
   telegramChannelUrl: DEFAULT_PUBLIC_CHANNELS.telegramChannelUrl,
   telegramBotUrl: DEFAULT_PUBLIC_CHANNELS.telegramBotUrl,
-  vipClubTelegramUrl: DEFAULT_PUBLIC_CHANNELS.vipClubTelegramUrl,
   maxProfileUrl: DEFAULT_PUBLIC_CHANNELS.maxProfileUrl,
   vkCommunityUrl: DEFAULT_PUBLIC_CHANNELS.vkCommunityUrl,
   hotlinePhone: DEFAULT_PUBLIC_CHANNELS.hotlinePhone,
@@ -145,7 +143,6 @@ export const usePlatformSettingsStore = create<PlatformSettingsStoreState>((set,
 
           telegramChannelUrl: legal.social_links?.telegram_channel || channels.telegramChannelUrl,
           telegramBotUrl: legal.social_links?.telegram_bot || channels.telegramBotUrl,
-          vipClubTelegramUrl: channels.vipClubTelegramUrl,
           maxProfileUrl: legal.social_links?.max || channels.maxProfileUrl,
           vkCommunityUrl: legal.social_links?.vk || channels.vkCommunityUrl,
           hotlinePhone: legal.support_phone || channels.hotlinePhone,
@@ -285,7 +282,6 @@ export const usePlatformSettingsStore = create<PlatformSettingsStoreState>((set,
           PublicChannelsRepository.updateChannels({
             telegramChannelUrl: merged.telegramChannelUrl,
             telegramBotUrl: merged.telegramBotUrl,
-            vipClubTelegramUrl: merged.vipClubTelegramUrl,
             maxProfileUrl: merged.maxProfileUrl,
             vkCommunityUrl: merged.vkCommunityUrl,
             hotlinePhone: merged.hotlinePhone,

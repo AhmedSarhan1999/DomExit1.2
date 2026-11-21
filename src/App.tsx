@@ -9,7 +9,6 @@ import { PageSkeletonLoader } from './components/common/Skeletons';
 const HomePage = React.lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
 const SellersPage = React.lazy(() => import('./pages/SellersPage').then((m) => ({ default: m.SellersPage })));
 const OpportunitiesPage = React.lazy(() => import('./pages/OpportunitiesPage').then((m) => ({ default: m.OpportunitiesPage })));
-const VipCatalogPage = React.lazy(() => import('./pages/VipCatalogPage').then((m) => ({ default: m.VipCatalogPage })));
 const LotDetailsPage = React.lazy(() => import('./pages/LotDetailsPage').then((m) => ({ default: m.LotDetailsPage })));
 const HowItWorksPage = React.lazy(() => import('./pages/HowItWorksPage').then((m) => ({ default: m.HowItWorksPage })));
 const StoryPage = React.lazy(() => import('./pages/StoryPage').then((m) => ({ default: m.StoryPage })));
@@ -28,7 +27,6 @@ const AdminLegalAuditPage = React.lazy(() => import('./pages/AdminLegalAuditPage
 const AdminMatchmakerPage = React.lazy(() => import('./pages/AdminMatchmakerPage').then((m) => ({ default: m.AdminMatchmakerPage })));
 const AdminClosingPage = React.lazy(() => import('./pages/AdminClosingPage').then((m) => ({ default: m.AdminClosingPage })));
 const AdminBrokersPage = React.lazy(() => import('./pages/AdminBrokersPage').then((m) => ({ default: m.AdminBrokersPage })));
-const BankPortalPage = React.lazy(() => import('./pages/BankPortalPage').then((m) => ({ default: m.BankPortalPage })));
 const AdminArchiveLogsPage = React.lazy(() => import('./pages/AdminArchiveLogsPage').then((m) => ({ default: m.AdminArchiveLogsPage })));
 const AdminCuratorProfilePage = React.lazy(() => import('./pages/AdminCuratorProfilePage').then((m) => ({ default: m.AdminCuratorProfilePage })));
 
@@ -43,10 +41,8 @@ const KnowledgeHubPage = React.lazy(() => import('./pages/knowledge/KnowledgeHub
 const ArticleDetailPage = React.lazy(() => import('./pages/knowledge/ArticleDetailPage').then((m) => ({ default: m.ArticleDetailPage })));
 const FAQPage = React.lazy(() => import('./pages/knowledge/FAQPage').then((m) => ({ default: m.FAQPage })));
 
-import { BankGatewayErrorBoundary } from './components/common/BankGatewayErrorBoundary';
 import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { DatabaseInitializer } from './dal/initializer';
-import { useFeatureFlagsStore } from './stores/useFeatureFlagsStore';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
 
@@ -72,8 +68,6 @@ const ScrollToTop: React.FC = () => {
 };
 
 export const App: React.FC = () => {
-  const { enableVipClub } = useFeatureFlagsStore();
-
   useEffect(() => {
     DatabaseInitializer.initLiveDatabase();
   }, []);
@@ -88,107 +82,73 @@ export const App: React.FC = () => {
           <Suspense fallback={<PageSkeletonLoader />}>
             <Routes>
               {/* Public Layout Wrapping Global Header & Footer */}
-            <Route element={<PublicLayout />}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/sellers" element={<SellersPage />} />
-              <Route path="/opportunities" element={<OpportunitiesPage />} />
-              <Route
-                path="/vip-catalog"
-                element={enableVipClub ? <VipCatalogPage /> : <Navigate to="/opportunities" replace />}
-              />
-              <Route path="/opportunities/:lotCode" element={<LotDetailsPage />} />
-              <Route path="/how-it-works" element={<HowItWorksPage />} />
-              <Route path="/story" element={<StoryPage />} />
-              <Route path="/investors" element={<Navigate to="/opportunities" replace />} />
-              <Route path="/partners" element={<PartnersPublicPage />} />
-              <Route path="/verify/:lotCode" element={<VerifyCertificatePage />} />
+              <Route element={<PublicLayout />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/sellers" element={<SellersPage />} />
+                <Route path="/opportunities" element={<OpportunitiesPage />} />
+                <Route path="/opportunities/:lotCode" element={<LotDetailsPage />} />
+                <Route path="/how-it-works" element={<HowItWorksPage />} />
+                <Route path="/story" element={<StoryPage />} />
+                <Route path="/partners" element={<PartnersPublicPage />} />
+                <Route path="/verify/:lotCode" element={<VerifyCertificatePage />} />
 
-              {/* SEO Knowledge Center & FAQ */}
-              <Route path="/knowledge" element={<KnowledgeHubPage />} />
-              <Route path="/knowledge/:articleSlug" element={<ArticleDetailPage />} />
-              <Route path="/faq" element={<FAQPage />} />
+                {/* SEO Knowledge Center & FAQ */}
+                <Route path="/knowledge" element={<KnowledgeHubPage />} />
+                <Route path="/knowledge/:articleSlug" element={<ArticleDetailPage />} />
+                <Route path="/faq" element={<FAQPage />} />
 
-              {/* Unified /legal/* Enterprise Legal CMS Routes */}
-              <Route path="/legal" element={<LegalIndexPage />} />
-              <Route path="/legal/archive" element={<LegalArchivePage />} />
-              <Route path="/legal/archive/:slug/:version" element={<LegalArchiveSnapshotPage />} />
-              <Route path="/legal/:slug" element={<LegalDocumentReaderPage />} />
+                {/* Unified Federal Law 152-FZ / 38-FZ Legal Engine */}
+                <Route path="/legal" element={<LegalIndexPage />} />
+                <Route path="/legal/:slug" element={<LegalDocumentReaderPage />} />
+                <Route path="/legal-archive" element={<LegalArchivePage />} />
+                <Route path="/legal-archive/:archiveId" element={<LegalArchiveSnapshotPage />} />
 
-              {/* Backward-Compatible Legal Redirects */}
-              <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />
-              <Route path="/terms" element={<Navigate to="/legal/terms" replace />} />
-              <Route path="/consent-pd" element={<Navigate to="/legal/consent-pd" replace />} />
-              <Route path="/consent-ads" element={<Navigate to="/legal/consent-ads" replace />} />
-              <Route path="/consent-distribution" element={<Navigate to="/legal/consent-distribution" replace />} />
-              <Route path="/cookies" element={<Navigate to="/legal/cookies" replace />} />
-              <Route path="/call-recording" element={<Navigate to="/legal/call-recording" replace />} />
+                {/* Legacy / Direct URL Redirects */}
+                <Route path="/catalog" element={<Navigate to="/opportunities" replace />} />
+                <Route path="/catalog/:id" element={<OpportunityRedirect />} />
+                <Route path="/invest" element={<Navigate to="/opportunities" replace />} />
+                <Route path="/dossier/:lotId" element={<AdminOpsAuditRedirect />} />
+              </Route>
 
-              {/* Unified Client Account & Portal */}
+              {/* Client & Buyer Portal */}
               <Route path="/portal" element={<ClientPortalPage />} />
-              <Route path="/account" element={<ClientPortalPage />} />
-              <Route path="/tracker" element={<Navigate to="/portal" replace />} />
-              <Route path="/client/tracker/:dealId" element={<ClientTrackerPage />} />
+              <Route path="/portal/:tab" element={<ClientPortalPage />} />
+              <Route path="/track/:token" element={<ClientTrackerPage />} />
 
-              {/* Backward-Compatible Route Aliases */}
-              <Route path="/app/seller" element={<Navigate to="/sellers" replace />} />
-              <Route path="/app/objects" element={<Navigate to="/opportunities" replace />} />
-              <Route path="/app/objects/:id" element={<OpportunityRedirect />} />
-            </Route>
+              {/* Protected Operations & Admin Desk (Guarded by AdminRouteGuard) */}
+              <Route element={<AdminRouteGuard />}>
+                <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+                
+                <Route path="/admin/pipeline" element={<AdminPipelinePage />} />
+                
+                <Route path="/admin/packaging" element={<AdminPackagingPage />} />
+                <Route path="/admin/packaging/:lotId" element={<AdminPackagingPage />} />
+                
+                <Route path="/admin/legal-audit" element={<AdminLegalAuditPage />} />
+                <Route path="/admin/legal-audit/:lotId" element={<AdminLegalAuditPage />} />
+                
+                <Route path="/admin/matchmaker" element={<AdminMatchmakerPage />} />
+                <Route path="/admin/matchmaker/:lotId" element={<AdminMatchmakerPage />} />
+                
+                <Route path="/admin/closing" element={<AdminClosingPage />} />
+                <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
+                
+                <Route path="/admin/brokers" element={<AdminBrokersPage />} />
+                <Route path="/admin/partners-bot" element={<Navigate to="/admin/brokers" replace />} />
 
-            {/* Admin, Compliance & Pipeline Operations (Protected by AdminRouteGuard) */}
-            <Route element={<AdminRouteGuard />}>
-              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-              <Route path="/admin/pipeline" element={<AdminPipelinePage />} />
-              
-              <Route path="/admin/packaging" element={<AdminPackagingPage />} />
-              <Route path="/admin/packaging/:lotId" element={<AdminPackagingPage />} />
-              
-              <Route path="/admin/legal-audit" element={<AdminLegalAuditPage />} />
-              <Route path="/admin/legal-audit/:lotId" element={<AdminLegalAuditPage />} />
-              <Route path="/admin/ops-audit" element={<Navigate to="/admin/legal-audit" replace />} />
-              <Route path="/admin/ops-audit/:lotId" element={<AdminOpsAuditRedirect />} />
-              
-              <Route path="/admin/matchmaker" element={<AdminMatchmakerPage />} />
-              <Route path="/admin/matchmaker/:lotId" element={<AdminMatchmakerPage />} />
-              
-              <Route path="/admin/closing" element={<AdminClosingPage />} />
-              <Route path="/admin/closing/:dealId" element={<AdminClosingPage />} />
-              
-              <Route path="/admin/investors" element={<Navigate to="/admin/dashboard" replace />} />
-              <Route path="/admin/brokers" element={<AdminBrokersPage />} />
-              <Route path="/admin/partners-bot" element={<Navigate to="/admin/brokers" replace />} />
+                {/* Archive Logs & Decision Journal */}
+                <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />
 
-              {/* Archive Logs & Decision Journal (Mission 12) */}
-              <Route path="/admin/archive-logs" element={<AdminArchiveLogsPage />} />
+                {/* Curator Professional Profile */}
+                <Route path="/admin/profile" element={<AdminCuratorProfilePage />} />
+              </Route>
 
-              {/* Curator Professional Profile (Mission 14) */}
-              <Route path="/admin/profile" element={<AdminCuratorProfilePage />} />
-            </Route>
-
-            {/* Partner Bank Gateway (Mission 6) */}
-            <Route
-              path="/bank-portal"
-              element={
-                <BankGatewayErrorBoundary>
-                  <BankPortalPage />
-                </BankGatewayErrorBoundary>
-              }
-            />
-            <Route
-              path="/admin/bank-gateway"
-              element={
-                <BankGatewayErrorBoundary>
-                  <BankPortalPage />
-                </BankGatewayErrorBoundary>
-              }
-            />
-
-            {/* Catch-all Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+              {/* Catch-all Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
       </AuthProvider>
     </LanguageProvider>
   );

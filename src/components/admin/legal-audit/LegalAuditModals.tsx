@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, UploadCloud, AlertCircle, Building2, Check } from 'lucide-react';
+import { X, UploadCloud, AlertCircle, Check } from 'lucide-react';
 import { LegalAuditCheckpoint, Lot } from '../../../types';
 
 interface InspectorModalProps {
@@ -260,70 +260,6 @@ export const RejectModal: React.FC<RejectModalProps> = ({
   );
 };
 
-interface SpecialBankModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  selectedBank: string;
-  setSelectedBank: (b: string) => void;
-  bankSpecialReason: string;
-  setBankSpecialReason: (r: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
-}
-
-export const SpecialBankModal: React.FC<SpecialBankModalProps> = ({
-  isOpen,
-  onClose,
-  selectedBank,
-  setSelectedBank,
-  bankSpecialReason,
-  setBankSpecialReason,
-  onSubmit,
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 sm:p-8 space-y-5">
-        <h3 className="text-base font-bold text-slate-900">Запрос специального одобрения в банк</h3>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <select
-            value={selectedBank}
-            onChange={(e) => setSelectedBank(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold"
-          >
-            <option value="Сбербанк">Сбербанк</option>
-            <option value="ВТБ">Банк ВТБ</option>
-            <option value="Альфа-Банк">Альфа-Банк</option>
-            <option value="ДОМ.РФ">Банк ДОМ.РФ</option>
-          </select>
-          <textarea
-            rows={3}
-            required
-            value={bankSpecialReason}
-            onChange={(e) => setBankSpecialReason(e.target.value)}
-            className="w-full p-3 rounded-xl border border-slate-200 text-xs"
-          />
-          <div className="flex justify-end space-x-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold cursor-pointer"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer"
-            >
-              Направить
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
 export interface LegalAuditModalsContainerProps {
   inspectingCheckpoint: LegalAuditCheckpoint | null;
   lot: Lot | null;
@@ -350,14 +286,6 @@ export interface LegalAuditModalsContainerProps {
   rejectionReason: string;
   setRejectionReason: (r: string) => void;
   onSubmitReject: (e: React.FormEvent) => void;
-  enableBankPortal: boolean;
-  isSpecialBankModalOpen: boolean;
-  onCloseBankModal: () => void;
-  selectedBank: string;
-  setSelectedBank: (b: string) => void;
-  bankSpecialReason: string;
-  setBankSpecialReason: (r: string) => void;
-  onSubmitBankModal: (e: React.FormEvent) => void;
 }
 
 export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps> = ({
@@ -386,14 +314,6 @@ export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps>
   rejectionReason,
   setRejectionReason,
   onSubmitReject,
-  enableBankPortal,
-  isSpecialBankModalOpen,
-  onCloseBankModal,
-  selectedBank,
-  setSelectedBank,
-  bankSpecialReason,
-  setBankSpecialReason,
-  onSubmitBankModal,
 }) => {
   return (
     <>
@@ -432,18 +352,6 @@ export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps>
         setRejectionReason={setRejectionReason}
         onSubmit={onSubmitReject}
       />
-
-      {enableBankPortal && (
-        <SpecialBankModal
-          isOpen={isSpecialBankModalOpen}
-          onClose={onCloseBankModal}
-          selectedBank={selectedBank}
-          setSelectedBank={setSelectedBank}
-          bankSpecialReason={bankSpecialReason}
-          setBankSpecialReason={setBankSpecialReason}
-          onSubmit={onSubmitBankModal}
-        />
-      )}
     </>
   );
 };

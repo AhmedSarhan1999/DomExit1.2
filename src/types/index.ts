@@ -110,19 +110,15 @@ export interface Lot {
   seller_banks?: string[];
   isFeatured: boolean;
   isPublished?: boolean;
-  isVipExclusive?: boolean;
   dealTrack?: PropertyDealTrack;
   dropConfig?: LotDropConfig;
   cadastralNumber?: string;
   secondaryRiskChecklist?: SecondaryRiskChecklist;
   legalRadarChecks?: LegalRadarCheckItem[];
-  vipEarlyAccessUntil?: string;
   transactionType?: 'installment_cession' | 'mortgage_cession' | 'direct_sale_140fz';
-  isEarlyAccessVIP?: boolean; // 48-hour VIP Investor early access window
-  earlyAccessHoursLeft?: number;
   escrowBank: 'Sberbank' | 'VTB' | 'AlfaBank' | string;
   tags: string[];
-  status?: 'available' | 'processing' | 'in_deal' | 'closed' | 'draft' | 'hidden' | 'blocked' | 'vip_exclusive'; // Status in Catalog
+  status?: 'available' | 'processing' | 'in_deal' | 'closed' | 'draft' | 'hidden' | 'blocked'; // Status in Catalog
   currentStage?: number; // Current deal stage 1-5
   approvalStatus?: 'approved' | 'approved_for_packaging' | 'pending_owner_approval' | 'rejected';
   rejectionReason?: string;
@@ -572,12 +568,11 @@ export interface UserProfile {
   maxProfile?: string;
   bankName?: string;
   photoURL?: string;
-  roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank_officer' | 'bank'>;
+  roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner'>;
   role?: string;
   activeRole?: string;
   isPartnerApproved: boolean;
   isInvestorApproved: boolean;
-  isVipSubscriber?: boolean;
   agreedPolicyVersion?: string;
   partnerRefCode?: string;
   assignedEmployeeId?: string;
@@ -796,7 +791,7 @@ export interface AuditLogEntry {
   dealId?: string;
   operatorId: string;
   operatorName: string;
-  operatorRole: 'curator' | 'bank_officer' | 'owner' | 'system' | 'client';
+  operatorRole: 'curator' | 'owner' | 'system' | 'client';
   actionType:
     | 'legal_approved'
     | 'legal_rejected'
@@ -822,7 +817,6 @@ export interface AuditLogEntry {
     | 'escrow_released'
     | 'deal_cancelled_relisted'
     | 'packaging_photos_approved'
-    | 'vip_telegram_broadcast'
     | 'special_bank_approval_requested'
     | 'special_bank_approval_decided'
     | 'developer_accreditation_submitted'
@@ -902,7 +896,6 @@ export interface PublicChannelsConfig {
   id: string; // 'public_channels'
   telegramChannelUrl: string; // Telegram-канал лотов
   telegramBotUrl: string; // Telegram-бот
-  vipClubTelegramUrl: string; // Закрытый VIP-клуб
   maxProfileUrl: string; // Официальный профиль MAX
   vkCommunityUrl: string; // VK Сообщество
   hotlinePhone: string; // Номер горячей линии

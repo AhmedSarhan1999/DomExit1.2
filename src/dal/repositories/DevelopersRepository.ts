@@ -6,7 +6,6 @@ import {
   RussianCityCode,
   ResolvedBankFinancing,
   Lot,
-  SpecialApprovalRequest,
 } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
@@ -522,29 +521,6 @@ class DevelopersRepositoryController {
       }
     }
 
-    // Also check bank_special_approvals collection for this lotCode with status === 'approved'
-    try {
-      const allSpecial = await DatabaseGateway.getAll<SpecialApprovalRequest>('bank_special_approvals', []);
-      const lotSpecialApproved = (allSpecial || []).filter(
-        (s) => s?.lotCode === lot.lotCode && s?.status === 'approved' && s?.bankName
-      );
-      for (const s of lotSpecialApproved) {
-        const exists = projectApprovals.some((p) => p.bankName === s.bankName);
-        if (!exists) {
-          projectApprovals.push({
-            bankName: s.bankName,
-            approvedRatePercent: s.approvedRatePercent || 19.9,
-            maxPdnPercent: (s.maxPdnPercent as 40 | 50 | 60) || 50,
-            approvedAt: s.decidedAt,
-            decidedBy: s.decidedBy,
-            notes: s.decisionNotes,
-          });
-        }
-      }
-    } catch {
-      // Safe fallback if collection is temporarily empty
-    }
-
     // Rule 3: Precedence Hierarchy (Developer Terms Override Lot Terms)
     const resultMap = new Map<string, ResolvedBankFinancing>();
 
@@ -937,7 +913,7 @@ class DevelopersRepositoryController {
       lotCode: req.lotCode,
       operatorId: params.bankName,
       operatorName: params.decidedBy,
-      operatorRole: 'bank_officer',
+      operatorRole: 'curator',
       actionType: 'developer_accreditation_decided',
       title:
         params.decision === 'approved'
@@ -1022,7 +998,7 @@ class DevelopersRepositoryController {
 
     await AuditLogsRepository.addLog({
       operatorName: params.officerName,
-      operatorRole: 'bank_officer',
+      operatorRole: 'curator',
       actionType: 'developer_accreditation_decided',
       title: `Банк ${params.bankName} включил «${dev.name}» в реестр аккредитованных застройщиков`,
       description: `Ставка: ${params.baseRatePercent}%, ПДН: ${params.maxPdnPercent}%, Семейная 6%: ${
@@ -1074,7 +1050,7 @@ class DevelopersRepositoryController {
 
     await AuditLogsRepository.addLog({
       operatorName: officerName,
-      operatorRole: 'bank_officer',
+      operatorRole: 'curator',
       actionType: 'developer_accreditation_decided',
       title: `Банк ${bankName} отозвал аккредитацию застройщика «${dev.name}»`,
       description: `Застройщик исключен из реестра банка ${bankName}.`,

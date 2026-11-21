@@ -12,24 +12,19 @@ import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { UsersRepository } from '../dal/repositories/UsersRepository';
 import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
-import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
-import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { DevelopersRepository } from '../dal/repositories/DevelopersRepository';
 import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
 import { CuratorChatRepository } from '../dal/repositories/CuratorChatRepository';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { TelegramConnectCard } from '../components/telegram/TelegramConnectCard';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
-import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
 // Modular Dashboard Subcomponents
-import { AdminFeatureFlagsCard } from '../components/admin/dashboard/AdminFeatureFlagsCard';
 import { AdminGovernanceCard } from '../components/admin/AdminGovernanceCard';
 import { AdminTabBar, OwnerTab } from '../components/admin/dashboard/AdminTabBar';
 import { DashboardOverviewTab } from '../components/admin/dashboard/DashboardOverviewTab';
 import { SellerRequestsTableTab } from '../components/admin/dashboard/SellerRequestsTableTab';
 import { MarketSettingsTab } from '../components/admin/dashboard/MarketSettingsTab';
-import { PartnerBanksTab } from '../components/admin/dashboard/PartnerBanksTab';
 import { UsersRbacTab } from '../components/admin/dashboard/UsersRbacTab';
 import { LegalAndChannelsTab } from '../components/admin/dashboard/LegalAndChannelsTab';
 import { CuratorEmployeeView } from '../components/admin/dashboard/CuratorEmployeeView';
@@ -46,10 +41,8 @@ import {
   Employee,
   BuyerCandidate,
   PartnerEntry,
-  InvestorApplication,
   MarketSettings,
   UserProfile,
-  PartnerBankEntity,
   DeveloperAccreditationRequest,
   AccreditedDeveloper,
   DocumentMetadata,
@@ -58,7 +51,6 @@ import { CheckCircle2, Crown, Briefcase, AlertCircle } from 'lucide-react';
 
 export const AdminDashboardPage: React.FC = () => {
   const { user, switchRole } = useAuth();
-  const { enableVipClub } = useFeatureFlagsStore();
 
   const [kpis, setKpis] = useState<KPIStats | null>(null);
   const [lots, setLots] = useState<Lot[]>([]);
@@ -68,10 +60,8 @@ export const AdminDashboardPage: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [candidates, setCandidates] = useState<BuyerCandidate[]>([]);
   const [partners, setPartners] = useState<PartnerEntry[]>([]);
-  const [investors, setInvestors] = useState<InvestorApplication[]>([]);
   const [developerRequests, setDeveloperRequests] = useState<DeveloperAccreditationRequest[]>([]);
   const [developersList, setDevelopersList] = useState<AccreditedDeveloper[]>([]);
-  const [partnerBanks, setPartnerBanks] = useState<PartnerBankEntity[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
 
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
@@ -146,10 +136,8 @@ export const AdminDashboardPage: React.FC = () => {
         empData,
         candData,
         partData,
-        invData,
         mSettings,
         allUsers,
-        pBanks,
         allDealsData,
         devReqsData,
         allDevsData,
@@ -160,10 +148,8 @@ export const AdminDashboardPage: React.FC = () => {
         EmployeesRepository.getAll(),
         CandidatesRepository.getAll(),
         PartnersRepository.getAll(),
-        InvestorClubRepository.getAll(),
         MarketSettingsRepository.getSettings(),
         UsersRepository.getAll(),
-        BankPortalRepository.getAllPartnerBanks(),
         DealsRepository.getAll(),
         DevelopersRepository.getAllAccreditationRequests(),
         DevelopersRepository.getAllDevelopers(),
@@ -197,10 +183,8 @@ export const AdminDashboardPage: React.FC = () => {
       setEmployees(empData);
       setCandidates(candData);
       setPartners(partData);
-      setInvestors(invData);
       setMarketSettings(mSettings);
       setUsersList(allUsers);
-      setPartnerBanks(pBanks);
       setAllDeals(allDealsData);
       setDeveloperRequests(devReqsData);
       setDevelopersList(allDevsData);
@@ -251,7 +235,6 @@ export const AdminDashboardPage: React.FC = () => {
 
   const pendingSellerCount = lots.filter((l) => l.approvalStatus === 'pending_owner_approval').length;
   const pendingPartnerCount = partners.filter((p) => p.status === 'pending').length;
-  const pendingInvestorCount = investors.filter((i) => i.status === 'pending').length;
   const pendingDevReqCount = developerRequests.filter((r) => r.status === 'pending').length;
 
   return (
@@ -267,7 +250,7 @@ export const AdminDashboardPage: React.FC = () => {
           }
           subtitle={
             isOwner
-              ? 'Генеральный обзор платформы: верификация новых продавцов, партнеров и VIP-инвесторов, назначение кураторов и учет комиссии 2.5%'
+              ? 'Генеральный обзор платформы: верификация новых продавцов и партнеров, назначение кураторов и учет комиссии 2.5%'
               : `Куратор: ${operatorName} | Конфиденциальный контур: только закрепленные лоты и заявки покупателей`
           }
         />
@@ -298,9 +281,6 @@ export const AdminDashboardPage: React.FC = () => {
         )}
 
         <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
-          {/* Master Feature Flags Management (Owner Exclusive) */}
-          {isOwner && <AdminFeatureFlagsCard showToast={showToast} />}
-
           {/* Master Governance, Security & Backup Management (Owner Exclusive) */}
           {isOwner && <AdminGovernanceCard showToast={showToast} className="mb-6" />}
 
@@ -322,7 +302,7 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
                 <span className="text-[11px] text-slate-500">
                   {isOwner
-                    ? 'Доступны: глобальная комиссия 2.5%, верификация документов, одобрение продавцов/партнеров/VIP-инвесторов.'
+                    ? 'Доступны: глобальная комиссия 2.5%, верификация документов, одобрение продавцов и партнеров.'
                     : 'Финансовые показатели платформы и чужие сделки скрыты. Доступны только назначенные вам объекты.'}
                 </span>
               </div>
@@ -337,12 +317,11 @@ export const AdminDashboardPage: React.FC = () => {
           ========================================================================= */}
           {isOwner && (
             <>
-              {/* Executive 7-Tab Navigation Bar */}
+              {/* Executive Tab Navigation Bar */}
               <AdminTabBar
                 activeOwnerTab={activeOwnerTab}
                 setActiveOwnerTab={setActiveOwnerTab}
                 pendingSellerCount={pendingSellerCount}
-                partnerBanksCount={partnerBanks.length}
                 usersAndStaffCount={employees.length + usersList.length}
               />
 
@@ -373,12 +352,9 @@ export const AdminDashboardPage: React.FC = () => {
                   employees={employees}
                   partners={partners}
                   pendingPartnerCount={pendingPartnerCount}
-                  investors={investors}
-                  pendingInvestorCount={pendingInvestorCount}
                   developerRequests={developerRequests}
                   pendingDevReqCount={pendingDevReqCount}
                   developersList={developersList}
-                  enableVipClub={enableVipClub}
                   isOwner={isOwner}
                   operatorName={operatorName}
                   loadAllData={loadAllData}
@@ -401,19 +377,7 @@ export const AdminDashboardPage: React.FC = () => {
                 />
               )}
 
-              {/* TAB 4: Банки-партнеры */}
-              {activeOwnerTab === 'banks' && (
-                <PartnerBanksTab
-                  partnerBanks={partnerBanks}
-                  setPartnerBanks={setPartnerBanks}
-                  operatorName={operatorName}
-                  formatRubles={formatRubles}
-                  showToast={showToast}
-                  showError={showError}
-                />
-              )}
-
-              {/* TAB 5: Пользователи, штат и RBAC */}
+              {/* TAB 4: Пользователи, штат и RBAC */}
               {activeOwnerTab === 'users_rbac' && (
                 <UsersRbacTab
                   usersList={usersList}

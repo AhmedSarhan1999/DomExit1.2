@@ -1,14 +1,13 @@
 ﻿import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, PartnerEntry, InvestorApplication } from '../types';
+import { UserProfile, PartnerEntry } from '../types';
 import { UsersRepository } from '../dal/repositories/UsersRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
-import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { apiClient, ApiError } from '../services/apiClient';
 import { swrCache } from '../dal/cache/SWRCache';
 
-type UserRole = 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank_officer' | 'bank';
+type UserRole = 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner';
 
 export const MASTER_OWNER_EMAILS = ['amaas9499@gmail.com', 'ceo@domexit.ru'];
 
@@ -42,11 +41,9 @@ interface AuthContextType {
   toggleFavorite: (lotCode: string) => Promise<void>;
   isFavorite: (lotCode: string) => boolean;
   switchRole: (
-    role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank'
+    role: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner'
   ) => void;
   upgradeToPartner: (details?: Partial<PartnerEntry>) => Promise<void>;
-  upgradeToInvestor: (details?: Partial<InvestorApplication>) => Promise<void>;
-  activateVipSubscription: () => Promise<void>;
   refreshUserProfile: () => Promise<void>;
   updateUserProfile: (
     data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL' | 'inn'>>
@@ -249,7 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const switchRole = async (
-    targetRole: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner' | 'bank'
+    targetRole: 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner'
   ) => {
     if (!user) return;
     try {
@@ -350,42 +347,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const upgradeToInvestor = async (details?: Partial<InvestorApplication>): Promise<void> => {
-    if (!user) return;
-    try {
-      await InvestorClubRepository.submit({
-        userId: user.id,
-        uid: user.id,
-        clientCode: user.clientCode,
-        fullName: details?.fullName || user.name,
-        companyOrFund: details?.companyOrFund || '',
-        countryAndCity: details?.countryAndCity || 'Москва',
-        contactTelegramOrPhone: details?.contactTelegramOrPhone || user.phone || '',
-        entityType: details?.entityType || 'individual',
-        capitalVolume: details?.capitalVolume || '15-50m',
-        strategy: details?.strategy || 'flipping',
-        targetRegions: details?.targetRegions || ['Москва и МО'],
-        requestedServices: details?.requestedServices || [],
-        customProposal: details?.customProposal || '',
-        ndaAgreed: details?.ndaAgreed ?? true,
-        status: 'pending',
-        ...details,
-      });
-      await refreshUserProfile();
-    } catch (err) {
-      console.warn('[AuthContext] upgradeToInvestor notice:', err);
-    }
-  };
-
-  const activateVipSubscription = async (): Promise<void> => {
-    if (!user) return;
-    try {
-      await updateUserProfile({
-        name: user.name,
-      });
-    } catch {}
-  };
-
   const updateUserPassword = async (currentPass: string, newPass: string): Promise<void> => {
     // Handled in backend or security modal
   };
@@ -411,8 +372,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isFavorite,
         switchRole,
         upgradeToPartner,
-        upgradeToInvestor,
-        activateVipSubscription,
         refreshUserProfile,
         updateUserProfile,
         updateUserPassword,

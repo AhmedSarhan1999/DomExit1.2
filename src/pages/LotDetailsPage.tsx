@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { Lot, Employee, DistrictYieldConfig } from '../types';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
@@ -58,7 +57,6 @@ export const LotDetailsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { language } = useLanguage();
   const { user, isFavorite, toggleFavorite, openAuthModal } = useAuth();
-  const { enableBankPortal } = useFeatureFlagsStore();
   const { channels } = usePublicChannelsStore();
 
   const [lot, setLot] = useState<Lot | null>(null);
@@ -158,7 +156,6 @@ export const LotDetailsPage: React.FC = () => {
         col === 'lots' ||
         col === 'market_settings' ||
         col === 'developers' ||
-        col === 'bank_special_approvals' ||
         col === 'developer_accreditation_requests'
       ) {
         fetchLot(false);
@@ -408,17 +405,12 @@ export const LotDetailsPage: React.FC = () => {
                 </span>
               )}
 
-              {isDevAccredited ? (
+              {isDevAccredited && (
                 <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Аккредитован в ТОП-банках (СБР)</span>
                 </span>
-              ) : enableBankPortal ? (
-                <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold">
-                  <Building2 className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Ожидает аккредитации банков</span>
-                </span>
-              ) : null}
+              )}
 
               {Boolean(lot.is_negotiable || lot.isNegotiable) && (
                 <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-teal-50 text-teal-800 border border-teal-300 text-xs font-bold">

@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   Download,
   CheckCircle2,
-  Building2,
   MessageSquare,
   Phone,
   FileText,
@@ -17,16 +16,7 @@ export interface BuyerDealsTabProps {
   allLots: Lot[];
   allDeals: DealTrack[];
   user: UserProfile | null;
-  enableBankPortal: boolean;
   onDownloadBidProof: (bid: BuyerCandidate) => void;
-  onOpenBankEscrowChat: (deal: {
-    dealId: string;
-    dealStage?: string;
-    lotCode?: string;
-    lotTitle?: string;
-    bankName?: string;
-    buyerName?: string;
-  }) => void;
   onOpenCuratorChat: (lotCode: string, dealId: string) => void;
   onOpenBuyerVault: (lotCode: string) => void;
 }
@@ -36,9 +26,7 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
   allLots,
   allDeals,
   user,
-  enableBankPortal,
   onDownloadBidProof,
-  onOpenBankEscrowChat,
   onOpenCuratorChat,
   onOpenBuyerVault,
 }) => {
@@ -219,25 +207,6 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                             </span>
                           </div>
                           <div className="flex items-center space-x-2 shrink-0">
-                            {enableBankPortal && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onOpenBankEscrowChat({
-                                    dealId: linkedDeal?.dealId || '',
-                                    dealStage: wfStep,
-                                    lotCode: bid.lotCode || '',
-                                    lotTitle: allLots.find((l) => l.lotCode === bid.lotCode)?.complexName || 'ЖК',
-                                    bankName: linkedDeal?.bankName || linkedDeal?.escrowWorkflow?.bankName || (bid as any).selectedBank || 'Сбербанк',
-                                    buyerName: user?.name || bid.name,
-                                  });
-                                }}
-                                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
-                              >
-                                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Чат с банком по эскроу</span>
-                              </button>
-                            )}
                             <Link
                               to={`/opportunities/${bid.lotCode}`}
                               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
@@ -247,8 +216,7 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                           </div>
                         </div>
 
-                        {!enableBankPortal && (
-                          <div className="pt-2.5 border-t border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                        <div className="pt-2.5 border-t border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
                             <div className="flex items-center space-x-3">
                               {curatorPhoto ? (
                                 <img
@@ -328,7 +296,6 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                               </button>
                             </div>
                           </div>
-                        )}
                       </div>
                     );
                   })()}

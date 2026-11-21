@@ -3,7 +3,6 @@ import {
   BarChart3,
   UserCheck,
   Sliders,
-  Landmark,
   Users,
   Building2,
   Shield,
@@ -13,7 +12,6 @@ export type OwnerTab =
   | 'overview'
   | 'sellers'
   | 'market'
-  | 'banks'
   | 'users_rbac'
   | 'company_profile'
   | 'legal_cms';
@@ -22,7 +20,6 @@ export interface AdminTabBarProps {
   activeOwnerTab: OwnerTab;
   setActiveOwnerTab: (tab: OwnerTab) => void;
   pendingSellerCount: number;
-  partnerBanksCount: number;
   usersAndStaffCount: number;
 }
 
@@ -30,7 +27,6 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
   activeOwnerTab,
   setActiveOwnerTab,
   pendingSellerCount,
-  partnerBanksCount,
   usersAndStaffCount,
 }) => {
   return (
@@ -87,28 +83,6 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
 
       <button
         type="button"
-        onClick={() => setActiveOwnerTab('banks')}
-        className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
-          activeOwnerTab === 'banks'
-            ? 'bg-emerald-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-        }`}
-      >
-        <Landmark className="w-4 h-4" />
-        <span>4. Банки-партнеры</span>
-        <span
-          className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-            activeOwnerTab === 'banks'
-              ? 'bg-white text-emerald-800'
-              : 'bg-slate-100 text-slate-600'
-          }`}
-        >
-          {partnerBanksCount}
-        </span>
-      </button>
-
-      <button
-        type="button"
         onClick={() => setActiveOwnerTab('users_rbac')}
         className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
           activeOwnerTab === 'users_rbac'
@@ -117,7 +91,7 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
         }`}
       >
         <Users className="w-4 h-4" />
-        <span>5. Пользователи, штат и RBAC</span>
+        <span>4. Пользователи, штат и RBAC</span>
         <span
           className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
             activeOwnerTab === 'users_rbac'
@@ -139,7 +113,7 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
         }`}
       >
         <Building2 className="w-4 h-4" />
-        <span>6. Профиль компании и безопасность</span>
+        <span>5. Профиль компании и безопасность</span>
       </button>
 
       <button
@@ -152,7 +126,7 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
         }`}
       >
         <Shield className="w-4 h-4" />
-        <span>7. Правовой CMS и Реестр (26 актов)</span>
+        <span>6. Правовой CMS и Реестр (26 актов)</span>
       </button>
     </div>
   );

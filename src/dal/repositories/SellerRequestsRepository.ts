@@ -4,7 +4,6 @@ import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
 import { DevelopersRepository, PARTNER_BANKS } from './DevelopersRepository';
-import { BankPortalRepository } from './BankPortalRepository';
 import { PropertyLifecycleService } from '../../services/propertyLifecycleService';
 
 const COLLECTION = 'seller_requests';

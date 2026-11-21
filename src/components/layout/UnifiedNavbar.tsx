@@ -4,7 +4,6 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
-import { useFeatureFlagsStore } from '../../stores/useFeatureFlagsStore';
 import { 
   ShieldCheck, 
   User, 
@@ -25,7 +24,6 @@ export const UnifiedNavbar: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   const { user, isAuthenticated, openAuthModal, switchRole } = useAuth();
   const { channels } = usePublicChannelsStore();
-  const { enableVipClub, enableBankPortal } = useFeatureFlagsStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -39,9 +37,9 @@ export const UnifiedNavbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Core Operational Roles (Owner, Employee, Partner Bank)
+  // Core Operational Roles (Owner, Employee)
   const roleOptions: Array<{
-    id: 'owner' | 'employee' | 'bank';
+    id: 'owner' | 'employee';
     title: string;
     badge: string;
     subtitle: string;
@@ -64,21 +62,11 @@ export const UnifiedNavbar: React.FC = () => {
       icon: '👨‍💼',
       targetPath: '/admin/dashboard',
     },
-    {
-      id: 'bank',
-      title: language === 'ru' ? 'Банк-партнер' : 'Partner Bank',
-      badge: '🏦 Сбербанк / ВТБ',
-      subtitle: language === 'ru' ? 'Кредитные лимиты, эскроу и СБР' : 'Credit limits & escrow',
-      icon: '🏦',
-      targetPath: '/bank-portal',
-    },
   ];
 
   const canSwitchRole = Boolean(user && user.roles && user.roles.length > 1);
   const userRolesSet = new Set(user?.roles || []);
-  const visibleRoleOptions = roleOptions.filter(
-    (o) => userRolesSet.has(o.id as any) && (o.id !== 'bank' || enableBankPortal)
-  );
+  const visibleRoleOptions = roleOptions.filter((o) => userRolesSet.has(o.id as any));
   const currentRoleOption =
     visibleRoleOptions.find((o) => o.id === user?.activeRole) ||
     visibleRoleOptions[0] ||
@@ -214,21 +202,6 @@ export const UnifiedNavbar: React.FC = () => {
               {t.nav.story}
             </Link>
 
-            {/* Direct Link to Bank Portal for Bank Partners */}
-            {user?.activeRole === 'bank' && enableBankPortal && (
-              <Link
-                to="/bank-portal"
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 ${
-                  isActive('/bank-portal')
-                    ? 'bg-sky-950 text-sky-300 border border-sky-600'
-                    : 'text-sky-400 hover:bg-slate-800/60'
-                }`}
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>{language === 'ru' ? 'Банк-шлюз' : 'Bank Gateway'}</span>
-              </Link>
-            )}
-
             {/* Operational Services Dropdown */}
             {hasStaffAccess && (
               <div className="relative" ref={dropdownRef}>
@@ -285,24 +258,6 @@ export const UnifiedNavbar: React.FC = () => {
                         </div>
                       </div>
                     </button>
-
-                    {enableBankPortal && (
-                      <Link
-                        to="/bank-portal"
-                        onClick={() => setServicesDropdownOpen(false)}
-                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-sky-950/70 text-slate-200 hover:text-sky-200 transition-colors flex items-start space-x-3 cursor-pointer group block"
-                      >
-                        <Building2 className="w-4 h-4 text-sky-400 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
-                        <div>
-                          <div className="text-xs font-bold text-white">
-                            {language === 'ru' ? 'Банковский Шлюз' : 'Bank Gateway'}
-                          </div>
-                          <div className="text-[10px] text-slate-400 leading-tight">
-                            {language === 'ru' ? 'Кредитные лимиты и СБР эскроу' : 'Credit limits & escrow'}
-                          </div>
-                        </div>
-                      </Link>
-                    )}
                   </div>
                 )}
               </div>
@@ -492,22 +447,6 @@ export const UnifiedNavbar: React.FC = () => {
           >
             {t.nav.catalog}
           </Link>
-          {enableVipClub && (
-            <Link
-              to="/vip-catalog"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between ${
-                isActive('/vip-catalog')
-                  ? 'text-amber-300 bg-amber-950/60 border border-amber-500/40'
-                  : 'text-amber-400 hover:bg-slate-800'
-              }`}
-            >
-              <span>Закрытый VIP-каталог (48ч)</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                VIP
-              </span>
-            </Link>
-          )}
           <Link
             to="/how-it-works"
             onClick={() => setMobileMenuOpen(false)}

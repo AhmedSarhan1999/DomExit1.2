@@ -313,11 +313,8 @@ export async function handleData(
       }
 
       const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
-      const isBankForApprovals =
-        authUser.role === 'bank' &&
-        (collection === 'bank_special_approvals' || collection === 'partner_banks');
 
-      if (!isStaff && !isBankForApprovals) {
+      if (!isStaff) {
         return json(event, 403, { error: 'Доступ разрешен только сотрудникам платформы' });
       }
 

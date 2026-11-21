@@ -4,7 +4,6 @@ import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { getRegionByCode, getDistrictGeo } from '../data/russianGeography';
 import { DevelopersRepository, PARTNER_BANKS } from '../dal/repositories/DevelopersRepository';
 import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
-import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
 import { apiClient } from './apiClient';
@@ -206,8 +205,6 @@ export class PropertyLifecycleService {
       sellerBanks: payload.sellerBanks,
       isFeatured: false,
       isPublished: false,
-      isVipExclusive: false,
-      isEarlyAccessVIP: false,
       escrowBank: 'Сбербанк',
       tags: lotTags,
       status: 'draft',
@@ -355,34 +352,6 @@ export class PropertyLifecycleService {
       await DatabaseGateway.save<SellerExitRequest>('seller_requests', request);
     } catch (reqErr: any) {
       console.warn('[PropertyLifecycleService] Non-fatal seller_requests save warning:', reqErr);
-    }
-
-    // 3. Partner bank special approvals if developer not accredited
-    if (!isAccreditedDev) {
-      for (const bankName of PARTNER_BANKS) {
-        try {
-          await BankPortalRepository.addSpecialApproval({
-            lotId,
-            lotCode,
-            complexName: lot.complexName,
-            developer: payload.developer,
-            developerInn: payload.developerInn || '7800000000',
-            contractorName: payload.developer,
-            contractorInn: payload.developerInn || '7800000000',
-            projectTitle: `${lot.complexName} (${payload.rooms}ккв, ${payload.areaM2} м²)`,
-            location: `${region.labelRu}, ${lot.district}`,
-            costPriceRub: payload.paidAmountRub,
-            contractPriceRub: payload.contractPriceRub,
-            requestedByEmployeeId: payload.uid,
-            requestedByEmployeeName: payload.sellerName,
-            bankName,
-            reason: `Запрос индивидуального согласования объекта ДДУ и проектной линии эскроу для «${payload.developer}» (ИНН ${payload.developerInn || 'не указан'}).`,
-            requestedAt: nowIso,
-            status: 'pending',
-            documentIds: payload.documentIds || [],
-          });
-        } catch {}
-      }
     }
 
     if (payload.referredByPartnerCode) {

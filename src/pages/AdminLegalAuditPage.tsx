@@ -5,7 +5,6 @@ import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
-import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { StorageService } from '../dal/StorageService';
 import {
   Lot,
@@ -19,7 +18,6 @@ import { DEFAULT_LEGAL_AUDIT_AXES, HONEST_STATUS_CONFIG } from '../data/legalAud
 import { INITIAL_CHECKPOINTS } from '../components/admin/legal-audit/legalAuditConstants';
 import { formatRubles } from '../utils/formatters';
 import { FileManager } from '../utils/fileManager';
-import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { LegalRadarPanel } from '../components/admin/legal-audit/LegalRadarPanel';
 import { LegalAuditAxesSection } from '../components/admin/legal-audit/LegalAuditAxesSection';
 import { LegalCheckpointsMatrix } from '../components/admin/legal-audit/LegalCheckpointsMatrix';
@@ -61,13 +59,6 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [docsNotes, setDocsNotes] = useState('');
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
-
-  const { enableBankPortal } = useFeatureFlagsStore();
-  const [isSpecialBankModalOpen, setIsSpecialBankModalOpen] = useState(false);
-  const [bankSpecialReason, setBankSpecialReason] = useState(
-    'Нетиповой график рассрочки застройщика. Требуется индивидуальная кредитная аккредитация эскроу.'
-  );
-  const [selectedBank, setSelectedBank] = useState('Сбербанк');
 
   const isOwner = user?.role === 'owner' || user?.activeRole === 'owner';
   const isEmployee = user?.activeRole === 'employee' && !isOwner;
@@ -349,26 +340,6 @@ export const AdminLegalAuditPage: React.FC = () => {
     setTimeout(() => setNotice(null), 5000);
   };
 
-  const handleSpecialBankApprovalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lot) return;
-    await BankPortalRepository.requestSpecialApproval({
-      lotId: lot.id,
-      lotCode: lot.lotCode,
-      complexName: lot.complexName,
-      developer: lot.developer,
-      contractPriceRub: lot.dduContractPrice,
-      requestedByEmployeeId: currentEmployeeId,
-      requestedByEmployeeName: curatorName,
-      bankName: selectedBank,
-      reason: bankSpecialReason,
-    });
-    setIsSpecialBankModalOpen(false);
-    setNotice(`Запрос спец-одобрения для ${lot.complexName} направлен в ${selectedBank}!`);
-    loadLotData();
-    setTimeout(() => setNotice(null), 5000);
-  };
-
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 pb-20">
       <AdminSidebar />
@@ -462,8 +433,6 @@ export const AdminLegalAuditPage: React.FC = () => {
               {/* 6. Decision Bar */}
               <LegalDecisionBar
                 curatorName={curatorName}
-                enableBankPortal={enableBankPortal}
-                onOpenBankModal={() => setIsSpecialBankModalOpen(true)}
                 onOpenRequestDocsModal={() => setIsRequestDocsModalOpen(true)}
                 onOpenRejectModal={() => setIsRejectModalOpen(true)}
                 onApproveLegal={handleApproveLegal}
@@ -500,14 +469,6 @@ export const AdminLegalAuditPage: React.FC = () => {
         rejectionReason={rejectionReason}
         setRejectionReason={setRejectionReason}
         onSubmitReject={handleRejectLegal}
-        enableBankPortal={enableBankPortal}
-        isSpecialBankModalOpen={isSpecialBankModalOpen}
-        onCloseBankModal={() => setIsSpecialBankModalOpen(false)}
-        selectedBank={selectedBank}
-        setSelectedBank={setSelectedBank}
-        bankSpecialReason={bankSpecialReason}
-        setBankSpecialReason={setBankSpecialReason}
-        onSubmitBankModal={handleSpecialBankApprovalSubmit}
       />
 
       {/* Cloud S3 Document Vault Modal */}

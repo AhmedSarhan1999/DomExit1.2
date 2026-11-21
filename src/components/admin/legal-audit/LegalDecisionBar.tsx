@@ -1,10 +1,8 @@
 import React from 'react';
-import { Building2, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 interface LegalDecisionBarProps {
   curatorName: string;
-  enableBankPortal: boolean;
-  onOpenBankModal: () => void;
   onOpenRequestDocsModal: () => void;
   onOpenRejectModal: () => void;
   onApproveLegal: () => void;
@@ -12,8 +10,6 @@ interface LegalDecisionBarProps {
 
 export const LegalDecisionBar: React.FC<LegalDecisionBarProps> = ({
   curatorName,
-  enableBankPortal,
-  onOpenBankModal,
   onOpenRequestDocsModal,
   onOpenRejectModal,
   onApproveLegal,
@@ -31,16 +27,6 @@ export const LegalDecisionBar: React.FC<LegalDecisionBarProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-        {enableBankPortal && (
-          <button
-            type="button"
-            onClick={onOpenBankModal}
-            className="px-3.5 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Запрос в банк</span>
-          </button>
-        )}
         <button
           type="button"
           onClick={onOpenRequestDocsModal}

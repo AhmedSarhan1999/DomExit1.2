@@ -68,8 +68,6 @@ export const AuthModal: React.FC = () => {
             loggedUser.activeRole === 'employee';
           if (isStaffOrOwner) {
             navigate('/admin/dashboard');
-          } else if (loggedUser.role === 'bank' || loggedUser.activeRole === 'bank') {
-            navigate('/admin/bank-gateway');
           } else {
             const rawReturnUrl = sessionStorage.getItem('domexit_return_url');
             sessionStorage.removeItem('domexit_return_url');

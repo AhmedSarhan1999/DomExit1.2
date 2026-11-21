@@ -53,7 +53,6 @@ export interface SellerLotsTabProps {
   activeSellerRequest: SellerExitRequest | null;
   sellerVaultDocs: DocumentMetadata[];
   curator: Employee | null;
-  enableBankPortal: boolean;
   isUploadingRequestedDoc: boolean;
   onUploadCuratorRequestedDoc: () => void;
   onCancelSellerRequest: (lotCode: string) => void;
@@ -70,7 +69,6 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
   activeSellerRequest,
   sellerVaultDocs,
   curator,
-  enableBankPortal,
   isUploadingRequestedDoc,
   onUploadCuratorRequestedDoc,
   onCancelSellerRequest,
@@ -303,7 +301,7 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
                 );
               })}
             </div>
-            {enableBankPortal && activeSellerDeal?.escrowWorkflow && (
+            {activeSellerDeal?.escrowWorkflow && (
               <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div className="flex items-center space-x-2 font-bold text-emerald-950">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />

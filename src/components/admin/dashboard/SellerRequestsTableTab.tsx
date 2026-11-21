@@ -22,7 +22,6 @@ import {
   DeveloperBankTerms,
   DocumentMetadata,
   Employee,
-  InvestorApplication,
   Lot,
   PartnerEntry,
   RussianCityCode,
@@ -33,7 +32,6 @@ import { getRegionByCode } from '../../../data/russianGeography';
 import { LotsRepository } from '../../../dal/repositories/LotsRepository';
 import { SellerRequestsRepository } from '../../../dal/repositories/SellerRequestsRepository';
 import { PartnersRepository } from '../../../dal/repositories/PartnersRepository';
-import { InvestorClubRepository } from '../../../dal/repositories/InvestorClubRepository';
 import { DevelopersRepository } from '../../../dal/repositories/DevelopersRepository';
 
 export interface SellerRequestsTableTabProps {
@@ -43,12 +41,9 @@ export interface SellerRequestsTableTabProps {
   employees: Employee[];
   partners: PartnerEntry[];
   pendingPartnerCount: number;
-  investors: InvestorApplication[];
-  pendingInvestorCount: number;
   developerRequests: DeveloperAccreditationRequest[];
   pendingDevReqCount: number;
   developersList: AccreditedDeveloper[];
-  enableVipClub: boolean;
   isOwner: boolean;
   operatorName: string;
   loadAllData: () => Promise<void>;
@@ -72,12 +67,9 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
   employees,
   partners,
   pendingPartnerCount,
-  investors,
-  pendingInvestorCount,
   developerRequests,
   pendingDevReqCount,
   developersList,
-  enableVipClub,
   isOwner,
   operatorName,
   loadAllData,
@@ -145,12 +137,6 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
   const handleApprovePartner = async (partnerId: string) => {
     await PartnersRepository.approve(partnerId, operatorName);
     showToast('Статус Партнера B2B одобрен! Реферальный кабинет активирован.');
-    await loadAllData();
-  };
-
-  const handleApproveInvestor = async (investorId: string) => {
-    await InvestorClubRepository.approve(investorId, operatorName);
-    showToast('Статус VIP Инвестора подтвержден! Приоритетный ранний доступ (48ч) открыт.');
     await loadAllData();
   };
 
@@ -242,10 +228,6 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
   const [partnerActionMode, setPartnerActionMode] = useState<'approve' | 'request_docs' | 'reject'>('approve');
   const [partnerActionNote, setPartnerActionNote] = useState<string>('');
 
-  const [modalInvestor, setModalInvestor] = useState<InvestorApplication | null>(null);
-  const [investorActionMode, setInvestorActionMode] = useState<'approve' | 'request_docs' | 'reject'>('approve');
-  const [investorActionNote, setInvestorActionNote] = useState<string>('');
-
   const [editingDeveloper, setEditingDeveloper] = useState<{ id: string; name: string; inn: string } | null>(null);
 
   const findSellerRequestForLot = (lotCode: string): SellerExitRequest | undefined =>
@@ -266,23 +248,6 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
       await loadAllData();
     }
     setModalPartner(null);
-  };
-
-  const handleInvestorModalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!modalInvestor) return;
-    if (investorActionMode === 'approve') {
-      await handleApproveInvestor(modalInvestor.id);
-    } else if (investorActionMode === 'request_docs') {
-      await InvestorClubRepository.requestDocs(modalInvestor.id, investorActionNote.trim(), operatorName);
-      showToast(`Запрос подтверждения капитала направлен инвестору.`);
-      await loadAllData();
-    } else {
-      await InvestorClubRepository.reject(modalInvestor.id, investorActionNote.trim(), operatorName);
-      showToast(`Заявка VIP-инвестора отклонена.`);
-      await loadAllData();
-    }
-    setModalInvestor(null);
   };
 
   const handleRequestSellerDocsSubmit = async (e: React.FormEvent) => {
@@ -482,8 +447,8 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
         </div>
       </div>
 
-      {/* OWNER TRIAGE DESK 2 & 3: Partners & VIP Investors */}
-      <div className={`grid grid-cols-1 ${enableVipClub ? 'lg:grid-cols-2' : ''} gap-6`}>
+      {/* OWNER TRIAGE DESK 2: Partners */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Partners Approval Desk */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -556,82 +521,6 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
             ))}
           </div>
         </div>
-
-        {/* Investors Approval Desk (6-step Onboarding) */}
-        {enableVipClub && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                <Crown className="w-4 h-4 text-amber-600" />
-                <span>Заявки VIP Инвесторов ({investors.length})</span>
-                {pendingInvestorCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                    +{pendingInvestorCount} новых
-                  </span>
-                )}
-              </h3>
-              <span className="text-[11px] font-mono font-bold text-amber-700">
-                Ранний доступ 48ч
-              </span>
-            </div>
-
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {investors.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <div className="font-bold text-xs text-slate-900 truncate">
-                      {inv.fullName}
-                    </div>
-                    <div className="text-[11px] text-slate-500 truncate">
-                      {inv.companyOrFund || 'Частный капитал'} • Капитал: {inv.capitalVolume}
-                    </div>
-                    <div className="text-[10px] text-amber-700 font-semibold mt-0.5 truncate">
-                      Стратегия: {inv.strategy} • {inv.targetRegions?.slice(0, 2).join(', ')}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setModalInvestor(inv);
-                        setInvestorActionMode('approve');
-                        setInvestorActionNote('');
-                      }}
-                      className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-xs cursor-pointer"
-                    >
-                      Досье 6 шагов
-                    </button>
-                    {inv.status === 'approved' ? (
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold flex items-center space-x-1">
-                        <Check className="w-3 h-3" />
-                        <span>Одобрен</span>
-                      </span>
-                    ) : inv.status === 'rejected' ? (
-                      <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold">
-                        Отклонен
-                      </span>
-                    ) : inv.status === 'docs_requested' ? (
-                      <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
-                        Запрос капитала
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleApproveInvestor(inv.id)}
-                        className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
-                      >
-                        Одобрить VIP
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* OWNER TRIAGE DESK 4: Developer Accreditation Requests */}
@@ -1349,163 +1238,6 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
                     ? '✓ Одобрить и активировать кабинет'
                     : partnerActionMode === 'request_docs'
                     ? 'Отправить запрос документов'
-                    : 'Подтвердить отказ'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 3. VIP Investor 6-Steps Dossier & 3-Way Decision Modal */}
-      {modalInvestor && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2">
-                <Crown className="w-5 h-5 text-amber-600" />
-                <h3 className="text-base font-bold text-slate-900">
-                  Досье VIP Инвестора (6 шагов верификации)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalInvestor(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleInvestorModalSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <div>
-                  <span className="text-slate-500 block">ФИО / Клиентский код:</span>
-                  <strong>
-                    {modalInvestor.fullName} ({modalInvestor.clientCode || 'DEX'})
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Компания / Фонд:</span>
-                  <strong>{modalInvestor.companyOrFund || 'Индивидуальный инвестор'}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Локация и контакт:</span>
-                  <strong>
-                    {modalInvestor.countryAndCity} • {modalInvestor.contactTelegramOrPhone}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Объем капитала и стратегия:</span>
-                  <strong className="text-amber-800">
-                    {modalInvestor.capitalVolume} • {modalInvestor.strategy}
-                  </strong>
-                </div>
-                <div className="sm:col-span-2">
-                  <span className="text-slate-500 block">Целевые регионы РФ:</span>
-                  <strong>{modalInvestor.targetRegions?.join(', ')}</strong>
-                </div>
-                {modalInvestor.customProposal && (
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-500 block">Индивидуальный мандат:</span>
-                    <p className="text-slate-800 mt-0.5">{modalInvestor.customProposal}</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  onOpenDocumentVault({
-                    isOpen: true,
-                    entityType: 'investor_application',
-                    entityId: modalInvestor.clientCode || modalInvestor.id,
-                    entityTitle: `Подтверждение капитала VIP: ${modalInvestor.fullName}`,
-                    mode: 'general',
-                  })
-                }
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-xs flex items-center justify-center space-x-2 cursor-pointer"
-              >
-                <HardDrive className="w-4 h-4 text-indigo-600" />
-                <span>Открыть сейф документов инвестора (Proof of Funds / NDA)</span>
-              </button>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setInvestorActionMode('approve')}
-                  className={`flex-1 py-1.5 rounded-xl font-bold border cursor-pointer ${
-                    investorActionMode === 'approve'
-                      ? 'bg-amber-600 text-white border-amber-600'
-                      : 'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Утвердить VIP (48ч)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvestorActionMode('request_docs')}
-                  className={`flex-1 py-1.5 rounded-xl font-bold border cursor-pointer ${
-                    investorActionMode === 'request_docs'
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Запросить Proof of Funds
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvestorActionMode('reject')}
-                  className={`flex-1 py-1.5 rounded-xl font-bold border cursor-pointer ${
-                    investorActionMode === 'reject'
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Отклонить
-                </button>
-              </div>
-
-              {investorActionMode !== 'approve' && (
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    {investorActionMode === 'request_docs'
-                      ? 'Комментарий к запросу банковской выписки / NDA *:'
-                      : 'Причина отказа во включении в закрытый VIP-пул *:'}
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    value={investorActionNote}
-                    onChange={(e) => setInvestorActionNote(e.target.value)}
-                    placeholder="Введите комментарий..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none"
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setModalInvestor(null)}
-                  className="px-4 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className={`px-5 py-2.5 rounded-xl font-bold text-xs shadow-md cursor-pointer ${
-                    investorActionMode === 'approve'
-                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                      : investorActionMode === 'request_docs'
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                      : 'bg-rose-600 hover:bg-rose-700 text-white'
-                  }`}
-                >
-                  {investorActionMode === 'approve'
-                    ? '✓ Утвердить статус VIP Инвестора'
-                    : investorActionMode === 'request_docs'
-                    ? 'Запросить подтверждение капитала'
                     : 'Подтвердить отказ'}
                 </button>
               </div>

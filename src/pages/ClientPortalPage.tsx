@@ -9,7 +9,6 @@ import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
-import { InvestorClubRepository } from '../dal/repositories/InvestorClubRepository';
 import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { SellerRequestsRepository } from '../dal/repositories/SellerRequestsRepository';
@@ -17,13 +16,11 @@ import { LegalPoliciesRepository } from '../dal/repositories/LegalPoliciesReposi
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { FileManager } from '../utils/fileManager';
-import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
 // Modals
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { UserProfileModal } from '../components/profile/UserProfileModal';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
-import { EscrowBridgeChatModal } from '../components/chat/EscrowBridgeChatModal';
 import { TelegramConnectCard } from '../components/telegram/TelegramConnectCard';
 
 // Subcomponents in src/components/portal/
@@ -63,7 +60,6 @@ export const ClientPortalPage: React.FC = () => {
     openAuthModal,
   } = useAuth();
   const { language } = useLanguage();
-  const { enableVipClub, enableBankPortal } = useFeatureFlagsStore();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Strict Enterprise Account Isolation & Role Redirects
@@ -77,11 +73,6 @@ export const ClientPortalPage: React.FC = () => {
           ? 'Войдите в систему для доступа к вашему личному кабинету'
           : 'Sign in to access your client portal'
       );
-      return;
-    }
-
-    if (user.role === 'bank' || user.activeRole === 'bank') {
-      navigate('/admin/bank-gateway', { replace: true });
       return;
     }
 
@@ -127,14 +118,6 @@ export const ClientPortalPage: React.FC = () => {
   const [favoriteLots, setFavoriteLots] = useState<Lot[]>([]);
   const [isBuyerVaultOpen, setIsBuyerVaultOpen] = useState<boolean>(false);
   const [buyerVaultLotCode, setBuyerVaultLotCode] = useState<string>('');
-  const [activeEscrowChatDeal, setActiveEscrowChatDeal] = useState<{
-    dealId: string;
-    dealStage?: string;
-    lotCode?: string;
-    lotTitle?: string;
-    bankName?: string;
-    buyerName?: string;
-  } | null>(null);
 
   // Seller State
   const [sellerLots, setSellerLots] = useState<Lot[]>([]);
@@ -230,7 +213,7 @@ export const ClientPortalPage: React.FC = () => {
       allDealsList,
       consentsList,
     ] = await Promise.all([
-      LotsRepository.getAll({ status: 'all', isVipInvestor: true, includePendingApproval: true }),
+      LotsRepository.getAll({ status: 'all', includePendingApproval: true }),
       CandidatesRepository.getByUserId(uid, clientCode),
       PartnerRequestsRepository.getPendingByClientCode(clientCode),
       PartnerRequestsRepository.getByPartner(uid, partnerRefCode),
@@ -513,10 +496,6 @@ export const ClientPortalPage: React.FC = () => {
     return <Navigate to="/admin/dashboard" replace />;
   }
 
-  if (user && (user.role === 'bank' || user.activeRole === 'bank')) {
-    return <Navigate to="/admin/bank-gateway" replace />;
-  }
-
   if (!isAuthenticated || !user) {
     return <Navigate to="/" replace />;
   }
@@ -535,7 +514,6 @@ export const ClientPortalPage: React.FC = () => {
         sellerLotsCount={sellerLots.length}
         favoritesCount={favoriteLots.length}
         isPartnerApproved={Boolean(user?.isPartnerApproved)}
-        enableVipClub={enableVipClub}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onLogout={logout}
       />
@@ -584,9 +562,7 @@ export const ClientPortalPage: React.FC = () => {
             allLots={allLots}
             allDeals={allDeals}
             user={user}
-            enableBankPortal={enableBankPortal}
             onDownloadBidProof={handleDownloadBidProof}
-            onOpenBankEscrowChat={(deal) => setActiveEscrowChatDeal(deal)}
             onOpenCuratorChat={(lotCode, dealId) => {
               setActiveChatLotCode(lotCode);
               setActiveChatDealId(dealId);
@@ -612,7 +588,6 @@ export const ClientPortalPage: React.FC = () => {
               activeSellerRequest={activeSellerRequest}
               sellerVaultDocs={sellerVaultDocs}
               curator={curator}
-              enableBankPortal={enableBankPortal}
               isUploadingRequestedDoc={isUploadingRequestedDoc}
               onUploadCuratorRequestedDoc={handleUploadCuratorRequestedDoc}
               onCancelSellerRequest={handleCancelSellerRequest}
@@ -762,22 +737,6 @@ export const ClientPortalPage: React.FC = () => {
         canUpload={true}
         canReview={false}
       />
-
-      {/* Escrow Bridge Chat Modal */}
-      {activeEscrowChatDeal && (
-        <EscrowBridgeChatModal
-          isOpen={true}
-          onClose={() => setActiveEscrowChatDeal(null)}
-          dealId={activeEscrowChatDeal.dealId}
-          dealStage={activeEscrowChatDeal.dealStage}
-          lotCode={activeEscrowChatDeal.lotCode}
-          lotTitle={activeEscrowChatDeal.lotTitle}
-          bankName={activeEscrowChatDeal.bankName}
-          buyerName={activeEscrowChatDeal.buyerName}
-          currentRole="buyer"
-          currentUserName={user?.name}
-        />
-      )}
 
       <UserProfileModal
         isOpen={isProfileModalOpen}

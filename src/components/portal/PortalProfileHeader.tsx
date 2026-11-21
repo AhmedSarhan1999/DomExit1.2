@@ -7,7 +7,6 @@ import {
   Copy,
   Heart,
   Users,
-  Crown,
   ArrowRight,
 } from 'lucide-react';
 import { UserProfile } from '../../types';
@@ -26,7 +25,6 @@ export interface PortalProfileHeaderProps {
   sellerLotsCount: number;
   favoritesCount: number;
   isPartnerApproved: boolean;
-  enableVipClub: boolean;
   onOpenProfileModal: () => void;
   onLogout: () => void;
 }
@@ -42,7 +40,6 @@ export const PortalProfileHeader: React.FC<PortalProfileHeaderProps> = ({
   sellerLotsCount,
   favoritesCount,
   isPartnerApproved,
-  enableVipClub,
   onOpenProfileModal,
   onLogout,
 }) => {
@@ -237,32 +234,6 @@ export const PortalProfileHeader: React.FC<PortalProfileHeaderProps> = ({
             </button>
           )}
         </div>
-
-        {/* VIP Catalog Early Access Banner */}
-        {enableVipClub && (
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
-                <Crown className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-amber-400 uppercase tracking-wider">
-                  Закрытый VIP-пул объектов (Ранний доступ 48 часов)
-                </div>
-                <div className="text-xs text-slate-300">
-                  Лоты с максимальным дисконтом до -35% от застройщика до их появления в открытом каталоге
-                </div>
-              </div>
-            </div>
-            <Link
-              to="/vip-catalog"
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-colors flex items-center space-x-1.5 shrink-0 shadow-sm"
-            >
-              <span>Смотреть VIP-пул</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        )}
       </div>
     </section>
   );

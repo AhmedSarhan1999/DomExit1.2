@@ -9,7 +9,6 @@ import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
-import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { DealTrack, Lot } from '../types';
 import { showDownloadToast } from '../utils/downloadManager';
 import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
@@ -49,7 +48,6 @@ export const AdminClosingPage: React.FC = () => {
   const [proofPhotos, setProofPhotos] = useState<string[]>([]);
   const [proofVideos, setProofVideos] = useState<string[]>([]);
   const [rosreestrStampDoc, setRosreestrStampDoc] = useState<string>('');
-  const { enableBankPortal } = useFeatureFlagsStore();
 
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
@@ -124,15 +122,6 @@ export const AdminClosingPage: React.FC = () => {
     Math.max(0, (lot?.dduContractPrice || sellerReturnRub) - sellerReturnRub);
   const bankName = deal?.escrowWorkflow?.bankName || 'ПАО Сбербанк';
 
-  // Bank hard-gating role checks
-  const isBankOfficer = Boolean(
-    user &&
-      (user.role === 'bank' ||
-        user.role === 'bank_officer' ||
-        user.activeRole === 'bank' ||
-        user.roles?.includes('bank') ||
-        user.roles?.includes('bank_officer'))
-  );
   const isOwner = Boolean(
     user &&
       (user.role === 'owner' ||
@@ -141,7 +130,8 @@ export const AdminClosingPage: React.FC = () => {
         user.activeRole === 'admin' ||
         user.roles?.includes('owner'))
   );
-  const canExecuteBankStep = !enableBankPortal || isBankOfficer || isOwner || isEmployee;
+  // Direct curator and owner execution of bank branch SBR steps
+  const canExecuteBankStep = isOwner || isEmployee;
   const hasRosreestrStamp = Boolean(rosreestrStampDoc && rosreestrStampDoc.trim().length > 0);
   const hasBuyer = Boolean(
     (deal?.buyerUserId && deal.buyerUserId.trim().length > 0) ||
@@ -524,9 +514,7 @@ export const AdminClosingPage: React.FC = () => {
                           }`}
                           title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
                         >
-                          {!enableBankPortal
-                            ? '✓ Подтвердить депонирование в отделении банка (СБР)'
-                            : '✓ Подтвердить депонирование (Офицер банка)'}
+                          ✓ Подтвердить депонирование в отделении банка (СБР)
                         </button>
                       ) : (
                         <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
@@ -625,11 +613,7 @@ export const AdminClosingPage: React.FC = () => {
                             }
                           >
                             <ShieldCheck className="w-4 h-4" />
-                            <span>
-                              {!enableBankPortal
-                                ? 'Раскрыть СБР и выплатить 3 транша'
-                                : 'Раскрыть аккредитив и закрыть (Офицер банка)'}
-                            </span>
+                            <span>Раскрыть СБР и выплатить 3 транша</span>
                           </button>
                           {!hasRosreestrStamp && (
                             <p className="text-[10px] text-amber-700 font-bold leading-tight">

@@ -248,7 +248,7 @@ export const HomePage: React.FC = () => {
               <div>
                 <h4 className="text-xs font-bold text-slate-900 uppercase">{t.statsBar.stage2}</h4>
                 <p className="text-[11px] text-slate-600 mt-0.5">
-                  {language === 'ru' ? 'Закрытый VIP Telegram-клуб и смарт-матчмейкинг' : 'Closed VIP TG club & AI matching'}
+                  {language === 'ru' ? 'Смарт-матчмейкинг и персональный подбор' : 'Smart matchmaking & bespoke matching'}
                 </p>
               </div>
             </div>

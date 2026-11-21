@@ -59,12 +59,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const currentUser: UserProfile = user || {
     id: 'usr-default-officer',
     clientCode: 'DEX-104662',
-    name: 'Ahmed Abdallah (Владелец / Офицер банка)',
+    name: 'Ahmed Abdallah (Владелец / CEO)',
     email: 'amaas9499@gmail.com',
     phone: '+7 (911) 900-00-00',
     telegram: '@domexit_official',
     role: 'owner',
-    roles: ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'],
+    roles: ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer'],
     activeRole: 'owner',
     isPartnerApproved: true,
     isInvestorApproved: true,
@@ -117,10 +117,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const roleLabelsRu: Record<string, string> = {
     owner: 'Владелец платформы (CEO)',
     employee: 'Куратор сделок (DomExit)',
-    bank: 'Офицер банка-партнера',
     buyer: 'Покупатель / Дольщик',
     seller: 'Продавец ДДУ',
-    investor: 'Резидент VIP раннего доступа (48ч)',
+    investor: 'Инвестор (Персональный подбор)',
     partner: 'Аккредитованный партнер',
     admin: 'Системный администратор',
   };

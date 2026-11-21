@@ -13,7 +13,7 @@ export const PROD_SYSTEM_USERS: UserProfile[] = [
     phone: '+7 (812) 900-00-01',
     telegram: '@domexit_owner',
     role: 'admin',
-    roles: ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'],
+    roles: ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer'],
     activeRole: 'owner',
     isPartnerApproved: true,
     isInvestorApproved: true,
@@ -162,7 +162,7 @@ export class UsersRepository {
     if (newRole === 'owner') {
       user.isPartnerApproved = true;
       user.isInvestorApproved = true;
-      user.roles = ['owner', 'employee', 'bank', 'partner', 'investor', 'seller', 'buyer'];
+      user.roles = ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer'];
     }
 
     await DatabaseGateway.save<UserProfile>(COLLECTION, user);

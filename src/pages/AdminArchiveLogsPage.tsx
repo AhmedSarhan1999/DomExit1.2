@@ -280,7 +280,6 @@ export const AdminArchiveLogsPage: React.FC = () => {
                 <option value="doc_requested">Запрос доп. документов</option>
                 <option value="document_vault_action">Проверка документов в хранилище</option>
                 <option value="packaging_published">Публикация в каталоге</option>
-                <option value="vip_telegram_broadcast">VIP Telegram-рассылка</option>
                 <option value="buyer_bid_submitted">Предложения покупателей</option>
                 <option value="buyer_matched">Отбор покупателя</option>
                 <option value="escrow_transferred_to_bank">Передача в банк</option>
@@ -293,8 +292,6 @@ export const AdminArchiveLogsPage: React.FC = () => {
                   <>
                     <option value="partner_application_submitted">Заявки B2B-партнеров</option>
                     <option value="partner_application_decided">Аккредитация B2B-партнеров</option>
-                    <option value="investor_application_submitted">Заявки VIP-инвесторов</option>
-                    <option value="investor_application_decided">Аккредитация VIP-инвесторов</option>
                     <option value="market_settings_updated">Обновление ставок ЦБ / рынка</option>
                   </>
                 )}
@@ -390,8 +387,6 @@ export const AdminArchiveLogsPage: React.FC = () => {
                           <span className="text-[10px] text-slate-500">
                             {log.operatorRole === 'curator'
                               ? 'Куратор отдела выходов'
-                              : log.operatorRole === 'bank_officer'
-                              ? 'Офицер банка-партнера'
                               : log.operatorRole === 'owner'
                               ? 'Владелец платформы'
                               : log.operatorRole === 'client'

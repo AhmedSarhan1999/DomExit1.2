@@ -8,7 +8,6 @@ export const DEFAULT_PUBLIC_CHANNELS: PublicChannelsConfig = {
   id: CHANNELS_ID,
   telegramChannelUrl: 'https://t.me/domexit_ru',
   telegramBotUrl: 'https://t.me/domexit_bot',
-  vipClubTelegramUrl: 'https://t.me/+domexit_vip_investors',
   maxProfileUrl: 'https://max.im/domexit',
   vkCommunityUrl: 'https://vk.com/domexit',
   hotlinePhone: '+7 (812) 900-00-00',
