@@ -1,7 +1,7 @@
 import { SecurityIncidentRecord } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
 
-const COLLECTION = 'security_incident_logs';
+const COLLECTION = 'security_incidents';
 
 export class SecurityIncidentsRepository {
   static async getAll(): Promise<SecurityIncidentRecord[]> {

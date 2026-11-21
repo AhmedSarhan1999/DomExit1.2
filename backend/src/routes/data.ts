@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { UserProfile, YcHttpEvent, YcHttpResponse } from '../types.js';
-import { json, parseBody } from '../lib/http.js';
+import { json, parseBody, getClientIp } from '../lib/http.js';
 import { getYdbClient } from '../lib/ydbClient.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
@@ -8,6 +8,8 @@ import { deleteS3ObjectsByPrefix } from '../lib/s3Client.js';
 import { memoryCache, CACHEABLE_COLLECTIONS } from '../lib/memoryCache.js';
 import { recordJournalEvent } from '../lib/journal.js';
 import { telegramNotifier } from '../lib/telegramNotifier.js';
+import { validateCollectionPayload } from '../lib/validationAndGuards.js';
+import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
 
 const PUBLIC_COLLECTIONS = new Set([
   'lots',
@@ -444,8 +446,231 @@ export async function handleData(
       return json(event, 400, { error: 'Тело запроса отсутствует или не в формате JSON' });
     }
 
-    const docId = id || body.id || `doc-${crypto.randomUUID()}`;
-    const itemToSave: Record<string, any> = { ...body, id: docId };
+    const clientIp = getClientIp(event);
+    const isOwner = authUser?.role === 'owner';
+    const isStaff = isOwner || authUser?.role === 'employee';
+    const actorKey = authUser ? authUser.id : clientIp || 'anonymous';
+
+    // 1. Central Schema Validation, Size Cap & Privilege Tampering Check
+    const valResult = await validateCollectionPayload({
+      collection,
+      payload: body,
+      method,
+      authUser,
+      ydb,
+    });
+
+    if (!valResult.valid) {
+      if (valResult.incidentType) {
+        const sev =
+          valResult.incidentType === 'privilege_tampering'
+            ? 'critical'
+            : valResult.incidentType === 'xss_or_injection_attempt'
+            ? 'high'
+            : valResult.incidentType === 'chat_contact_leak_attempt'
+            ? 'medium'
+            : 'low';
+
+        await recordSecurityIncident({
+          type: valResult.incidentType,
+          severity: sev,
+          actorUserId: authUser?.id,
+          actorRole: authUser?.role,
+          clientIp,
+          endpoint: subPath,
+          collection,
+          summary: valResult.error || 'Ошибка валидации полезной нагрузки',
+          details: { collection, method, error: valResult.error },
+        });
+      }
+
+      return json(event, valResult.statusCode || 400, {
+        error: valResult.error || 'Некорректные данные запроса',
+        code: valResult.incidentType,
+      });
+    }
+
+    // 2. Distributed Quota & Rate Limit Enforcement on POST for valid requests
+    if (method === 'POST' && !isOwner) {
+      // 2a. Buyer Applications
+      if (collection === 'buyer_applications') {
+        const qDay = await consumeQuota({
+          scope: 'buyer_app_day',
+          actorKey,
+          limit: 5,
+          windowSec: 86400,
+        });
+        if (!qDay.allowed) {
+          await recordSecurityIncident({
+            type: 'quota_exhaustion_or_spam',
+            severity: 'medium',
+            actorUserId: authUser?.id,
+            actorRole: authUser?.role,
+            clientIp,
+            endpoint: subPath,
+            collection,
+            summary: 'Превышена дневная квота подачи заявок покупателя (макс. 5 в сутки)',
+          });
+          return json(
+            event,
+            429,
+            { error: 'Превышен дневной лимит заявок покупателя (максимум 5 в сутки)', retryAfter: qDay.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qDay.retryAfterSec) } }
+          );
+        }
+
+        const qHour = await consumeQuota({
+          scope: 'buyer_app_hour',
+          actorKey,
+          limit: 2,
+          windowSec: 3600,
+        });
+        if (!qHour.allowed) {
+          await recordSecurityIncident({
+            type: 'quota_exhaustion_or_spam',
+            severity: 'medium',
+            actorUserId: authUser?.id,
+            actorRole: authUser?.role,
+            clientIp,
+            endpoint: subPath,
+            collection,
+            summary: 'Превышена часовая квота подачи заявок покупателя (макс. 2 в час)',
+          });
+          return json(
+            event,
+            429,
+            { error: 'Превышен лимит заявок в час (максимум 2 в час)', retryAfter: qHour.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qHour.retryAfterSec) } }
+          );
+        }
+      }
+
+      // 2b. Seller Requests & Lots (Non-Staff)
+      if ((collection === 'seller_requests' || collection === 'lots') && !isStaff) {
+        const qDay = await consumeQuota({
+          scope: 'seller_sub_day',
+          actorKey,
+          limit: 3,
+          windowSec: 86400,
+        });
+        if (!qDay.allowed) {
+          await recordSecurityIncident({
+            type: 'quota_exhaustion_or_spam',
+            severity: 'medium',
+            actorUserId: authUser?.id,
+            actorRole: authUser?.role,
+            clientIp,
+            endpoint: subPath,
+            collection,
+            summary: 'Превышена дневная квота создания заявок/объектов продавца (макс. 3 в сутки)',
+          });
+          return json(
+            event,
+            429,
+            { error: 'Превышен лимит создания объектов (максимум 3 в сутки)', retryAfter: qDay.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qDay.retryAfterSec) } }
+          );
+        }
+
+        const qTen = await consumeQuota({
+          scope: 'seller_sub_10m',
+          actorKey,
+          limit: 1,
+          windowSec: 600,
+        });
+        if (!qTen.allowed) {
+          await recordSecurityIncident({
+            type: 'quota_exhaustion_or_spam',
+            severity: 'medium',
+            actorUserId: authUser?.id,
+            actorRole: authUser?.role,
+            clientIp,
+            endpoint: subPath,
+            collection,
+            summary: 'Превышена частота подачи объектов продавца (макс. 1 за 10 минут)',
+          });
+          return json(
+            event,
+            429,
+            { error: 'Пожалуйста, подождите 10 минут перед добавлением следующего объекта', retryAfter: qTen.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qTen.retryAfterSec) } }
+          );
+        }
+      }
+
+      // 2c. Partner Preliminary Requests
+      if (collection === 'partner_preliminary_requests' && !isStaff) {
+        const qDay = await consumeQuota({
+          scope: 'partner_pre_day',
+          actorKey,
+          limit: 10,
+          windowSec: 86400,
+        });
+        if (!qDay.allowed) {
+          return json(
+            event,
+            429,
+            { error: 'Превышен дневной лимит фиксации предварительных заявок (максимум 10 в день)', retryAfter: qDay.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qDay.retryAfterSec) } }
+          );
+        }
+      }
+
+      // 2d. Partner & Investor Applications
+      if ((collection === 'partner_applications' || collection === 'investor_applications') && !isStaff) {
+        const qDay = await consumeQuota({
+          scope: 'partner_inv_app_day',
+          actorKey,
+          limit: 2,
+          windowSec: 86400,
+        });
+        if (!qDay.allowed) {
+          return json(
+            event,
+            429,
+            { error: 'Превышен лимит отправки анкет (максимум 2 в день)', retryAfter: qDay.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qDay.retryAfterSec) } }
+          );
+        }
+      }
+
+      // 2e. Curator Messages & Deal Messages (Non-Staff)
+      if ((collection === 'curator_messages' || collection === 'deal_messages') && !isStaff) {
+        const qMin = await consumeQuota({
+          scope: 'chat_msg_min',
+          actorKey,
+          limit: 15,
+          windowSec: 60,
+        });
+        if (!qMin.allowed) {
+          return json(
+            event,
+            429,
+            { error: 'Слишком частая отправка сообщений. Подождите 1 минуту.', retryAfter: qMin.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qMin.retryAfterSec) } }
+          );
+        }
+
+        const qHour = await consumeQuota({
+          scope: 'chat_msg_hour',
+          actorKey,
+          limit: 150,
+          windowSec: 3600,
+        });
+        if (!qHour.allowed) {
+          return json(
+            event,
+            429,
+            { error: 'Превышен часовой лимит сообщений в чате.', retryAfter: qHour.retryAfterSec },
+            { extraHeaders: { 'Retry-After': String(qHour.retryAfterSec) } }
+          );
+        }
+      }
+    }
+
+    const payloadToSave = valResult.sanitizedPayload || body;
+    const docId = id || payloadToSave.id || `doc-${crypto.randomUUID()}`;
+    const itemToSave: Record<string, any> = { ...payloadToSave, id: docId };
 
     // Invalidate cache for this collection
     memoryCache.invalidate(collection);

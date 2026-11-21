@@ -172,8 +172,8 @@ export async function handleAdmin(
     }
   }
 
-  // 3. POST /api/admin/backups/run
-  if (subPath === '/backups/run' && method === 'POST') {
+  // 3. POST /api/admin/backups/run or /backup-now
+  if ((subPath === '/backups/run' || subPath === '/backup-now') && method === 'POST') {
     try {
       logger.info('Manual backup triggered by owner', {
         event: 'ADMIN_MANUAL_BACKUP_TRIGGERED',

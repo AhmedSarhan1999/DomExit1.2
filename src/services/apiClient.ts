@@ -214,4 +214,15 @@ export const apiClient = {
         method: 'POST',
       }),
   },
+
+  // Owner Governance & Admin helpers
+  admin: {
+    getSystemHealth: () => request<any>('/api/admin/system-health', { method: 'GET' }),
+    getBackups: () =>
+      request<{ success: boolean; total: number; backups: any[] }>('/api/admin/backups', { method: 'GET' }),
+    runBackupNow: () =>
+      request<{ success: boolean; message?: string; key?: string; totalRecords?: number }>('/api/admin/backups/run', {
+        method: 'POST',
+      }),
+  },
 };

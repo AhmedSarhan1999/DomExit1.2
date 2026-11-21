@@ -3,6 +3,7 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { getRegionByCode, getDistrictGeo } from '../data/russianGeography';
 import { DevelopersRepository, PARTNER_BANKS } from '../dal/repositories/DevelopersRepository';
+import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
@@ -95,11 +96,15 @@ export class PropertyLifecycleService {
     const sreqId = `sreq-${lotCode}`;
 
     const remainingDebtRub = Math.max(0, payload.contractPriceRub - payload.paidAmountRub);
+    const marketSettings = MarketSettingsRepository.getSync();
+    const dynamicCommissionPercent = marketSettings?.buyerCommissionPercent ?? 2.5;
+    const dynamicPenaltyPercent = marketSettings?.developerPenaltyPercent ?? 15.0;
+
     const todayDeveloperPrice =
       payload.todayDeveloperPrice && payload.todayDeveloperPrice > payload.contractPriceRub
         ? payload.todayDeveloperPrice
         : Math.round(payload.contractPriceRub * 1.24);
-    const serviceCommissionRub = Math.round(payload.contractPriceRub * 0.025);
+    const serviceCommissionRub = Math.round(payload.contractPriceRub * (dynamicCommissionPercent / 100));
     const quarterlyInstallment = Math.max(95000, Math.round(remainingDebtRub / 24));
 
     const region = getRegionByCode(payload.city);

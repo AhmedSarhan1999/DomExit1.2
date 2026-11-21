@@ -4,11 +4,11 @@ import { AuditLogsRepository } from './AuditLogsRepository';
 
 export const DEFAULT_MARKET_SETTINGS: MarketSettings = {
   id: 'market_parameters',
-  cbrKeyRatePercent: 21.0,
+  cbrKeyRatePercent: 23.0,
   familyMortgageRatePercent: 6.0,
   developerPenaltyPercent: 15.0,
   buyerCommissionPercent: 2.5,
-  updatedAt: '2026-10-28T10:00:00.000Z',
+  updatedAt: '2026-11-21T12:00:00.000Z',
   updatedBy: 'System Default',
 };
 

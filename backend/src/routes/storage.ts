@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import { YcHttpEvent, YcHttpResponse } from '../types.js';
-import { json, parseBody } from '../lib/http.js';
+import { json, parseBody, getClientIp } from '../lib/http.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
 import { createPresignedUploadUrl, createPresignedDownloadUrl } from '../lib/s3Client.js';
 import { getYdbClient } from '../lib/ydbClient.js';
+import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
 
 const ALLOWED_PHOTO_TYPES = new Set(['image/webp', 'image/jpeg', 'image/png']);
 
@@ -36,6 +37,26 @@ export async function handleStorage(
 
   // POST /api/storage/presign-upload
   if (subPath === '/presign-upload' && method === 'POST') {
+    const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
+    const uploadLimit = isStaff ? 200 : 30;
+    const uploadQuota = await consumeQuota({
+      scope: 'storage_upload_hour',
+      actorKey: authUser.id,
+      limit: uploadLimit,
+      windowSec: 3600,
+    });
+    if (!uploadQuota.allowed) {
+      return json(
+        event,
+        429,
+        {
+          error: `Превышен часовой лимит загрузки файлов (максимум ${uploadLimit} в час).`,
+          retryAfter: uploadQuota.retryAfterSec,
+        },
+        { extraHeaders: { 'Retry-After': String(uploadQuota.retryAfterSec) } }
+      );
+    }
+
     const body = parseBody<{
       scope?: 'photo' | 'document';
       lotCode?: string;
@@ -132,7 +153,35 @@ export async function handleStorage(
     const isStaff = isOwner || authUser.role === 'employee';
 
     if (!isStaff) {
+      const downloadQuota = await consumeQuota({
+        scope: 'storage_download_hour',
+        actorKey: authUser.id,
+        limit: 60,
+        windowSec: 3600,
+      });
+      if (!downloadQuota.allowed) {
+        return json(
+          event,
+          429,
+          {
+            error: 'Превышен часовой лимит скачивания файлов (максимум 60 в час).',
+            retryAfter: downloadQuota.retryAfterSec,
+          },
+          { extraHeaders: { 'Retry-After': String(downloadQuota.retryAfterSec) } }
+        );
+      }
+
       if (!lotCode) {
+        const clientIp = getClientIp(event);
+        await recordSecurityIncident({
+          type: 'auth_bruteforce_or_probe',
+          severity: 'medium',
+          actorUserId: authUser.id,
+          actorRole: authUser.role,
+          clientIp,
+          endpoint: '/api/storage/presign-download',
+          summary: `Попытка несанкционированного доступа к приватному документу без lotCode: ${key}`,
+        });
         return json(event, 403, { error: 'Доступ к документу ограничен' });
       }
 
@@ -149,6 +198,17 @@ export async function handleStorage(
         );
 
         if (!userDeal) {
+          const clientIp = getClientIp(event);
+          await recordSecurityIncident({
+            type: 'auth_bruteforce_or_probe',
+            severity: 'medium',
+            actorUserId: authUser.id,
+            actorRole: authUser.role,
+            clientIp,
+            endpoint: '/api/storage/presign-download',
+            summary: `Попытка несанкционированного скачивания приватного документа чужого лота/сделки: ${key}`,
+            details: { key, lotCode },
+          });
           return json(event, 403, { error: 'У вас нет доступа к этому приватному документу' });
         }
       }

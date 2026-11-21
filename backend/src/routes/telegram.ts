@@ -15,6 +15,7 @@ import {
   STAGE_TRANSITIONS,
 } from '../lib/telegramWorkflow.js';
 import { logger } from '../lib/logger.js';
+import { consumeQuota } from '../lib/anomalyDetector.js';
 
 // In-memory replay de-duplication buffer (up to 500 recent update IDs)
 const seenUpdates = new Set<number>();
@@ -123,6 +124,24 @@ export async function handleTelegram(event: YcHttpEvent, subPath: string): Promi
   if (action === 'link-token' && method === 'POST') {
     if (!authUser) {
       return json(event, 401, { error: 'Требуется авторизация' });
+    }
+
+    const tokenQuota = await consumeQuota({
+      scope: 'telegram_link_token',
+      actorKey: authUser.id,
+      limit: 5,
+      windowSec: 3600,
+    });
+    if (!tokenQuota.allowed) {
+      return json(
+        event,
+        429,
+        {
+          error: 'Превышен лимит генерации токенов Telegram (максимум 5 в час).',
+          retryAfter: tokenQuota.retryAfterSec,
+        },
+        { extraHeaders: { 'Retry-After': String(tokenQuota.retryAfterSec) } }
+      );
     }
 
     // Generate 32-character hex token (16 bytes) so bind_<token> is 37 chars <= 64 chars

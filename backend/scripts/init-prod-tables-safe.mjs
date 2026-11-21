@@ -180,6 +180,8 @@ const REQUIRED_TABLES = [
   'telegram_bindings',
   'telegram_link_tokens',
   'telegram_message_map',
+  // Phase 5A Distributed Quota Table (Server internal)
+  'rate_limits',
 ];
 
 async function run() {

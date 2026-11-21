@@ -22,6 +22,7 @@ import {
   recordFailedLogin,
   resetFailedLogin,
 } from '../lib/cryptoAuth.js';
+import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
 
 export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<YcHttpResponse> {
   const method = event.httpMethod.toUpperCase();
@@ -30,6 +31,32 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
   // POST /api/auth/register
   if (subPath === '/register' && method === 'POST') {
+    const clientIp = getClientIp(event);
+    const regQuota = await consumeQuota({
+      scope: 'auth_register_ip',
+      actorKey: clientIp || 'unknown_ip',
+      limit: 5,
+      windowSec: 3600,
+    });
+    if (!regQuota.allowed) {
+      await recordSecurityIncident({
+        type: 'auth_bruteforce_or_probe',
+        severity: 'medium',
+        clientIp,
+        endpoint: '/api/auth/register',
+        summary: 'Превышен лимит регистраций с одного IP адреса (максимум 5 в час)',
+      });
+      return json(
+        event,
+        429,
+        {
+          error: 'Превышен лимит регистраций с вашего IP-адреса. Пожалуйста, подождите.',
+          retryAfter: regQuota.retryAfterSec,
+        },
+        { extraHeaders: { 'Retry-After': String(regQuota.retryAfterSec) } }
+      );
+    }
+
     const body = parseBody<{
       email?: string;
       password?: string;
@@ -136,6 +163,14 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     const rateKey = `${clientIp}:${email}`;
     if (!checkLoginRateLimit(rateKey)) {
+      await recordSecurityIncident({
+        type: 'auth_bruteforce_or_probe',
+        severity: 'high',
+        clientIp,
+        endpoint: '/api/auth/login',
+        summary: `Блокировка перебора паролей для аккаунта: ${email}`,
+        details: { email, clientIp },
+      });
       return json(event, 429, {
         error: 'Слишком много неудачных попыток входа. Пожалуйста, подождите 5 минут.',
       });

@@ -24,6 +24,7 @@ import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
 // Modular Dashboard Subcomponents
 import { AdminFeatureFlagsCard } from '../components/admin/dashboard/AdminFeatureFlagsCard';
+import { AdminGovernanceCard } from '../components/admin/AdminGovernanceCard';
 import { AdminTabBar, OwnerTab } from '../components/admin/dashboard/AdminTabBar';
 import { DashboardOverviewTab } from '../components/admin/dashboard/DashboardOverviewTab';
 import { SellerRequestsTableTab } from '../components/admin/dashboard/SellerRequestsTableTab';
@@ -299,6 +300,9 @@ export const AdminDashboardPage: React.FC = () => {
         <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
           {/* Master Feature Flags Management (Owner Exclusive) */}
           {isOwner && <AdminFeatureFlagsCard showToast={showToast} />}
+
+          {/* Master Governance, Security & Backup Management (Owner Exclusive) */}
+          {isOwner && <AdminGovernanceCard showToast={showToast} className="mb-6" />}
 
           {/* Role Status Bar */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
