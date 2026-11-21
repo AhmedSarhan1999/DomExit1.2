@@ -34,6 +34,7 @@ export interface BackendConfig {
   YANDEX_OAUTH_CLIENT_ID: string;
   YANDEX_OAUTH_CLIENT_SECRET: string;
   PUBLIC_BASE_URL: string;
+  PROD_CUSTOM_DOMAIN?: string;
 }
 
 export function getConfig(): BackendConfig {
@@ -43,7 +44,9 @@ export function getConfig(): BackendConfig {
     APP_ENV: env,
     YDB_DOCAPI_ENDPOINT:
       process.env.YDB_DOCAPI_ENDPOINT ||
-      process.env.STAGING_YDB_DOCAPI_ENDPOINT ||
+      (env === 'production'
+        ? process.env.PROD_YDB_DOCAPI_ENDPOINT
+        : process.env.STAGING_YDB_DOCAPI_ENDPOINT) ||
       '',
     YDB_REGION: process.env.YDB_REGION || process.env.YC_REGION || 'ru-central1',
     YC_ACCESS_KEY_ID: process.env.YC_ACCESS_KEY_ID || '',
@@ -59,10 +62,14 @@ export function getConfig(): BackendConfig {
         ? process.env.PROD_PRIVATE_DOCS_BUCKET || 'domexit-private-docs-prod'
         : process.env.STAGING_PRIVATE_DOCS_BUCKET || 'domexit-private-docs-staging'),
     S3_ENDPOINT: process.env.S3_ENDPOINT || 'https://storage.yandexcloud.net',
-    JWT_SIGNING_SECRET: process.env.JWT_SIGNING_SECRET || '',
+    JWT_SIGNING_SECRET:
+      process.env.JWT_SIGNING_SECRET ||
+      (env === 'production' ? process.env.JWT_SIGNING_SECRET_PROD : '') ||
+      '',
     YANDEX_OAUTH_CLIENT_ID: process.env.YANDEX_OAUTH_CLIENT_ID || '72f6de11197d4e9da68ea1fec90c72e1',
     YANDEX_OAUTH_CLIENT_SECRET: process.env.YANDEX_OAUTH_CLIENT_SECRET || '',
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || 'http://localhost:5173',
+    PROD_CUSTOM_DOMAIN: process.env.PROD_CUSTOM_DOMAIN || '',
   };
 
   const missing: string[] = [];

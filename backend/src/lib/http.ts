@@ -61,9 +61,11 @@ export function getClientIp(event: YcHttpEvent): string {
   );
 }
 
-function resolveCorsHeaders(
+export function resolveCorsHeaders(
   event: YcHttpEvent,
-  publicBaseUrl?: string
+  publicBaseUrl?: string,
+  appEnv: 'staging' | 'production' = (process.env.APP_ENV || 'staging') as 'staging' | 'production',
+  customDomain?: string
 ): Record<string, string> {
   const norm = normalizeHeaders(event.headers, event.multiValueHeaders);
   const origin = norm['origin'] || '';
@@ -75,18 +77,34 @@ function resolveCorsHeaders(
 
   const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
   const isYandexApigw = /^https:\/\/.*\.apigw\.yandexcloud\.net$/.test(origin);
-  const isMatchPublicBase = publicBaseUrl && origin === publicBaseUrl;
+  const isMatchPublicBase = Boolean(publicBaseUrl && origin === publicBaseUrl);
+  const isMatchCustomDomain = Boolean(customDomain && origin === customDomain);
 
-  if (origin && (isLocalhost || isYandexApigw || isMatchPublicBase)) {
+  let isAllowed = false;
+  if (appEnv === 'production') {
+    // In production: Strictly allow only publicBaseUrl, customDomain, or production Yandex API Gateway
+    // Ban localhost completely in production!
+    isAllowed = Boolean(origin && (isMatchPublicBase || isMatchCustomDomain || isYandexApigw));
+  } else {
+    // In staging / dev: allow localhost as well
+    isAllowed = Boolean(origin && (isLocalhost || isYandexApigw || isMatchPublicBase || isMatchCustomDomain));
+  }
+
+  if (isAllowed) {
     cors['Access-Control-Allow-Origin'] = origin;
     cors['Access-Control-Allow-Credentials'] = 'true';
     cors['Vary'] = 'Origin';
-  } else {
-    cors['Access-Control-Allow-Origin'] = '*';
   }
 
   return cors;
 }
+
+const MANDATORY_SECURITY_HEADERS: Record<string, string> = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
 
 export function json(
   event: YcHttpEvent,
@@ -102,8 +120,8 @@ export function json(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json; charset=utf-8',
-    'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    ...MANDATORY_SECURITY_HEADERS,
     ...cors,
     ...(options?.extraHeaders || {}),
   };
@@ -132,6 +150,7 @@ export function redirect(
   const cors = resolveCorsHeaders(event, publicBaseUrl);
   const headers: Record<string, string> = {
     Location: location,
+    ...MANDATORY_SECURITY_HEADERS,
     ...cors,
   };
 
@@ -150,11 +169,17 @@ export function redirect(
   return res;
 }
 
-export function handleOptions(event: YcHttpEvent, publicBaseUrl?: string): YcHttpResponse {
-  const cors = resolveCorsHeaders(event, publicBaseUrl);
+export function handleOptions(
+  event: YcHttpEvent,
+  publicBaseUrl?: string,
+  appEnv: 'staging' | 'production' = (process.env.APP_ENV || 'staging') as 'staging' | 'production',
+  customDomain?: string
+): YcHttpResponse {
+  const cors = resolveCorsHeaders(event, publicBaseUrl, appEnv, customDomain);
   return {
     statusCode: 204,
     headers: {
+      ...MANDATORY_SECURITY_HEADERS,
       ...cors,
       'Access-Control-Max-Age': '86400',
     },

@@ -30,6 +30,8 @@ dist-ssr
 .env.cloud.local
 .env.backend.local
 *.key.json
+*.json.gz
+infrastructure/backups/
 
 # Local Netlify folder
 .netlify

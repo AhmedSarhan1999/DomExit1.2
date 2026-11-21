@@ -13,7 +13,10 @@
     "ydbDocApiEndpoint": "https://docapi.serverless.yandexcloud.net/ru-central1/b1gbu0q3jqnheri2srsu/etnckg937628mnid7tnb",
     "publicPhotosBucket": "domexit-storage-vault",
     "privateDocsBucket": "domexit-private-docs-prod",
-    "webStaticBucket": "domexit-web-prod"
+    "webStaticBucket": "domexit-web-prod",
+    "apiFunctionId": "d4eouspb2d0s8dfguf1h",
+    "apiGatewayId": "d5dsuuhvetioe2hp0q7i",
+    "apiGatewayUrl": "https://d5dsuuhvetioe2hp0q7i.6brbn2wz.apigw.yandexcloud.net"
   },
   "staging": {
     "ydbDatabaseId": "etnkpeqnbmb1a6cocipk",
