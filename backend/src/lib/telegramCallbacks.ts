@@ -1,7 +1,9 @@
+import crypto from 'node:crypto';
 import { telegramClient, escapeHtml } from './telegramClient.js';
 import {
   assignCuratorToLot,
   transitionLotStage,
+  findTelegramBindingByUser,
   STAGE_LABELS,
   STAGE_TRANSITIONS,
 } from './telegramWorkflow.js';
@@ -11,7 +13,43 @@ import {
   showTasks,
   showTeam,
   showMyDeals,
+  showMatches,
+  showQueue,
+  showDemand,
 } from './telegramCommands.js';
+import { getYdbClient } from './ydbClient.js';
+import { recordJournalEvent } from './journal.js';
+import { consumeQuota } from './anomalyDetector.js';
+import { computeMatchScore, computeClosingScore, rankApplications } from './buyBoxEngine.js';
+import { logger } from './logger.js';
+import { BuyerApplication, BuyerBuyBox, PriceAcceptance } from '../types.js';
+
+async function notifyStaffTg(text: string): Promise<void> {
+  try {
+    const ydb = getYdbClient();
+    const users = await ydb.scanAll<any>('users', 200);
+    const staff = (users || []).filter((u: any) => u.role === 'owner' || u.role === 'employee');
+    for (const s of staff) {
+      const b = await findTelegramBindingByUser(s.id);
+      if (b && b.chatId && b.notificationsEnabled !== false) {
+        await telegramClient.sendMessage({ chat_id: b.chatId, text, parse_mode: 'HTML' }).catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    logger.warn('Failed to send staff tg in callbacks', { meta: { error: err.message } });
+  }
+}
+
+async function notifyUserTg(userId: string, text: string): Promise<void> {
+  try {
+    const b = await findTelegramBindingByUser(userId);
+    if (b && b.chatId && b.notificationsEnabled !== false) {
+      await telegramClient.sendMessage({ chat_id: b.chatId, text, parse_mode: 'HTML' }).catch(() => {});
+    }
+  } catch (err: any) {
+    logger.warn('Failed to send user tg in callbacks', { meta: { error: err.message, userId } });
+  }
+}
 
 export async function handleTelegramCallback(
   cq: any,
@@ -50,6 +88,14 @@ export async function handleTelegramCallback(
     await showMyDeals(chatId, binding, ydb, cfg);
     return;
   }
+  if (data === 'cmd_matches') {
+    await showMatches(chatId, binding, ydb, cfg);
+    return;
+  }
+  if (data === 'cmd_demand') {
+    await showDemand(chatId, binding, ydb, cfg);
+    return;
+  }
 
   // Curator acceptance
   if (data.startsWith('accept:')) {
@@ -86,6 +132,43 @@ export async function handleTelegramCallback(
       await telegramClient.sendMessage({
         chat_id: chatId,
         text: `⚠️ Ошибка: ${escapeHtml(err.message)}`,
+      });
+    }
+    return;
+  }
+
+  // 15-min SLA Escalation Picker: assign curator to unassigned request
+  if (data.startsWith('assign_pick:')) {
+    const lotIdentifier = data.replace(/^assign_pick:/, '');
+    if (userRole !== 'owner' && userRole !== 'employee') {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: '⛔ Только сотрудники платформы могут принимать заявки в работу.',
+      });
+      return;
+    }
+
+    try {
+      const empId = binding?.assignedEmployeeId || binding?.userId;
+      const res = await assignCuratorToLot({
+        lotCode: lotIdentifier,
+        employeeId: empId,
+        actor: {
+          id: binding.userId,
+          role: binding.role,
+          name: `${cq.from.first_name || ''} ${cq.from.last_name || ''}`.trim() || 'Куратор',
+          email: binding.userEmail,
+        },
+      });
+
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `✅ <b>Заявка #${escapeHtml(lotIdentifier)} успешно принята в работу!</b>\nКуратор: ${escapeHtml(res.employee.name)}`,
+      });
+    } catch (err: any) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ Ошибка назначения: ${escapeHtml(err.message)}`,
       });
     }
     return;
@@ -202,6 +285,518 @@ export async function handleTelegramCallback(
     await telegramClient.sendMessage({
       chat_id: chatId,
       text: `✍️ <b>Напишите ответ для лота #${escapeHtml(lotCode)}</b>\nСообщение будет отправлено прямо в чат портала. (Для отмены введите /cancel)`,
+    });
+    return;
+  }
+
+  // View Queue Shortcut: q_view:<lotCode>
+  if (data.startsWith('q_view:')) {
+    const lotCode = data.replace(/^q_view:/, '');
+    await showQueue(chatId, binding, ydb, lotCode, cfg);
+    return;
+  }
+
+  // =========================================================================
+  // Quick Apply Step 1: bb_app:<lotCode>
+  // =========================================================================
+  if (data.startsWith('bb_app:')) {
+    const lotCode = data.replace(/^bb_app:/, '');
+    if (!binding) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `🔒 Для подачи заявки привяжите аккаунт на сайте:\n${cfg.PUBLIC_BASE_URL}`,
+        reply_markup: {
+          inline_keyboard: [[{ text: '🌐 Открыть сайт DomExit', url: cfg.PUBLIC_BASE_URL }]],
+        },
+      });
+      return;
+    }
+
+    let lot = await ydb.getItem('lots', lotCode);
+    if (!lot) {
+      const all = await ydb.scanAll('lots', 500);
+      lot = (all || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
+    }
+    if (!lot) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Лот #${escapeHtml(lotCode)} не найден.`,
+      });
+      return;
+    }
+
+    const dropConfig = lot.dropConfig;
+    if (dropConfig?.waveStatus === 'expired_closed' || dropConfig?.waveStatus === 'capped_closed') {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `🛑 Прием заявок по лоту #${escapeHtml(lotCode)} закрыт.`,
+      });
+      return;
+    }
+
+    const buyBox = ((await ydb.getItem('buy_boxes', `bb:${binding.userId}`)) || null) as BuyerBuyBox | null;
+    const tier = buyBox?.tier || 'silver';
+
+    // Gold exclusivity gate check
+    if (dropConfig?.waveStatus === 'gold_wave' && tier !== 'gold') {
+      const until = dropConfig.goldExclusiveUntil
+        ? new Date(dropConfig.goldExclusiveUntil).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `🔒 <b>Окно Gold-инвесторов активно</b>\n\nПодача заявок для инвесторов уровня Silver откроется в ${until} MSK (после окончания эксклюзивного окна Gold).`,
+      });
+      return;
+    }
+
+    // Cap check
+    if (dropConfig?.maxApplicationsCap && (dropConfig.currentValidApplications || 0) >= dropConfig.maxApplicationsCap) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `🛑 Лимит мест в очереди по лоту #${escapeHtml(lotCode)} исчерпан (${dropConfig.maxApplicationsCap}/${dropConfig.maxApplicationsCap}).`,
+      });
+      return;
+    }
+
+    const lotPrice = Number(lot.priceRub || lot.price || 0).toLocaleString('ru-RU');
+    const text = [
+      `⚡ <b>ПОДАЧА ЗАЯВКИ: ЛОТ #${escapeHtml(lotCode)}</b>`,
+      `ЖК: <b>${escapeHtml(lot.complexName || 'Не указан')}</b>`,
+      `Цена предложения: <b>${lotPrice} ₽</b>`,
+      ``,
+      `<b>Шаг 1 из 2:</b> Выберите ценовое предложение:`,
+    ].join('\n');
+
+    const buttons = [
+      [
+        { text: '✅ По полной цене', callback_data: `bb_prc:${lotCode}:full` },
+        { text: '🚀 Выше рынка (+2%)', callback_data: `bb_prc:${lotCode}:above` },
+      ],
+      [
+        { text: '📉 С дисконтом (-5%)', callback_data: `bb_prc:${lotCode}:disc` },
+        { text: '❌ Отмена', callback_data: 'cancel' },
+      ],
+    ];
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text,
+      reply_markup: { inline_keyboard: buttons },
+    });
+    return;
+  }
+
+  // =========================================================================
+  // Quick Apply Step 2: bb_prc:<lotCode>:<priceType>
+  // =========================================================================
+  if (data.startsWith('bb_prc:')) {
+    const parts = data.replace(/^bb_prc:/, '').split(':');
+    const lotCode = parts[0];
+    const priceType = parts[1] || 'full';
+
+    const priceLabel =
+      priceType === 'above' ? 'Выше рынка (+2%)' : priceType === 'disc' ? 'С дисконтом (-5%)' : 'По полной цене';
+
+    const text = [
+      `⚡ <b>ПОДАЧА ЗАЯВКИ: ЛОТ #${escapeHtml(lotCode)}</b>`,
+      `Ценовое предложение: <b>${priceLabel}</b>`,
+      ``,
+      `<b>Шаг 2 из 2:</b> Подтвердите условия выхода на сделку:`,
+      `• Готовы ли вы выйти на согласование за <b>24 часа</b>?`,
+      `• Готовы ли вы внести обеспечительный депозит за <b>48 часов</b>?`,
+    ].join('\n');
+
+    const buttons = [
+      [{ text: '⚡ 24ч выход + 48ч депозит', callback_data: `bb_cfm:${lotCode}:${priceType}:both` }],
+      [
+        { text: '⏱ Только выход 24ч', callback_data: `bb_cfm:${lotCode}:${priceType}:view` },
+        { text: '💰 Только депозит 48ч', callback_data: `bb_cfm:${lotCode}:${priceType}:dep` },
+      ],
+      [{ text: '❌ Отмена', callback_data: 'cancel' }],
+    ];
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text,
+      reply_markup: { inline_keyboard: buttons },
+    });
+    return;
+  }
+
+  // =========================================================================
+  // Quick Apply Step 3 (Execution): bb_cfm:<lotCode>:<priceType>:<speed>
+  // =========================================================================
+  if (data.startsWith('bb_cfm:')) {
+    const parts = data.replace(/^bb_cfm:/, '').split(':');
+    const lotCode = parts[0];
+    const priceType = parts[1] || 'full';
+    const speed = parts[2] || 'both';
+
+    if (!binding) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: 'Для завершения подачи заявки авторизуйтесь на сайте DomExit.',
+      });
+      return;
+    }
+
+    // 5A Quota check
+    const quotaRes = await consumeQuota({
+      scope: 'buyer_app_telegram',
+      actorKey: binding.userId,
+      limit: 10,
+      windowSec: 86400,
+    });
+    if (!quotaRes.allowed) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ Превышен лимит заявок (${quotaRes.limit} в сутки). Попробуйте позже.`,
+      });
+      return;
+    }
+
+    let lot = await ydb.getItem('lots', lotCode);
+    if (!lot) {
+      const all = await ydb.scanAll('lots', 500);
+      lot = (all || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
+    }
+    if (!lot) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Лот #${escapeHtml(lotCode)} не найден.`,
+      });
+      return;
+    }
+
+    const targetLotCode = lot.lotCode || lotCode;
+
+    // Check existing application
+    const allApps = await ydb.scanAll('buyer_applications', 300);
+    const existing = (allApps || []).find(
+      (a: any) =>
+        (a.lotCode === targetLotCode || a.lotCode === lotCode) &&
+        a.userId === binding.userId &&
+        a.queueStatus !== 'withdrawn'
+    );
+    if (existing) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ Вы уже подали заявку на лот #${escapeHtml(targetLotCode)}. Статус: <b>${escapeHtml(existing.queueStatus || 'в очереди')}</b>`,
+      });
+      return;
+    }
+
+    const buyBox: BuyerBuyBox =
+      ((await ydb.getItem('buy_boxes', `bb:${binding.userId}`)) as BuyerBuyBox) || {
+        id: `bb:${binding.userId}`,
+        userId: binding.userId,
+        active: true,
+        cities: [lot.city || 'spb'],
+        districts: [],
+        complexNames: lot.complexName ? [lot.complexName] : [],
+        dealTracks: [lot.dealTrack || 'ddu_cession'],
+        rooms: [lot.rooms || '1k'],
+        maxBudgetRub: Number(lot.priceRub || lot.price || 15000000),
+        minDiscountPercent: 5,
+        paymentMethod: 'cash_100',
+        preferredBanks: [],
+        goal: 'living',
+        readinessHours: 24,
+        tier: 'silver',
+        reliabilityScore: 100,
+        noShowCount: 0,
+        completedViewingsCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+    const priceAcceptance: PriceAcceptance =
+      priceType === 'above' ? 'above_asking' : priceType === 'disc' ? 'discount_requested' : 'full_price';
+    const readiness24h = speed === 'both' || speed === 'view';
+    const deposit48h = speed === 'both' || speed === 'dep';
+
+    const matchRes = computeMatchScore(lot, buyBox);
+    const closingRes = computeClosingScore(
+      { priceAcceptance, readiness24h, deposit48h, ndaSigned: true },
+      buyBox,
+      lot
+    );
+
+    const nowIso = new Date().toISOString();
+    const newApp: BuyerApplication = {
+      id: `app:${crypto.randomUUID()}`,
+      lotCode: targetLotCode,
+      userId: binding.userId,
+      userEmail: binding.userEmail || '',
+      userName: `${cq.from?.first_name || ''} ${cq.from?.last_name || ''}`.trim() || 'Инвестор Telegram',
+      priceAcceptance,
+      readiness24h,
+      deposit48h,
+      ndaSigned: true,
+      matchScore: matchRes.score,
+      closingScore: closingRes.closingScore,
+      queueStatus: 'pending_review',
+      createdAt: nowIso,
+    };
+
+    await ydb.putItem('buyer_applications', newApp);
+
+    // Update dropConfig count if applicable
+    if (lot.dropConfig) {
+      lot.dropConfig.currentValidApplications = (lot.dropConfig.currentValidApplications || 0) + 1;
+      if (lot.dropConfig.currentValidApplications >= lot.dropConfig.maxApplicationsCap) {
+        lot.dropConfig.waveStatus = 'capped_closed';
+      }
+      await ydb.putItem('lots', lot);
+    }
+
+    await recordJournalEvent({
+      action: 'CREATE',
+      collection: 'buyer_applications',
+      recordId: newApp.id,
+      actor: { userId: binding.userId, role: binding.role, email: binding.userEmail },
+      payload: { lotCode: targetLotCode, closingScore: closingRes.closingScore, matchScore: matchRes.score },
+    });
+
+    // Notify staff
+    const staffNotice =
+      `⚡ <b>НОВАЯ ЗАЯВКА В ОЧЕРЕДЬ ЧЕРЕЗ TELEGRAM: ЛОТ #${escapeHtml(targetLotCode)}</b>\n` +
+      `Инвестор: <b>${escapeHtml(newApp.userName || newApp.userEmail || 'Инвестор')}</b> (${escapeHtml((buyBox.tier || 'silver').toUpperCase())})\n` +
+      `Closing Score: <b>${closingRes.closingScore}/105</b> (Match: ${matchRes.score}%)\n` +
+      `Выход 24ч: ${readiness24h ? 'Да' : 'Нет'}, Депозит 48ч: ${deposit48h ? 'Да' : 'Нет'}`;
+    void notifyStaffTg(staffNotice);
+
+    // Confirmation message to user
+    const confirmationText = [
+      `🎉 <b>Заявка на лот #${escapeHtml(targetLotCode)} успешно принята!</b>`,
+      ``,
+      `• Ваш Closing Score: <b>${closingRes.closingScore}/105</b>`,
+      `• Совпадение Buy-Box: <b>${matchRes.score}%</b>`,
+      `• Уровень инвестора: <b>${escapeHtml((buyBox.tier || 'silver').toUpperCase())}</b>`,
+      ``,
+      `Куратор рассмотрит заявку в приоритетном порядке. Вы получите мгновенное уведомление при присвоении приоритета №1!`,
+    ].join('\n');
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: confirmationText,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎯 Другие совпадения', callback_data: 'cmd_matches' }],
+          [{ text: '📋 Главное меню', callback_data: 'menu' }],
+        ],
+      },
+    });
+    return;
+  }
+
+  // =========================================================================
+  // Hybrid Queue: Select Priority #1 & Reserve (q_sel:<lotCode>)
+  // =========================================================================
+  if (data.startsWith('q_sel:')) {
+    const lotCode = data.replace(/^q_sel:/, '');
+    if (userRole !== 'owner' && userRole !== 'employee') {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: '⛔ Только сотрудники могут распределять приоритеты очереди.',
+      });
+      return;
+    }
+
+    let lot = await ydb.getItem('lots', lotCode);
+    if (!lot) {
+      const allLots = await ydb.scanAll('lots', 500);
+      lot = (allLots || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
+    }
+    const targetLotCode = lot?.lotCode || lotCode;
+
+    const allApps = await ydb.scanAll('buyer_applications', 300);
+    const lotApps = (allApps || []).filter(
+      (a: any) => (a.lotCode === lotCode || a.lotCode === targetLotCode) && a.queueStatus !== 'withdrawn'
+    );
+
+    if (lotApps.length === 0) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ По лоту #${escapeHtml(targetLotCode)} нет доступных заявок.`,
+      });
+      return;
+    }
+
+    const allBuyBoxes = await ydb.scanAll('buy_boxes', 300);
+    const bbMap = new Map<string, any>();
+    for (const bb of allBuyBoxes || []) bbMap.set(bb.userId, bb);
+
+    const enriched = lotApps.map((a: any) => ({
+      ...a,
+      tier: bbMap.get(a.userId)?.tier || 'silver',
+      reliabilityScore: bbMap.get(a.userId)?.reliabilityScore ?? 100,
+      noShowCount: bbMap.get(a.userId)?.noShowCount ?? 0,
+    }));
+
+    const ranked = rankApplications(enriched);
+    const now = new Date();
+    const viewingDeadlineAt = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
+    const depositDeadlineAt = new Date(now.getTime() + 48 * 3600 * 1000).toISOString();
+
+    for (let i = 0; i < ranked.length; i++) {
+      const app = ranked[i];
+      if (i === 0) {
+        app.queueStatus = 'priority_1';
+        app.viewingDeadlineAt = viewingDeadlineAt;
+        app.depositDeadlineAt = depositDeadlineAt;
+      } else if (i === 1) {
+        app.queueStatus = 'reserve_2';
+      } else if (i === 2) {
+        app.queueStatus = 'reserve_3';
+      } else {
+        app.queueStatus = 'waitlist';
+      }
+      await ydb.putItem('buyer_applications', app);
+    }
+
+    const topApp = ranked[0];
+    const topName = escapeHtml(topApp.userName || topApp.userEmail || 'Покупатель');
+
+    await recordJournalEvent({
+      action: 'UPDATE',
+      collection: 'buyer_applications',
+      recordId: topApp.id || '',
+      actor: { userId: binding.userId, role: binding.role, email: binding.userEmail },
+      payload: { action: 'select_priority', lotCode: targetLotCode, priority1UserId: topApp.userId },
+    });
+
+    // Notify Priority 1 buyer
+    const buyerNotice =
+      `🌟 <b>ПОЗДРАВЛЯЕМ! ВАША ЗАЯВКА ВЫБРАНА В ПРИОРИТЕТ №1 [Лот #${escapeHtml(targetLotCode)}]</b>\n\n` +
+      `ЖК: <b>${escapeHtml(lot?.complexName || 'Не указан')}</b>\n` +
+      `⏱ Дедлайн согласования просмотра: <b>24 часа</b> (до ${new Date(viewingDeadlineAt).toLocaleString('ru-RU')})\n` +
+      `💰 Дедлайн обеспечительного платежа: <b>48 часов</b> (до ${new Date(depositDeadlineAt).toLocaleString('ru-RU')})\n\n` +
+      `<i>Куратор свяжется с вами в ближайшее время для фиксации времени просмотра!</i>`;
+    if (topApp.userId) {
+      void notifyUserTg(topApp.userId, buyerNotice);
+    }
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: [
+        `👑 <b>Приоритет распределен для лота #${escapeHtml(targetLotCode)}</b>:`,
+        ``,
+        `🥇 <b>№1 (Приоритет):</b> ${topName}`,
+        `• Closing Score: <b>${topApp.closingScore}/105</b>`,
+        `• Дедлайн просмотра (24ч): <b>${new Date(viewingDeadlineAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>`,
+        `• Дедлайн депозита (48ч): <b>${new Date(depositDeadlineAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>`,
+        ``,
+        `🥈 В резерве: <b>${ranked.length - 1} кандидатов</b>`,
+      ].join('\n'),
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⏭ Передать очередь №2', callback_data: `q_prom:${targetLotCode}` }],
+          [{ text: '📋 Посмотреть очередь', callback_data: `q_view:${targetLotCode}` }],
+        ],
+      },
+    });
+    return;
+  }
+
+  // =========================================================================
+  // Hybrid Queue: Promote Reserve to Priority #1 (q_prom:<lotCode>)
+  // =========================================================================
+  if (data.startsWith('q_prom:')) {
+    const lotCode = data.replace(/^q_prom:/, '');
+    if (userRole !== 'owner' && userRole !== 'employee') {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: '⛔ Только сотрудники могут передавать очередь кандидатам из резерва.',
+      });
+      return;
+    }
+
+    let lot = await ydb.getItem('lots', lotCode);
+    if (!lot) {
+      const allLots = await ydb.scanAll('lots', 500);
+      lot = (allLots || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
+    }
+    const targetLotCode = lot?.lotCode || lotCode;
+
+    const allApps = await ydb.scanAll('buyer_applications', 300);
+    const lotApps = (allApps || []).filter(
+      (a: any) => (a.lotCode === lotCode || a.lotCode === targetLotCode) && a.queueStatus !== 'withdrawn'
+    );
+
+    const currentP1 = lotApps.find((a: any) => a.queueStatus === 'priority_1');
+    if (currentP1) {
+      currentP1.queueStatus = 'expired';
+      await ydb.putItem('buyer_applications', currentP1);
+    }
+
+    const nextCandidate =
+      lotApps.find((a: any) => a.queueStatus === 'reserve_2') ||
+      lotApps.find((a: any) => a.queueStatus === 'reserve_3') ||
+      lotApps.find((a: any) => a.queueStatus === 'waitlist' || a.queueStatus === 'pending_review');
+
+    if (!nextCandidate) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ В резерве по лоту #${escapeHtml(targetLotCode)} больше нет кандидатов.`,
+      });
+      return;
+    }
+
+    const now = new Date();
+    const viewingDeadlineAt = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
+    const depositDeadlineAt = new Date(now.getTime() + 48 * 3600 * 1000).toISOString();
+
+    nextCandidate.queueStatus = 'priority_1';
+    nextCandidate.viewingDeadlineAt = viewingDeadlineAt;
+    nextCandidate.depositDeadlineAt = depositDeadlineAt;
+    delete nextCandidate.deadlineAlertedAt;
+    await ydb.putItem('buyer_applications', nextCandidate);
+
+    // Promote reserve_3 to reserve_2 if exists
+    const r3 = lotApps.find((a: any) => a.queueStatus === 'reserve_3');
+    if (r3) {
+      r3.queueStatus = 'reserve_2';
+      await ydb.putItem('buyer_applications', r3);
+    }
+
+    await recordJournalEvent({
+      action: 'UPDATE',
+      collection: 'buyer_applications',
+      recordId: nextCandidate.id || '',
+      actor: { userId: binding.userId, role: binding.role, email: binding.userEmail },
+      payload: { action: 'promote_queue', lotCode: targetLotCode, newPriority1UserId: nextCandidate.userId },
+    });
+
+    const nextName = escapeHtml(nextCandidate.userName || nextCandidate.userEmail || 'Кандидат №2');
+
+    // Notify promoted buyer
+    const promoNotice =
+      `🌟 <b>ОЧЕРЕДЬ ПЕРЕДАНА ВАМ: ПРИОРИТЕТ №1 [Лот #${escapeHtml(targetLotCode)}]</b>\n\n` +
+      `Кандидат №1 не подтвердил выход на сделку в срок. Право преимущественного бронирования перешло к вам!\n` +
+      `⏱ Дедлайн просмотра: <b>24 часа</b>\n` +
+      `💰 Дедлайн депозита: <b>48 часов</b>\n\n` +
+      `<i>Куратор свяжется с вами прямо сейчас!</i>`;
+    if (nextCandidate.userId) {
+      void notifyUserTg(nextCandidate.userId, promoNotice);
+    }
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: [
+        `⏭ <b>Очередь по лоту #${escapeHtml(targetLotCode)} передана кандидату из резерва!</b>`,
+        ``,
+        `👑 <b>Новый приоритет №1:</b> ${nextName}`,
+        `• Closing Score: <b>${nextCandidate.closingScore}/105</b>`,
+        `• Дедлайн просмотра (24ч): <b>${new Date(viewingDeadlineAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>`,
+        `• Дедлайн депозита (48ч): <b>${new Date(depositDeadlineAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>`,
+      ].join('\n'),
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⏭ Передать очередь дальше', callback_data: `q_prom:${targetLotCode}` }],
+          [{ text: '📋 Главное меню', callback_data: 'menu' }],
+        ],
+      },
     });
     return;
   }

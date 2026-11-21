@@ -28,6 +28,7 @@ import {
   determineDefaultTier,
 } from '../lib/buyBoxEngine.js';
 import { logger } from '../lib/logger.js';
+import { runSlaSweep } from '../lib/slaSweeperService.js';
 
 async function notifyStaff(text: string): Promise<void> {
   try {
@@ -894,6 +895,24 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     } catch (err: any) {
       logger.error('Error updating buyer tier', { meta: { error: err.message, targetUserId } });
       return json(event, 500, { error: 'Не удалось обновить статус покупателя' });
+    }
+  }
+
+  // =========================================================================
+  // 11. POST /api/matching/run-sla-sweep (Staff Only: Manual SLA Sweep Trigger)
+  // =========================================================================
+  if (subPath === '/run-sla-sweep' && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Запуск SLA Sweeper разрешен только сотрудникам' });
+    }
+
+    const body = parseBody<{ dryRun?: boolean }>(event);
+    try {
+      const result = await runSlaSweep({ dryRun: Boolean(body?.dryRun) });
+      return json(event, 200, result);
+    } catch (err: any) {
+      logger.error('Error executing manual SLA sweep', { meta: { error: err.message } });
+      return json(event, 500, { error: 'Не удалось выполнить проверку SLA', details: err.message });
     }
   }
 

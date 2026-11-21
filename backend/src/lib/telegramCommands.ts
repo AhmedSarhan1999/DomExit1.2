@@ -5,6 +5,7 @@ import {
   findTelegramBindingByChat,
 } from './telegramWorkflow.js';
 import { handleTelegramCallback } from './telegramCallbacks.js';
+import { computeMatchScore, rankApplications } from './buyBoxEngine.js';
 import { logger } from './logger.js';
 
 export async function showMainMenu(chatId: string | number, binding: any, cfg: any): Promise<void> {
@@ -32,10 +33,13 @@ export async function showMainMenu(chatId: string | number, binding: any, cfg: a
   if (role === 'owner') {
     buttons.push([
       { text: '📊 Сводка /stats', callback_data: 'cmd_stats' },
-      { text: '📋 Задачи /tasks', callback_data: 'cmd_tasks' },
+      { text: '📈 Радар /demand', callback_data: 'cmd_demand' },
     ]);
     buttons.push([
+      { text: '📋 Задачи /tasks', callback_data: 'cmd_tasks' },
       { text: '👥 Команда /team', callback_data: 'cmd_team' },
+    ]);
+    buttons.push([
       { text: '🌐 Открыть сайт', url: cfg.PUBLIC_BASE_URL },
     ]);
   } else if (role === 'employee') {
@@ -46,6 +50,9 @@ export async function showMainMenu(chatId: string | number, binding: any, cfg: a
   } else {
     buttons.push([
       { text: '📑 Мои объекты', callback_data: 'cmd_mydeals' },
+      { text: '🎯 Buy-Box /matches', callback_data: 'cmd_matches' },
+    ]);
+    buttons.push([
       { text: '🌐 Личный кабинет', url: `${cfg.PUBLIC_BASE_URL}/client/portal` },
     ]);
   }
@@ -259,6 +266,333 @@ export async function showMyDeals(chatId: string | number, binding: any, ydb: an
   });
 }
 
+function formatRub(val: number | string | undefined): string {
+  return Number(val || 0).toLocaleString('ru-RU');
+}
+
+function formatWave(wave?: string): string {
+  switch (wave) {
+    case 'gold_wave':
+      return '🥇 Gold (24ч)';
+    case 'silver_wave':
+      return '🥈 Silver (открытая)';
+    case 'capped_closed':
+      return '🛑 Закрыт (квота)';
+    case 'expired_closed':
+      return '⌛ Закрыт (время)';
+    default:
+      return '🟢 Доступен';
+  }
+}
+
+export async function showMatches(
+  chatId: string | number,
+  binding: any,
+  ydb: any,
+  cfg: any
+): Promise<void> {
+  if (!binding) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: `🔒 Для подбора объектов по Buy-Box привяжите аккаунт на сайте:\n${cfg.PUBLIC_BASE_URL}`,
+      reply_markup: {
+        inline_keyboard: [[{ text: '🌐 Открыть сайт DomExit', url: cfg.PUBLIC_BASE_URL }]],
+      },
+    });
+    return;
+  }
+
+  const buyBox = await ydb.getItem('buy_boxes', `bb:${binding.userId}`);
+  if (!buyBox || buyBox.active === false) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: [
+        `🎯 <b>Buy-Box не настроен или выключен</b>`,
+        ``,
+        `Для автоматического подбора лотов настройте параметры в личном кабинете:`,
+        `• Бюджет и желаемый дисконт`,
+        `• Локации и жилые комплексы`,
+        `• Способ оплаты и готовность к быстрому выходу`,
+      ].join('\n'),
+      reply_markup: {
+        inline_keyboard: [[{ text: '⚙️ Настроить Buy-Box', url: `${cfg.PUBLIC_BASE_URL}/client/portal` }]],
+      },
+    });
+    return;
+  }
+
+  const allLots = await ydb.scanAll('lots', 500);
+  const activeLots = (allLots || []).filter((l: any) => {
+    const status = l.status || 'available';
+    if (status !== 'available' && status !== 'active') return false;
+    if (l.dropConfig?.waveStatus === 'expired_closed' || l.dropConfig?.waveStatus === 'capped_closed') return false;
+    return true;
+  });
+
+  const scoredLots: Array<{ lot: any; score: number; eligible: boolean }> = [];
+  for (const lot of activeLots) {
+    const matchRes = computeMatchScore(lot, buyBox);
+    if (matchRes.score >= 50) {
+      scoredLots.push({ lot, score: matchRes.score, eligible: matchRes.eligibleForDrop });
+    }
+  }
+
+  scoredLots.sort((a, b) => b.score - a.score);
+  const topMatches = scoredLots.slice(0, 5);
+
+  if (topMatches.length === 0) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: [
+        `🔍 <b>Подходящих предложений пока нет</b>`,
+        ``,
+        `По вашему Buy-Box (бюджет: до <b>${formatRub(buyBox.maxBudgetRub)} ₽</b>, дисконт от <b>${buyBox.minDiscountPercent}%</b>) на текущий момент нет активных совпадений.`,
+        ``,
+        `Как только появится объект с дисконтом, бот моментально пришлет уведомление!`,
+      ].join('\n'),
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📋 Главное меню', callback_data: 'menu' }],
+          [{ text: '🌐 Каталог на сайте', url: `${cfg.PUBLIC_BASE_URL}/catalog` }],
+        ],
+      },
+    });
+    return;
+  }
+
+  const tierBadge = buyBox.tier === 'gold' ? '🥇 GOLD' : buyBox.tier === 'bronze' ? '🥉 BRONZE' : '🥈 SILVER';
+  const lines: string[] = [
+    `🎯 <b>ТОП-5 СОВПАДЕНИЙ ПО ВАШЕМУ BUY-BOX [${tierBadge}]</b>`,
+    `Бюджет: <b>до ${formatRub(buyBox.maxBudgetRub)} ₽</b> | Дисконт: <b>от ${buyBox.minDiscountPercent}%</b>`,
+    ``,
+  ];
+
+  const buttons: any[] = [];
+  for (let i = 0; i < topMatches.length; i++) {
+    const { lot, score } = topMatches[i];
+    const lotPrice = formatRub(lot.priceRub || lot.price);
+    const disc = lot.discountPercent || (lot.marketPriceRub ? Math.round(((lot.marketPriceRub - (lot.priceRub || lot.price)) / lot.marketPriceRub) * 100) : 0);
+    const wave = formatWave(lot.dropConfig?.waveStatus);
+    const cap = lot.dropConfig?.maxApplicationsCap;
+    const current = lot.dropConfig?.currentValidApplications || 0;
+    const remainingSeats = cap ? Math.max(0, cap - current) : null;
+
+    lines.push(
+      `<b>#${i + 1} Лот #${escapeHtml(lot.lotCode || lot.id)}</b> — ЖК «${escapeHtml(lot.complexName || 'Не указан')}»`,
+      `• Совпадение: <b>${score}%</b> | Дисконт: <b>${disc}%</b>`,
+      `• Цена: <b>${lotPrice} ₽</b> | Волна: <b>${wave}</b>`,
+      remainingSeats !== null ? `• Свободных мест в очереди: <b>${remainingSeats}</b>` : '',
+      ``
+    );
+
+    buttons.push([
+      {
+        text: `⚡ Подать заявку #${escapeHtml(lot.lotCode || lot.id)} (${score}%)`,
+        callback_data: `bb_app:${lot.lotCode || lot.id}`,
+      },
+    ]);
+  }
+
+  buttons.push([{ text: '📋 Главное меню', callback_data: 'menu' }]);
+
+  await telegramClient.sendMessage({
+    chat_id: chatId,
+    text: lines.filter(Boolean).join('\n'),
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+export async function showQueue(
+  chatId: string | number,
+  binding: any,
+  ydb: any,
+  lotCodeInput: string,
+  cfg: any
+): Promise<void> {
+  if (!binding || (binding.role !== 'owner' && binding.role !== 'employee')) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: '⛔ Просмотр очереди заявок доступен только сотрудникам платформы.',
+    });
+    return;
+  }
+
+  const lotCode = (lotCodeInput || '').trim();
+  if (!lotCode) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: 'Использование команды: <code>/queue КОД_ЛОТА</code>\nНапример: <code>/queue SPB-001</code>',
+    });
+    return;
+  }
+
+  let lot = await ydb.getItem('lots', lotCode);
+  if (!lot) {
+    const allLots = await ydb.scanAll('lots', 500);
+    lot = (allLots || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
+  }
+
+  if (!lot) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: `❌ Лот #${escapeHtml(lotCode)} не найден в базе данных.`,
+    });
+    return;
+  }
+
+  const allApps = await ydb.scanAll('buyer_applications', 300);
+  const targetLotCode = lot.lotCode || lotCode;
+  const lotApps = (allApps || []).filter(
+    (a: any) => (a.lotCode === lotCode || a.lotCode === targetLotCode) && a.queueStatus !== 'withdrawn'
+  );
+
+  if (lotApps.length === 0) {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: `📋 <b>Очередь по лоту #${escapeHtml(targetLotCode)}</b>\n\nЗаявок от инвесторов пока нет.`,
+    });
+    return;
+  }
+
+  const allBuyBoxes = await ydb.scanAll('buy_boxes', 300);
+  const bbMap = new Map<string, any>();
+  for (const bb of allBuyBoxes || []) {
+    bbMap.set(bb.userId, bb);
+  }
+
+  const enriched = lotApps.map((a: any) => {
+    const bb = bbMap.get(a.userId);
+    return {
+      ...a,
+      tier: bb?.tier || 'silver',
+      reliabilityScore: bb?.reliabilityScore ?? 100,
+      noShowCount: bb?.noShowCount ?? 0,
+    };
+  });
+
+  const ranked = rankApplications(enriched);
+
+  const lines: string[] = [
+    `📋 <b>ГИБРИДНАЯ ОЧЕРЕДЬ: ЛОТ #${escapeHtml(targetLotCode)}</b>`,
+    `ЖК: <b>${escapeHtml(lot.complexName || 'Не указан')}</b> | Всего заявок: <b>${ranked.length}</b>`,
+    `Волна: <b>${formatWave(lot.dropConfig?.waveStatus)}</b>`,
+    ``,
+  ];
+
+  for (const app of (ranked as any[]).slice(0, 5)) {
+    const statusIcon = app.queueStatus === 'priority_1' ? '👑' : app.queueStatus?.startsWith('reserve') ? '🥈' : '🔹';
+    const tierIcon = app.tier === 'gold' ? '🥇' : app.tier === 'bronze' ? '🥉' : '🥈';
+    const name = escapeHtml(app.userName || app.userEmail || 'Покупатель');
+
+    lines.push(
+      `${statusIcon} <b>#${app.queuePosition || 1} ${name}</b> [${tierIcon} ${escapeHtml((app.tier || 'silver').toUpperCase())}]`,
+      `• Closing Score: <b>${app.closingScore}/105</b> (Match: ${app.matchScore}%)`,
+      `• Оплата: <b>${escapeHtml(app.paymentMethod || 'кэш 100%')}</b>`,
+      `• Выход 24ч: ${app.readiness24h ? '✅' : '❌'} | Депозит 48ч: ${app.deposit48h ? '✅' : '❌'}`,
+      app.viewingDeadlineAt ? `• Срок просмотра: <i>${escapeHtml(app.viewingDeadlineAt)}</i>` : '',
+      app.depositDeadlineAt ? `• Срок депозита: <i>${escapeHtml(app.depositDeadlineAt)}</i>` : '',
+      ``
+    );
+  }
+
+  const buttons = [
+    [
+      { text: '👑 Выбрать №1 + Резерв', callback_data: `q_sel:${targetLotCode}` },
+      { text: '⏭ Передать очередь №2', callback_data: `q_prom:${targetLotCode}` },
+    ],
+    [{ text: '📋 Главное меню', callback_data: 'menu' }],
+  ];
+
+  await telegramClient.sendMessage({
+    chat_id: chatId,
+    text: lines.filter(Boolean).join('\n'),
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+export async function showDemand(
+  chatId: string | number,
+  binding: any,
+  ydb: any,
+  cfg: any
+): Promise<void> {
+  if (!binding || binding.role !== 'owner') {
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: '⛔ Радар спроса доступен только владельцу платформы.',
+    });
+    return;
+  }
+
+  const allBuyBoxes = await ydb.scanAll('buy_boxes', 500);
+  const activeBoxes = (allBuyBoxes || []).filter((b: any) => b.active !== false);
+
+  let spb = 0;
+  let msk = 0;
+  let otherCities = 0;
+  let gold = 0;
+  let silver = 0;
+  let bronze = 0;
+  let ddu = 0;
+  let secondary = 0;
+  let totalBudget = 0;
+  let totalDiscount = 0;
+
+  for (const bb of activeBoxes) {
+    if (bb.cities?.includes('spb')) spb++;
+    if (bb.cities?.includes('msk')) msk++;
+    if (bb.cities?.some((c: string) => c !== 'spb' && c !== 'msk')) otherCities++;
+
+    if (bb.tier === 'gold') gold++;
+    else if (bb.tier === 'bronze') bronze++;
+    else silver++;
+
+    if (bb.dealTracks?.includes('ddu_cession')) ddu++;
+    if (bb.dealTracks?.includes('secondary_dkp')) secondary++;
+
+    totalBudget += Number(bb.maxBudgetRub || 0);
+    totalDiscount += Number(bb.minDiscountPercent || 0);
+  }
+
+  const count = activeBoxes.length || 1;
+  const avgBudget = Math.round(totalBudget / count);
+  const avgDiscount = (totalDiscount / count).toFixed(1);
+
+  const text = [
+    `📊 <b>РАДАР СПРОСА И ЛИКВИДНОСТИ (BUY-BOX RADAR)</b>`,
+    ``,
+    `👥 Всего активных инвесторов: <b>${activeBoxes.length}</b>`,
+    ``,
+    `<b>🏙 По городам:</b>`,
+    `• Санкт-Петербург: <b>${spb}</b>`,
+    `• Москва: <b>${msk}</b>`,
+    `• Другие регионы: <b>${otherCities}</b>`,
+    ``,
+    `<b>🏅 По уровням верификации:</b>`,
+    `• 🥇 Gold (Кэш 100%, 24ч выход): <b>${gold}</b>`,
+    `• 🥈 Silver (Одобренная ипотека): <b>${silver}</b>`,
+    `• 🥉 Bronze (Без подтверждения): <b>${bronze}</b>`,
+    ``,
+    `<b>📑 По типам сделок:</b>`,
+    `• ДДУ / Переуступка: <b>${ddu}</b>`,
+    `• Вторичка / ДКП: <b>${secondary}</b>`,
+    ``,
+    `💰 Средний макс. бюджет: <b>${formatRub(avgBudget)} ₽</b>`,
+    `📉 Средний ожидаемый дисконт: <b>${avgDiscount}%</b>`,
+  ].join('\n');
+
+  await telegramClient.sendMessage({
+    chat_id: chatId,
+    text,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 Обновить сводку', callback_data: 'cmd_demand' }],
+        [{ text: '📋 Главное меню', callback_data: 'menu' }],
+      ],
+    },
+  });
+}
+
 export async function handleTelegramMessage(
   msg: any,
   binding: any,
@@ -450,6 +784,26 @@ export async function handleTelegramMessage(
   // Command: /mydeals
   if (text === '/mydeals') {
     await showMyDeals(chatId, binding, ydb, cfg);
+    return;
+  }
+
+  // Command: /matches
+  if (text === '/matches') {
+    await showMatches(chatId, binding, ydb, cfg);
+    return;
+  }
+
+  // Command: /queue
+  if (text.startsWith('/queue')) {
+    const parts = text.split(/\s+/);
+    const lotCode = parts[1] || '';
+    await showQueue(chatId, binding, ydb, lotCode, cfg);
+    return;
+  }
+
+  // Command: /demand
+  if (text === '/demand') {
+    await showDemand(chatId, binding, ydb, cfg);
     return;
   }
 

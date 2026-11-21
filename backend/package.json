@@ -6,6 +6,7 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js --footer:js=\"module.exports = { handler };\"",
     "build:backup": "esbuild src/backupHandler.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-backup/backup.js --footer:js=\"module.exports = { handler };\"",
+    "build:sweeper": "esbuild src/slaSweeperHandler.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-sweeper/sweeper.js --footer:js=\"module.exports = { handler };\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

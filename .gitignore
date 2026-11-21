@@ -11,8 +11,10 @@ node_modules
 dist
 dist-ssr
 dist-backup
+dist-sweeper
 backend/dist
 backend/dist-backup
+backend/dist-sweeper
 *.local
 .env
 .env.*

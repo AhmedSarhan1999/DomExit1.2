@@ -106,6 +106,9 @@ async function run() {
     console.log('\n[2/3] Setting Russian bot command list (setMyCommands)...');
     const commands = [
       { command: 'menu', description: 'Главное командное меню платформы' },
+      { command: 'matches', description: 'Подобрать лоты по моему Buy-Box' },
+      { command: 'queue', description: 'Управление гибридной очередью (/queue КОД)' },
+      { command: 'demand', description: 'Радар спроса и ликвидности (Владелец)' },
       { command: 'stats', description: 'Оперативная сводка (Руководство)' },
       { command: 'tasks', description: 'Открытые задачи и лоты без куратора' },
       { command: 'mytasks', description: 'Мои активные лоты в работе' },
