@@ -1,3 +1,8 @@
+import dns from 'node:dns';
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 import { runYdbBackup } from './lib/backupService.js';
 import { logger } from './lib/logger.js';
 import { getConfig } from './lib/config.js';

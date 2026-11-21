@@ -38,6 +38,7 @@ export interface BackendConfig {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_BOT_USERNAME?: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
+  TELEGRAM_API_BASE_URL?: string;
   DADATA_API_KEY?: string;
 }
 
@@ -92,6 +93,7 @@ export function getConfig(): BackendConfig {
         ? process.env.TELEGRAM_WEBHOOK_SECRET_PROD
         : process.env.TELEGRAM_WEBHOOK_SECRET_STAGING) ||
       '',
+    TELEGRAM_API_BASE_URL: process.env.TELEGRAM_API_BASE_URL || '',
     DADATA_API_KEY: process.env.DADATA_API_KEY || '',
   };
 

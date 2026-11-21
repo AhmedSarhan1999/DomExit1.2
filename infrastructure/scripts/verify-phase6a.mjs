@@ -171,7 +171,7 @@ async function run() {
   const incData = await incRes.json();
   const incidents = incData.items || [];
   const foundInc = incidents.find(
-    (i) => i.type === 'privilege_tampering' && (i.actorUserId === buyer1Id || i.summary?.includes(testBuyer1Email))
+    (i) => i.type === 'privilege_tampering' && (i.actorUserId === buyer1Id || i.summary?.includes('tier'))
   );
   assert(Boolean(foundInc), `Incident privilege_tampering recorded in security_incidents table`);
 
@@ -386,6 +386,13 @@ async function run() {
     method: 'DELETE',
     headers: authHeaders(ownerToken),
   });
+  if (foundInc?.id) {
+    await fetch(`${BASE_URL}/api/data/security_incidents/${foundInc.id}`, {
+      method: 'DELETE',
+      headers: authHeaders(ownerToken),
+    });
+    console.log(`  ✓ Cleaned up test incident ${foundInc.id}`);
+  }
   console.log('  ✓ Temporary test records cleaned up. Staging pristine.');
 
   console.log('\n================================================================');

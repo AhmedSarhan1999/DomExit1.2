@@ -347,9 +347,15 @@ export const apiClient = {
       lotCode: string,
       params: { goldExclusiveHours?: number; windowHours?: number; maxApplicationsCap?: number } = {}
     ) =>
-      request<{ ok: boolean; dropConfig: LotDropConfig }>('/api/matching/launch-drop', {
+      request<{
+        ok: boolean;
+        lotCode?: string;
+        dropConfig: LotDropConfig;
+        matchedGoldCount?: number;
+        matchedSilverCount?: number;
+      }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/launch-drop`, {
         method: 'POST',
-        body: JSON.stringify({ lotCode, ...params }),
+        body: JSON.stringify(params),
       }),
 
     applyToLotDrop: (
@@ -386,30 +392,51 @@ export const apiClient = {
 
     selectLotPriority: (
       lotCode: string,
-      priority1UserId: string,
-      reserve2UserId?: string,
-      reserve3UserId?: string
-    ) =>
-      request<{
-        ok: boolean;
-        priority1UserId: string;
-        viewingDeadlineAt: string;
-        depositDeadlineAt: string;
-      }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/select-priority`, {
-        method: 'POST',
-        body: JSON.stringify({ priority1UserId, reserve2UserId, reserve3UserId }),
-      }),
-
-    promoteNextInQueue: (lotCode: string, reason?: string) =>
-      request<{
+      param1: { priority1AppId: string; reserve2AppId?: string; reserve3AppId?: string } | string,
+      reserve2AppId?: string,
+      reserve3AppId?: string
+    ) => {
+      const payload =
+        typeof param1 === 'string'
+          ? { priority1AppId: param1, reserve2AppId, reserve3AppId }
+          : param1;
+      return request<{
         ok: boolean;
         lotCode: string;
-        newPriority1: any;
+        priority1: any;
+        priority1UserId?: string;
+        reserve2?: any;
+        reserve3?: any;
+        viewingDeadlineAt?: string;
+        depositDeadlineAt?: string;
+      }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/select-priority`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    promoteNextInQueue: (
+      lotCode: string,
+      param?:
+        | {
+            previousPriority1AppId?: string;
+            reason?: 'no_show' | 'passed' | 'timeout' | 'rejected';
+          }
+        | string
+    ) => {
+      const payload = typeof param === 'string' ? { reason: param } : param || {};
+      return request<{
+        ok: boolean;
+        lotCode: string;
+        newPriority1?: any;
+        promotedApp?: any;
+        demotedApp?: any;
         demotedUserId?: string;
       }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/promote-next`, {
         method: 'POST',
-        body: JSON.stringify({ reason }),
-      }),
+        body: JSON.stringify(payload),
+      });
+    },
 
     updateBuyerTier: (
       targetUserId: string,

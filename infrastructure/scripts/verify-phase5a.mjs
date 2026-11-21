@@ -268,15 +268,16 @@ async function run() {
     }
 
     console.log('\n[6/7] Verifying Security Incident Recorded in YDB...');
+    let foundPrivIncident, foundXssIncident, foundLeakIncident;
     try {
       const incRes = await fetch(`${BASE_URL}/api/data/security_incidents`, {
         headers: { Cookie: `domexit_session=${ownerToken}` },
       });
       const incData = await incRes.json();
       const items = incData.items || [];
-      const foundPrivIncident = items.find((i) => i.type === 'privilege_tampering');
-      const foundXssIncident = items.find((i) => i.type === 'xss_or_injection_attempt');
-      const foundLeakIncident = items.find((i) => i.type === 'chat_contact_leak_attempt');
+      foundPrivIncident = items.find((i) => i.type === 'privilege_tampering');
+      foundXssIncident = items.find((i) => i.type === 'xss_or_injection_attempt');
+      foundLeakIncident = items.find((i) => i.type === 'chat_contact_leak_attempt');
 
       assert(Boolean(foundPrivIncident), `Incident 'privilege_tampering' recorded in security_incidents`);
       assert(Boolean(foundXssIncident), `Incident 'xss_or_injection_attempt' recorded in security_incidents`);
@@ -287,6 +288,17 @@ async function run() {
 
     console.log('\n[7/7] Cleaning up test records...');
     try {
+      // Clean up test incidents
+      for (const inc of [foundPrivIncident, foundXssIncident, foundLeakIncident]) {
+        if (inc?.id) {
+          await fetch(`${BASE_URL}/api/data/security_incidents/${inc.id}`, {
+            method: 'DELETE',
+            headers: { Cookie: `domexit_session=${ownerToken}` },
+          });
+          console.log(`  ✓ Cleaned up test incident ${inc.id}`);
+        }
+      }
+
       // Find created test user and delete
       const usersRes = await fetch(`${BASE_URL}/api/data/users`, {
         headers: { Cookie: `domexit_session=${ownerToken}` },

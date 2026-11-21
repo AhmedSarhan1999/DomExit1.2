@@ -680,7 +680,7 @@ export const SellersPage: React.FC = () => {
                     }`}
                   >
                     <Home className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Вторичное жилье (ДКП / 218-ФЗ)</span>
+                    <span>Вторичное жилье (ДКП / ГК РФ)</span>
                   </button>
                 </div>
 

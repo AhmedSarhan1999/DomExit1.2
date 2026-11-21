@@ -4,7 +4,7 @@ import { json, parseBody, normalizeHeaders } from '../lib/http.js';
 import { getYdbClient } from '../lib/ydbClient.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
-import { telegramClient, escapeHtml } from '../lib/telegramClient.js';
+import { telegramClient, escapeHtml, popPendingWebhookReply } from '../lib/telegramClient.js';
 import {
   findTelegramBindingByUser,
   findTelegramBindingByChat,
@@ -83,6 +83,9 @@ export async function handleTelegram(event: YcHttpEvent, subPath: string): Promi
       return json(event, 200, { ok: true, skipped: 'duplicate_update' });
     }
 
+    // Reset any previous webhook reply
+    popPendingWebhookReply();
+
     try {
       await processTelegramUpdate(body, ydb, cfg);
     } catch (err: any) {
@@ -90,6 +93,11 @@ export async function handleTelegram(event: YcHttpEvent, subPath: string): Promi
         event: 'TELEGRAM_PROCESS_ERROR',
         meta: { error: err.message },
       });
+    }
+
+    const inlineReply = popPendingWebhookReply();
+    if (inlineReply && inlineReply.method) {
+      return json(event, 200, inlineReply);
     }
 
     return json(event, 200, { ok: true });

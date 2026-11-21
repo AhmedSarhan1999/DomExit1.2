@@ -37,7 +37,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
   // Drop configuration parameters
-  const [goldExclusiveHours, setGoldExclusiveHours] = useState<number>(24);
+  const [goldExclusiveHours, setGoldExclusiveHours] = useState<number>(6);
   const [windowHours, setWindowHours] = useState<number>(48);
   const [maxApplicationsCap, setMaxApplicationsCap] = useState<number>(5);
 
@@ -92,11 +92,15 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
 
     setActionLoading(true);
     try {
-      const p1 = queue[0]?.userId;
-      const r2 = queue[1]?.userId;
-      const r3 = queue[2]?.userId;
+      const p1 = queue[0]?.id;
+      const r2 = queue[1]?.id;
+      const r3 = queue[2]?.id;
 
-      const res = await apiClient.matching.selectLotPriority(lot.lotCode, p1, r2, r3);
+      const res = await apiClient.matching.selectLotPriority(lot.lotCode, {
+        priority1AppId: p1,
+        reserve2AppId: r2,
+        reserve3AppId: r3,
+      });
       if (res.ok) {
         onShowToast?.(`Кандидат №1 зафиксирован с дедлайном 24ч на просмотр и 48ч на депозит!`);
         loadQueue();
@@ -112,7 +116,11 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
   const handlePromoteNext = async (reason: string = 'no_show') => {
     setActionLoading(true);
     try {
-      const res = await apiClient.matching.promoteNextInQueue(lot.lotCode, reason);
+      const currentP1 = queue.find((a) => a.queueStatus === 'priority_1') || queue[0];
+      const res = await apiClient.matching.promoteNextInQueue(lot.lotCode, {
+        previousPriority1AppId: currentP1?.id,
+        reason: reason as any,
+      });
       if (res.ok) {
         onShowToast?.(`Очередь передана кандидату №2! Статус обновлен.`);
         loadQueue();
@@ -219,7 +227,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
 
           <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1">
             <span className="text-slate-300 font-medium block text-[11px]">
-              Сقف заявок в очереди (Cap):
+              Лимит заявок в очереди (Cap):
             </span>
             <input
               type="number"
@@ -351,7 +359,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
 
                       <td className="py-3 px-3 font-mono">
                         <span className="text-sm font-black text-indigo-700">
-                          {app.closingScore || 100}/105
+                          {app.closingScore ?? 0}/105
                         </span>
                         <div className="text-[10px] text-slate-400">
                           SLA: {app.reliabilityScore ?? 100}%
@@ -359,7 +367,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
                       </td>
 
                       <td className="py-3 px-3 font-mono font-bold text-emerald-700">
-                        {app.matchScore || 90}%
+                        {app.matchScore ?? 0}%
                       </td>
 
                       <td className="py-3 px-3 text-[11px] space-y-0.5">

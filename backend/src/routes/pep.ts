@@ -340,10 +340,17 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
         `<i>Электронный акт сохранен в вашем личном кабинете DomExit и защищен неизменяемым реестром.</i>`,
       ].join('\n');
 
-      void telegramClient.sendMessage({
-        chat_id: binding.chatId,
-        text: receiptText,
-      });
+      try {
+        await telegramClient.sendMessage({
+          chat_id: binding.chatId,
+          text: receiptText,
+        });
+      } catch (err: any) {
+        logger.warn('Failed to send PEP signed receipt via Telegram', {
+          event: 'PEP_RECEIPT_TG_FAIL',
+          meta: { error: err.message, sigId },
+        });
+      }
     }
 
     return json(event, 200, {

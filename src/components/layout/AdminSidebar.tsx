@@ -72,8 +72,8 @@ export const AdminSidebar: React.FC = () => {
       matchPrefix: '/admin/matchmaker',
       label: isOwner
         ? language === 'ru'
-          ? 'ИИ-Матчмейкер (Все лоты)'
-          : 'All Lots Matchmaker'
+          ? 'Матчмейкер и Очередь'
+          : 'Matchmaker & Queue'
         : language === 'ru'
         ? 'Матчмейкер (Заявки на мои лоты)'
         : 'My Lots Buyer Offers',
@@ -133,7 +133,7 @@ export const AdminSidebar: React.FC = () => {
   };
 
   const displayName =
-    user?.name || (isOwner ? 'Виктор Сергеевич (CEO)' : 'Алексей Смирнов (Куратор)');
+    user?.name || (isOwner ? 'Ахмед Абдалла (Владелец / CEO)' : 'Алексей Смирнов (Куратор)');
   const initials = displayName
     .split(/\s+/)
     .slice(0, 2)

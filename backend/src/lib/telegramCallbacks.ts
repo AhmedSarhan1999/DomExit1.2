@@ -67,6 +67,30 @@ export async function handleTelegramCallback(
 
   const userRole = binding?.role || 'guest';
 
+  // Unlink callback
+  if (data === 'unlink' || data === 'settings:unlink') {
+    if (binding) {
+      await ydb.deleteItem('telegram_bindings', `chat:${chatId}`);
+      await ydb.deleteItem('telegram_bindings', `user:${binding.userId}`);
+    } else {
+      const existingChat = await ydb.getItem('telegram_bindings', `chat:${chatId}`);
+      if (existingChat) {
+        await ydb.deleteItem('telegram_bindings', `chat:${chatId}`);
+        if (existingChat.userId) {
+          await ydb.deleteItem('telegram_bindings', `user:${existingChat.userId}`);
+        }
+      }
+    }
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: 'Ваш Telegram-аккаунт успешно отвязан от платформы DomExit.',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🌐 Войти на сайт', url: cfg.PUBLIC_BASE_URL }]],
+      },
+    });
+    return;
+  }
+
   // Callback command shortcuts
   if (data === 'menu') {
     await showMainMenu(chatId, binding, cfg);

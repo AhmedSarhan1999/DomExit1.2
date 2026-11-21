@@ -19,7 +19,7 @@ import { memoryCache } from '../lib/memoryCache.js';
 import { recordJournalEvent } from '../lib/journal.js';
 import { callTelegramApi, escapeHtml } from '../lib/telegramClient.js';
 import { findTelegramBindingByUser } from '../lib/telegramWorkflow.js';
-import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
+import { consumeQuota, recordSecurityIncident, maskEmail } from '../lib/anomalyDetector.js';
 import { sanitizeLotForPublic } from './data.js';
 import {
   computeMatchScore,
@@ -183,7 +183,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
           actorRole: authUser.role,
           clientIp,
           endpoint: '/api/matching/my-buy-box',
-          summary: `Попытка несанкционированного изменения поля ${tamperedField} покупателем ${authUser.email}`,
+          summary: `Попытка несанкционированного изменения поля ${tamperedField} покупателем ${maskEmail(authUser.email)}`,
         });
 
         return json(event, 403, {
@@ -256,7 +256,12 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     try {
       const buyBox = await ydb.getItem<BuyerBuyBox>('buy_boxes', `bb:${authUser.id}`);
       if (!buyBox || buyBox.active === false) {
-        return json(event, 200, { ok: true, matches: [], buyBoxConfigured: Boolean(buyBox) });
+        return json(event, 200, {
+          ok: true,
+          matches: [],
+          totalMatches: 0,
+          buyBoxConfigured: Boolean(buyBox),
+        });
       }
 
       const allLots = await ydb.scanAll<any>('lots', 300);
@@ -336,7 +341,13 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       // Sort matches descending by match score
       matches.sort((a, b) => b.matchScore - a.matchScore);
 
-      return json(event, 200, { ok: true, matches, buyBoxConfigured: true, tier: buyBox.tier });
+      return json(event, 200, {
+        ok: true,
+        matches,
+        totalMatches: matches.length,
+        buyBoxConfigured: true,
+        tier: buyBox.tier,
+      });
     } catch (err: any) {
       logger.error('Error fetching my-matches', { meta: { error: err.message, userId: authUser.id } });
       return json(event, 500, { error: 'Ошибка вычисления совпадений по объектам' });
@@ -344,11 +355,23 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
   }
 
   // =========================================================================
-  // 4. POST /api/matching/lots/:lotCode/launch-drop (Owner or Assigned Staff)
+  // 4. POST /api/matching/lots/:lotCode/launch-drop OR POST /api/matching/launch-drop
   // =========================================================================
   const launchMatch = subPath.match(/^\/lots\/([^/]+)\/launch-drop$/);
-  if (launchMatch && method === 'POST') {
-    const lotCode = launchMatch[1];
+  const isDirectLaunch = subPath === '/launch-drop' && method === 'POST';
+  if ((launchMatch || isDirectLaunch) && method === 'POST') {
+    const body = parseBody<{
+      lotCode?: string;
+      goldExclusiveHours?: number;
+      windowHours?: number;
+      maxApplicationsCap?: number;
+    }>(event) || {};
+
+    const lotCode = launchMatch ? launchMatch[1] : body.lotCode;
+    if (!lotCode) {
+      return json(event, 400, { error: 'Укажите код лота (lotCode)' });
+    }
+
     const lot = await findLotByCode(ydb, lotCode);
     if (!lot) {
       return json(event, 404, { error: `Объект #${lotCode} не найден` });
@@ -359,12 +382,6 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     if (!isOwner && !isAssigned) {
       return json(event, 403, { error: 'Запуск дропа разрешен только владельцу или назначенному куратору' });
     }
-
-    const body = parseBody<{
-      goldExclusiveHours?: number;
-      windowHours?: number;
-      maxApplicationsCap?: number;
-    }>(event) || {};
 
     const goldExclusiveHours = Math.max(1, Math.min(24, Number(body.goldExclusiveHours || 2)));
     const windowHours = Math.max(4, Math.min(72, Number(body.windowHours || 24)));
@@ -429,7 +446,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         `Лимит заявок: <b>${maxApplicationsCap}</b>\n` +
         `Потенциальные инвесторы: <b>${matchedGoldCount} Gold</b>, <b>${matchedSilverCount} Silver</b>`;
 
-      void notifyStaff(text);
+      await notifyStaff(text).catch((err: any) =>
+        logger.warn('Failed to notify staff about drop launch', { meta: { error: err.message } })
+      );
 
       return json(event, 200, {
         ok: true,
@@ -602,7 +621,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       `Оплата: <b>${escapeHtml(buyBox.paymentMethod)}</b>\n` +
       `Готовность: 24ч=${body.readiness24h ? 'Да' : 'Нет'}, Депозит 48ч=${body.deposit48h ? 'Да' : 'Нет'}`;
 
-    void notifyStaff(text);
+    await notifyStaff(text).catch((err: any) =>
+      logger.warn('Failed to notify staff about queue application', { meta: { error: err.message } })
+    );
 
     return json(event, 200, {
       ok: true,
@@ -666,18 +687,37 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
     const lotCode = selectPriorityMatch[1];
     const body = parseBody<{
-      priority1AppId: string;
+      priority1AppId?: string;
+      priority1UserId?: string;
       reserve2AppId?: string;
+      reserve2UserId?: string;
       reserve3AppId?: string;
-    }>(event);
-
-    if (!body?.priority1AppId) {
-      return json(event, 400, { error: 'Укажите идентификатор заявки №1 (priority1AppId)' });
-    }
+      reserve3UserId?: string;
+    }>(event) || {};
 
     try {
       const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 200);
       const lotApps = (allApps || []).filter((a) => a.lotCode === lotCode);
+
+      let p1Id = body.priority1AppId;
+      if (!p1Id && body.priority1UserId) {
+        const found = lotApps.find((a) => a.userId === body.priority1UserId);
+        if (found) p1Id = found.id;
+      }
+      let r2Id = body.reserve2AppId;
+      if (!r2Id && body.reserve2UserId) {
+        const found = lotApps.find((a) => a.userId === body.reserve2UserId);
+        if (found) r2Id = found.id;
+      }
+      let r3Id = body.reserve3AppId;
+      if (!r3Id && body.reserve3UserId) {
+        const found = lotApps.find((a) => a.userId === body.reserve3UserId);
+        if (found) r3Id = found.id;
+      }
+
+      if (!p1Id) {
+        return json(event, 400, { error: 'Укажите идентификатор заявки №1 (priority1AppId или priority1UserId)' });
+      }
 
       const now = new Date();
       const viewingDeadlineAt = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
@@ -688,7 +728,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       let reserve3App: BuyerApplication | null = null;
 
       for (const app of lotApps) {
-        if (app.id === body.priority1AppId) {
+        if (app.id === p1Id) {
           app.queueStatus = 'priority_1';
           app.queuePosition = 1;
           app.viewingDeadlineAt = viewingDeadlineAt;
@@ -696,13 +736,13 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
           app.updatedAt = now.toISOString();
           priority1App = app;
           await ydb.putItem('buyer_applications', app);
-        } else if (body.reserve2AppId && app.id === body.reserve2AppId) {
+        } else if (r2Id && app.id === r2Id) {
           app.queueStatus = 'reserve_2';
           app.queuePosition = 2;
           app.updatedAt = now.toISOString();
           reserve2App = app;
           await ydb.putItem('buyer_applications', app);
-        } else if (body.reserve3AppId && app.id === body.reserve3AppId) {
+        } else if (r3Id && app.id === r3Id) {
           app.queueStatus = 'reserve_3';
           app.queuePosition = 3;
           app.updatedAt = now.toISOString();
@@ -720,15 +760,18 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         collection: 'buyer_applications',
         recordId: `${lotCode}:priority_selected`,
         actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
-        payload: { priority1AppId: body.priority1AppId, reserve2AppId: body.reserve2AppId, reserve3AppId: body.reserve3AppId },
+        payload: { priority1AppId: p1Id, reserve2AppId: r2Id, reserve3AppId: r3Id },
       });
 
       return json(event, 200, {
         ok: true,
         lotCode,
         priority1: priority1App,
+        priority1UserId: priority1App?.userId,
         reserve2: reserve2App,
         reserve3: reserve3App,
+        viewingDeadlineAt,
+        depositDeadlineAt,
       });
     } catch (err: any) {
       logger.error('Error selecting priority in queue', { meta: { error: err.message, lotCode } });
@@ -747,26 +790,27 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
     const lotCode = promoteMatch[1];
     const body = parseBody<{
-      previousPriority1AppId: string;
-      reason: 'no_show' | 'passed' | 'timeout' | 'rejected';
-    }>(event);
+      previousPriority1AppId?: string;
+      reason?: 'no_show' | 'passed' | 'timeout' | 'rejected';
+    }>(event) || {};
 
-    if (!body?.previousPriority1AppId || !body?.reason) {
-      return json(event, 400, { error: 'Укажите previousPriority1AppId и reason' });
-    }
+    const reason = body.reason || 'passed';
 
     try {
       const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 200);
       const lotApps = (allApps || []).filter((a) => a.lotCode === lotCode);
 
-      const prevP1 = lotApps.find((a) => a.id === body.previousPriority1AppId);
+      let prevP1 = body.previousPriority1AppId
+        ? lotApps.find((a) => a.id === body.previousPriority1AppId)
+        : lotApps.find((a) => a.queueStatus === 'priority_1');
+
       if (prevP1) {
-        prevP1.queueStatus = body.reason === 'no_show' ? 'rejected' : body.reason === 'passed' ? 'withdrawn' : 'expired';
+        prevP1.queueStatus = reason === 'no_show' ? 'rejected' : reason === 'passed' ? 'withdrawn' : 'expired';
         prevP1.updatedAt = new Date().toISOString();
         await ydb.putItem('buyer_applications', prevP1);
 
         // If no-show, penalize Buy-Box reliability by 15 points
-        if (body.reason === 'no_show') {
+        if (reason === 'no_show') {
           const bb = await ydb.getItem<BuyerBuyBox>('buy_boxes', `bb:${prevP1.userId}`);
           if (bb) {
             bb.reliabilityScore = Math.max(0, (bb.reliabilityScore ?? 100) - 15);
@@ -813,7 +857,12 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
       return json(event, 200, {
         ok: true,
+        lotCode,
         promotedAppId: reserve2?.id || null,
+        newPriority1: reserve2 || null,
+        promotedApp: reserve2 || null,
+        demotedApp: prevP1 || null,
+        demotedUserId: prevP1?.userId,
         newQueueStatus: 'priority_1',
       });
     } catch (err: any) {

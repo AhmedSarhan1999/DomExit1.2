@@ -24,7 +24,7 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
   compact = false,
   onLinkComplete,
 }) => {
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, openAuthModal } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(false);
@@ -40,6 +40,7 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
+    if (authLoading) return;
     if (!isAuthenticated) {
       setLoading(false);
       return;
@@ -61,7 +62,7 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [authLoading, isAuthenticated, onLinkComplete]);
 
   useEffect(() => {
     fetchStatus();
@@ -73,6 +74,21 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [fetchStatus]);
+
+  // Polling every 3 seconds for 2 minutes after generating connect link
+  useEffect(() => {
+    if (!deepLink || linked) return;
+    const interval = setInterval(() => {
+      fetchStatus();
+    }, 3000);
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+    }, 120000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [deepLink, linked, fetchStatus]);
 
   const handleStartConnect = async () => {
     if (!isAuthenticated) {

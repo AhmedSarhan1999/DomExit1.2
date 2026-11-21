@@ -158,7 +158,7 @@ export const PortalProfileHeader: React.FC<PortalProfileHeaderProps> = ({
           >
             <span>{language === 'ru' ? 'Buy-Box & Очередь' : 'Buy-Box & Queue'}</span>
             <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase">
-              AI
+              SMART
             </span>
           </button>
 

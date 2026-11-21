@@ -1,3 +1,8 @@
+import dns from 'node:dns';
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 import { YcHttpEvent, YcHttpResponse } from './types.js';
 import { json, handleOptions } from './lib/http.js';
 import { getConfig } from './lib/config.js';

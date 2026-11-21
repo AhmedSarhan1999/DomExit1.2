@@ -651,6 +651,45 @@ export async function handleTelegramMessage(
         return;
       }
 
+      // 1:1 Invariant Guard: Prevent binding collisions and silent overwrites
+      const existingChatBinding = await ydb.getItem('telegram_bindings', `chat:${chatId}`);
+      if (existingChatBinding && existingChatBinding.userId !== linkToken.userId) {
+        logger.warn('Telegram binding collision rejected', {
+          event: 'TELEGRAM_BIND_COLLISION',
+          meta: {
+            chatId,
+            attemptedUserId: linkToken.userId,
+            existingUserId: existingChatBinding.userId,
+            existingEmail: existingChatBinding.userEmail,
+          },
+        });
+        await telegramClient.sendMessage({
+          chat_id: chatId,
+          text: [
+            `⚠️ <b>Конфликт привязки Telegram-аккаунта</b>`,
+            ``,
+            `Этот Telegram-аккаунт уже привязан к профилю <b>${escapeHtml(existingChatBinding.userEmail || existingChatBinding.userId)}</b>.`,
+            ``,
+            `Платформа DomExit обеспечивает строгое разделение прав доступа (1:1). Чтобы перепривязать этот Telegram к другому пользователю:`,
+            `1. Отправьте команду /unlink в этот чат, или`,
+            `2. Нажмите кнопку отвязки ниже, затем повторите привязку.`,
+          ].join('\n'),
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Отвязать текущий профиль', callback_data: 'unlink' }],
+              [{ text: '🌐 Открыть личный кабинет', url: `${cfg.PUBLIC_BASE_URL}/client/portal` }],
+            ],
+          },
+        });
+        return;
+      }
+
+      const existingUserBinding = await ydb.getItem('telegram_bindings', `user:${linkToken.userId}`);
+      if (existingUserBinding && String(existingUserBinding.chatId) !== String(chatId)) {
+        // Clean up stale previous chat binding to preserve strict 1:1 invariant
+        await ydb.deleteItem('telegram_bindings', `chat:${existingUserBinding.chatId}`);
+      }
+
       // Mark token used
       await ydb.putItem('telegram_link_tokens', {
         ...linkToken,
@@ -812,6 +851,14 @@ export async function handleTelegramMessage(
     if (binding) {
       await ydb.deleteItem('telegram_bindings', `chat:${chatId}`);
       await ydb.deleteItem('telegram_bindings', `user:${binding.userId}`);
+    } else {
+      const existingChat = await ydb.getItem('telegram_bindings', `chat:${chatId}`);
+      if (existingChat) {
+        await ydb.deleteItem('telegram_bindings', `chat:${chatId}`);
+        if (existingChat.userId) {
+          await ydb.deleteItem('telegram_bindings', `user:${existingChat.userId}`);
+        }
+      }
     }
     await telegramClient.sendMessage({
       chat_id: chatId,

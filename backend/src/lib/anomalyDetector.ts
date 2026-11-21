@@ -11,6 +11,27 @@ const memoryRateLimits = new Map<string, { count: number; expiresAt: number }>()
 // In-Memory Alert Cooldowns (10 minutes)
 const alertCooldowns = new Map<string, number>();
 
+/**
+ * 152-FZ Privacy Compliance helper:
+ * Masks email address for incident logs, summaries and telemetry (e.g., a***d@e***.ru).
+ */
+export function maskEmail(email?: string): string {
+  if (!email || typeof email !== 'string') return 'unknown_user';
+  const parts = email.trim().split('@');
+  if (parts.length !== 2) return '***';
+  const [local, domain] = parts;
+  const maskedLocal =
+    local.length <= 2
+      ? `${local.charAt(0)}*`
+      : `${local.charAt(0)}***${local.charAt(local.length - 1)}`;
+  const domainParts = domain.split('.');
+  const maskedDomain =
+    domainParts.length >= 2
+      ? `${domainParts[0].charAt(0)}***.${domainParts.slice(1).join('.')}`
+      : domain;
+  return `${maskedLocal}@${maskedDomain}`;
+}
+
 export interface QuotaConsumeParams {
   scope: string;
   actorKey: string;
@@ -174,7 +195,11 @@ export async function recordSecurityIncident(params: SecurityIncidentParams): Pr
 
     if (now.getTime() - lastAlert > cooldownMs) {
       alertCooldowns.set(cooldownKey, now.getTime());
-      void notifyOwnerSecurityIncident(incidentRecord);
+      try {
+        await notifyOwnerSecurityIncident(incidentRecord);
+      } catch (err: any) {
+        logger.warn('Failed to notify owner of security incident', { meta: { error: err.message } });
+      }
     }
   }
 }

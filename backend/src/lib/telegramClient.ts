@@ -1,3 +1,5 @@
+import https from 'node:https';
+import { URL } from 'node:url';
 import { getConfig } from './config.js';
 import { logger } from './logger.js';
 
@@ -17,6 +19,75 @@ export function isTelegramConfigured(): boolean {
   return Boolean(token && !token.startsWith('[') && token.length > 20);
 }
 
+let pendingWebhookReply: any = null;
+
+export function setPendingWebhookReply(reply: any) {
+  pendingWebhookReply = reply;
+}
+
+export function popPendingWebhookReply(): any {
+  const r = pendingWebhookReply;
+  pendingWebhookReply = null;
+  return r;
+}
+
+function makeHttpsPostRequest<T = any>(
+  targetUrl: string,
+  payload: Record<string, any>,
+  timeoutMs = 8000
+): Promise<{ ok: boolean; result?: T; description?: string; error_code?: number }> {
+  return new Promise((resolve) => {
+    try {
+      const parsedUrl = new URL(targetUrl);
+      const postData = JSON.stringify(payload);
+
+      const req = https.request(
+        {
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || 443,
+          path: parsedUrl.pathname + parsedUrl.search,
+          method: 'POST',
+          family: 4, // STRICT IPv4 - prevents hanging in dual-stack / IPv6-unrouted containers
+          timeout: timeoutMs,
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData),
+          },
+        },
+        (res) => {
+          let data = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              resolve(json);
+            } catch (parseErr: any) {
+              resolve({ ok: false, description: `Invalid JSON response: ${parseErr.message}` });
+            }
+          });
+        }
+      );
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ ok: false, description: `Request timed out after ${timeoutMs}ms` });
+      });
+
+      req.on('error', (err) => {
+        resolve({ ok: false, description: err.message });
+      });
+
+      req.write(postData);
+      req.end();
+    } catch (err: any) {
+      resolve({ ok: false, description: err.message });
+    }
+  });
+}
+
 export async function callTelegramApi<T = any>(
   method: string,
   payload: Record<string, any> = {}
@@ -31,19 +102,11 @@ export async function callTelegramApi<T = any>(
     return { ok: false, description: 'Telegram bot not configured' };
   }
 
-  const url = `https://api.telegram.org/bot${token}/${method}`;
+  const baseUrl = cfg.TELEGRAM_API_BASE_URL?.trim() || 'https://api.telegram.org';
+  const url = `${baseUrl}/bot${token}/${method}`;
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8000),
-    });
-
-    const data: any = await res.json();
+    const data = await makeHttpsPostRequest<T>(url, payload, 8000);
     if (!data.ok) {
       logger.warn(`Telegram API ${method} error: ${data.description}`, {
         event: 'TELEGRAM_API_ERROR',
@@ -72,6 +135,14 @@ export const telegramClient = {
     reply_markup?: any;
     reply_to_message_id?: number;
   }) => {
+    setPendingWebhookReply({
+      method: 'sendMessage',
+      chat_id: params.chat_id,
+      text: params.text,
+      parse_mode: params.parse_mode || 'HTML',
+      reply_markup: params.reply_markup,
+    });
+
     return await callTelegramApi('sendMessage', {
       parse_mode: 'HTML',
       ...params,
