@@ -63,6 +63,7 @@ export interface SubmitSellerExitParams {
   photos?: string[];
   sellerUploadedPhotos?: string[];
   matCapitalUsed?: boolean;
+  dealTrack?: 'ddu_cession' | 'secondary_dkp';
   referredByPartnerCode?: string;
   preliminaryReferralId?: string;
 }

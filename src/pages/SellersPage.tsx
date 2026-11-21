@@ -34,14 +34,17 @@ import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { ConsentState } from '../components/compliance/ConsentCheckboxes';
 import { UserConsentsRepository } from '../dal/repositories/UserConsentsRepository';
 import { optimizeImageFile } from '../utils/imageOptimizer';
-import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode } from '../types';
+import { AccreditedDeveloper, DocumentMetadata, Lot, RussianCityCode, PropertyDealTrack } from '../types';
 import { DEFAULT_SETTLEMENT_BANKS } from '../data/russianBanks';
 import {
   ShieldCheck,
   CheckCircle2,
   Lock,
   Send,
+  Building,
+  Home,
 } from 'lucide-react';
+import { GosuslugiEgrnGuide } from '../components/shared/GosuslugiEgrnGuide';
 
 // Modular Subcomponents
 import { SellerStepProperty } from '../components/sellers/SellerStepProperty';
@@ -93,6 +96,7 @@ export const SellersPage: React.FC = () => {
   const [exitRoute, setExitRoute] = useState<'ddu_assignment' | 'fast_cash' | 'trade_in_6'>(
     'ddu_assignment'
   );
+  const [dealTrack, setDealTrack] = useState<PropertyDealTrack>('ddu_cession');
 
   // Financial Parameters
   const [contractPriceStr, setContractPriceStr] = useState<string>('');
@@ -466,6 +470,7 @@ export const SellersPage: React.FC = () => {
             totalFloors: Number(totalFloors),
             contractPriceRub: contractPrice,
             paidAmountRub: paidAmount,
+            dealTrack,
             exitRoute,
             isNegotiable,
             sellerBanks,
@@ -645,6 +650,39 @@ export const SellersPage: React.FC = () => {
           {currentStep === 1 && (
             <div className="flex flex-col lg:flex-row lg:items-start gap-6 xl:gap-8 w-full">
               <div className="w-full lg:flex-1 min-w-0">
+                {/* Dual-Track Mode Switcher */}
+                <div className="mb-6 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 inline-flex flex-wrap items-center gap-1 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setDealTrack('ddu_cession')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                      dealTrack === 'ddu_cession'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Building className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Уступка ДДУ (214-ФЗ / Новостройка)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDealTrack('secondary_dkp');
+                      if (!paidAmountStr && contractPriceStr) {
+                        setPaidAmountStr(contractPriceStr);
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                      dealTrack === 'secondary_dkp'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Home className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Вторичное жилье (ДКП / 218-ФЗ)</span>
+                  </button>
+                </div>
+
                 <SellerStepProperty
                 user={user}
                 onOpenAuthModal={() => {

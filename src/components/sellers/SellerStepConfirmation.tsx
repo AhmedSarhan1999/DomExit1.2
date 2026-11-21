@@ -4,6 +4,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { formatRubles } from '../../utils/formatters';
 import { RussianRegionConfig } from '../../data/russianGeography';
 import { TelegramConnectCard } from '../telegram/TelegramConnectCard';
+import { GosuslugiEgrnGuide } from '../shared/GosuslugiEgrnGuide';
 
 export interface SellerStepConfirmationProps {
   createdDealId: string;
@@ -85,6 +86,8 @@ export const SellerStepConfirmation: React.FC<SellerStepConfirmationProps> = ({
       </div>
 
       <TelegramConnectCard className="text-left my-4 shadow-sm" />
+
+      <GosuslugiEgrnGuide className="text-left my-4 shadow-sm" />
 
       <div className="flex flex-col sm:flex-row gap-3 pt-2">
         <button

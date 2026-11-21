@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Navigate } from 'react-router-dom';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, FileCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
+import { apiClient } from '../services/apiClient';
+import { GosuslugiEgrnGuide } from '../components/shared/GosuslugiEgrnGuide';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
@@ -164,6 +166,9 @@ export const ClientPortalPage: React.FC = () => {
   // 152-FZ Consents State
   const [userConsents, setUserConsents] = useState<ProofOfConsentRecord[]>([]);
 
+  // 63-FZ PEP Digital Signatures State
+  const [signatures, setSignatures] = useState<any[]>([]);
+
   const isOwner =
     user?.role === 'owner' ||
     user?.role === 'admin' ||
@@ -245,6 +250,16 @@ export const ClientPortalPage: React.FC = () => {
     setPartnerDeals(myPartnerDeals);
     setPartnerAppRecord(myPartnerEntry);
     setUserBids(myBids);
+
+    // Fetch PEP Digital Signatures 63-FZ
+    try {
+      const sigsRes = await apiClient.pep.getMySignatures();
+      if (sigsRes && Array.isArray(sigsRes.signatures)) {
+        setSignatures(sigsRes.signatures);
+      }
+    } catch {
+      // Non-fatal if offline
+    }
 
     // Consents
     if (consentsList && consentsList.length > 0) {
@@ -580,25 +595,28 @@ export const ClientPortalPage: React.FC = () => {
 
         {/* TAB 2: SELLER LISTINGS VIEW */}
         {activeTab === 'seller' && (
-          <SellerLotsTab
-            sellerLots={sellerLots}
-            selectedSellerLotCode={selectedSellerLotCode}
-            onSelectSellerLotCode={setSelectedSellerLotCode}
-            activeSellerLot={activeSellerLot}
-            activeSellerDeal={activeSellerDeal}
-            activeSellerRequest={activeSellerRequest}
-            sellerVaultDocs={sellerVaultDocs}
-            curator={curator}
-            enableBankPortal={enableBankPortal}
-            isUploadingRequestedDoc={isUploadingRequestedDoc}
-            onUploadCuratorRequestedDoc={handleUploadCuratorRequestedDoc}
-            onCancelSellerRequest={handleCancelSellerRequest}
-            onOpenSellerVault={() => setIsSellerVaultOpen(true)}
-            onOpenCuratorChat={(lotCode) => {
-              setActiveChatLotCode(lotCode);
-              setIsCuratorChatOpen(true);
-            }}
-          />
+          <div className="space-y-6">
+            <GosuslugiEgrnGuide className="shadow-sm" />
+            <SellerLotsTab
+              sellerLots={sellerLots}
+              selectedSellerLotCode={selectedSellerLotCode}
+              onSelectSellerLotCode={setSelectedSellerLotCode}
+              activeSellerLot={activeSellerLot}
+              activeSellerDeal={activeSellerDeal}
+              activeSellerRequest={activeSellerRequest}
+              sellerVaultDocs={sellerVaultDocs}
+              curator={curator}
+              enableBankPortal={enableBankPortal}
+              isUploadingRequestedDoc={isUploadingRequestedDoc}
+              onUploadCuratorRequestedDoc={handleUploadCuratorRequestedDoc}
+              onCancelSellerRequest={handleCancelSellerRequest}
+              onOpenSellerVault={() => setIsSellerVaultOpen(true)}
+              onOpenCuratorChat={(lotCode) => {
+                setActiveChatLotCode(lotCode);
+                setIsCuratorChatOpen(true);
+              }}
+            />
+          </div>
         )}
 
         {/* TAB 3: FAVORITES VIEW */}
@@ -630,6 +648,69 @@ export const ClientPortalPage: React.FC = () => {
         {activeTab === 'consents' && (
           <ConsentsArchiveTab userConsents={userConsents} />
         )}
+
+        {/* Section: My PEP Digital Signatures 63-FZ */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div className="space-y-0.5">
+              <div className="flex items-center space-x-2 text-indigo-700">
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  РЕЕСТР ЭЛЕКТРОННЫХ ПОДПИСЕЙ (ПЭП • 63-ФЗ)
+                </span>
+              </div>
+              <h3 className="text-base font-black text-slate-900">
+                Мои подписанные юридические документы и соглашения
+              </h3>
+            </div>
+            <span className="text-xs text-slate-400 font-mono">
+              {signatures.length} документов
+            </span>
+          </div>
+
+          {signatures.length === 0 ? (
+            <div className="py-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
+              Пока нет подписанных соглашений. При запросе просмотра или бронировании объектов здесь будут отображаться ваши акты и сертификаты ПЭП.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3">Дата (МСК)</th>
+                    <th className="py-2.5 px-3">Документ</th>
+                    <th className="py-2.5 px-3">Лот</th>
+                    <th className="py-2.5 px-3">Статус подписи</th>
+                    <th className="py-2.5 px-3">Хеш (SHA-256)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {signatures.map((sig) => (
+                    <tr key={sig.id} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                        {new Date(sig.signedAt).toLocaleString('ru-RU')}
+                      </td>
+                      <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                        {sig.documentType === 'nda_viewing_act'
+                          ? 'Акт осмотра и NDA'
+                          : sig.documentType === 'seller_exclusive_consent'
+                          ? 'Согласие продавца'
+                          : 'Условия бронирования'}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-indigo-700">#{sig.lotCode}</td>
+                      <td className="py-2.5 px-3 font-sans text-emerald-700 font-semibold">
+                        ✓ Подписано (Telegram OTP)
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-400 truncate max-w-xs" title={sig.docHashSha256}>
+                        {sig.docHashSha256?.substring(0, 16)}...
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         {/* Preliminary Request Modal */}
         <PreliminaryRequestModal

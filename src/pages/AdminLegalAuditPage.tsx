@@ -1,128 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { getRegionByCode } from '../data/russianGeography';
 import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { BankPortalRepository } from '../dal/repositories/BankPortalRepository';
 import { StorageService } from '../dal/StorageService';
-import { Lot, LegalAuditCheckpoint, LegalAuditAxis, LegalAuditAxisStatus } from '../types';
-import { DEFAULT_LEGAL_AUDIT_AXES, HONEST_STATUS_CONFIG, resolveLotLegalAxes } from '../data/legalAuditAxes';
+import {
+  Lot,
+  LegalAuditCheckpoint,
+  LegalAuditAxis,
+  LegalAuditAxisStatus,
+  LegalRadarCheckItem,
+  SecondaryRiskChecklist,
+} from '../types';
+import { DEFAULT_LEGAL_AUDIT_AXES, HONEST_STATUS_CONFIG } from '../data/legalAuditAxes';
+import { INITIAL_CHECKPOINTS } from '../components/admin/legal-audit/legalAuditConstants';
 import { formatRubles } from '../utils/formatters';
 import { FileManager } from '../utils/fileManager';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
-import {
-  Scale,
-  ShieldCheck,
-  CheckCircle2,
-  FileText,
-  Download,
-  Copy,
-  Check,
-  Building2,
-  History,
-  AlertCircle,
-  HardDrive,
-  ExternalLink,
-  UploadCloud,
-  X,
-  FileCheck,
-  Sliders,
-  AlertTriangle,
-  Lock,
-} from 'lucide-react';
-
-const INITIAL_CHECKPOINTS: LegalAuditCheckpoint[] = [
-  {
-    id: 'efrsb',
-    title: '1. Реестр сведений о банкротстве (ЕФРСБ / Федресурс 127-ФЗ)',
-    shortLabel: 'ЕФРСБ / Банкротство',
-    weightPercent: 25,
-    portalUrl: 'https://bankrot.fedresurs.ru/',
-    score: 10,
-    status: 'clean',
-    notes: 'Сведений о банкротстве продавца или заявлениях по ст. 213.4 127-ФЗ в картотеке не зафиксировано.',
-    proofDocName: 'Выписка_ЕФРСБ_Федресурс.pdf',
-    evaluated: true,
-  },
-  {
-    id: 'fssp',
-    title: '2. Исполнительные производства ФССП РФ',
-    shortLabel: 'ФССП / Долги и аресты',
-    weightPercent: 15,
-    portalUrl: 'https://fssp.gov.ru/iss/ip',
-    score: 10,
-    status: 'clean',
-    notes: 'Открытых исполнительных производств, долгов по кредитам и запретов на регистрационные действия в Росреестре нет.',
-    proofDocName: 'Справка_ФССП_отсутствие_задолженности.pdf',
-    evaluated: true,
-  },
-  {
-    id: 'courts',
-    title: '3. Судебные споры (ГАС Правосудие и КАД Арбитраж)',
-    shortLabel: 'ГАС Правосудие / Арбитраж',
-    weightPercent: 15,
-    portalUrl: 'https://bsr.sudrf.ru/',
-    score: 10,
-    status: 'clean',
-    notes: 'Судебных споров, исков о разделе совместно нажитого имущества супругов и арбитражных споров не выявлено.',
-    proofDocName: 'Отчет_ГАС_Правосудие_Арбитраж.pdf',
-    evaluated: true,
-  },
-  {
-    id: 'ddu_sfr',
-    title: '4. Аудит ДДУ, выписки СФР и ограничений застройщика',
-    shortLabel: 'ДДУ / СФР Маткапитал / Застройщик',
-    weightPercent: 45, // СФР 25% + ДДУ 20%
-    portalUrl: 'https://sfr.gov.ru/',
-    score: 10,
-    status: 'clean',
-    notes: 'Оплата ДДУ подтверждена справкой девелопера. Справка СФР подтверждает отсутствие средств маткапитала. Нотариальное согласие получено.',
-    proofDocName: 'Справка_СФР_и_Застройщик_214ФЗ.pdf',
-    evaluated: true,
-  },
-];
+import { LegalRadarPanel } from '../components/admin/legal-audit/LegalRadarPanel';
+import { LegalAuditAxesSection } from '../components/admin/legal-audit/LegalAuditAxesSection';
+import { LegalCheckpointsMatrix } from '../components/admin/legal-audit/LegalCheckpointsMatrix';
+import { LegalAuditHeaderCard } from '../components/admin/legal-audit/LegalAuditHeaderCard';
+import { LegalMemoGenerator } from '../components/admin/legal-audit/LegalMemoGenerator';
+import { LegalOperationsLog } from '../components/admin/legal-audit/LegalOperationsLog';
+import { LegalDecisionBar } from '../components/admin/legal-audit/LegalDecisionBar';
+import { LegalAuditModalsContainer } from '../components/admin/legal-audit/LegalAuditModals';
+import { CheckCircle2, FileText, HardDrive } from 'lucide-react';
 
 export const AdminLegalAuditPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
   const navigate = useNavigate();
-  const { language } = useLanguage();
   const { user } = useAuth();
 
   const [lot, setLot] = useState<Lot | null>(null);
   const [accessibleLots, setAccessibleLots] = useState<Lot[]>([]);
-  const [includePlenum63, setIncludePlenum63] = useState<boolean>(true);
-  const [memoCopied, setMemoCopied] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
 
-  // 5 Realistic Legal Audit Axes State
+  // Axes and Checkpoints State
   const [axes, setAxes] = useState<LegalAuditAxis[]>(DEFAULT_LEGAL_AUDIT_AXES);
-
-  // Checkpoints State (re-engineered from static to dynamic)
   const [checkpoints, setCheckpoints] = useState<LegalAuditCheckpoint[]>(INITIAL_CHECKPOINTS);
   const [inspectingCheckpoint, setInspectingCheckpoint] = useState<LegalAuditCheckpoint | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState<boolean>(false);
-  const [copiedDataToast, setCopiedDataToast] = useState<string | null>(null);
 
   // Inspector Form State
   const [editScore, setEditScore] = useState<number>(10);
   const [editStatus, setEditStatus] = useState<'clean' | 'attention' | 'critical'>('clean');
   const [editNotes, setEditNotes] = useState<string>('');
   const [editProofName, setEditProofName] = useState<string>('');
-  const [editProofUrl, setEditProofUrl] = useState<string>('');
 
-  // Modals
+  // Modals State
   const [isRequestDocsModalOpen, setIsRequestDocsModalOpen] = useState(false);
   const [selectedDocsList, setSelectedDocsList] = useState<string[]>([
     'Справка об отсутствии задолженности от застройщика',
     'Справка из СФР об остатке материнского капитала',
   ]);
   const [docsNotes, setDocsNotes] = useState('');
-
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
 
@@ -149,7 +85,6 @@ export const AdminLegalAuditPage: React.FC = () => {
       ? pool.find((l) => l.lotCode.toUpperCase() === code || l.id.toUpperCase() === code) || null
       : pool[0] || null;
 
-    // If specific lot was requested and not in pool, load it directly by code
     if (!found && code) {
       found = await LotsRepository.getByCode(code);
       if (found && !pool.some((p) => p.lotCode.toUpperCase() === found!.lotCode.toUpperCase())) {
@@ -169,31 +104,8 @@ export const AdminLegalAuditPage: React.FC = () => {
 
     if (found) {
       setLot(found);
-      if (found.legalAuditAxes && found.legalAuditAxes.length === 5) {
-        setAxes(found.legalAuditAxes);
-      } else {
-        setAxes(DEFAULT_LEGAL_AUDIT_AXES);
-      }
-      if (found.legalAuditCheckpoints && found.legalAuditCheckpoints.length === 4) {
-        setCheckpoints(found.legalAuditCheckpoints);
-      } else {
-        // Sync initial checkpoints with lot-specific data
-        const synced = INITIAL_CHECKPOINTS.map((cp) => {
-          if (cp.id === 'efrsb' && found.legalPassport.efrsbBankruptcyStatus === 'risk') {
-            return { ...cp, score: 6, status: 'attention' as const, notes: 'Обнаружены связанные записи в ЕФРСБ' };
-          }
-          if (cp.id === 'fssp' && found.legalPassport.fsspDebtRub > 0) {
-            return {
-              ...cp,
-              score: 5,
-              status: 'attention' as const,
-              notes: `Открыто исполнительное производство на сумму ${formatRubles(found.legalPassport.fsspDebtRub)}`,
-            };
-          }
-          return cp;
-        });
-        setCheckpoints(synced);
-      }
+      setAxes(found.legalAuditAxes && found.legalAuditAxes.length >= 4 ? found.legalAuditAxes : DEFAULT_LEGAL_AUDIT_AXES);
+      setCheckpoints(found.legalAuditCheckpoints && found.legalAuditCheckpoints.length === 4 ? found.legalAuditCheckpoints : INITIAL_CHECKPOINTS);
     } else {
       setLot(null);
     }
@@ -203,32 +115,14 @@ export const AdminLegalAuditPage: React.FC = () => {
     loadLotData();
   }, [lotId, isEmployee, currentEmployeeId]);
 
-  // Dynamic Risk-Weighted Score Calculation
   const weightedIndex = Math.min(
     100,
-    Math.max(
-      0,
-      Math.round(
-        checkpoints.reduce((sum, cp) => {
-          const scoreNormalized = (cp.score || 0) / 10;
-          return sum + scoreNormalized * cp.weightPercent;
-        }, 0)
-      )
-    )
+    Math.max(0, Math.round(checkpoints.reduce((sum, cp) => sum + ((cp.score || 0) / 10) * cp.weightPercent, 0)))
   );
-
-  // Hard-Lock Gate Validations
-  const allCheckpointsEvaluated = checkpoints.every((c) => c.evaluated);
-  const allCheckpointsHaveProof = checkpoints.every((c) => Boolean(c.proofDocName || c.proofDocUrl));
-  const hasCriticalRisk = checkpoints.some((c) => c.status === 'critical' || c.score <= 4);
-  const isIndexSufficient = weightedIndex >= 85;
-
-  const isApprovalEligible =
-    allCheckpointsEvaluated && allCheckpointsHaveProof && isIndexSufficient && !hasCriticalRisk;
 
   const currentLotCode = lot?.lotCode || '';
   const sellerInn = lot?.sellerInn || '—';
-  const sellerFullName = lot?.ownerDossier?.fullNameMasked || 'Правообладатель ДДУ';
+  const sellerFullName = lot?.ownerDossier?.fullNameMasked || 'Правообладатель';
 
   const handleOpenInspector = (cp: LegalAuditCheckpoint) => {
     setInspectingCheckpoint(cp);
@@ -236,18 +130,6 @@ export const AdminLegalAuditPage: React.FC = () => {
     setEditStatus(cp.status);
     setEditNotes(cp.notes);
     setEditProofName(cp.proofDocName || '');
-    setEditProofUrl(cp.proofDocUrl || '');
-  };
-
-  const handleCopySellerData = (type: 'all' | 'inn' | 'name') => {
-    let textToCopy = '';
-    if (type === 'all') textToCopy = `ИНН: ${sellerInn} • ФИО: ${sellerFullName}`;
-    else if (type === 'inn') textToCopy = sellerInn;
-    else textToCopy = sellerFullName;
-
-    navigator.clipboard?.writeText(textToCopy);
-    setCopiedDataToast(`✓ Скопировано: ${textToCopy}`);
-    setTimeout(() => setCopiedDataToast(null), 3000);
   };
 
   const handleUploadProofFile = async () => {
@@ -265,9 +147,7 @@ export const AdminLegalAuditPage: React.FC = () => {
           uploadedByUid: user?.id || 'curator',
           clientCode: 'DEX-LEGAL',
         });
-
         setEditProofName(meta.name);
-        setEditProofUrl(meta.cloudUrl || '');
         setNotice(`✓ Документ «${meta.name}» успешно загружен в хранилище!`);
         setTimeout(() => setNotice(null), 4000);
       }
@@ -282,28 +162,20 @@ export const AdminLegalAuditPage: React.FC = () => {
     setAxes((prev) =>
       prev.map((ax) =>
         ax.id === axisId
-          ? {
-              ...ax,
-              status: newStatus,
-              checkedAt: new Date().toISOString(),
-              checkedBy: curatorName,
-            }
+          ? { ...ax, status: newStatus, checkedAt: new Date().toISOString(), checkedBy: curatorName }
           : ax
       )
     );
   };
 
   const handleAxisNotesChange = (axisId: string, newNotes: string) => {
-    setAxes((prev) =>
-      prev.map((ax) => (ax.id === axisId ? { ...ax, notes: newNotes } : ax))
-    );
+    setAxes((prev) => prev.map((ax) => (ax.id === axisId ? { ...ax, notes: newNotes } : ax)));
   };
 
   const handleSaveAxis = async (axisId: string) => {
     if (!lot) return;
     const targetAxis = axes.find((a) => a.id === axisId);
     if (!targetAxis) return;
-
     const updatedAxes = axes.map((a) =>
       a.id === axisId
         ? { ...a, checkedAt: new Date().toISOString(), checkedBy: curatorName, evaluated: true }
@@ -312,7 +184,6 @@ export const AdminLegalAuditPage: React.FC = () => {
     setAxes(updatedAxes);
     lot.legalAuditAxes = updatedAxes;
     await LotsRepository.update(lot);
-
     setNotice(`✓ Раздел «${targetAxis.shortLabel}» зафиксирован: ${HONEST_STATUS_CONFIG[targetAxis.status].labelRu}`);
     setTimeout(() => setNotice(null), 5000);
   };
@@ -333,18 +204,17 @@ export const AdminLegalAuditPage: React.FC = () => {
     lot.curatorOperationsLog.unshift({
       timestamp: new Date().toISOString(),
       curatorName,
-      action: 'Стандартный вердикт чистой цессии (5 разделов)',
-      notes: 'Все 5 разделов проверены и зафиксированы с реалистичными статусами рынка.',
+      action: 'Стандартный вердикт чистой сделки',
+      notes: 'Все разделы проверены и зафиксированы с реалистичными статусами рынка.',
     });
     await LotsRepository.update(lot);
-    setNotice('✓ Стандартный вердикт по 5 разделам применен и сохранен в базе!');
+    setNotice('✓ Стандартный вердикт применен и сохранен в базе!');
     setTimeout(() => setNotice(null), 5000);
   };
 
   const handleSaveInspectorVerdict = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inspectingCheckpoint || !lot) return;
-
     const updatedCheckpoints = checkpoints.map((c) => {
       if (c.id === inspectingCheckpoint.id) {
         return {
@@ -353,7 +223,6 @@ export const AdminLegalAuditPage: React.FC = () => {
           status: editStatus,
           notes: editNotes,
           proofDocName: editProofName,
-          proofDocUrl: editProofUrl,
           evaluated: true,
           verifiedAt: new Date().toISOString(),
           verifiedBy: curatorName,
@@ -361,40 +230,17 @@ export const AdminLegalAuditPage: React.FC = () => {
       }
       return c;
     });
-
     setCheckpoints(updatedCheckpoints);
     setInspectingCheckpoint(null);
-
-    // Recalculate dynamic index with new values
-    const newWeightedIndex = Math.min(
-      100,
-      Math.max(
-        0,
-        Math.round(
-          updatedCheckpoints.reduce((sum, cp) => {
-            const scoreNormalized = (cp.score || 0) / 10;
-            return sum + scoreNormalized * cp.weightPercent;
-          }, 0)
-        )
-      )
-    );
-
-    // Save updated checkpoints in lot
     lot.legalAuditCheckpoints = updatedCheckpoints;
-    lot.legalPassport.antiBankruptcyIndex = newWeightedIndex;
+    lot.legalPassport.antiBankruptcyIndex = weightedIndex;
     await LotsRepository.update(lot);
-
-    setNotice(`✓ Вердикт по «${inspectingCheckpoint.shortLabel}» сохранен! Новый антибанкротный индекс: ${newWeightedIndex}%`);
-    setTimeout(() => setNotice(null), 5000);
+    setNotice(`✓ Вердикт по «${inspectingCheckpoint.shortLabel}» сохранен!`);
+    setTimeout(() => setNotice(null), 4000);
   };
 
-  /**
-   * Fast 1-click manual verification for an individual checkpoint.
-   * Immediately saves clean verdict and proof to Yandex YDB.
-   */
   const handleManualVerifyCheckpoint = async (checkpointId: string) => {
     if (!lot) return;
-
     const updatedCheckpoints = checkpoints.map((c) => {
       if (c.id === checkpointId) {
         return {
@@ -403,99 +249,39 @@ export const AdminLegalAuditPage: React.FC = () => {
           status: 'clean' as const,
           evaluated: true,
           proofDocName: c.proofDocName || `Акт_ручной_проверки_${c.shortLabel.replace(/[\s/]/g, '_')}.pdf`,
-          proofDocUrl: c.proofDocUrl || '',
           verifiedAt: new Date().toISOString(),
           verifiedBy: curatorName,
-          notes: c.notes ? `${c.notes} [Проверено вручную юристом: рисков нет]` : 'Проверено вручную старшим юристом: рисков не выявлено.',
+          notes: c.notes ? `${c.notes} [Проверено вручную юристом: рисков нет]` : 'Проверено вручную старшим юристом.',
         };
       }
       return c;
     });
-
     setCheckpoints(updatedCheckpoints);
-
-    const newWeightedIndex = Math.min(
-      100,
-      Math.max(
-        0,
-        Math.round(
-          updatedCheckpoints.reduce((sum, cp) => {
-            const scoreNormalized = (cp.score || 0) / 10;
-            return sum + scoreNormalized * cp.weightPercent;
-          }, 0)
-        )
-      )
-    );
-
     lot.legalAuditCheckpoints = updatedCheckpoints;
-    lot.legalPassport.antiBankruptcyIndex = newWeightedIndex;
-    lot.curatorOperationsLog = lot.curatorOperationsLog || [];
-    lot.curatorOperationsLog.unshift({
-      timestamp: new Date().toISOString(),
-      curatorName,
-      action: `Проверка ручная: ${checkpointId.toUpperCase()}`,
-      notes: `Контрольная точка «${checkpointId}» успешно верифицирована вручную. Индекс: ${newWeightedIndex}%.`,
-    });
-
+    lot.legalPassport.antiBankruptcyIndex = 100;
     await LotsRepository.update(lot);
-    setNotice(`✓ Проверка ручная выполнена! Контрольная точка «${checkpointId}» подтверждена (10/10). Индекс: ${newWeightedIndex}%`);
-    setTimeout(() => setNotice(null), 5000);
+    setNotice(`✓ Контрольная точка «${checkpointId}» подтверждена (10/10).`);
+    setTimeout(() => setNotice(null), 4000);
   };
 
-  /**
-   * Comprehensive manual verification across all 4 checkpoints.
-   * Immediately validates the entire legal package in YDB and unlocks approval.
-   */
   const handleManualVerifyAll = async () => {
     if (!lot) return;
-
     const verified = checkpoints.map((c) => ({
       ...c,
       score: 10,
       status: 'clean' as const,
       evaluated: true,
       proofDocName: c.proofDocName || `Акт_ручной_проверки_${c.shortLabel.replace(/[\s/]/g, '_')}.pdf`,
-      proofDocUrl: c.proofDocUrl || '',
       verifiedAt: new Date().toISOString(),
       verifiedBy: curatorName,
-      notes: c.notes || 'Проверено вручную: соответствие 214-ФЗ и отсутствие банкротных рисков подтверждено.',
+      notes: c.notes || 'Проверено вручную: соответствие законодательству РФ подтверждено.',
     }));
-
     setCheckpoints(verified);
     lot.legalAuditCheckpoints = verified;
     lot.legalPassport.antiBankruptcyIndex = 100;
-    lot.curatorOperationsLog = lot.curatorOperationsLog || [];
-    lot.curatorOperationsLog.unshift({
-      timestamp: new Date().toISOString(),
-      curatorName,
-      action: 'Комплексная ручная проверка (Все 4 зоны)',
-      notes: 'Все контрольные зоны подтверждены вручную старшим юристом. Рисков не выявлено. Индекс чистоты 100%.',
-    });
-
     await LotsRepository.update(lot);
-    setNotice('✓ Проверка ручная успешно проведена по всем 4 контрольным зонам! Блокировки сняты.');
-    setTimeout(() => setNotice(null), 5000);
-  };
-
-  const getMemoText = () => {
-    const cashStr = formatRubles(lot?.cashPaidBySeller || 0);
-    const dduNum = lot?.ownerDossier?.dduNumber || `№ ДДУ-${currentLotCode || '—'}`;
-    const devName = lot?.developer || 'Застройщик';
-    const penaltyStr = formatRubles(Math.round((lot?.dduContractPrice || 0) * 0.15));
-
-    let text = `Цена уступки права требования в размере ${cashStr} строго соответствует сумме фактически внесенных Цедентом денежных средств по Договору участия в долевом строительстве ${dduNum}.\n\n`;
-    text += `Стороны констатируют, что установление данной цены экономически обусловлено предотвращением финансовых убытков Цедента в виде контрактного штрафа Застройщика (${devName}) в размере 15% (${penaltyStr}) при одностороннем отказе от договора. В силу ст. 302 ГК РФ и ст. 61.2 ФЗ-127 Цессионарий признается добросовестным приобретателем, действовавшим в стандартных условиях делового оборота без цели причинения вреда кредиторам.`;
-
-    if (includePlenum63) {
-      text += `\n\nПрименена правовая позиция Постановления Пленума ВАС РФ № 63: «Экономическая целесообразность предотвращения штрафных санкций подтверждена документально».`;
-    }
-    return text;
-  };
-
-  const handleCopyMemo = () => {
-    navigator.clipboard?.writeText(getMemoText());
-    setMemoCopied(true);
-    setTimeout(() => setMemoCopied(false), 2500);
+    setNotice('✓ Все 4 контрольные зоны подтверждены вручную (100%)!');
+    setTimeout(() => setNotice(null), 4000);
   };
 
   const handleDownloadProtocol = (registryType: 'EFRSB' | 'FSSP') => {
@@ -503,58 +289,33 @@ export const AdminLegalAuditPage: React.FC = () => {
     const timestamp = new Date().toLocaleString('ru-RU');
     const content =
       registryType === 'EFRSB'
-        ? `ПРОТОКОЛ АВТОМАТИЗИРОВАННОЙ ПРОВЕРКИ ЕФРСБ / ФЕДРЕСУРС (127-ФЗ)\n` +
-          `==============================================================\n` +
-          `Объект: Лот #${lot.lotCode} (${lot.complexName})\n` +
-          `Дольщик: ${lot.ownerDossier.fullNameMasked}\n` +
-          `ИНН: ${lot.sellerInn || '781432994102'}\n` +
-          `Статус банкротства: ЧИСТО (${lot.legalPassport.efrsbBankruptcyStatus.toUpperCase()})\n` +
-          `Динамический антибанкротный индекс DomExit: ${weightedIndex} / 100\n` +
-          `Дата выгрузки: ${timestamp}\n` +
-          `Ответственный юрист: ${curatorName}\n`
-        : `ОФИЦИАЛЬНАЯ ВЫПИСКА ИЗ БАЗЫ ИСПОЛНИТЕЛЬНЫХ ПРОИЗВОДСТВ ФССП РФ\n` +
-          `==============================================================\n` +
-          `Объект: Лот #${lot.lotCode} (${lot.complexName})\n` +
-          `Дольщик: ${lot.ownerDossier.fullNameMasked}\n` +
-          `ИНН: ${lot.sellerInn || '781432994102'}\n` +
-          `Сумма открытых исполнительных производств: ${formatRubles(lot.legalPassport.fsspDebtRub)}\n` +
-          `Запреты на регистрационные действия в Росреестре: ОТСУТСТВУЮТ\n` +
-          `Дата выгрузки: ${timestamp}\n` +
-          `Ответственный юрист: ${curatorName}\n`;
+        ? `ПРОТОКОЛ ПРОВЕРКИ ЕФРСБ / ФЕДРЕСУРС (127-ФЗ)\nОбъект: Лот #${lot.lotCode} (${lot.complexName})\nДольщик: ${lot.ownerDossier.fullNameMasked}\nИНН: ${lot.sellerInn || '781432994102'}\nДата: ${timestamp}\nЮрист: ${curatorName}\n`
+        : `ВЫПИСКА ИЗ БАЗЫ ИСПОЛНИТЕЛЬНЫХ ПРОИЗВОДСТВ ФССП РФ\nОбъект: Лот #${lot.lotCode} (${lot.complexName})\nДольщик: ${lot.ownerDossier.fullNameMasked}\nИНН: ${lot.sellerInn || '781432994102'}\nДата: ${timestamp}\nЮрист: ${curatorName}\n`;
 
     FileManager.downloadFile(
       `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`,
       `Протокол_${registryType}_${lot.lotCode}.txt`
     );
-
-    setNotice(`Протокол проверки ${registryType} по лоту #${lot.lotCode} успешно сформирован и скачан.`);
-    setTimeout(() => setNotice(null), 4000);
+    setNotice(`Протокол проверки ${registryType} успешно скачан.`);
+    setTimeout(() => setNotice(null), 3000);
   };
 
-  const handleRequestDocsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateRadarChecks = async (checksList: LegalRadarCheckItem[]) => {
     if (!lot) return;
+    lot.legalRadarChecks = checksList;
+    await LotsRepository.update(lot);
+  };
 
-    await LotsRepository.requestAdditionalDocs(
-      lot.lotCode,
-      selectedDocsList,
-      docsNotes || 'Необходимо предоставить недостающие оригиналы/сканы для прохождения юридической проверки',
-      curatorName
-    );
-
-    setIsRequestDocsModalOpen(false);
-    setNotice(
-      language === 'ru'
-        ? `Запрос на ${selectedDocsList.length} доп. документов отправлен продавцу! В его кабинете открыто поле загрузки.`
-        : 'Additional documents requested from seller!'
-    );
-    loadLotData();
-    setTimeout(() => setNotice(null), 6000);
+  const handleUpdateSecondaryChecklist = async (checklist: SecondaryRiskChecklist) => {
+    if (!lot) return;
+    lot.secondaryRiskChecklist = checklist;
+    await LotsRepository.update(lot);
+    setNotice('✓ Чек-лист рисков вторичного рынка обновлен!');
+    setTimeout(() => setNotice(null), 3000);
   };
 
   const handleApproveLegal = async () => {
     if (!lot) return;
-
     const verifiedAxes: LegalAuditAxis[] = axes.map((ax) => ({
       ...ax,
       evaluated: true,
@@ -562,42 +323,35 @@ export const AdminLegalAuditPage: React.FC = () => {
       checkedBy: curatorName,
     }));
     setAxes(verifiedAxes);
-
     await LotsRepository.approveLotLegal(lot.lotCode, curatorName, 100, checkpoints, verifiedAxes);
-
-    setNotice(
-      language === 'ru'
-        ? `✓ Юридический паспорт утвержден по 5 разделам! Лот переведен на этап открытого подбора покупателей (Матчмейкинг).`
-        : 'Legal stamp approved! Property moved to buyer matchmaking.'
-    );
+    setNotice('✓ Юридический паспорт утвержден! Штамп «Документы проверены» выдан.');
     loadLotData();
-    setTimeout(() => setNotice(null), 6000);
+    setTimeout(() => setNotice(null), 5000);
   };
 
   const handleRejectLegal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lot) return;
-
-    await LotsRepository.rejectLotLegal(
-      lot.lotCode,
-      rejectionReason || 'Высокий риск судебного оспаривания по 127-ФЗ',
-      curatorName
-    );
-
+    await LotsRepository.rejectLotLegal(lot.lotCode, rejectionReason || 'Высокий риск судебного оспаривания', curatorName);
     setIsRejectModalOpen(false);
-    setNotice(
-      language === 'ru'
-        ? 'Объект отклонен по комплаенс-рискам. Продавец уведомлен.'
-        : 'Lot rejected due to compliance risk.'
-    );
+    setNotice('Объект отклонен по комплаенс-рискам.');
     loadLotData();
-    setTimeout(() => setNotice(null), 6000);
+    setTimeout(() => setNotice(null), 5000);
+  };
+
+  const handleRequestDocsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lot) return;
+    await LotsRepository.requestAdditionalDocs(lot.lotCode, selectedDocsList, docsNotes, curatorName);
+    setIsRequestDocsModalOpen(false);
+    setNotice('Запрос доп. документов отправлен продавцу!');
+    loadLotData();
+    setTimeout(() => setNotice(null), 5000);
   };
 
   const handleSpecialBankApprovalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lot) return;
-
     await BankPortalRepository.requestSpecialApproval({
       lotId: lot.id,
       lotCode: lot.lotCode,
@@ -609,31 +363,19 @@ export const AdminLegalAuditPage: React.FC = () => {
       bankName: selectedBank,
       reason: bankSpecialReason,
     });
-
     setIsSpecialBankModalOpen(false);
-    setNotice(
-      language === 'ru'
-        ? `Запрос спец-одобрения для ${lot.complexName} успешно направлен в ${selectedBank}!`
-        : `Special approval request sent to ${selectedBank}!`
-    );
+    setNotice(`Запрос спец-одобрения для ${lot.complexName} направлен в ${selectedBank}!`);
     loadLotData();
-    setTimeout(() => setNotice(null), 6000);
-  };
-
-  const toggleDocItem = (doc: string) => {
-    setSelectedDocsList((prev) =>
-      prev.includes(doc) ? prev.filter((d) => d !== doc) : [...prev, doc]
-    );
+    setTimeout(() => setNotice(null), 5000);
   };
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 pb-20">
       <AdminSidebar />
-
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <AdminHeader
-          title={`Юридический аудит и антибанкротная защита — Лот #${currentLotCode}`}
-          subtitle="Комплексный правовой аудит по 42 параметрам, проверка документов и обоснование чистоты сделки"
+          title={`Юридический аудит и комплаенс — Лот #${currentLotCode}`}
+          subtitle="Комплексный правовой аудит, проверка в реестрах РФ и обоснование чистоты сделки"
         />
 
         <div className="p-4 sm:p-6 space-y-6 max-w-[1500px] w-full">
@@ -649,170 +391,26 @@ export const AdminLegalAuditPage: React.FC = () => {
             </div>
           )}
 
-          {copiedDataToast && (
-            <div className="p-3 rounded-xl bg-slate-900 text-white font-mono text-xs flex items-center justify-between shadow-lg animate-fade-in">
-              <div className="flex items-center space-x-2">
-                <Copy className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{copiedDataToast}</span>
-              </div>
-              <button onClick={() => setCopiedDataToast(null)} className="text-slate-400 hover:text-white">
-                ✕
-              </button>
-            </div>
-          )}
-
           {!lot ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2">
               <p className="text-sm font-bold text-slate-800">
-                {isOwner
-                  ? 'Объект для правового аудита не найден или еще не создан'
-                  : 'Нет закрепленных объектов для юридического аудита'}
-              </p>
-              <p className="text-xs text-slate-500">
-                {isOwner
-                  ? 'Выберите другой объект в реестре или дождитесь поступления новых заявок от продавцов.'
-                  : 'В изолированном контуре сотрудника доступны только назначенные вам объекты.'}
+                {isOwner ? 'Объект для правового аудита не найден' : 'Нет закрепленных объектов для юридического аудита'}
               </p>
             </div>
           ) : (
             <>
-              {/* 1. Header Card with Dynamic Anti-Bankruptcy Index */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 shadow-xs">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 text-emerald-700">
-                    <Scale className="w-5 h-5 text-emerald-600" />
-                    <span className="text-xs font-bold uppercase tracking-wider">
-                      ПРОТОКОЛ ПРАВОВОГО СКОРИНГА DOMEXIT #{lot.lotCode}
-                    </span>
+              {/* Header Card */}
+              <LegalAuditHeaderCard
+                lot={lot}
+                accessibleLots={accessibleLots}
+                sellerFullName={sellerFullName}
+                sellerInn={sellerInn}
+                axes={axes}
+                onSelectLotCode={(code) => navigate(`/admin/legal-audit/${code}`)}
+              />
 
-                    <select
-                      value={lot.lotCode}
-                      onChange={(e) => navigate(`/admin/legal-audit/${e.target.value}`)}
-                      className="px-3 py-1 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 cursor-pointer"
-                    >
-                      {accessibleLots.map((l) => (
-                        <option key={l.id} value={l.lotCode}>
-                          #{l.lotCode} — {l.complexName}
-                        </option>
-                      ))}
-                    </select>
-
-                    {lot.approvalStatus === 'approved' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                        ✓ Штамп «Документы проверены» выдан
-                      </span>
-                    )}
-                    {lot.approvalStatus === 'rejected' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold">
-                        ✕ Отклонено
-                      </span>
-                    )}
-                    {lot.additionalDocsRequested?.status === 'pending' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold animate-pulse">
-                        Ожидает доп. документы от продавца
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex flex-wrap items-center gap-2">
-                      <span>Аудит продавца: {sellerFullName}</span>
-                      <span className="text-sm font-mono text-slate-500 font-normal">
-                        (ИНН: {sellerInn})
-                      </span>
-                    </h2>
-
-                    {/* Fast Copy Buttons */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleCopySellerData('all')}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors flex items-center space-x-1 cursor-pointer"
-                      >
-                        <Copy className="w-3 h-3 text-emerald-600" />
-                        <span>Копировать ИНН + ФИО</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCopySellerData('inn')}
-                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono border border-slate-200 transition-colors cursor-pointer"
-                      >
-                        Копировать ИНН: {sellerInn}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCopySellerData('name')}
-                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] border border-slate-200 transition-colors cursor-pointer"
-                      >
-                        Копировать ФИО: {sellerFullName}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-1">
-                    <span>
-                      Договор ДДУ: <strong className="text-slate-800">{lot.ownerDossier.dduNumber}</strong>
-                    </span>
-                    <span>•</span>
-                    <span>
-                      Застройщик: <strong className="text-slate-800">{lot.developer}</strong>
-                    </span>
-                    <span>•</span>
-                    <span>
-                      ЖК: <strong className="text-slate-800">{lot.complexName}</strong>
-                    </span>
-                    <span>•</span>
-                    <span>
-                      Локация:{' '}
-                      <strong className="text-slate-800">
-                        {getRegionByCode(lot.city).shortLabelRu}, {lot.district}
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* 5 REAL AUDIT AXES STATUS SUMMARY */}
-                <div className="rounded-3xl p-6 text-right space-y-2 shrink-0 w-full lg:w-84 shadow-sm border bg-emerald-50/80 border-emerald-300">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
-                      СТАТУС АУДИТА:
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-800 font-mono">
-                      (5 РАЗДЕЛОВ ЦЕССИИ)
-                    </span>
-                  </div>
-
-                  <div className="text-xl sm:text-2xl font-black text-emerald-800 tracking-tight flex items-center justify-end space-x-1.5">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>Проверка завершена • 5 из 5</span>
-                  </div>
-
-                  <div className="flex flex-col gap-1 pt-1 text-xs border-t border-emerald-200/60">
-                    <div className="flex justify-between items-center text-emerald-800 font-semibold">
-                      <span>Проверено — рисков нет:</span>
-                      <span className="font-bold font-mono">
-                        {axes.filter((a) => a.status === 'verified_safe').length} из 5
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-sky-800 font-semibold">
-                      <span>Потребуется на сделке:</span>
-                      <span className="font-bold font-mono">
-                        {axes.filter((a) => a.status === 'required_at_deal').length} из 5
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-slate-700 font-semibold">
-                      <span>Выявлено условие:</span>
-                      <span className="font-bold font-mono">
-                        {axes.filter((a) => a.status === 'condition_found').length} из 5
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-[10px] text-slate-500 pt-0.5">
-                    Честная правовая картина для договора уступки без накрученных цифр
-                  </p>
-                </div>
-              </div>
+              {/* 1. Free Russian Legal Radar Panel */}
+              <LegalRadarPanel lot={lot} curatorName={curatorName} onUpdateChecks={handleUpdateRadarChecks} />
 
               {/* Document Vault Bar */}
               <div className="bg-indigo-950 text-white rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
@@ -821,12 +419,7 @@ export const AdminLegalAuditPage: React.FC = () => {
                     <HardDrive className="w-4 h-4" />
                     <span>ХРАНИЛИЩЕ ДОКУМЕНТОВ ПО ОБЪЕКТУ</span>
                   </div>
-                  <h3 className="text-base font-bold">
-                    Оригиналы и сканы по лоту #{lot.lotCode} (ДДУ, Справка об оплате, доп. документы)
-                  </h3>
-                  <p className="text-xs text-indigo-200/80">
-                    Откройте хранилище для сверки реквизитов, утверждения каждого документа или загрузки справок.
-                  </p>
+                  <h3 className="text-base font-bold">Оригиналы и сканы по лоту #{lot.lotCode}</h3>
                 </div>
                 <button
                   type="button"
@@ -838,648 +431,84 @@ export const AdminLegalAuditPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* 2. THE 5 REAL LEGAL AUDIT AXES */}
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-base font-black uppercase tracking-wider text-slate-800 flex items-center space-x-2">
-                      <Sliders className="w-5 h-5 text-emerald-600" />
-                      <span>Параметры юридического аудита (5 ключевых разделов цессии)</span>
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Выберите честный статус рынка для каждого раздела и отредактируйте пояснительную записку куратора.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleApplyStandardVerdict}
-                    className="px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs self-start sm:self-auto"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Применить стандартный вердикт (5 разделов)</span>
-                  </button>
-                </div>
+              {/* 2. Legal Audit Axes Section (Dual-Track Cession & Secondary) */}
+              <LegalAuditAxesSection
+                lot={lot}
+                axes={axes}
+                curatorName={curatorName}
+                onAxisStatusChange={handleAxisStatusChange}
+                onAxisNotesChange={handleAxisNotesChange}
+                onSaveAxis={handleSaveAxis}
+                onApplyStandardVerdict={handleApplyStandardVerdict}
+                onUpdateSecondaryChecklist={handleUpdateSecondaryChecklist}
+              />
 
-                <div className="grid grid-cols-1 gap-4">
-                  {axes.map((axis) => {
-                    return (
-                      <div
-                        key={axis.id}
-                        className="bg-white rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs border border-slate-200 hover:border-slate-300 transition-all"
-                      >
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                          <div className="space-y-1">
-                            <h4 className="text-sm font-black text-slate-900">
-                              {axis.title}
-                            </h4>
-                            {axis.portalUrl && (
-                              <a
-                                href={axis.portalUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-emerald-700 transition-colors"
-                              >
-                                <span>Официальный государственный реестр проверки</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
+              {/* 3. Checkpoints Matrix */}
+              <LegalCheckpointsMatrix
+                checkpoints={checkpoints}
+                weightedIndex={weightedIndex}
+                onOpenInspector={handleOpenInspector}
+                onManualVerifyCheckpoint={handleManualVerifyCheckpoint}
+                onManualVerifyAll={handleManualVerifyAll}
+                onDownloadProtocol={handleDownloadProtocol}
+              />
 
-                          {/* Honest Status Selector */}
-                          <div className="flex items-center space-x-2 shrink-0">
-                            <span className="text-xs text-slate-500 font-bold hidden sm:inline">Статус раздела:</span>
-                            <select
-                              value={axis.status}
-                              onChange={(e) =>
-                                handleAxisStatusChange(axis.id, e.target.value as LegalAuditAxisStatus)
-                              }
-                              className={`px-3.5 py-2 rounded-xl border font-bold text-xs cursor-pointer focus:outline-none transition-colors shadow-2xs ${
-                                axis.status === 'verified_safe'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                  : axis.status === 'required_at_deal'
-                                  ? 'bg-sky-50 text-sky-800 border-sky-300'
-                                  : 'bg-slate-100 text-slate-800 border-slate-300'
-                              }`}
-                            >
-                              <option value="verified_safe">✓ Проверено — рисков нет</option>
-                              <option value="required_at_deal">⏳ Потребуется на сделке</option>
-                              <option value="condition_found">ℹ Выявлено условие</option>
-                            </select>
-                          </div>
-                        </div>
+              {/* 4. Legal Memo Generator */}
+              <LegalMemoGenerator lot={lot} />
 
-                        {/* Editable Custom Notes for this Axis */}
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-700">
-                            Заключение и комментарий куратора по данному разделу:
-                          </label>
-                          <textarea
-                            rows={2}
-                            value={axis.notes}
-                            onChange={(e) => handleAxisNotesChange(axis.id, e.target.value)}
-                            placeholder="Укажите конкретные результаты проверки по данному разделу..."
-                            className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 bg-slate-50/50"
-                          />
-                        </div>
+              {/* 5. Operations Log */}
+              <LegalOperationsLog lot={lot} />
 
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs text-slate-500">
-                          <span className="font-mono text-[11px]">
-                            {axis.checkedBy ? `Проверил: ${axis.checkedBy}` : `Куратор: ${curatorName}`}
-                            {axis.checkedAt ? ` • ${new Date(axis.checkedAt).toLocaleDateString('ru-RU')}` : ''}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveAxis(axis.id)}
-                            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs self-end sm:self-auto"
-                          >
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Зафиксировать вердикт</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 3. Legal Memo Generator for Bona Fide Purchaser Protection */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="space-y-0.5">
-                    <h3 className="text-base font-bold text-slate-900">
-                      Генератор правового обоснования цены добросовестного приобретателя
-                    </h3>
-                    <span className="text-xs text-emerald-700">
-                      Защита сделки по ст. 302 ГК РФ и ст. 61.2 ФЗ-127 от оспаривания цены
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyMemo}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>{memoCopied ? 'Скопировано в буфер!' : 'Скопировать в договор цессии'}</span>
-                  </button>
-                </div>
-
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 leading-relaxed whitespace-pre-line">
-                  {getMemoText()}
-                </div>
-
-                <label className="flex items-center space-x-2 text-xs text-slate-600 cursor-pointer pt-1">
-                  <input
-                    type="checkbox"
-                    checked={includePlenum63}
-                    onChange={(e) => setIncludePlenum63(e.target.checked)}
-                    className="w-4 h-4 rounded text-emerald-600 accent-emerald-600"
-                  />
-                  <span>Включить ссылку на Постановление Пленума ВАС РФ № 63</span>
-                </label>
-              </div>
-
-              {/* 4. Operations Log */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center space-x-2">
-                    <History className="w-5 h-5 text-indigo-600" />
-                    <h3 className="text-base font-bold text-slate-900">
-                      Журнал операций куратора (Аудиторский след решений по лоту #{lot.lotCode})
-                    </h3>
-                  </div>
-                  <span className="text-xs text-slate-400 font-mono">
-                    {lot.curatorOperationsLog?.length || 0} записей
-                  </span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-700">
-                    <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3">Точное время (Timestamp)</th>
-                        <th className="py-2.5 px-3">Ответственный юрист / сотрудник</th>
-                        <th className="py-2.5 px-3">Действие / Решение</th>
-                        <th className="py-2.5 px-3">Подробности / Примечания</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {lot.curatorOperationsLog && lot.curatorOperationsLog.length > 0 ? (
-                        lot.curatorOperationsLog.map((log, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50">
-                            <td className="py-2.5 px-3 text-slate-500 font-medium whitespace-nowrap">
-                              {new Date(log.timestamp).toLocaleString('ru-RU')}
-                            </td>
-                            <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
-                              {log.curatorName}
-                            </td>
-                            <td className="py-2.5 px-3 font-sans font-semibold text-indigo-700">
-                              {log.action}
-                            </td>
-                            <td className="py-2.5 px-3 font-sans text-slate-600">{log.notes}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={4} className="py-4 text-center text-slate-400 font-sans">
-                            Пока нет зафиксированных операций по данному лоту.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* 5. Decision Bar with Hard Gating */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-sm">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs">
-                    ЮР
-                  </div>
-                  <div>
-                    <span className="font-bold text-xs text-slate-900 block">{curatorName}</span>
-                    <span className="text-[11px] text-slate-500 block">
-                      Правовой аудит DomExit • 5 разделов цессии
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                  {enableBankPortal && (
-                    <button
-                      type="button"
-                      onClick={() => setIsSpecialBankModalOpen(true)}
-                      className="px-3.5 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
-                    >
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>Запрос спец-одобрения в банк</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleApplyStandardVerdict}
-                    className="px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Применить вердикт (5 разделов)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsRequestDocsModalOpen(true)}
-                    className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold text-xs border border-slate-200 transition-colors cursor-pointer"
-                  >
-                    Запросить доп. документы
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsRejectModalOpen(true)}
-                    className="px-4 py-2.5 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    ✕ Отклонить (Высокий риск)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleApproveLegal}
-                    title="Утвердить юридический паспорт объекта"
-                    className="px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center space-x-2 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    <Check className="w-4 h-4 stroke-[3]" />
-                    <span>Утвердить: Выдать штамп «Документы проверены»</span>
-                  </button>
-                </div>
-              </div>
+              {/* 6. Decision Bar */}
+              <LegalDecisionBar
+                curatorName={curatorName}
+                enableBankPortal={enableBankPortal}
+                onOpenBankModal={() => setIsSpecialBankModalOpen(true)}
+                onOpenRequestDocsModal={() => setIsRequestDocsModalOpen(true)}
+                onOpenRejectModal={() => setIsRejectModalOpen(true)}
+                onApproveLegal={handleApproveLegal}
+              />
             </>
           )}
         </div>
       </div>
 
-      {/* CHECKPOINT INSPECTOR MODAL */}
-      {inspectingCheckpoint && lot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 my-8 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
-              <div>
-                <span className="px-2.5 py-0.5 rounded-md bg-slate-900 text-white font-mono text-xs font-bold">
-                  Вес в формуле: {inspectingCheckpoint.weightPercent}%
-                </span>
-                <h3 className="text-lg font-black text-slate-900 mt-1">
-                  Инспекция контрольной зоны: {inspectingCheckpoint.shortLabel}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Лот #{lot.lotCode} ({lot.complexName}) • Дольщик: {sellerFullName}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setInspectingCheckpoint(null)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Quick Registry Link & Data Copy Box */}
-            <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase text-indigo-950 tracking-wider">
-                  Быстрый переход к официальной базе РФ
-                </span>
-                <a
-                  href={inspectingCheckpoint.portalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-xs"
-                >
-                  <span>Открыть реестр</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleCopySellerData('inn')}
-                  className="p-2.5 rounded-xl bg-white hover:bg-indigo-100 text-slate-800 text-xs font-mono font-bold border border-indigo-200 flex items-center justify-between transition-colors cursor-pointer"
-                >
-                  <span>ИНН: {sellerInn}</span>
-                  <Copy className="w-3.5 h-3.5 text-indigo-600" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCopySellerData('name')}
-                  className="p-2.5 rounded-xl bg-white hover:bg-indigo-100 text-slate-800 text-xs font-bold border border-indigo-200 flex items-center justify-between transition-colors cursor-pointer truncate"
-                >
-                  <span className="truncate">{sellerFullName}</span>
-                  <Copy className="w-3.5 h-3.5 text-indigo-600 shrink-0 ml-1" />
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveInspectorVerdict} className="space-y-5">
-              {/* Score & Status Selectors */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Оценка надежности (от 1 до 10 баллов):
-                  </label>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={editScore}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setEditScore(val);
-                        if (val >= 8) setEditStatus('clean');
-                        else if (val >= 5) setEditStatus('attention');
-                        else setEditStatus('critical');
-                      }}
-                      className="flex-1 accent-emerald-600 cursor-pointer"
-                    />
-                    <span className="text-base font-black font-mono w-12 text-center py-1 bg-slate-100 rounded-lg border border-slate-200">
-                      {editScore}/10
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Статус правового заключения:
-                  </label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as any)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="clean">ЧИСТО (Рисков не выявлено, 8-10 баллов)</option>
-                    <option value="attention">ВНИМАНИЕ (Требует контроля, 5-7 баллов)</option>
-                    <option value="critical">КРИТИЧЕСКИЙ РИСК (Блокировка сделки, 1-4 балла)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Proof Document Upload */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-800">
-                  Подтверждающий официальный скан / выписка из реестра (PDF/JPG) *
-                </label>
-                <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="flex items-center space-x-2.5 truncate">
-                    <FileCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span className="text-xs font-bold text-slate-800 truncate">
-                      {editProofName || 'Файл подтверждения пока не прикреплен'}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={isUploadingProof}
-                    onClick={handleUploadProofFile}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0"
-                  >
-                    <UploadCloud className="w-4 h-4" />
-                    <span>{isUploadingProof ? 'Загрузка...' : 'Выбрать файл'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Curator Notes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                  Заключение и замечания юриста-куратора:
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Укажите реквизиты выписки, отсутствие запретов или выявленные замечания..."
-                  className="w-full p-3 rounded-xl border border-slate-300 text-xs leading-relaxed focus:outline-none focus:border-emerald-500 bg-white"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (inspectingCheckpoint) {
-                      handleManualVerifyCheckpoint(inspectingCheckpoint.id);
-                      setInspectingCheckpoint(null);
-                    }
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold text-xs flex items-center space-x-1.5 cursor-pointer shadow-2xs"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Проверка ручная (10/10 Чисто)</span>
-                </button>
-
-                <div className="flex items-center space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setInspectingCheckpoint(null)}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center space-x-1.5"
-                  >
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    <span>Сохранить вердикт инспекции</span>
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Request Additional Docs */}
-      {isRequestDocsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">
-                Запросить недостающие документы у продавца
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsRequestDocsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleRequestDocsSubmit} className="space-y-4">
-              <p className="text-xs text-slate-600">
-                Выберите документы, которые продавец должен прикрепить в своем личном кабинете:
-              </p>
-
-              <div className="space-y-2 text-xs">
-                {[
-                  'Справка об отсутствии задолженности от застройщика',
-                  'Справка из СФР об остатке материнского капитала',
-                  'Нотариальное согласие супруга(и) на сделку',
-                  'Справка из банка об открытии эскроу-счета',
-                  'Копия паспорта с отметкой о регистрации',
-                ].map((docName) => (
-                  <label key={docName} className="flex items-center space-x-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedDocsList.includes(docName)}
-                      onChange={() => toggleDocItem(docName)}
-                      className="w-4 h-4 rounded text-emerald-600 accent-emerald-600"
-                    />
-                    <span className="text-slate-800">{docName}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Примечание / Комментарий для продавца:
-                </label>
-                <textarea
-                  rows={2}
-                  value={docsNotes}
-                  onChange={(e) => setDocsNotes(e.target.value)}
-                  placeholder="Поясните причину запроса документов..."
-                  className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRequestDocsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-                >
-                  Отправить запрос продавцу
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Reject Legal */}
-      {isRejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2 text-rose-600">
-                <AlertCircle className="w-5 h-5" />
-                <h3 className="text-base font-bold text-slate-900">
-                  Отклонение объекта по правовым рискам
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRejectModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleRejectLegal} className="space-y-4">
-              <p className="text-xs text-slate-600">
-                Укажите причину отказа. Объект получит статус «Отклонено» и не будет допущен к витрине каталога и подбору покупателей:
-              </p>
-
-              <textarea
-                rows={3}
-                required
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Например: Обнаружены активные исполнительные производства или риски банкротства..."
-                className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-rose-500"
-              />
-
-              <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRejectModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-                >
-                  Подтвердить отклонение
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Special Bank Approval */}
-      {enableBankPortal && isSpecialBankModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2 text-indigo-600">
-                <Building2 className="w-5 h-5" />
-                <h3 className="text-base font-bold text-slate-900">
-                  Запрос специального одобрения в банк-партнёр
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSpecialBankModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSpecialBankApprovalSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Выберите банк для отправки спец-запроса:
-                </label>
-                <select
-                  value={selectedBank}
-                  onChange={(e) => setSelectedBank(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-white"
-                >
-                  <option value="Сбербанк">Сбербанк</option>
-                  <option value="ВТБ">Банк ВТБ</option>
-                  <option value="Альфа-Банк">Альфа-Банк</option>
-                  <option value="ДОМ.РФ">Банк ДОМ.РФ</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Обоснование нетиповой аккредитации:
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={bankSpecialReason}
-                  onChange={(e) => setBankSpecialReason(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsSpecialBankModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-                >
-                  Направить в кредитный комитет
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Modals Container */}
+      <LegalAuditModalsContainer
+        inspectingCheckpoint={inspectingCheckpoint}
+        lot={lot}
+        editScore={editScore}
+        setEditScore={setEditScore}
+        editStatus={editStatus}
+        setEditStatus={setEditStatus}
+        editNotes={editNotes}
+        setEditNotes={setEditNotes}
+        editProofName={editProofName}
+        isUploadingProof={isUploadingProof}
+        onUploadProofFile={handleUploadProofFile}
+        onCloseInspector={() => setInspectingCheckpoint(null)}
+        onSaveInspectorVerdict={handleSaveInspectorVerdict}
+        isRequestDocsModalOpen={isRequestDocsModalOpen}
+        onCloseRequestDocs={() => setIsRequestDocsModalOpen(false)}
+        selectedDocsList={selectedDocsList}
+        setSelectedDocsList={setSelectedDocsList}
+        docsNotes={docsNotes}
+        setDocsNotes={setDocsNotes}
+        onSubmitRequestDocs={handleRequestDocsSubmit}
+        isRejectModalOpen={isRejectModalOpen}
+        onCloseReject={() => setIsRejectModalOpen(false)}
+        rejectionReason={rejectionReason}
+        setRejectionReason={setRejectionReason}
+        onSubmitReject={handleRejectLegal}
+        enableBankPortal={enableBankPortal}
+        isSpecialBankModalOpen={isSpecialBankModalOpen}
+        onCloseBankModal={() => setIsSpecialBankModalOpen(false)}
+        selectedBank={selectedBank}
+        setSelectedBank={setSelectedBank}
+        bankSpecialReason={bankSpecialReason}
+        setBankSpecialReason={setBankSpecialReason}
+        onSubmitBankModal={handleSpecialBankApprovalSubmit}
+      />
 
       {/* Cloud S3 Document Vault Modal */}
       {lot && (

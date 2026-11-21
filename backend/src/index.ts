@@ -8,6 +8,8 @@ import { handleData } from './routes/data.js';
 import { handleStorage } from './routes/storage.js';
 import { handleAdmin } from './routes/admin.js';
 import { handleTelegram } from './routes/telegram.js';
+import { handleTools } from './routes/tools.js';
+import { handlePep } from './routes/pep.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -67,7 +69,17 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
       const subPath = path.substring('/api'.length);
       response = await handleTelegram(event, subPath);
     }
-    // 7. Data Gateway (/api/data/*)
+    // 7. Tools & Registry Lookups (/api/tools/*)
+    else if (path.startsWith('/api/tools')) {
+      const subPath = path.substring('/api/tools'.length) || '/';
+      response = await handleTools(event, subPath);
+    }
+    // 8. PEP Digital Signatures 63-FZ (/api/pep/*)
+    else if (path.startsWith('/api/pep')) {
+      const subPath = path.substring('/api/pep'.length) || '/';
+      response = await handlePep(event, subPath);
+    }
+    // 9. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {
       const subPath = path.substring('/api'.length);
       response = await handleData(event, subPath);

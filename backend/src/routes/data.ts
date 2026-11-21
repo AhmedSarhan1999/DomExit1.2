@@ -29,6 +29,7 @@ const CLIENT_ISOLATED_COLLECTIONS = new Set([
   'documents_vault',
   'curator_messages',
   'user_consents',
+  'pep_signatures',
 ]);
 
 const STAFF_COLLECTIONS = new Set([
@@ -441,6 +442,12 @@ export async function handleData(
 
   // --- POST Create or PUT Update ---
   if (method === 'POST' || method === 'PUT') {
+    if (collection === 'pep_signatures') {
+      return json(event, 403, {
+        error: 'Прямая модификация pep_signatures запрещена. Используйте /api/pep/verify-and-sign',
+      });
+    }
+
     const body = parseBody<Record<string, any>>(event);
     if (!body) {
       return json(event, 400, { error: 'Тело запроса отсутствует или не в формате JSON' });
@@ -856,6 +863,12 @@ export async function handleData(
 
   // --- DELETE Document ---
   if (method === 'DELETE') {
+    if (collection === 'pep_signatures') {
+      return json(event, 403, {
+        error: 'Удаление записей электронных подписей ПЭП строго запрещено (63-ФЗ)',
+      });
+    }
+
     if (!id) return json(event, 400, { error: 'Не указан ID для удаления' });
     if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
 

@@ -182,6 +182,9 @@ const REQUIRED_TABLES = [
   'telegram_message_map',
   // Phase 5A Distributed Quota Table (Server internal)
   'rate_limits',
+  // Phase 5B PEP 63-FZ Electronic Signatures & OTP
+  'pep_signatures',
+  'pep_otps',
 ];
 
 async function run() {

@@ -12,6 +12,7 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 import { DealTrack, Lot } from '../types';
 import { showDownloadToast } from '../utils/downloadManager';
+import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
 import {
   Building2,
   ShieldCheck,
@@ -654,6 +655,13 @@ export const AdminClosingPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Safe Bank Settlement Assistant & Calculator */}
+              <BankSettlementAssistant
+                dealPriceRub={lot?.dduContractPrice || deal?.sellerReturnRub || 10000000}
+                dealTrack={lot?.dealTrack || deal?.dealTrack}
+                className="my-6"
+              />
 
               {/* 3-Party Live Settlement Flow Diagram */}
               <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">

@@ -16,11 +16,13 @@ import {
 interface TelegramConnectCardProps {
   className?: string;
   compact?: boolean;
+  onLinkComplete?: () => void;
 }
 
 export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
   className = '',
   compact = false,
+  onLinkComplete,
 }) => {
   const { user, isAuthenticated, openAuthModal } = useAuth();
 
@@ -49,6 +51,9 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
       setConfigured(res.configured);
       setBotUsername(res.botUsername);
       setLinked(res.linked);
+      if (res.linked && onLinkComplete) {
+        onLinkComplete();
+      }
       setTelegramUsername(res.telegramUsername);
       setNotificationsEnabled(res.notificationsEnabled !== false);
     } catch (err: any) {

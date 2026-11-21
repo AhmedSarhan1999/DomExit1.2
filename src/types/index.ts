@@ -2,6 +2,53 @@ export type Language = 'ru' | 'en';
 
 export type RussianCityCode = 'spb' | 'msk' | 'sochi' | 'kazan' | 'ekb' | 'nsk' | 'nn';
 
+export type PropertyDealTrack = 'ddu_cession' | 'secondary_dkp';
+export type DealTrackMode = PropertyDealTrack;
+export type DealTrackType = PropertyDealTrack;
+
+export interface SecondaryRiskChecklist {
+  bankruptcyChecked?: boolean;
+  pndNdCertificates?: boolean;
+  matkapitalChecked?: boolean;
+  forma9Checked?: boolean;
+  fullPriceInDkpConfirmed?: boolean;
+  notaryRequired?: boolean;
+  egrnExtractVerified?: boolean;
+  registeredPersonsCleared?: boolean;
+  utilityDebtsCleared?: boolean;
+  legalCapacityConfirmed?: boolean;
+  bankSettlementMethodSelected?: boolean;
+  notes?: string;
+}
+
+export interface LegalRadarCheckItem {
+  registry: string;
+  registryId?: string;
+  status: 'clear' | 'warning' | 'risk' | 'clean' | 'attention' | 'critical' | 'unchecked';
+  checkedAt: string;
+  checkedBy: string;
+  note?: string;
+}
+
+export interface PepSignatureRecord {
+  id: string;
+  documentType: 'nda_viewing_act' | 'seller_exclusive_consent' | 'buyer_reservation_terms';
+  documentVersion: string;
+  lotCode: string;
+  userId: string;
+  userRole: string;
+  userEmail: string;
+  telegramChatId?: string;
+  telegramUsername?: string;
+  documentTitle: string;
+  documentTextHashSha256: string;
+  signedAt: string;
+  ipHash: string;
+  userAgentShort?: string;
+  verificationMethod: 'telegram_otp_63fz';
+  status: 'signed';
+}
+
 export interface MetroStationInfo {
   name: string;
   lineColor?: string;
@@ -64,6 +111,10 @@ export interface Lot {
   isFeatured: boolean;
   isPublished?: boolean;
   isVipExclusive?: boolean;
+  dealTrack?: PropertyDealTrack;
+  cadastralNumber?: string;
+  secondaryRiskChecklist?: SecondaryRiskChecklist;
+  legalRadarChecks?: LegalRadarCheckItem[];
   vipEarlyAccessUntil?: string;
   transactionType?: 'installment_cession' | 'mortgage_cession' | 'direct_sale_140fz';
   isEarlyAccessVIP?: boolean; // 48-hour VIP Investor early access window
@@ -262,6 +313,9 @@ export interface SellerExitRequest {
   remainingDebtRub: number;
   todayDeveloperPrice?: number;
   exitRoute: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
+  dealTrack?: PropertyDealTrack;
+  cadastralNumber?: string;
+  secondaryRiskChecklist?: SecondaryRiskChecklist;
   isNegotiable?: boolean;
   is_negotiable?: boolean;
   sellerBanks?: string[];
@@ -398,6 +452,7 @@ export interface DealTrack {
   partnerRewardRub?: number;
   partnerPayoutStatus?: 'pending' | 'paid';
   route: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
+  dealTrack?: PropertyDealTrack;
   stage: 'initial_audit' | 'document_check' | 'packaging' | 'buyer_matching' | 'closing_escrow' | 'completed';
   daysLeft: number;
   sellerReturnRub: number;

@@ -225,4 +225,85 @@ export const apiClient = {
         method: 'POST',
       }),
   },
+
+  // Free Russian Legal Toolkit
+  tools: {
+    lookupInn: (inn: string) =>
+      request<{
+        success: boolean;
+        inn: string;
+        type: 'individual_or_entrepreneur' | 'legal_entity';
+        valid: boolean;
+        source: 'local_database' | 'dadata_free' | 'algorithm_checksum';
+        entity?: {
+          name: string;
+          ogrn?: string;
+          status?: string;
+          address?: string;
+          management?: string;
+        };
+        message?: string;
+      }>(`/api/tools/inn-lookup?inn=${encodeURIComponent(inn)}`, { method: 'GET' }),
+  },
+
+  // PEP Electronic Signatures (63-FZ) via Telegram OTP
+  pep: {
+    getPreview: (documentType: string, lotCode: string) =>
+      request<{
+        success: boolean;
+        documentType: string;
+        title: string;
+        lotCode: string;
+        version: string;
+        text: string;
+        sha256Hex: string;
+        alreadySigned: boolean;
+        existingSignature?: any;
+      }>(`/api/pep/preview?documentType=${encodeURIComponent(documentType)}&lotCode=${encodeURIComponent(lotCode)}`, {
+        method: 'GET',
+      }),
+
+    requestOtp: (documentType: string, lotCode: string) =>
+      request<{
+        success: boolean;
+        expiresInSec: number;
+        telegramChatIdMasked: string;
+        documentType: string;
+        lotCode: string;
+        docHashSha256: string;
+      }>('/api/pep/request-otp', {
+        method: 'POST',
+        body: JSON.stringify({ documentType, lotCode }),
+      }),
+
+    verifyAndSign: (documentType: string, lotCode: string, otpCode: string) =>
+      request<{
+        success: boolean;
+        signature: any;
+        certificate: {
+          signedAt: string;
+          documentType: string;
+          title: string;
+          docHashSha256: string;
+          signatory: {
+            name: string;
+            email: string;
+            phone: string;
+          };
+          legalNote: string;
+        };
+      }>('/api/pep/verify-and-sign', {
+        method: 'POST',
+        body: JSON.stringify({ documentType, lotCode, otpCode }),
+      }),
+
+    getMySignatures: (lotCode?: string) => {
+      const qs = lotCode ? `?lotCode=${encodeURIComponent(lotCode)}` : '';
+      return request<{
+        success: boolean;
+        total: number;
+        signatures: any[];
+      }>(`/api/pep/my-signatures${qs}`, { method: 'GET' });
+    },
+  },
 };

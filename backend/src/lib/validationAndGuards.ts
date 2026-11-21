@@ -82,7 +82,7 @@ export function sanitizeText(str: string, maxLen = 2000): string {
 /**
  * Mathematical validation of Russian INN (10 or 12 digits).
  */
-export function validateRussianInn(inn: string | number): { valid: boolean; message?: string } {
+export function validateRussianInn(inn: string | number): { valid: boolean; type?: 'legal_entity' | 'individual_or_entrepreneur'; message?: string } {
   const clean = String(inn || '').trim();
   if (!/^\d{10}$|^\d{12}$/.test(clean)) {
     return { valid: false, message: 'ИНН должен состоять ровно из 10 (юрлицо) или 12 (физлицо/ИП) цифр' };
@@ -98,23 +98,23 @@ export function validateRussianInn(inn: string | number): { valid: boolean; mess
     if (checkDigit !== digits[9]) {
       return { valid: false, message: 'Неверная контрольная сумма 10-значного ИНН' };
     }
-    return { valid: true };
+    return { valid: true, type: 'legal_entity' };
   }
 
   // 12-digit individual / entrepreneur
   if (digits.length === 12) {
-    const weights11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8, 0];
+    const weights11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
     const sum11 = weights11.reduce((acc, w, i) => acc + w * digits[i], 0);
     const check11 = (sum11 % 11) % 10;
 
-    const weights12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8, 0];
+    const weights12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
     const sum12 = weights12.reduce((acc, w, i) => acc + w * digits[i], 0);
     const check12 = (sum12 % 11) % 10;
 
     if (check11 !== digits[10] || check12 !== digits[11]) {
       return { valid: false, message: 'Неверная контрольная сумма 12-значного ИНН' };
     }
-    return { valid: true };
+    return { valid: true, type: 'individual_or_entrepreneur' };
   }
 
   return { valid: false, message: 'Некорректная длина ИНН' };
@@ -297,10 +297,25 @@ export async function validateCollectionPayload(params: {
 
   // 4. Per-Collection Validation Rules
   if (collection === 'lots') {
+    if (sanitized.dealTrack) {
+      if (sanitized.dealTrack !== 'ddu_cession' && sanitized.dealTrack !== 'secondary_dkp') {
+        sanitized.dealTrack = 'ddu_cession';
+      }
+    } else {
+      sanitized.dealTrack = 'ddu_cession';
+    }
+
+    const isSecondary = sanitized.dealTrack === 'secondary_dkp';
     const contractPrice = Number(sanitized.dduContractPrice ?? sanitized.contractPriceRub ?? sanitized.price);
     if (!isNaN(contractPrice)) {
       if (contractPrice < 1000000 || contractPrice > 500000000) {
-        return { valid: false, statusCode: 400, error: 'Стоимость ДДУ должна быть в диапазоне от 1 000 000 до 500 000 000 ₽' };
+        return {
+          valid: false,
+          statusCode: 400,
+          error: isSecondary
+            ? 'Стоимость недвижимости (ДКП) должна быть в диапазоне от 1 000 000 до 500 000 000 ₽'
+            : 'Стоимость ДДУ должна быть в диапазоне от 1 000 000 до 500 000 000 ₽',
+        };
       }
     }
 
@@ -310,7 +325,13 @@ export async function validateCollectionPayload(params: {
         return { valid: false, statusCode: 400, error: 'Внесенная сумма должна быть больше 0 ₽' };
       }
       if (!isNaN(contractPrice) && contractPrice > 0 && paidAmount > contractPrice) {
-        return { valid: false, statusCode: 400, error: 'Внесенная продавцом сумма не может превышать стоимость договора ДДУ' };
+        return {
+          valid: false,
+          statusCode: 400,
+          error: isSecondary
+            ? 'Внесенная продавцом сумма не может превышать стоимость недвижимости по ДКП'
+            : 'Внесенная продавцом сумма не может превышать стоимость договора ДДУ',
+        };
       }
     }
 
@@ -355,13 +376,28 @@ export async function validateCollectionPayload(params: {
   }
 
   if (collection === 'seller_requests') {
+    if (sanitized.dealTrack) {
+      if (sanitized.dealTrack !== 'ddu_cession' && sanitized.dealTrack !== 'secondary_dkp') {
+        sanitized.dealTrack = 'ddu_cession';
+      }
+    } else {
+      sanitized.dealTrack = 'ddu_cession';
+    }
+
+    const isSecondary = sanitized.dealTrack === 'secondary_dkp';
     const rawContractPrice = sanitized.contractPriceRub ?? sanitized.dduContractPrice ?? sanitized.price;
     const hasContractPrice = rawContractPrice !== undefined && rawContractPrice !== null;
 
     if (!isStaff || hasContractPrice) {
       const contractPrice = Number(rawContractPrice);
       if (isNaN(contractPrice) || contractPrice < 1000000 || contractPrice > 500000000) {
-        return { valid: false, statusCode: 400, error: 'Стоимость договора ДДУ должна быть от 1 000 000 до 500 000 000 ₽' };
+        return {
+          valid: false,
+          statusCode: 400,
+          error: isSecondary
+            ? 'Стоимость объекта (ДКП) должна быть от 1 000 000 до 500 000 000 ₽'
+            : 'Стоимость договора ДДУ должна быть от 1 000 000 до 500 000 000 ₽',
+        };
       }
 
       const rawPaidAmount = sanitized.paidAmountRub ?? sanitized.cashPaidBySeller;
@@ -372,7 +408,13 @@ export async function validateCollectionPayload(params: {
           return { valid: false, statusCode: 400, error: 'Укажите фактически внесенную сумму (больше 0 ₽)' };
         }
         if (paidAmount > contractPrice) {
-          return { valid: false, statusCode: 400, error: 'Внесенная сумма не может быть больше стоимости договора' };
+          return {
+            valid: false,
+            statusCode: 400,
+            error: isSecondary
+              ? 'Внесенная сумма не может быть больше стоимости объекта по ДКП'
+              : 'Внесенная сумма не может быть больше стоимости договора',
+          };
         }
       }
     }

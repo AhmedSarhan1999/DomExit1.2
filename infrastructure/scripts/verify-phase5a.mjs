@@ -183,9 +183,10 @@ async function run() {
     console.log('\n[5/7] Testing Role Quotas & Privilege Escalation Guards...');
     try {
       // Register temporary test buyer
+      const randomIp = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
       const regRes = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': randomIp },
         body: JSON.stringify({
           email: testBuyerEmail,
           password: testPassword,

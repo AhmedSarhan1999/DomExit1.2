@@ -58,6 +58,7 @@ export interface CreatePropertyAndDealPayload {
   photos?: string[];
   sellerUploadedPhotos?: string[];
   matCapitalUsed?: boolean;
+  dealTrack?: 'ddu_cession' | 'secondary_dkp';
   referredByPartnerCode?: string;
   preliminaryReferralId?: string;
   deliveryDate?: string;
@@ -198,6 +199,7 @@ export class PropertyLifecycleService {
       installmentQuarterlyPayment: quarterlyInstallment,
       serviceCommissionRate: 2.5,
       serviceCommissionRub,
+      dealTrack: payload.dealTrack || 'ddu_cession',
       isVerified: false,
       isUrgentExit: payload.exitRoute === 'fast_cash',
       isNegotiable: payload.isNegotiable || false,
@@ -284,6 +286,7 @@ export class PropertyLifecycleService {
       paidAmountRub: payload.paidAmountRub,
       remainingDebtRub,
       exitRoute: payload.exitRoute,
+      dealTrack: payload.dealTrack || 'ddu_cession',
       isNegotiable: payload.isNegotiable || false,
       sellerBanks: payload.sellerBanks,
       documentIds: payload.documentIds || [],
@@ -308,6 +311,7 @@ export class PropertyLifecycleService {
       partnerRewardRub: payload.referredByPartnerCode ? 35000 : undefined,
       partnerPayoutStatus: payload.referredByPartnerCode ? 'pending' : undefined,
       route: payload.exitRoute,
+      dealTrack: payload.dealTrack || 'ddu_cession',
       stage: 'initial_audit',
       daysLeft: 14,
       sellerReturnRub: payload.paidAmountRub,

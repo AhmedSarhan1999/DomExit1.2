@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { AuthSessionPayload, UserProfile, YcHttpEvent } from '../types.js';
-import { parseCookies } from './http.js';
+import { normalizeHeaders, parseCookies } from './http.js';
 import { getConfig } from './config.js';
 import { getYdbClient } from './ydbClient.js';
 
@@ -139,7 +139,14 @@ export function resetFailedLogin(key: string): void {
 
 export async function getAuthenticatedUser(event: YcHttpEvent): Promise<UserProfile | null> {
   const cookies = parseCookies(event);
-  const token = cookies['domexit_session'];
+  let token = cookies['domexit_session'];
+  if (!token) {
+    const norm = normalizeHeaders(event.headers, event.multiValueHeaders);
+    const authHdr = norm['authorization'] || '';
+    if (authHdr.toLowerCase().startsWith('bearer ')) {
+      token = authHdr.slice(7).trim();
+    }
+  }
   if (!token) return null;
 
   const cfg = getConfig();

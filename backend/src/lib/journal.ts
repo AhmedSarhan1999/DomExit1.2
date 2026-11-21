@@ -13,6 +13,7 @@ export const JOURNALED_COLLECTIONS = new Set([
   'investor_applications',
   'user_consents',
   'documents_vault',
+  'pep_signatures',
 ]);
 
 export function isJournaledCollection(collection: string): boolean {

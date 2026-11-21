@@ -19,6 +19,8 @@ import { YandexLotMap } from '../components/maps/YandexLotMap';
 import { PublicLegalReportModal } from '../components/lot/PublicLegalReportModal';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { LotDetailsSkeleton } from '../components/common/Skeletons';
+import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
+import { PepSignatureModal } from '../components/legal/PepSignatureModal';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -68,9 +70,11 @@ export const LotDetailsPage: React.FC = () => {
   const [accordionDevOpen, setAccordionDevOpen] = useState(false);
   const [accordionLawOpen, setAccordionLawOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [isNdaModalOpen, setIsNdaModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isCuratorChatOpen, setIsCuratorChatOpen] = useState(false);
   const [bookingSuccessToast, setBookingSuccessToast] = useState(false);
+  const [ndaSignedToast, setNdaSignedToast] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
   const [isDevAccredited, setIsDevAccredited] = useState<boolean>(true);
 
@@ -656,6 +660,13 @@ export const LotDetailsPage: React.FC = () => {
               lot={lot}
             />
 
+            {/* Phase 5B Requirement: Safe Bank Settlement Assistant & Calculator */}
+            <BankSettlementAssistant
+              dealPriceRub={lot.dduContractPrice || 10000000}
+              dealTrack={lot.dealTrack}
+              className="my-2"
+            />
+
             {/* Phase 4 Requirement: Rental & Income Potential of Location */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1045,14 +1056,31 @@ export const LotDetailsPage: React.FC = () => {
               {/* Actions based on lot status */}
               <div className="space-y-3 pt-2">
                 {lotStatus === 'available' && (
-                  <button
-                    type="button"
-                    onClick={handleOpenBooking}
-                    className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                  >
-                    <span>Подать заявку на покупку (Кэш / Ипотека)</span>
-                    <ArrowRight className="w-4 h-4 stroke-[3]" />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleOpenBooking}
+                      className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                    >
+                      <span>Подать заявку на покупку (Кэш / Ипотека)</span>
+                      <ArrowRight className="w-4 h-4 stroke-[3]" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!user) {
+                          openAuthModal('Авторизуйтесь для подписания NDA и запроса просмотра объекта');
+                          return;
+                        }
+                        setIsNdaModalOpen(true);
+                      }}
+                      className="w-full py-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold text-xs border border-indigo-200 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      <span>Подписать NDA и запросить просмотр (ПЭП 63-ФЗ)</span>
+                    </button>
+                  </>
                 )}
 
                 {lotStatus === 'processing' && (
@@ -1343,6 +1371,39 @@ export const LotDetailsPage: React.FC = () => {
         </div>
       )}
 
+      {/* PEP Electronic Signature NDA Modal */}
+      <PepSignatureModal
+        isOpen={isNdaModalOpen}
+        onClose={() => setIsNdaModalOpen(false)}
+        documentType="nda_viewing_act"
+        lotCode={lot.lotCode}
+        onSigned={() => {
+          setIsNdaModalOpen(false);
+          setNdaSignedToast(true);
+        }}
+      />
+
+      {/* NDA Signed Success Notification Toast */}
+      {ndaSignedToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white text-slate-900 border-2 border-indigo-500 rounded-2xl p-5 shadow-2xl space-y-2 max-w-sm animate-fade-in">
+          <div className="flex items-center space-x-2 text-indigo-700 font-bold text-xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>NDA успешно подписан (ПЭП 63-ФЗ)!</span>
+          </div>
+          <p className="text-xs text-slate-600">
+            Соглашение о конфиденциальности зафиксировано в неизменяемом реестре. Куратор свяжется с вами для согласования времени просмотра.
+          </p>
+          <div className="flex justify-end pt-1">
+            <button
+              type="button"
+              onClick={() => setNdaSignedToast(false)}
+              className="text-[11px] text-slate-500 font-bold hover:underline"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
