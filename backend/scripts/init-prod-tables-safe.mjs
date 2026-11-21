@@ -185,6 +185,8 @@ const REQUIRED_TABLES = [
   // Phase 5B PEP 63-FZ Electronic Signatures & OTP
   'pep_signatures',
   'pep_otps',
+  // Phase 6A Buy-Box Matching Engine & Hybrid Queue
+  'buy_boxes',
 ];
 
 async function run() {

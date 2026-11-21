@@ -30,6 +30,7 @@ const CLIENT_ISOLATED_COLLECTIONS = new Set([
   'curator_messages',
   'user_consents',
   'pep_signatures',
+  'buy_boxes',
 ]);
 
 const STAFF_COLLECTIONS = new Set([
@@ -52,7 +53,7 @@ const OWNER_ONLY_COLLECTIONS = new Set([
   'users',
 ]);
 
-function sanitizeLotForPublic(lot: Record<string, any>, authUser: UserProfile | null): Record<string, any> {
+export function sanitizeLotForPublic(lot: Record<string, any>, authUser: UserProfile | null): Record<string, any> {
   const isOwner = authUser?.role === 'owner';
   const isAssignedStaff =
     authUser?.role === 'employee' &&

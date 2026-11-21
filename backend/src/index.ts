@@ -10,6 +10,7 @@ import { handleAdmin } from './routes/admin.js';
 import { handleTelegram } from './routes/telegram.js';
 import { handleTools } from './routes/tools.js';
 import { handlePep } from './routes/pep.js';
+import { handleMatching } from './routes/matching.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -79,7 +80,12 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
       const subPath = path.substring('/api/pep'.length) || '/';
       response = await handlePep(event, subPath);
     }
-    // 9. Data Gateway (/api/data/*)
+    // 9. Buy-Box & Matching Engine (/api/matching/*)
+    else if (path.startsWith('/api/matching')) {
+      const subPath = path.substring('/api/matching'.length) || '/';
+      response = await handleMatching(event, subPath);
+    }
+    // 10. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {
       const subPath = path.substring('/api'.length);
       response = await handleData(event, subPath);

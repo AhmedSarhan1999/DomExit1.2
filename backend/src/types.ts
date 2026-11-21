@@ -68,3 +68,101 @@ export interface AuthSessionPayload {
   iat?: number;
   exp?: number;
 }
+
+export interface LotDropConfig {
+  mode: 'staged_drop' | 'open';
+  launchedAt: string;
+  launchedBy: string;
+  goldExclusiveHours: number;
+  goldExclusiveUntil: string;
+  windowHours: number;
+  closesAt: string;
+  maxApplicationsCap: number;
+  currentValidApplications: number;
+  waveStatus: 'draft' | 'gold_wave' | 'silver_wave' | 'capped_closed' | 'expired_closed';
+  matchedGoldCount: number;
+  matchedSilverCount: number;
+  silverWaveNotifiedAt?: string;
+  reDropCount?: number;
+  staleAlertedAt?: string;
+}
+
+export type BuyBoxTier = 'gold' | 'silver' | 'bronze';
+export type BuyBoxPaymentMethod =
+  | 'cash_100'
+  | 'family_mortgage_approved'
+  | 'standard_mortgage_approved'
+  | 'alternative';
+export type BuyBoxGoal = 'living' | 'flipping' | 'rental';
+
+export interface BuyerBuyBox {
+  id: string; // format: bb:{userId}
+  userId: string;
+  active: boolean;
+  cities: string[];
+  districts: string[];
+  complexNames: string[];
+  dealTracks: ('ddu_cession' | 'secondary_dkp')[];
+  rooms: string[];
+  minAreaM2?: number;
+  maxAreaM2?: number;
+  maxBudgetRub: number;
+  minDiscountPercent: number;
+  paymentMethod: BuyBoxPaymentMethod;
+  preferredBanks: string[];
+  goal: BuyBoxGoal;
+  readinessHours: number;
+  availableLiquidityRub?: number;
+  tier: BuyBoxTier;
+  tierVerifiedAt?: string;
+  tierVerifiedBy?: string;
+  tierNote?: string;
+  reliabilityScore: number;
+  noShowCount: number;
+  completedViewingsCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type QueueStatus =
+  | 'pending_review'
+  | 'priority_1'
+  | 'reserve_2'
+  | 'reserve_3'
+  | 'waitlist'
+  | 'deposit_paid'
+  | 'expired'
+  | 'withdrawn'
+  | 'rejected';
+
+export type PriceAcceptance = 'full_price' | 'above_asking' | 'discount_requested';
+
+export interface BuyerApplication {
+  id: string;
+  lotCode: string;
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  userPhone?: string;
+  telegramUsername?: string;
+  telegramChatId?: string;
+  buyBoxId?: string;
+  status?: string;
+  closingScore?: number;
+  matchScore?: number;
+  scoreBreakdown?: Record<string, number>;
+  queuePosition?: number;
+  queueStatus?: QueueStatus;
+  priceAcceptance?: PriceAcceptance;
+  offeredPriceRub?: number;
+  readiness24h?: boolean;
+  deposit48h?: boolean;
+  viewingDeadlineAt?: string;
+  depositDeadlineAt?: string;
+  deadlineAlertedAt?: string;
+  promotedFromReserveAt?: string;
+  ndaSigned?: boolean;
+  source?: 'web' | 'telegram';
+  createdAt: string;
+  updatedAt?: string;
+}

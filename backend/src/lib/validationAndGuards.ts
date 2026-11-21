@@ -234,6 +234,15 @@ export function checkPrivilegeTampering(
         return { tampered: true, field: 'partner_approval_tampering' };
       }
     }
+
+    if (collection === 'buy_boxes') {
+      const protectedBuyBoxFields = ['tier', 'tierVerifiedAt', 'tierVerifiedBy', 'tierNote', 'reliabilityScore', 'noShowCount', 'completedViewingsCount'];
+      for (const f of protectedBuyBoxFields) {
+        if (payload[f] !== undefined && payload[f] !== null) {
+          return { tampered: true, field: f };
+        }
+      }
+    }
   }
 
   return { tampered: false };
