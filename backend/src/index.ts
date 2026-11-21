@@ -1,12 +1,15 @@
 import { YcHttpEvent, YcHttpResponse } from './types.js';
 import { json, handleOptions } from './lib/http.js';
 import { getConfig } from './lib/config.js';
+import { logger } from './lib/logger.js';
 import { handleHealth } from './routes/health.js';
 import { handleAuth } from './routes/auth.js';
 import { handleData } from './routes/data.js';
 import { handleStorage } from './routes/storage.js';
+import { handleAdmin } from './routes/admin.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
+  const startTime = Date.now();
   const cfg = getConfig();
 
   // Normalize path
@@ -24,49 +27,91 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   }
 
   const method = (event.httpMethod || 'GET').toUpperCase();
+  const requestId = event.requestContext?.requestId || event.headers?.['x-request-id'] || `req-${Date.now()}`;
 
   // Immediate CORS Preflight handling
   if (method === 'OPTIONS') {
-    return handleOptions(event, cfg.PUBLIC_BASE_URL);
+    return handleOptions(event, cfg.PUBLIC_BASE_URL, cfg.APP_ENV, cfg.PROD_CUSTOM_DOMAIN);
   }
+
+  let response: YcHttpResponse;
 
   try {
     // 1. Health Check
     if (path === '/api/health' || path === '/health') {
-      return await handleHealth(event);
+      response = await handleHealth(event);
     }
-
     // 2. Auth Routes (/api/auth/*)
-    if (path.startsWith('/api/auth')) {
+    else if (path.startsWith('/api/auth')) {
       const subPath = path.substring('/api/auth'.length) || '/';
-      return await handleAuth(event, subPath);
+      response = await handleAuth(event, subPath);
     }
-
-    // 3. Storage Routes (/api/storage/*)
-    if (path.startsWith('/api/storage')) {
+    // 3. Admin Routes (/api/admin/*)
+    else if (path.startsWith('/api/admin')) {
+      const subPath = path.substring('/api/admin'.length) || '/';
+      response = await handleAdmin(event, subPath);
+    }
+    // 4. Storage Routes (/api/storage/*)
+    else if (path.startsWith('/api/storage')) {
       const subPath = path.substring('/api/storage'.length) || '/';
-      return await handleStorage(event, subPath);
+      response = await handleStorage(event, subPath);
     }
-
-    // 4. Cascade lot delete (/api/lots/:lotCode/cascade)
-    if (/^\/api\/lots\/[^/]+\/cascade$/.test(path)) {
+    // 5. Cascade lot delete (/api/lots/:lotCode/cascade)
+    else if (/^\/api\/lots\/[^/]+\/cascade$/.test(path)) {
       const subPath = path.substring('/api'.length);
-      return await handleData(event, subPath);
+      response = await handleData(event, subPath);
     }
-
-    // 5. Data Gateway (/api/data/*)
-    if (path.startsWith('/api/data')) {
+    // 6. Data Gateway (/api/data/*)
+    else if (path.startsWith('/api/data')) {
       const subPath = path.substring('/api'.length);
-      return await handleData(event, subPath);
+      response = await handleData(event, subPath);
+    } else {
+      response = json(event, 404, {
+        error: 'Not Found',
+        path,
+        method,
+      });
     }
 
-    return json(event, 404, {
-      error: 'Not Found',
-      path,
-      method,
-    });
+    const durationMs = Date.now() - startTime;
+    if (response.statusCode >= 500) {
+      logger.error(`${method} ${path} -> ${response.statusCode}`, {
+        method,
+        path,
+        statusCode: response.statusCode,
+        durationMs,
+        requestId,
+      });
+    } else if (response.statusCode >= 400) {
+      logger.warn(`${method} ${path} -> ${response.statusCode}`, {
+        method,
+        path,
+        statusCode: response.statusCode,
+        durationMs,
+        requestId,
+      });
+    } else {
+      logger.info(`${method} ${path} -> ${response.statusCode}`, {
+        method,
+        path,
+        statusCode: response.statusCode,
+        durationMs,
+        requestId,
+      });
+    }
+
+    return response;
   } catch (err: any) {
-    console.error(`[UnhandledError] ${method} ${path}:`, err);
+    const durationMs = Date.now() - startTime;
+    logger.error(`[UnhandledError] ${method} ${path}: ${err.message}`, {
+      method,
+      path,
+      statusCode: 500,
+      durationMs,
+      requestId,
+      meta: { error: err.message, stack: err.stack },
+    });
+
     return json(event, 500, {
       error: 'Internal Server Error',
       message: cfg.APP_ENV === 'staging' ? err.message : 'Произошла непредвиденная ошибка на сервере',

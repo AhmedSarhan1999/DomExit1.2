@@ -5,6 +5,7 @@ export interface YcHttpEvent {
   queryStringParameters?: Record<string, string>;
   multiValueQueryStringParameters?: Record<string, string[]>;
   requestContext?: {
+    requestId?: string;
     identity?: {
       sourceIp?: string;
       userAgent?: string;

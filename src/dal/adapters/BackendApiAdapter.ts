@@ -1,5 +1,5 @@
 import { IDatabaseAdapter } from '../interfaces/IDatabaseAdapter';
-import { apiClient, ApiError } from '../../services/apiClient';
+import { apiClient, ApiError, PaginatedResult, PaginationParams } from '../../services/apiClient';
 
 /**
  * BackendApiAdapter — Modern Enterprise Data Access Adapter
@@ -91,6 +91,25 @@ export class BackendApiAdapter implements IDatabaseAdapter {
     } catch (err: any) {
       console.error(`[BackendApiAdapter] removeEntity error on ${collectionName}/${id}:`, err);
       return false;
+    }
+  }
+
+  async getPaginated<T extends { id: string }>(
+    collectionName: string,
+    params: PaginationParams = {}
+  ): Promise<PaginatedResult<T>> {
+    try {
+      return await apiClient.getPaginated<T>(collectionName, params);
+    } catch (err: any) {
+      console.warn(`[BackendApiAdapter] getPaginated fallback for ${collectionName}:`, err.message);
+      return {
+        items: [],
+        total: 0,
+        page: params.page || 1,
+        limit: params.limit || 24,
+        totalPages: 1,
+        hasMore: false,
+      };
     }
   }
 }

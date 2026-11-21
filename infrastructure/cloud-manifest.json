@@ -16,7 +16,10 @@
     "webStaticBucket": "domexit-web-prod",
     "apiFunctionId": "d4eouspb2d0s8dfguf1h",
     "apiGatewayId": "d5dsuuhvetioe2hp0q7i",
-    "apiGatewayUrl": "https://d5dsuuhvetioe2hp0q7i.6brbn2wz.apigw.yandexcloud.net"
+    "apiGatewayUrl": "https://d5dsuuhvetioe2hp0q7i.6brbn2wz.apigw.yandexcloud.net",
+    "backupFunctionId": "d4edb2l5n6gcpfbnl3b0",
+    "backupTriggerId": "a1sqlo5a1el40u9tmqdn",
+    "backupScheduleUtc": "0 2 * * ? *"
   },
   "staging": {
     "ydbDatabaseId": "etnkpeqnbmb1a6cocipk",

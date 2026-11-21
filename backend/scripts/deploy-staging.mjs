@@ -133,20 +133,33 @@ const envMap = {
 
 // Build environment string without printing secrets to console
 const envEntries = Object.entries(envMap)
-  .map(([k, v]) => `${k}=${v}`)
+  .filter(([_, v]) => v !== undefined && v !== null && v.trim() !== '')
+  .map(([k, v]) => `${k}=${v.trim()}`)
   .join(',');
 
-const versionOutput = execSync(
-  `yc serverless function version create --function-name domexit-api-staging --runtime nodejs22 --memory 256m --execution-timeout 30s --entrypoint index.handler --service-account-id ${saId} --source-path "${zipPath}" --environment "${envEntries}" --format json`,
-  { encoding: 'utf-8' }
-);
+let versionOutput = '';
+try {
+  versionOutput = execSync(
+    `yc serverless function version create --function-name domexit-api-staging --runtime nodejs22 --memory 256m --execution-timeout 30s --entrypoint index.handler --service-account-id ${saId} --source-path "${zipPath}" --environment "${envEntries}" --format json`,
+    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 }
+  );
+} catch (execErr) {
+  const cleanStderr = execErr.stderr
+    ? execErr.stderr.replace(/--environment\s+"[^"]+"/g, '--environment "[REDACTED]"')
+    : execErr.message;
+  console.error('[DeployStaging] Error creating version:', cleanStderr);
+  process.exit(1);
+}
 
 try {
   const versionData = JSON.parse(versionOutput);
   console.log('✓ Cloud Function version successfully deployed!');
-  console.log(`  Version ID: ${versionData.id}`);
-  console.log(`  Status:     ${versionData.status}`);
-  console.log(`  Created At: ${versionData.created_at}`);
+  console.log('  ID:         ', versionData.id);
+  console.log('  Function ID:', versionData.function_id);
+  console.log('  Status:     ', versionData.status);
+  console.log('  Runtime:    ', versionData.runtime);
+  console.log('  Created At: ', versionData.created_at);
+  if (versionData.image_size) console.log('  Image Size: ', versionData.image_size);
 } catch {
   console.log('✓ Cloud Function version successfully deployed!');
 }

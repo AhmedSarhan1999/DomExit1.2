@@ -95,9 +95,49 @@ async function request<T = any>(endpoint: string, options: RequestOptions = {}):
   }
 }
 
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  status?: string;
+  lotCode?: string;
+  city?: string;
+  search?: string;
+  sort?: 'newest' | 'price_asc' | 'price_desc' | 'discount_desc' | string;
+  fresh?: boolean;
+}
+
 export const apiClient = {
   get: <T = any>(endpoint: string, options?: RequestOptions) =>
     request<T>(endpoint, { method: 'GET', ...options }),
+
+  getPaginated: <T = any>(collection: string, params: PaginationParams = {}, options?: RequestOptions) => {
+    const query = new URLSearchParams({ paginated: '1' });
+    if (params.page) query.set('page', String(params.page));
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.status) query.set('status', params.status);
+    if (params.lotCode) query.set('lotCode', params.lotCode);
+    if (params.city) query.set('city', params.city);
+    if (params.search) query.set('search', params.search);
+    if (params.sort) query.set('sort', params.sort);
+    if (params.fresh) query.set('fresh', '1');
+
+    const cleanCol = collection.startsWith('/api/data/')
+      ? collection
+      : collection.startsWith('api/data/')
+      ? `/${collection}`
+      : `/api/data/${collection}`;
+
+    return request<PaginatedResult<T>>(`${cleanCol}?${query.toString()}`, { method: 'GET', ...options });
+  },
 
   post: <T = any>(endpoint: string, body?: any, options?: RequestOptions) =>
     request<T>(endpoint, {

@@ -5,6 +5,8 @@ import { getYdbClient } from '../lib/ydbClient.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
 import { deleteS3ObjectsByPrefix } from '../lib/s3Client.js';
+import { memoryCache, CACHEABLE_COLLECTIONS } from '../lib/memoryCache.js';
+import { recordJournalEvent } from '../lib/journal.js';
 
 const PUBLIC_COLLECTIONS = new Set([
   'lots',
@@ -68,6 +70,101 @@ function sanitizeLotForPublic(lot: Record<string, any>, authUser: UserProfile | 
   return sanitized;
 }
 
+function applyPaginationAndFilters(
+  items: any[],
+  query: Record<string, string> | undefined
+): { items: any[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean } {
+  const q = query || {};
+  const page = Math.max(1, parseInt(q['page'] || '1', 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(q['limit'] || '24', 10) || 24));
+  const status = q['status']?.trim()?.toLowerCase();
+  const lotCode = q['lotCode']?.trim()?.toLowerCase();
+  const city = (q['city'] || q['region'])?.trim()?.toLowerCase();
+  const search = q['search']?.trim()?.toLowerCase();
+  const sort = q['sort']?.trim()?.toLowerCase();
+
+  let filtered = items;
+
+  if (status) {
+    filtered = filtered.filter((item) => String(item.status || '').toLowerCase() === status);
+  }
+  if (lotCode) {
+    filtered = filtered.filter(
+      (item) =>
+        String(item.lotCode || '').toLowerCase() === lotCode ||
+        String(item.id || '').toLowerCase() === lotCode ||
+        String(item.code || '').toLowerCase() === lotCode
+    );
+  }
+  if (city) {
+    filtered = filtered.filter(
+      (item) =>
+        String(item.city || '').toLowerCase().includes(city) ||
+        String(item.region || '').toLowerCase().includes(city) ||
+        String(item.address || '').toLowerCase().includes(city)
+    );
+  }
+  if (search) {
+    filtered = filtered.filter((item) => {
+      const searchTarget = [
+        item.title,
+        item.complexName,
+        item.developerName,
+        item.city,
+        item.address,
+        item.district,
+        item.description,
+        item.lotCode,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return searchTarget.includes(search);
+    });
+  }
+
+  if (sort) {
+    filtered = [...filtered].sort((a, b) => {
+      if (sort === 'price_asc') {
+        const pa = Number(a.price ?? a.currentPrice ?? 0);
+        const pb = Number(b.price ?? b.currentPrice ?? 0);
+        return pa - pb;
+      }
+      if (sort === 'price_desc') {
+        const pa = Number(a.price ?? a.currentPrice ?? 0);
+        const pb = Number(b.price ?? b.currentPrice ?? 0);
+        return pb - pa;
+      }
+      if (sort === 'discount_desc') {
+        const da = Number(a.discount ?? a.discountPercent ?? a.discountRub ?? 0);
+        const db = Number(b.discount ?? b.discountPercent ?? b.discountRub ?? 0);
+        return db - da;
+      }
+      if (sort === 'newest') {
+        const ta = a.createdAt || a.publishedAt || a.updatedAt ? new Date(a.createdAt || a.publishedAt || a.updatedAt).getTime() : 0;
+        const tb = b.createdAt || b.publishedAt || b.updatedAt ? new Date(b.createdAt || b.publishedAt || b.updatedAt).getTime() : 0;
+        return tb - ta;
+      }
+      return 0;
+    });
+  }
+
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const startIndex = (page - 1) * limit;
+  const paginatedItems = filtered.slice(startIndex, startIndex + limit);
+  const hasMore = page < totalPages;
+
+  return {
+    items: paginatedItems,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasMore,
+  };
+}
+
 export async function handleData(
   event: YcHttpEvent,
   subPath: string
@@ -114,6 +211,18 @@ export async function handleData(
         console.warn(`[CascadeDelete] Error cleaning ${col} for ${lotCode}:`, err.message);
       }
     }
+
+    // Invalidate lots cache
+    memoryCache.invalidate('lots');
+
+    // Record immutable journal cascade event
+    await recordJournalEvent({
+      action: 'CASCADE_DELETE',
+      collection: 'lots',
+      recordId: lotCode,
+      actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+      payload: { targetLotCode: lotCode, deletedDbCount },
+    });
 
     // Delete physical files from S3 buckets
     let deletedS3Count = 0;
@@ -164,6 +273,8 @@ export async function handleData(
     return json(event, 400, { error: 'Не указана коллекция' });
   }
 
+  const isPaginated = event.queryStringParameters?.paginated === '1';
+
   // --- GET Collection or Document ---
   if (method === 'GET') {
     // 1. Owner-only collections
@@ -182,6 +293,10 @@ export async function handleData(
       const all = await ydb.scanAll(collection);
       if (collection === 'users') {
         for (const u of all) delete u.passwordHash;
+      }
+
+      if (isPaginated) {
+        return json(event, 200, applyPaginationAndFilters(all, event.queryStringParameters));
       }
       return json(event, 200, { items: all });
     }
@@ -208,6 +323,9 @@ export async function handleData(
       }
 
       const all = await ydb.scanAll(collection);
+      if (isPaginated) {
+        return json(event, 200, applyPaginationAndFilters(all, event.queryStringParameters));
+      }
       return json(event, 200, { items: all });
     }
 
@@ -237,19 +355,20 @@ export async function handleData(
       }
 
       const all = await ydb.scanAll(collection);
-      if (isStaff) {
-        return json(event, 200, { items: all });
-      }
+      const visibleItems = isStaff
+        ? all
+        : all.filter(
+            (item: any) =>
+              item.userId === authUser.id ||
+              item.sellerId === authUser.id ||
+              item.buyerId === authUser.id ||
+              item.senderId === authUser.id
+          );
 
-      // Filter to current user's records
-      const userItems = all.filter(
-        (item: any) =>
-          item.userId === authUser.id ||
-          item.sellerId === authUser.id ||
-          item.buyerId === authUser.id ||
-          item.senderId === authUser.id
-      );
-      return json(event, 200, { items: userItems });
+      if (isPaginated) {
+        return json(event, 200, applyPaginationAndFilters(visibleItems, event.queryStringParameters));
+      }
+      return json(event, 200, { items: visibleItems });
     }
 
     // 4. Public collections
@@ -264,9 +383,23 @@ export async function handleData(
         return json(event, 200, { item });
       }
 
-      const all = await ydb.scanAll(collection);
+      // Safe Warm Cache: use cache only for public queries without ?fresh=1, bypassed for staff
+      const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
+      const isFresh = event.queryStringParameters?.fresh === '1';
+
+      let all: any[] | null = null;
+      if (!isStaff && !isFresh && CACHEABLE_COLLECTIONS.has(collection)) {
+        all = memoryCache.get(collection);
+      }
+
+      if (!all) {
+        all = await ydb.scanAll(collection);
+        if (!isStaff && CACHEABLE_COLLECTIONS.has(collection)) {
+          memoryCache.set(collection, all);
+        }
+      }
+
       if (collection === 'lots') {
-        const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
         let filtered = all;
 
         if (!isStaff) {
@@ -285,10 +418,18 @@ export async function handleData(
           );
         }
 
+        // Apply 152-ФЗ Privacy Barrier AFTER cache retrieval
         const sanitized = filtered.map((lot: any) => sanitizeLotForPublic(lot, authUser));
+
+        if (isPaginated) {
+          return json(event, 200, applyPaginationAndFilters(sanitized, event.queryStringParameters));
+        }
         return json(event, 200, { items: sanitized });
       }
 
+      if (isPaginated) {
+        return json(event, 200, applyPaginationAndFilters(all, event.queryStringParameters));
+      }
       return json(event, 200, { items: all });
     }
 
@@ -304,6 +445,9 @@ export async function handleData(
 
     const docId = id || body.id || `doc-${crypto.randomUUID()}`;
     const itemToSave: Record<string, any> = { ...body, id: docId };
+
+    // Invalidate cache for this collection
+    memoryCache.invalidate(collection);
 
     // 1. Owner-only collections write
     if (OWNER_ONLY_COLLECTIONS.has(collection)) {
@@ -354,7 +498,18 @@ export async function handleData(
       if (!isStaff) {
         return json(event, 403, { error: 'Модификация разрешена только сотрудникам платформы' });
       }
+
       await ydb.putItem(collection, itemToSave);
+
+      // Record immutable journal event if collection is journaled
+      await recordJournalEvent({
+        action: method === 'POST' ? 'CREATE' : 'UPDATE',
+        collection,
+        recordId: docId,
+        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        payload: itemToSave,
+      });
+
       return json(event, 200, { success: true, item: itemToSave });
     }
 
@@ -371,6 +526,16 @@ export async function handleData(
       }
 
       await ydb.putItem(collection, itemToSave);
+
+      // Record immutable journal event
+      await recordJournalEvent({
+        action: method === 'POST' ? 'CREATE' : 'UPDATE',
+        collection,
+        recordId: docId,
+        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        payload: itemToSave,
+      });
+
       return json(event, 200, { success: true, item: itemToSave });
     }
 
@@ -408,6 +573,16 @@ export async function handleData(
         }
 
         await ydb.putItem(collection, itemToSave);
+
+        // Record immutable journal event for lots
+        await recordJournalEvent({
+          action: method === 'POST' ? 'CREATE' : 'UPDATE',
+          collection: 'lots',
+          recordId: docId,
+          actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+          payload: itemToSave,
+        });
+
         return json(event, 200, { success: true, item: itemToSave });
       }
 
@@ -434,6 +609,17 @@ export async function handleData(
     }
 
     await ydb.deleteItem(collection, id);
+
+    // Invalidate cache
+    memoryCache.invalidate(collection);
+
+    // Record immutable journal event for deletes on sensitive collections
+    await recordJournalEvent({
+      action: 'DELETE',
+      collection,
+      recordId: id,
+      actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+    });
 
     // Audit log
     try {
