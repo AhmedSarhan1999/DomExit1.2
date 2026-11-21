@@ -159,7 +159,7 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
   const activeRegionConfig = getRegionByCode(locationRegion);
 
   return (
-    <div className="lg:col-span-7 space-y-5">
+    <div className="min-w-0 space-y-5">
       {!user && (
         <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fade-in">
           <div className="flex items-center space-x-2.5">

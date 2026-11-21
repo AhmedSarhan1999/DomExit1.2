@@ -310,8 +310,41 @@ export async function handleData(
       if (!authUser || authUser.role !== 'owner') {
         return json(event, 403, { error: 'Модификация разрешена только владельцу платформы' });
       }
+
+      if (collection === 'users') {
+        let existingUser = await ydb.getItem<any>('users', docId);
+        if (!existingUser && itemToSave.email) {
+          const byEmail = await ydb.findByField<any>('users', 'email', itemToSave.email.trim().toLowerCase());
+          existingUser = byEmail.find((u: any) => Boolean(u.passwordHash)) || byEmail[0];
+        }
+
+        if (existingUser) {
+          // Strictly protect and preserve passwordHash and critical metadata
+          if (!itemToSave.passwordHash && existingUser.passwordHash) {
+            itemToSave.passwordHash = existingUser.passwordHash;
+          }
+          if (!itemToSave.registeredAt && existingUser.registeredAt) {
+            itemToSave.registeredAt = existingUser.registeredAt;
+          }
+          if (!itemToSave.authProvider && existingUser.authProvider) {
+            itemToSave.authProvider = existingUser.authProvider;
+          }
+          if (!itemToSave.roles && existingUser.roles) {
+            itemToSave.roles = existingUser.roles;
+          }
+          if (!itemToSave.role && existingUser.role) {
+            itemToSave.role = existingUser.role;
+          }
+        }
+      }
+
       await ydb.putItem(collection, itemToSave);
-      return json(event, 200, { success: true, item: itemToSave });
+
+      const safeItem = { ...itemToSave };
+      if (collection === 'users') {
+        delete safeItem.passwordHash;
+      }
+      return json(event, 200, { success: true, item: safeItem });
     }
 
     // 2. Staff-only collections write

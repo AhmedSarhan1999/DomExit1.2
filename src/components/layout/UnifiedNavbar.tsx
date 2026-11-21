@@ -74,8 +74,15 @@ export const UnifiedNavbar: React.FC = () => {
     },
   ];
 
-  const visibleRoleOptions = roleOptions.filter((o) => o.id !== 'bank' || enableBankPortal);
-  const currentRoleOption = visibleRoleOptions.find(o => o.id === user?.activeRole) || visibleRoleOptions[0];
+  const canSwitchRole = Boolean(user && user.roles && user.roles.length > 1);
+  const userRolesSet = new Set(user?.roles || []);
+  const visibleRoleOptions = roleOptions.filter(
+    (o) => userRolesSet.has(o.id as any) && (o.id !== 'bank' || enableBankPortal)
+  );
+  const currentRoleOption =
+    visibleRoleOptions.find((o) => o.id === user?.activeRole) ||
+    visibleRoleOptions[0] ||
+    roleOptions[0];
 
   // Verify staff / owner access
   useEffect(() => {
@@ -306,59 +313,61 @@ export const UnifiedNavbar: React.FC = () => {
           <div className="hidden sm:flex items-center space-x-2.5">
             
             {/* MISSION 2.1: Instant Account & Role Switcher */}
-            <div className="relative" ref={roleSwitcherRef}>
-              <button
-                type="button"
-                onClick={() => setRoleSwitcherOpen(!roleSwitcherOpen)}
-                className="h-9 px-3 rounded-xl bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 hover:from-indigo-900 hover:to-indigo-900 border border-indigo-500/50 text-indigo-200 text-xs font-bold transition-all flex items-center space-x-2 shadow-xs cursor-pointer group"
-                title="Сменить аккаунт / Роль платформы"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform shrink-0" />
-                <span className="hidden xl:inline text-slate-400 text-[11px]">{language === 'ru' ? 'Роль:' : 'Role:'}</span>
-                <span className="text-white font-extrabold flex items-center space-x-1 truncate max-w-[120px]">
-                  <span>{currentRoleOption.icon}</span>
-                  <span className="truncate">{currentRoleOption.badge.replace(/^[^\w\sа-яА-ЯёЁ]+/, '') || 'Владелец'}</span>
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              </button>
+            {canSwitchRole && (
+              <div className="relative" ref={roleSwitcherRef}>
+                <button
+                  type="button"
+                  onClick={() => setRoleSwitcherOpen(!roleSwitcherOpen)}
+                  className="h-9 px-3 rounded-xl bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 hover:from-indigo-900 hover:to-indigo-900 border border-indigo-500/50 text-indigo-200 text-xs font-bold transition-all flex items-center space-x-2 shadow-xs cursor-pointer group"
+                  title="Сменить аккаунт / Роль платформы"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform shrink-0" />
+                  <span className="hidden xl:inline text-slate-400 text-[11px]">{language === 'ru' ? 'Роль:' : 'Role:'}</span>
+                  <span className="text-white font-extrabold flex items-center space-x-1 truncate max-w-[120px]">
+                    <span>{currentRoleOption.icon}</span>
+                    <span className="truncate">{currentRoleOption.badge.replace(/^[^\w\sа-яА-ЯёЁ]+/, '') || 'Владелец'}</span>
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                </button>
 
-              {roleSwitcherOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-slate-900/98 border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in space-y-1 text-slate-100 backdrop-blur-xl">
-                  <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 flex items-center justify-between">
-                    <span>{language === 'ru' ? 'Сменить аккаунт / Роль:' : 'Switch Account / Role:'}</span>
-                    <span className="text-[10px] text-emerald-400 font-mono">{visibleRoleOptions.length} роли</span>
-                  </div>
+                {roleSwitcherOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-slate-900/98 border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in space-y-1 text-slate-100 backdrop-blur-xl">
+                    <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 flex items-center justify-between">
+                      <span>{language === 'ru' ? 'Сменить аккаунт / Роль:' : 'Switch Account / Role:'}</span>
+                      <span className="text-[10px] text-emerald-400 font-mono">{visibleRoleOptions.length} роли</span>
+                    </div>
 
-                  <div className="max-h-[380px] overflow-y-auto space-y-1 pt-1">
-                    {visibleRoleOptions.map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleRoleSelect(opt)}
-                        className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start space-x-3 cursor-pointer ${
-                          user?.activeRole === opt.id
-                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-200'
-                            : 'hover:bg-slate-800/80 text-slate-200'
-                        }`}
-                      >
-                        <span className="text-xl shrink-0 mt-0.5">{opt.icon}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-white">{opt.title}</span>
-                            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
-                              {opt.badge}
-                            </span>
+                    <div className="max-h-[380px] overflow-y-auto space-y-1 pt-1">
+                      {visibleRoleOptions.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleRoleSelect(opt)}
+                          className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start space-x-3 cursor-pointer ${
+                            user?.activeRole === opt.id
+                              ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-200'
+                              : 'hover:bg-slate-800/80 text-slate-200'
+                          }`}
+                        >
+                          <span className="text-xl shrink-0 mt-0.5">{opt.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-white">{opt.title}</span>
+                              <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                                {opt.badge}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
+                              {opt.subtitle}
+                            </p>
                           </div>
-                          <p className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
-                            {opt.subtitle}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Dynamic Telegram Channel Shortcut */}
             <a
@@ -535,32 +544,34 @@ export const UnifiedNavbar: React.FC = () => {
           </button>
 
           {/* Mobile Role Switcher */}
-          <div className="pt-2 border-t border-slate-800 space-y-1">
-            <div className="text-[10px] font-bold text-slate-400 uppercase px-3 py-1 flex items-center justify-between">
-              <span>{language === 'ru' ? 'Быстрая смена роли:' : 'Quick Role Switch:'}</span>
-              <span className="text-emerald-400 font-mono">{visibleRoleOptions.length} роли</span>
+          {canSwitchRole && (
+            <div className="pt-2 border-t border-slate-800 space-y-1">
+              <div className="text-[10px] font-bold text-slate-400 uppercase px-3 py-1 flex items-center justify-between">
+                <span>{language === 'ru' ? 'Быстрая смена роли:' : 'Quick Role Switch:'}</span>
+                <span className="text-emerald-400 font-mono">{visibleRoleOptions.length} роли</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                {visibleRoleOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      handleRoleSelect(opt);
+                    }}
+                    className={`p-2 rounded-xl text-left text-xs font-bold flex items-center space-x-2 border transition-all ${
+                      user?.activeRole === opt.id
+                        ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="text-base">{opt.icon}</span>
+                    <span className="truncate">{opt.badge}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 pt-1">
-              {visibleRoleOptions.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    handleRoleSelect(opt);
-                  }}
-                  className={`p-2 rounded-xl text-left text-xs font-bold flex items-center space-x-2 border transition-all ${
-                    user?.activeRole === opt.id
-                      ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <span className="text-base">{opt.icon}</span>
-                  <span className="truncate">{opt.badge}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       )}
     </header>

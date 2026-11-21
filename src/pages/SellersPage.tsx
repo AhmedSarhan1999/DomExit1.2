@@ -643,8 +643,9 @@ export const SellersPage: React.FC = () => {
 
           {/* STEP 1: Geography, Property Details & Financial Truth Validation */}
           {currentStep === 1 && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              <SellerStepProperty
+            <div className="flex flex-col lg:flex-row lg:items-start gap-6 xl:gap-8 w-full">
+              <div className="w-full lg:flex-1 min-w-0">
+                <SellerStepProperty
                 user={user}
                 onOpenAuthModal={() => {
                   openAuthModal('Авторизуйтесь в личном кабинете для подачи заявки на выход из ДДУ');
@@ -733,7 +734,9 @@ export const SellersPage: React.FC = () => {
                 markTouched={markTouched}
                 onGoToStep2={handleGoToStep2}
               />
+            </div>
 
+            <div className="w-full lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-24">
               <SellerLiveAuditCard
                 contractPrice={contractPrice}
                 paidAmount={paidAmount}
@@ -746,6 +749,7 @@ export const SellersPage: React.FC = () => {
                 netFamilyBenefit={netFamilyBenefit}
               />
             </div>
+          </div>
           )}
 
           {/* STEP 2: Strict Seller Contact & ИНН Validation */}

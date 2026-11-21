@@ -60,43 +60,59 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     // Check if user already exists
-    const existing = await ydb.findByField<UserProfile>('users', 'email', email);
-    if (existing.length > 0) {
+    const existingList = await ydb.findByField<UserProfile>('users', 'email', email);
+    const existingWithPass = existingList.find((u) => Boolean(u.passwordHash));
+
+    if (existingWithPass) {
       return json(event, 409, { error: 'Пользователь с таким email уже зарегистрирован' });
     }
 
     const passwordHash = await hashPassword(password);
-    const userId = `usr-${crypto.randomUUID().substring(0, 12)}`;
     const now = new Date().toISOString();
 
-    const newUser: UserProfile = {
-      id: userId,
-      email,
-      name,
-      phone,
-      role: assignedRole,
-      activeRole: assignedRole,
-      roles: [assignedRole],
-      registeredAt: now,
-      authProvider: 'local',
-      favorites: [],
-      passwordHash,
-    };
+    let userToSave: UserProfile;
+    if (existingList.length > 0) {
+      // User existed (e.g. from OAuth) without password: safe merge without duplicate record
+      const existing = existingList[0];
+      userToSave = {
+        ...existing,
+        email,
+        name: name || existing.name,
+        phone: phone || existing.phone,
+        passwordHash,
+        authProvider: existing.authProvider || 'local',
+      };
+    } else {
+      const userId = `usr-${crypto.randomUUID().substring(0, 12)}`;
+      userToSave = {
+        id: userId,
+        email,
+        name,
+        phone,
+        role: assignedRole,
+        activeRole: assignedRole,
+        roles: [assignedRole],
+        registeredAt: now,
+        authProvider: 'local',
+        favorites: [],
+        passwordHash,
+      };
+    }
 
-    await ydb.putItem('users', newUser);
+    await ydb.putItem('users', userToSave);
 
     const sessionToken = createJwt(
       {
-        userId: newUser.id,
-        email: newUser.email,
-        role: newUser.role,
-        activeRole: newUser.activeRole,
-        roles: newUser.roles,
+        userId: userToSave.id,
+        email: userToSave.email,
+        role: userToSave.role,
+        activeRole: userToSave.activeRole,
+        roles: userToSave.roles,
       },
       cfg.JWT_SIGNING_SECRET
     );
 
-    const cleanUser: UserProfile = { ...newUser };
+    const cleanUser: UserProfile = { ...userToSave };
     delete cleanUser.passwordHash;
 
     return json(
@@ -126,7 +142,8 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     const matchingUsers = await ydb.findByField<UserProfile>('users', 'email', email);
-    const user = matchingUsers[0];
+    // Prioritize record containing passwordHash if multiple duplicates exist
+    const user = matchingUsers.find((u) => Boolean(u.passwordHash)) || matchingUsers[0];
 
     if (!user || !user.passwordHash) {
       recordFailedLogin(rateKey);
@@ -199,7 +216,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       }
     }
 
-    // Fetch full existing record to preserve passwordHash
+    // Fetch full existing record to strictly preserve passwordHash
     const existing = await ydb.getItem<UserProfile>('users', user.id);
     if (!existing) {
       return json(event, 404, { error: 'Пользователь не найден' });
@@ -208,12 +225,15 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     const updatedUser: UserProfile = {
       ...existing,
       ...updates,
-      // Enforce immutability of roles from this endpoint
+      // CRITICAL: Strictly preserve passwordHash and immutable roles
+      passwordHash: existing.passwordHash,
       role: existing.role,
       roles: existing.roles,
       activeRole: existing.activeRole,
       isPartnerApproved: existing.isPartnerApproved,
       isInvestorApproved: existing.isInvestorApproved,
+      registeredAt: existing.registeredAt,
+      authProvider: existing.authProvider,
     };
 
     await ydb.putItem('users', updatedUser);
@@ -251,6 +271,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     existing.activeRole = targetRole;
+    // ensure existing record is saved with passwordHash intact
     await ydb.putItem('users', existing);
 
     const sessionToken = createJwt(
@@ -337,7 +358,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     const yandexProfile = (await userRes.json()) as any;
-    const yandexEmail = (yandexProfile.default_email || yandexProfile.emails?.[0])?.toLowerCase();
+    const yandexEmail = (yandexProfile.default_email || yandexProfile.emails?.[0])?.trim().toLowerCase();
     const yandexName =
       yandexProfile.real_name ||
       yandexProfile.display_name ||
@@ -353,14 +374,15 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     // Check if user already exists
     const existingList = await ydb.findByField<UserProfile>('users', 'email', yandexEmail);
-    let user = existingList[0];
+    // Prioritize user with passwordHash if multiple duplicate records exist
+    let user = existingList.find((u) => Boolean(u.passwordHash)) || existingList[0];
 
     const isMasterOwnerEmail =
       yandexEmail === 'amaas9499@gmail.com' ||
-      yandexEmail === (process.env.BOOTSTRAP_OWNER_EMAIL || '').toLowerCase();
+      yandexEmail === (process.env.BOOTSTRAP_OWNER_EMAIL || '').trim().toLowerCase();
 
     if (user) {
-      // Existing user: preserve existing roles, ensure master owner role if email matches
+      // Existing user: preserve existing passwordHash & roles, ensure master owner role if email matches
       if (isMasterOwnerEmail && user.role !== 'owner') {
         user.role = 'owner';
         user.roles = ['owner', 'employee', 'seller', 'buyer'];
@@ -368,6 +390,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       }
       user.yandexId = yandexProfile.id;
       if (!user.photoURL && yandexAvatar) user.photoURL = yandexAvatar;
+      // Do NOT erase passwordHash!
       await ydb.putItem('users', user);
     } else {
       // New user

@@ -136,11 +136,20 @@ const envEntries = Object.entries(envMap)
   .map(([k, v]) => `${k}=${v}`)
   .join(',');
 
-execSync(
-  `yc serverless function version create --function-name domexit-api-staging --runtime nodejs22 --memory 256m --execution-timeout 30s --entrypoint index.handler --service-account-id ${saId} --source-path "${zipPath}" --environment "${envEntries}"`,
-  { stdio: 'inherit' }
+const versionOutput = execSync(
+  `yc serverless function version create --function-name domexit-api-staging --runtime nodejs22 --memory 256m --execution-timeout 30s --entrypoint index.handler --service-account-id ${saId} --source-path "${zipPath}" --environment "${envEntries}" --format json`,
+  { encoding: 'utf-8' }
 );
-console.log('✓ Cloud Function version successfully deployed!');
+
+try {
+  const versionData = JSON.parse(versionOutput);
+  console.log('✓ Cloud Function version successfully deployed!');
+  console.log(`  Version ID: ${versionData.id}`);
+  console.log(`  Status:     ${versionData.status}`);
+  console.log(`  Created At: ${versionData.created_at}`);
+} catch {
+  console.log('✓ Cloud Function version successfully deployed!');
+}
 
 // 6. Update cloud-manifest.json
 console.log('\n[5/5] Updating infrastructure/cloud-manifest.json...');
