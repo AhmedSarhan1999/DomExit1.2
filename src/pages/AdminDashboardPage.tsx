@@ -21,6 +21,7 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 
 // Modular Dashboard Subcomponents
 import { AdminGovernanceCard } from '../components/admin/AdminGovernanceCard';
+import { AdminSlimStatusBar } from '../components/admin/dashboard/AdminSlimStatusBar';
 import { AdminTabBar, OwnerTab } from '../components/admin/dashboard/AdminTabBar';
 import { DashboardOverviewTab } from '../components/admin/dashboard/DashboardOverviewTab';
 import { SellerRequestsTableTab } from '../components/admin/dashboard/SellerRequestsTableTab';
@@ -281,43 +282,20 @@ export const AdminDashboardPage: React.FC = () => {
         )}
 
         <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
-          {/* Master Governance, Security & Backup Management (Owner Exclusive) */}
-          {isOwner && <AdminGovernanceCard showToast={showToast} className="mb-6" />}
-
-          {/* Role Status Bar */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center space-x-3">
-              <div
-                className={`p-2 rounded-xl ${
-                  isOwner ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'
-                }`}
-              >
-                {isOwner ? <Crown className="w-5 h-5" /> : <Briefcase className="w-5 h-5" />}
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-900 block">
-                  {isOwner
-                    ? 'Текущий режим: Владелец платформы (Генеральный директор)'
-                    : `Текущий режим: Куратор отдела выходов (${operatorName})`}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {isOwner
-                    ? 'Доступны: глобальная комиссия 2.5%, верификация документов, одобрение продавцов и партнеров.'
-                    : 'Финансовые показатели платформы и чужие сделки скрыты. Доступны только назначенные вам объекты.'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Telegram OS Connect Card for Staff & Owner */}
-          <TelegramConnectCard className="mb-6 shadow-sm" />
+          {/* Executive Slim Status Bar (Single Row, ~52px, Light Emerald System) */}
+          {isOwner && (
+            <AdminSlimStatusBar
+              onNavigateToSystem={() => setActiveOwnerTab('system_cms')}
+              className="mb-4"
+            />
+          )}
 
           {/* =========================================================================
               OWNER MODE: Full platform financial view & Triage Desk
           ========================================================================= */}
           {isOwner && (
             <>
-              {/* Executive Tab Navigation Bar */}
+              {/* Executive Tab Navigation Bar (5 tabs, zero horizontal clipping) */}
               <AdminTabBar
                 activeOwnerTab={activeOwnerTab}
                 setActiveOwnerTab={setActiveOwnerTab}
@@ -366,7 +344,7 @@ export const AdminDashboardPage: React.FC = () => {
                 />
               )}
 
-              {/* TAB 3: Рыночные ставки и калькулятор локаций */}
+              {/* TAB 3: Рынок и ставки */}
               {activeOwnerTab === 'market' && (
                 <MarketSettingsTab
                   marketSettings={marketSettings}
@@ -377,7 +355,7 @@ export const AdminDashboardPage: React.FC = () => {
                 />
               )}
 
-              {/* TAB 4: Пользователи, штат и RBAC */}
+              {/* TAB 4: Штат и RBAC */}
               {activeOwnerTab === 'users_rbac' && (
                 <UsersRbacTab
                   usersList={usersList}
@@ -391,26 +369,33 @@ export const AdminDashboardPage: React.FC = () => {
                 />
               )}
 
-              {/* TAB 6: Профиль компании, соцсети и ИБ */}
-              {activeOwnerTab === 'company_profile' && (
-                <LegalAndChannelsTab
-                  operatorName={operatorName}
-                  showToast={showToast}
-                  showError={showError}
-                />
-              )}
+              {/* TAB 5: Система, Telegram и CMS (26 актов) */}
+              {activeOwnerTab === 'system_cms' && (
+                <div className="space-y-6 animate-fade-in">
+                  {/* Executive Cloud & Security Radar Card */}
+                  <AdminGovernanceCard showToast={showToast} />
 
-              {/* TAB 7: Правовой CMS и Реестр (26 актов) */}
-              {activeOwnerTab === 'legal_cms' && (
-                <Suspense
-                  fallback={
-                    <div className="p-8 text-center text-slate-500 font-bold">
-                      Загрузка Правового CMS...
-                    </div>
-                  }
-                >
-                  <LegalCmsManager />
-                </Suspense>
+                  {/* Telegram OS Connect Card */}
+                  <TelegramConnectCard />
+
+                  {/* Company Profile, Channels & Security settings */}
+                  <LegalAndChannelsTab
+                    operatorName={operatorName}
+                    showToast={showToast}
+                    showError={showError}
+                  />
+
+                  {/* Full Legal CMS Manager (26 Acts & Registries) */}
+                  <Suspense
+                    fallback={
+                      <div className="p-8 text-center text-slate-500 font-bold bg-white rounded-3xl border border-slate-200">
+                        Загрузка Правового CMS (26 актов)...
+                      </div>
+                    }
+                  >
+                    <LegalCmsManager />
+                  </Suspense>
+                </div>
               )}
             </>
           )}

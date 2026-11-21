@@ -139,17 +139,17 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-5 sm:p-6 text-white border border-indigo-900/60 shadow-xl space-y-4">
+    <div className="bg-white rounded-3xl p-5 sm:p-6 text-slate-900 border border-emerald-200/90 shadow-xs space-y-4">
       {/* Wave Header */}
-      <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10">
+      <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
         <div className="flex items-center space-x-2">
           <span
             className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center space-x-1.5 ${
               isGoldWave
-                ? 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+                ? 'bg-amber-100 text-amber-900 border-amber-300'
                 : dropConfig.waveStatus === 'silver_wave'
-                ? 'bg-slate-300/20 text-slate-200 border-slate-400/30'
-                : 'bg-rose-500/20 text-rose-300 border-rose-400/30'
+                ? 'bg-slate-100 text-slate-800 border-slate-300'
+                : 'bg-rose-100 text-rose-800 border-rose-300'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -167,7 +167,7 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
 
         {/* Live Countdown */}
         {!isCapped && !isExpired && remainingText && (
-          <div className="flex items-center space-x-1.5 text-xs font-mono font-bold text-amber-400">
+          <div className="flex items-center space-x-1.5 text-xs font-mono font-bold text-amber-700">
             <Clock className="w-3.5 h-3.5" />
             <span>{remainingText}</span>
           </div>
@@ -175,17 +175,17 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
       </div>
 
       {/* Seats Meter */}
-      <div className="bg-white/5 rounded-2xl p-3.5 border border-white/10 space-y-2">
+      <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-300 font-medium">Ограничение очереди:</span>
-          <span className="font-bold font-mono text-white">
+          <span className="text-slate-600 font-medium">Ограничение очереди:</span>
+          <span className="font-bold font-mono text-slate-900">
             Осталось {remainingSeats} из {maxCap} мест
           </span>
         </div>
-        <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
           <div
             className={`h-full transition-all duration-500 ${
-              isCapped ? 'bg-rose-500' : 'bg-emerald-500'
+              isCapped ? 'bg-rose-500' : 'bg-emerald-600'
             }`}
             style={{ width: `${Math.min(100, (currentCount / maxCap) * 100)}%` }}
           />
@@ -194,33 +194,33 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
 
       {/* Existing Application Banner */}
       {hasExistingApp && appliedApp ? (
-        <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 space-y-2 text-emerald-100">
-          <div className="flex items-center space-x-2 text-emerald-300 font-bold text-xs">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-2 text-emerald-950">
+          <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>Ваша заявка принята в тактовый дроп!</span>
           </div>
-          <p className="text-xs text-slate-200">
+          <p className="text-xs text-slate-700">
             Ваш Closing Score: <strong>{appliedApp.closingScore || 100}/105</strong>. Статус в очереди:{' '}
-            <strong className="text-amber-300">{appliedApp.queueStatus || 'На рассмотрении'}</strong>.
+            <strong className="text-amber-800">{appliedApp.queueStatus || 'На рассмотрении'}</strong>.
           </p>
         </div>
       ) : isCapped ? (
-        <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-xs text-rose-300 flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
           <span>Лимит мест ({maxCap}) в текущем тактовом окне исчерпан. Ожидайте ротации.</span>
         </div>
       ) : isExpired ? (
-        <div className="p-3.5 bg-slate-800/80 border border-slate-700 rounded-2xl text-xs text-slate-300 flex items-center space-x-2">
+        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 flex items-center space-x-2">
           <Clock className="w-4 h-4 shrink-0 text-slate-400" />
           <span>Окно приема заявок завершено.</span>
         </div>
       ) : isGoldRestricted ? (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 text-xs text-amber-200">
-          <div className="flex items-center space-x-2 font-bold text-amber-300">
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2 text-xs text-amber-900">
+          <div className="flex items-center space-x-2 font-bold text-amber-800">
             <Lock className="w-4 h-4 shrink-0" />
             <span>Окно раннего доступа Gold</span>
           </div>
-          <p className="text-[11px] text-slate-300 leading-relaxed">
+          <p className="text-[11px] text-slate-600 leading-relaxed">
             Подача заявок для Silver откроется автоматически после завершения окна Gold. Вы можете подать предварительную заявку через нашего Telegram-бота.
           </p>
         </div>
@@ -228,7 +228,7 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
         /* Application Form */
         <form onSubmit={handleApply} className="space-y-3 pt-1">
           {errorMessage && (
-            <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-xs text-rose-200 flex items-center space-x-2">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMessage}</span>
             </div>
@@ -236,7 +236,7 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
 
           {/* Step 1: Price Acceptance */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
               1. Ценовое предложение:
             </label>
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -245,8 +245,8 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
                 onClick={() => setPriceAcceptance('full_price')}
                 className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                   priceAcceptance === 'full_price'
-                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                    : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
                 <div className="font-bold">По цене лота</div>
@@ -266,13 +266,13 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
                 onClick={() => setPriceAcceptance('above_asking')}
                 className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                   priceAcceptance === 'above_asking'
-                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                    : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
                 <div className="font-bold flex items-center space-x-1">
                   <span>Выше (+2%)</span>
-                  <Flame className="w-3 h-3 text-amber-400" />
+                  <Flame className="w-3 h-3 text-amber-300" />
                 </div>
                 <div className="text-[10px] opacity-80">+10 баллов в Closing</div>
               </button>
@@ -281,22 +281,22 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
 
           {/* Step 2: Readiness speed */}
           <div className="space-y-2 pt-1 text-xs">
-            <label className="flex items-center space-x-2 cursor-pointer text-slate-200">
+            <label className="flex items-center space-x-2 cursor-pointer text-slate-700">
               <input
                 type="checkbox"
                 checked={readiness24h}
                 onChange={(e) => setReadiness24h(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 border-white/20 bg-white/5 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-emerald-600 border-slate-300 bg-white focus:ring-emerald-500"
               />
               <span>Готовность выйти на согласование за 24ч (+10 баллов)</span>
             </label>
 
-            <label className="flex items-center space-x-2 cursor-pointer text-slate-200">
+            <label className="flex items-center space-x-2 cursor-pointer text-slate-700">
               <input
                 type="checkbox"
                 checked={deposit48h}
                 onChange={(e) => setDeposit48h(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 border-white/20 bg-white/5 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-emerald-600 border-slate-300 bg-white focus:ring-emerald-500"
               />
               <span>Готовность внести задаток за 48ч (+10 баллов)</span>
             </label>
@@ -305,7 +305,7 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3.5 mt-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+            className="w-full py-3.5 mt-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
           >
             {submitting ? (
               <span>Отправка заявки...</span>

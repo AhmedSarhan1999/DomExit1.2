@@ -520,7 +520,7 @@ export const ClientPortalPage: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
-        <TelegramConnectCard className="shadow-sm" />
+        <TelegramConnectCard compact={true} className="shadow-2xs" />
 
         {actionNotice && (
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 font-semibold text-xs flex items-center justify-between shadow-md">

@@ -330,7 +330,7 @@ export const LegalCmsManager: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center space-x-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 text-emerald-400 flex items-center justify-center font-black shadow-inner">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center font-black shadow-xs">
               <Shield className="w-6 h-6" />
             </div>
             <div>
@@ -489,47 +489,47 @@ export const LegalCmsManager: React.FC = () => {
 
           {/* Selected Document Details Bar */}
           {selectedDoc && (
-            <div className="bg-slate-900 text-white rounded-3xl p-5 shadow-lg space-y-3">
+            <div className="bg-white border border-slate-200 text-slate-900 rounded-3xl p-5 shadow-xs space-y-3">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-mono font-bold">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-mono font-bold">
                       Код {selectedDoc.code}
                     </span>
-                    <h3 className="text-base font-bold text-white truncate max-w-xl">
+                    <h3 className="text-base font-bold text-slate-900 truncate max-w-xl">
                       {selectedDoc.title}
                     </h3>
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     Основание: {selectedDoc.legal_basis}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center space-x-2 text-xs cursor-pointer select-none bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+                  <label className="flex items-center space-x-2 text-xs cursor-pointer select-none bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                     <input
                       type="checkbox"
                       checked={selectedDoc.is_visible}
                       onChange={() => handleToggleDocVisibility(selectedDoc)}
-                      className="rounded text-emerald-500 focus:ring-0 cursor-pointer"
+                      className="rounded text-emerald-600 focus:ring-0 cursor-pointer"
                     />
-                    <span className="text-slate-200 font-medium">Опубликован на сайте</span>
+                    <span className="text-slate-700 font-medium">Опубликован на сайте</span>
                   </label>
 
-                  <label className="flex items-center space-x-2 text-xs cursor-pointer select-none bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+                  <label className="flex items-center space-x-2 text-xs cursor-pointer select-none bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                     <input
                       type="checkbox"
                       checked={selectedDoc.show_in_footer}
                       onChange={() => handleToggleDocFooter(selectedDoc)}
-                      className="rounded text-emerald-500 focus:ring-0 cursor-pointer"
+                      className="rounded text-emerald-600 focus:ring-0 cursor-pointer"
                     />
-                    <span className="text-slate-200 font-medium">В подвале сайта</span>
+                    <span className="text-slate-700 font-medium">В подвале сайта</span>
                   </label>
 
                   <Link
                     to={`/legal/${selectedDoc.slug}`}
                     target="_blank"
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center space-x-1.5 transition-colors"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-2xs"
                   >
                     <span>Смотреть</span>
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -538,17 +538,17 @@ export const LegalCmsManager: React.FC = () => {
               </div>
 
               {/* SHA-256 Active Fingerprint */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-800 text-xs font-mono">
-                <div className="flex items-center space-x-2 text-slate-400">
-                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs font-mono">
+                <div className="flex items-center space-x-2 text-slate-500">
+                  <Lock className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Активная цифровая подпись (SHA-256):</span>
                 </div>
-                <div className="flex items-center space-x-2 text-emerald-400">
-                  <span className="truncate max-w-md">{selectedDoc.active_sha256}</span>
+                <div className="flex items-center space-x-2 text-emerald-700">
+                  <span className="truncate max-w-md font-bold">{selectedDoc.active_sha256}</span>
                   <button
                     type="button"
                     onClick={() => handleCopySha(selectedDoc.active_sha256)}
-                    className="p-1 hover:text-white transition-colors cursor-pointer"
+                    className="p-1 hover:text-emerald-900 transition-colors cursor-pointer"
                     title="Скопировать хэш"
                   >
                     {copiedHash === selectedDoc.active_sha256 ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -733,15 +733,15 @@ export const LegalCmsManager: React.FC = () => {
           </div>
 
           {/* Action Bar */}
-          <div className="bg-slate-900 text-white rounded-3xl p-5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="bg-white border border-slate-200 text-slate-900 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="space-y-1 text-xs">
               <div className="flex items-center space-x-2">
-                <span className="text-slate-400 font-mono">Расчетный SHA-256 текста:</span>
-                <span className="text-emerald-400 font-mono font-bold truncate max-w-xs sm:max-w-md">
+                <span className="text-slate-500 font-mono">Расчетный SHA-256 текста:</span>
+                <span className="text-emerald-700 font-mono font-bold truncate max-w-xs sm:max-w-md">
                   {computedSha || 'Вычисление...'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Сохраните черновик для работы либо перейдите во вкладку 2 для официальной публикации редакции.
               </p>
             </div>
@@ -751,16 +751,16 @@ export const LegalCmsManager: React.FC = () => {
                 type="button"
                 onClick={handleSaveDraft}
                 disabled={isSavingDraft}
-                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold border border-slate-700 transition-colors flex items-center space-x-2 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold border border-slate-200 transition-colors flex items-center space-x-2 cursor-pointer"
               >
-                <Save className="w-4 h-4 text-amber-400" />
+                <Save className="w-4 h-4 text-amber-600" />
                 <span>{isSavingDraft ? 'Сохранение...' : 'Сохранить как черновик'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveSubTab('publish')}
-                className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center space-x-2 cursor-pointer"
+                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4 stroke-[2.5]" />
                 <span>Перейти к публикации редакции →</span>
@@ -860,12 +860,12 @@ export const LegalCmsManager: React.FC = () => {
             </div>
 
             {/* Calculated SHA-256 preview */}
-            <div className="bg-slate-900 text-white p-4 rounded-2xl font-mono space-y-1.5 shadow-inner">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
+            <div className="bg-slate-50 border border-slate-200 text-slate-900 p-4 rounded-2xl font-mono space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-500 text-[11px]">
                 <span>Контрольная сумма текста по стандарту FIPS 180-4:</span>
-                <span className="text-emerald-400 font-bold">SHA-256 Verified</span>
+                <span className="text-emerald-700 font-bold">SHA-256 Verified</span>
               </div>
-              <div className="text-emerald-400 text-xs font-bold break-all">
+              <div className="text-emerald-700 text-xs font-bold break-all">
                 {computedSha || 'Вычисление...'}
               </div>
             </div>
@@ -1132,9 +1132,9 @@ export const LegalCmsManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleExportConsentLogs}
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center space-x-2 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold flex items-center space-x-2 transition-colors cursor-pointer shadow-2xs"
                 >
-                  <Download className="w-4 h-4 text-emerald-400" />
+                  <Download className="w-4 h-4 text-emerald-600" />
                   <span>Экспорт протокола в JSON (Аудит)</span>
                 </button>
               </div>

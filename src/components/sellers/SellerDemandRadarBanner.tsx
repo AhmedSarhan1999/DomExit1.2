@@ -66,23 +66,23 @@ export const SellerDemandRadarBanner: React.FC<SellerDemandRadarBannerProps> = (
   const liquidity = radarData?.totalDeclaredLiquidityRub ?? 0;
 
   return (
-    <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white border border-emerald-500/30 shadow-md">
+    <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-950 border border-emerald-300 shadow-xs">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="space-y-1">
-          <div className="flex items-center space-x-2 text-emerald-400">
+          <div className="flex items-center space-x-2 text-emerald-700">
             <Sparkles className="w-4 h-4 shrink-0" />
             <span className="text-[11px] font-black uppercase tracking-wider">
               РАДАР ЛИКВИДНОСТИ DOMEXIT В ВАШЕМ РЕГИОНЕ
             </span>
           </div>
 
-          <p className="text-xs sm:text-sm font-bold text-slate-100">
+          <p className="text-xs sm:text-sm font-bold text-slate-800">
             {loading ? (
-              <span className="text-slate-400">Калибровка пула покупателей по вашим параметрам...</span>
+              <span className="text-slate-500">Калибровка пула покупателей по вашим параметрам...</span>
             ) : totalMatched > 0 ? (
               <span>
                 В базе DomExit сейчас{' '}
-                <strong className="text-emerald-400 font-extrabold text-sm sm:text-base underline decoration-emerald-500 underline-offset-4">
+                <strong className="text-emerald-700 font-extrabold text-sm sm:text-base underline decoration-emerald-400 underline-offset-4">
                   {totalMatched} проверенных инвесторов
                 </strong>{' '}
                 с подтвержденным бюджетом под ваш объект
@@ -99,17 +99,17 @@ export const SellerDemandRadarBanner: React.FC<SellerDemandRadarBannerProps> = (
         {!loading && (
           <div className="flex flex-wrap items-center gap-2 shrink-0 text-[11px]">
             {goldCount > 0 && (
-              <span className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center space-x-1">
+              <span className="px-2.5 py-1 rounded-xl bg-amber-100/80 text-amber-900 border border-amber-300 font-bold flex items-center space-x-1">
                 <span>🥇 Gold: {goldCount} (100% кэш)</span>
               </span>
             )}
             {silverCount > 0 && (
-              <span className="px-2.5 py-1 rounded-xl bg-slate-300/20 text-slate-200 border border-slate-300/30 font-bold flex items-center space-x-1">
+              <span className="px-2.5 py-1 rounded-xl bg-slate-200/80 text-slate-800 border border-slate-300 font-bold flex items-center space-x-1">
                 <span>🥈 Silver: {silverCount} (Ипотека)</span>
               </span>
             )}
             {liquidity > 0 && (
-              <span className="px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold font-mono">
+              <span className="px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold font-mono">
                 {formatRubles(liquidity)}
               </span>
             )}

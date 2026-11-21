@@ -148,22 +148,22 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
   return (
     <div className="space-y-6">
       {/* 1. Staged Drop Control Panel */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-5 sm:p-6 text-white border border-indigo-900 shadow-md space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-white/10">
+      <div className="bg-white rounded-3xl p-5 sm:p-6 text-slate-900 border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
-              <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[10px] font-black uppercase tracking-wider flex items-center space-x-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 border border-emerald-300/60 text-[10px] font-black uppercase tracking-wider flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                 <span>УПРАВЛЕНИЕ ТАКТОВЫМ ДРОПОМ (STAGED DROP)</span>
               </span>
               {isStagedDrop && (
                 <span
                   className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                     dropConfig.waveStatus === 'gold_wave'
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
                       : dropConfig.waveStatus === 'silver_wave'
-                      ? 'bg-slate-300/20 text-slate-200 border-slate-400/30'
-                      : 'bg-rose-500/20 text-rose-300 border-rose-400/30'
+                      ? 'bg-slate-100 text-slate-800 border-slate-300'
+                      : 'bg-rose-100 text-rose-800 border-rose-300'
                   }`}
                 >
                   {dropConfig.waveStatus === 'gold_wave'
@@ -176,7 +176,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
                 </span>
               )}
             </div>
-            <h3 className="text-base font-black text-white">
+            <h3 className="text-base font-black text-slate-900">
               {isStagedDrop ? 'Активный тактовый раунд лота #' + lot.lotCode : 'Запуск закрытого тактового дропа'}
             </h3>
           </div>
@@ -187,7 +187,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               type="button"
               disabled={actionLoading}
               onClick={handleLaunchDrop}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
             >
               {isStagedDrop ? <RotateCcw className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
               <span>{isStagedDrop ? 'Перезапустить дроп (Re-Drop)' : 'Запустить тактовый дроп'}</span>
@@ -197,8 +197,8 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
 
         {/* Drop Settings Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1">
-            <span className="text-slate-300 font-medium block text-[11px]">
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+            <span className="text-slate-600 font-medium block text-[11px]">
               Эксклюзивное окно Gold (часы):
             </span>
             <input
@@ -207,12 +207,12 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               max="72"
               value={goldExclusiveHours}
               onChange={(e) => setGoldExclusiveHours(Number(e.target.value))}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/10 text-white font-mono font-bold"
+              className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500 focus:outline-hidden"
             />
           </div>
 
-          <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1">
-            <span className="text-slate-300 font-medium block text-[11px]">
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+            <span className="text-slate-600 font-medium block text-[11px]">
               Общая длительность дропа (часы):
             </span>
             <input
@@ -221,12 +221,12 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               max="168"
               value={windowHours}
               onChange={(e) => setWindowHours(Number(e.target.value))}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/10 text-white font-mono font-bold"
+              className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500 focus:outline-hidden"
             />
           </div>
 
-          <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1">
-            <span className="text-slate-300 font-medium block text-[11px]">
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+            <span className="text-slate-600 font-medium block text-[11px]">
               Лимит заявок в очереди (Cap):
             </span>
             <input
@@ -235,7 +235,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               max="20"
               value={maxApplicationsCap}
               onChange={(e) => setMaxApplicationsCap(Number(e.target.value))}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/10 text-white font-mono font-bold"
+              className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500 focus:outline-hidden"
             />
           </div>
         </div>

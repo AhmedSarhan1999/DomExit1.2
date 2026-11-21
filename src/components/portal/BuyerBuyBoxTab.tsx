@@ -181,29 +181,29 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* 1. Header & Verification Tier Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg border border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-gradient-to-r from-emerald-50 via-white to-teal-50 rounded-3xl p-6 sm:p-8 text-slate-900 shadow-xs border-2 border-emerald-200/80 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center space-x-2">
-            <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 border border-emerald-300/60 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
               <span>ДЕТЕРМИНИРОВАННЫЙ BUY-BOX & ОЧЕРЕДЬ</span>
             </span>
             <span
               className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border ${
                 tier === 'gold'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
                   : tier === 'bronze'
-                  ? 'bg-orange-500/20 text-orange-300 border-orange-400/40'
-                  : 'bg-slate-300/20 text-slate-200 border-slate-400/40'
+                  ? 'bg-orange-100 text-orange-900 border-orange-300'
+                  : 'bg-slate-100 text-slate-800 border-slate-300'
               }`}
             >
               {tier === 'gold' ? '🥇 РАНГ GOLD' : tier === 'bronze' ? '🥉 РАНГ BRONZE' : '🥈 РАНГ SILVER'}
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
             Инвестиционные критерии подбора и статус в тактовых дропах
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
             {tier === 'gold'
               ? 'Вам открыт эксклюзивный ранний доступ 24 часа ко всем закрытым дропам с максимальным дисконтом.'
               : 'Для перехода в ранг Gold подтвердите наличие 100% собственных средств или одобренной ипотеки у куратора.'}
@@ -211,16 +211,16 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
         </div>
 
         {/* Reliability Score Meter */}
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-white/10 flex flex-col items-center justify-center text-center shrink-0 min-w-[200px]">
-          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-emerald-200/80 shadow-xs flex flex-col items-center justify-center text-center shrink-0 min-w-[200px]">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
             РЕЙТИНГ НАДЕЖНОСТИ (SLA)
           </span>
-          <div className="text-3xl font-black text-emerald-400 font-mono">
+          <div className="text-3xl font-black text-emerald-600 font-mono">
             {buyBox.reliabilityScore ?? 100}/100
           </div>
-          <span className="text-[11px] text-slate-300 mt-1">
+          <span className="text-[11px] text-slate-500 mt-1">
             {(buyBox.noShowCount || 0) > 0 ? (
-              <span className="text-amber-300 font-bold">
+              <span className="text-amber-700 font-bold">
                 ⚠️ Штраф за неявку: -{buyBox.noShowCount! * 15} баллов
               </span>
             ) : (
@@ -597,7 +597,7 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
 
                 <Link
                   to={`/catalog/${lot.lotCode || lot.id}`}
-                  className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs text-center transition-all flex items-center justify-center space-x-2"
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs text-center transition-all flex items-center justify-center space-x-2 shadow-2xs"
                 >
                   <span>Посмотреть объект & Подать заявку</span>
                   <ArrowRight className="w-3.5 h-3.5" />

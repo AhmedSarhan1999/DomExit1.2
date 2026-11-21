@@ -4,8 +4,7 @@ import {
   UserCheck,
   Sliders,
   Users,
-  Building2,
-  Shield,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type OwnerTab =
@@ -13,8 +12,7 @@ export type OwnerTab =
   | 'sellers'
   | 'market'
   | 'users_rbac'
-  | 'company_profile'
-  | 'legal_cms';
+  | 'system_cms';
 
 export interface AdminTabBarProps {
   activeOwnerTab: OwnerTab;
@@ -30,27 +28,29 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
   usersAndStaffCount,
 }) => {
   return (
-    <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto whitespace-nowrap scrollbar-thin">
+    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+      {/* TAB 1 */}
       <button
         type="button"
         onClick={() => setActiveOwnerTab('overview')}
         className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
           activeOwnerTab === 'overview'
-            ? 'bg-emerald-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+            ? 'bg-emerald-600 text-white shadow-2xs'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
         }`}
       >
         <BarChart3 className="w-4 h-4" />
         <span>1. Сводка и метрики</span>
       </button>
 
+      {/* TAB 2 */}
       <button
         type="button"
         onClick={() => setActiveOwnerTab('sellers')}
         className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
           activeOwnerTab === 'sellers'
-            ? 'bg-emerald-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+            ? 'bg-emerald-600 text-white shadow-2xs'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
         }`}
       >
         <UserCheck className="w-4 h-4" />
@@ -68,30 +68,32 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
         )}
       </button>
 
+      {/* TAB 3 */}
       <button
         type="button"
         onClick={() => setActiveOwnerTab('market')}
         className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
           activeOwnerTab === 'market'
-            ? 'bg-emerald-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+            ? 'bg-emerald-600 text-white shadow-2xs'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
         }`}
       >
         <Sliders className="w-4 h-4" />
-        <span>3. Рыночные ставки и локации</span>
+        <span>3. Рынок и ставки</span>
       </button>
 
+      {/* TAB 4 */}
       <button
         type="button"
         onClick={() => setActiveOwnerTab('users_rbac')}
         className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
           activeOwnerTab === 'users_rbac'
-            ? 'bg-indigo-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+            ? 'bg-indigo-600 text-white shadow-2xs'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
         }`}
       >
         <Users className="w-4 h-4" />
-        <span>4. Пользователи, штат и RBAC</span>
+        <span>4. Штат и RBAC</span>
         <span
           className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
             activeOwnerTab === 'users_rbac'
@@ -103,30 +105,18 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
         </span>
       </button>
 
+      {/* TAB 5 */}
       <button
         type="button"
-        onClick={() => setActiveOwnerTab('company_profile')}
+        onClick={() => setActiveOwnerTab('system_cms')}
         className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
-          activeOwnerTab === 'company_profile'
-            ? 'bg-emerald-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+          activeOwnerTab === 'system_cms'
+            ? 'bg-emerald-600 text-white shadow-2xs'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
         }`}
       >
-        <Building2 className="w-4 h-4" />
-        <span>5. Профиль компании и безопасность</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setActiveOwnerTab('legal_cms')}
-        className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
-          activeOwnerTab === 'legal_cms'
-            ? 'bg-emerald-600 text-white shadow-xs'
-            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-        }`}
-      >
-        <Shield className="w-4 h-4" />
-        <span>6. Правовой CMS и Реестр (26 актов)</span>
+        <ShieldCheck className="w-4 h-4" />
+        <span>5. Система, Telegram и CMS</span>
       </button>
     </div>
   );

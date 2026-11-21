@@ -19,13 +19,14 @@ const tests = [
   { path: '/sellers', expected: 200, type: 'spa-fallback' },
   { path: '/portal', expected: 200, type: 'spa-fallback' },
   { path: '/admin/dashboard', expected: 200, type: 'spa-fallback' },
+  { path: '/admin/matchmaker', expected: 200, type: 'spa-fallback' },
   { path: '/admin/closing', expected: 200, type: 'spa-fallback' },
   { path: '/admin/legal-audit', expected: 200, type: 'spa-fallback' },
   { path: '/vip-catalog', expected: 200, type: 'decommissioned-no-redirect-loop' },
   { path: '/bank-portal', expected: 200, type: 'decommissioned-no-redirect-loop' },
   { path: '/api/health', expected: 200, type: 'api-health' },
   { path: '/api/auth/yandex/start', expected: 302, type: 'oauth-redirect' },
-  { path: '/assets/index-DWXejt4r.css', expected: 200, type: 'asset-css' },
+  { path: '/assets/index-CQWJk_cA.css', expected: 200, type: 'asset-css' },
 ];
 
 async function verify() {
