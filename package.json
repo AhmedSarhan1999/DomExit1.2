@@ -8,7 +8,10 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:staging": "node infrastructure/scripts/master-e2e-verify.mjs --env=staging",
+    "verify:prod": "node infrastructure/scripts/master-e2e-verify.mjs --env=production --read-only",
+    "verify:all": "node infrastructure/scripts/master-e2e-verify.mjs --env=staging"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1173.0",
