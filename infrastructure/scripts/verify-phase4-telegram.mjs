@@ -165,6 +165,10 @@ async function runTests() {
       const linkData = await linkRes.json();
       assert(linkRes.status === 200 && linkData.success === true, `POST /api/telegram/link-token returned 200`);
       assert(Boolean(linkData.token && linkData.deepLink), `DeepLink generated: ${linkData.deepLink}`);
+      const startParam = (linkData.deepLink.split('start=')[1] || '').trim();
+      assert(startParam.startsWith('bind_'), `DeepLink parameter starts with bind_`);
+      assert(startParam.length === 37, `DeepLink parameter is exactly 37 characters (${startParam.length} chars)`);
+      assert(startParam.length <= 64, `DeepLink parameter complies with Telegram 64-char limit`);
       generatedToken = linkData.token;
     } catch (err) {
       assert(false, `Link token generation failed: ${err.message}`);

@@ -27,9 +27,14 @@ if (!process.argv.includes('--confirm-revoke')) {
 // Actual revocation
 console.log('\n[CRITICAL WARNING] --confirm-revoke passed. Deleting legacy access key...');
 try {
-  execSync(`yc iam access-key delete ${LEGACY_KEY_ID}`, { stdio: 'inherit' });
+  execSync(`yc iam access-key delete ${LEGACY_KEY_ID}`, { stdio: 'pipe' });
   console.log('✓ Successfully deleted legacy access key:', LEGACY_KEY_ID);
 } catch (err) {
-  console.error('✗ Failed to delete access key:', err.message);
-  process.exit(1);
+  const errMsg = err.stderr ? err.stderr.toString() : err.message;
+  if (errMsg.includes('NotFound') || errMsg.includes('not found')) {
+    console.log('✓ Legacy access key is ALREADY revoked / does not exist on Yandex Cloud IAM.');
+  } else {
+    console.error('✗ Failed to delete access key:', errMsg);
+    process.exit(1);
+  }
 }

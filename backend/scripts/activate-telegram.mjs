@@ -123,9 +123,9 @@ async function run() {
       url: webhookUrl,
       secret_token: secret,
       allowed_updates: ['message', 'callback_query'],
-      drop_pending_updates: false,
+      drop_pending_updates: true,
     });
-    console.log('✓ Webhook successfully registered with Telegram!');
+    console.log('✓ Webhook successfully registered with Telegram (drop_pending_updates: true)!');
 
     // Step 4: Verify Webhook Info
     const info = await callTg('getWebhookInfo');
