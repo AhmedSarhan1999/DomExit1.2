@@ -262,7 +262,15 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
                     isMine ? 'text-emerald-100' : 'text-slate-400'
                   }`}
                 >
-                  <span className="font-bold truncate">{m.senderName}</span>
+                  <div className="flex items-center space-x-1.5 truncate">
+                    <span className="font-bold truncate">{m.senderName}</span>
+                    {(m as any).source === 'telegram' && (
+                      <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-semibold bg-sky-500/20 text-sky-300">
+                        <Send className="w-2 h-2" />
+                        <span>TG</span>
+                      </span>
+                    )}
+                  </div>
                   <span>{new Date(m.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
 

@@ -7,6 +7,7 @@ import { handleAuth } from './routes/auth.js';
 import { handleData } from './routes/data.js';
 import { handleStorage } from './routes/storage.js';
 import { handleAdmin } from './routes/admin.js';
+import { handleTelegram } from './routes/telegram.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -61,7 +62,12 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
       const subPath = path.substring('/api'.length);
       response = await handleData(event, subPath);
     }
-    // 6. Data Gateway (/api/data/*)
+    // 6. Telegram Engine & Webhooks (/api/telegram/*)
+    else if (path.startsWith('/api/telegram')) {
+      const subPath = path.substring('/api'.length);
+      response = await handleTelegram(event, subPath);
+    }
+    // 7. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {
       const subPath = path.substring('/api'.length);
       response = await handleData(event, subPath);

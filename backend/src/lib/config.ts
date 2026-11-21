@@ -35,6 +35,9 @@ export interface BackendConfig {
   YANDEX_OAUTH_CLIENT_SECRET: string;
   PUBLIC_BASE_URL: string;
   PROD_CUSTOM_DOMAIN?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_BOT_USERNAME?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
 }
 
 export function getConfig(): BackendConfig {
@@ -70,6 +73,24 @@ export function getConfig(): BackendConfig {
     YANDEX_OAUTH_CLIENT_SECRET: process.env.YANDEX_OAUTH_CLIENT_SECRET || '',
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || 'http://localhost:5173',
     PROD_CUSTOM_DOMAIN: process.env.PROD_CUSTOM_DOMAIN || '',
+    TELEGRAM_BOT_TOKEN:
+      process.env.TELEGRAM_BOT_TOKEN ||
+      (env === 'production'
+        ? process.env.TELEGRAM_BOT_TOKEN_PROD
+        : process.env.TELEGRAM_BOT_TOKEN_STAGING) ||
+      '',
+    TELEGRAM_BOT_USERNAME:
+      process.env.TELEGRAM_BOT_USERNAME ||
+      (env === 'production'
+        ? process.env.TELEGRAM_BOT_USERNAME_PROD
+        : process.env.TELEGRAM_BOT_USERNAME_STAGING) ||
+      '',
+    TELEGRAM_WEBHOOK_SECRET:
+      process.env.TELEGRAM_WEBHOOK_SECRET ||
+      (env === 'production'
+        ? process.env.TELEGRAM_WEBHOOK_SECRET_PROD
+        : process.env.TELEGRAM_WEBHOOK_SECRET_STAGING) ||
+      '',
   };
 
   const missing: string[] = [];

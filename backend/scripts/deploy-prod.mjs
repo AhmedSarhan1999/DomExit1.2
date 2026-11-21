@@ -145,6 +145,9 @@ const envMap = {
   PUBLIC_BASE_URL: publicBaseUrl,
   PROD_CUSTOM_DOMAIN: envVars.PROD_CUSTOM_DOMAIN || '',
   BOOTSTRAP_OWNER_EMAIL: envVars.PROD_OWNER_EMAIL || envVars.BOOTSTRAP_OWNER_EMAIL || 'amaas9499@gmail.com',
+  TELEGRAM_BOT_TOKEN: envVars.TELEGRAM_BOT_TOKEN_PROD || envVars.TELEGRAM_BOT_TOKEN || '',
+  TELEGRAM_BOT_USERNAME: envVars.TELEGRAM_BOT_USERNAME_PROD || envVars.TELEGRAM_BOT_USERNAME || 'DomExitOfficialBot',
+  TELEGRAM_WEBHOOK_SECRET: envVars.TELEGRAM_WEBHOOK_SECRET_PROD || envVars.TELEGRAM_WEBHOOK_SECRET || '',
 };
 
 // Build environment string without printing secrets to console

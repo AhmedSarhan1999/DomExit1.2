@@ -162,4 +162,56 @@ export const apiClient = {
 
   delete: <T = any>(endpoint: string, options?: RequestOptions) =>
     request<T>(endpoint, { method: 'DELETE', ...options }),
+
+  // Telegram Operating System helpers
+  telegram: {
+    getStatus: () =>
+      request<{
+        configured: boolean;
+        botUsername: string;
+        linked: boolean;
+        telegramUsername?: string;
+        notificationsEnabled: boolean;
+        boundAt?: string;
+      }>('/api/telegram/status', { method: 'GET' }),
+
+    createLinkToken: () =>
+      request<{
+        success: boolean;
+        token: string;
+        deepLink: string;
+        expiresInSec: number;
+        configured: boolean;
+        botUsername: string;
+      }>('/api/telegram/link-token', { method: 'POST' }),
+
+    unlink: () =>
+      request<{ success: boolean }>('/api/telegram/unlink', { method: 'POST' }),
+
+    updatePreferences: (notificationsEnabled: boolean) =>
+      request<{ success: boolean; notificationsEnabled: boolean }>('/api/telegram/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ notificationsEnabled }),
+      }),
+
+    assignCurator: (lotCode: string, employeeId: string) =>
+      request<{ success: boolean; lot: any; employee: any }>('/api/telegram/assign', {
+        method: 'POST',
+        body: JSON.stringify({ lotCode, employeeId }),
+      }),
+
+    transitionStage: (lotCode: string, nextStage: string, reason?: string) =>
+      request<{ success: boolean; lot: any; previousStage: string; currentStage: string }>(
+        '/api/telegram/stage',
+        {
+          method: 'POST',
+          body: JSON.stringify({ lotCode, nextStage, reason }),
+        }
+      ),
+
+    testNotification: () =>
+      request<{ success: boolean; sent: boolean; description?: string }>('/api/telegram/test', {
+        method: 'POST',
+      }),
+  },
 };

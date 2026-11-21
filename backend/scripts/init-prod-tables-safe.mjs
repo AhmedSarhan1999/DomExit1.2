@@ -9,8 +9,14 @@ const ROOT_DIR = path.resolve(__dirname, '../..');
 const ENV_FILE = path.join(ROOT_DIR, '.env.cloud.local');
 const MANIFEST_FILE = path.join(ROOT_DIR, 'infrastructure/cloud-manifest.json');
 
+const args = process.argv.slice(2);
+let targetEnv = 'production';
+for (const arg of args) {
+  if (arg.startsWith('--env=')) targetEnv = arg.split('=')[1].trim();
+}
+
 if (!fs.existsSync(ENV_FILE)) {
-  console.error('[InitProd] Error: .env.cloud.local does not exist!');
+  console.error('[InitTables] Error: .env.cloud.local does not exist!');
   process.exit(1);
 }
 
@@ -24,19 +30,21 @@ for (const line of envContent.split('\n')) {
   envVars[k] = vParts.join('=');
 }
 
-const prodYdbEndpoint = manifest.production?.ydbDocApiEndpoint;
+const envConfig = targetEnv === 'staging' ? manifest.staging : manifest.production;
+const ydbEndpoint = envConfig?.ydbDocApiEndpoint;
+const databaseId = envConfig?.ydbDatabaseId;
 const accessKeyId = envVars.YC_ACCESS_KEY_ID?.trim();
 const secretAccessKey = envVars.YC_SECRET_ACCESS_KEY?.trim();
 const region = manifest.region || envVars.YC_REGION || 'ru-central1';
 
-if (!prodYdbEndpoint || !accessKeyId || !secretAccessKey) {
-  console.error('[InitProd] Missing critical credentials for production YDB!');
+if (!ydbEndpoint || !accessKeyId || !secretAccessKey) {
+  console.error('[InitTables] Missing critical credentials for target YDB!');
   process.exit(1);
 }
 
-console.log('=== Safe Production Table Initialization (Non-Destructive) ===');
-console.log('Target Database:', manifest.production.ydbDatabaseId);
-console.log('Endpoint:       ', prodYdbEndpoint);
+console.log(`=== Safe YDB Table Initialization [${targetEnv.toUpperCase()}] (Non-Destructive) ===`);
+console.log('Target Database:', databaseId);
+console.log('Endpoint:       ', ydbEndpoint);
 
 function sha256Hex(data) {
   return crypto.createHash('sha256').update(data).digest('hex');
@@ -54,7 +62,7 @@ function getSigningKey(secret, dateStamp, reg, service) {
 }
 
 async function callDocApi(target, bodyObj, retries = 3) {
-  const url = new URL(prodYdbEndpoint);
+  const url = new URL(ydbEndpoint);
   const canonicalHost = url.host;
   const canonicalPath = url.pathname;
 
@@ -95,7 +103,7 @@ async function callDocApi(target, bodyObj, retries = 3) {
     const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
     try {
-      const res = await fetch(prodYdbEndpoint, {
+      const res = await fetch(ydbEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-amz-json-1.0',
@@ -168,17 +176,21 @@ const REQUIRED_TABLES = [
   'bank_special_approvals',
   'escrow_bridge_chats',
   'security_incidents',
+  // Phase 4 Telegram OS Tables
+  'telegram_bindings',
+  'telegram_link_tokens',
+  'telegram_message_map',
 ];
 
 async function run() {
-  console.log('Listing existing tables in production YDB...');
+  console.log(`Listing existing tables in ${targetEnv} YDB...`);
   const listRes = await callDocApi('DynamoDB_20120810.ListTables', {});
   if (listRes.status !== 200 || !listRes.data?.TableNames) {
     throw new Error(`Failed to list tables: ${JSON.stringify(listRes)}`);
   }
 
   const existingTables = new Set(listRes.data.TableNames);
-  console.log(`Found ${existingTables.size} existing tables in production.`);
+  console.log(`Found ${existingTables.size} existing tables.`);
 
   let createdCount = 0;
   for (const table of REQUIRED_TABLES) {
@@ -207,6 +219,6 @@ async function run() {
 }
 
 run().catch((err) => {
-  console.error('[InitProd] Fatal error:', err);
+  console.error('[InitTables] Fatal error:', err);
   process.exit(1);
 });

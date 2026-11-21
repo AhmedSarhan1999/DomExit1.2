@@ -7,6 +7,7 @@ import { getConfig } from '../lib/config.js';
 import { deleteS3ObjectsByPrefix } from '../lib/s3Client.js';
 import { memoryCache, CACHEABLE_COLLECTIONS } from '../lib/memoryCache.js';
 import { recordJournalEvent } from '../lib/journal.js';
+import { telegramNotifier } from '../lib/telegramNotifier.js';
 
 const PUBLIC_COLLECTIONS = new Set([
   'lots',
@@ -510,6 +511,15 @@ export async function handleData(
         payload: itemToSave,
       });
 
+      // Telegram notifications for staff applications
+      if (method === 'POST') {
+        if (collection === 'partner_applications') {
+          void telegramNotifier.notifyNewPartnerOrInvestor('partner', itemToSave);
+        } else if (collection === 'investor_applications') {
+          void telegramNotifier.notifyNewPartnerOrInvestor('investor', itemToSave);
+        }
+      }
+
       return json(event, 200, { success: true, item: itemToSave });
     }
 
@@ -535,6 +545,27 @@ export async function handleData(
         actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
         payload: itemToSave,
       });
+
+      // Telegram notifications and chat bridge
+      if (method === 'POST') {
+        if (collection === 'seller_requests') {
+          void telegramNotifier.notifyNewSellerSubmission(itemToSave);
+        } else if (collection === 'buyer_applications' || collection === 'deals') {
+          void telegramNotifier.notifyNewBuyerApplication(itemToSave);
+        } else if (collection === 'curator_messages') {
+          void telegramNotifier.handleWebCuratorMessage({
+            lotCode: itemToSave.lotCode,
+            dealId: itemToSave.dealId,
+            threadChannel: itemToSave.threadChannel || 'seller_curator',
+            senderUser: {
+              id: authUser.id,
+              role: authUser.role,
+              name: authUser.name || authUser.email || 'Пользователь',
+            },
+            text: itemToSave.text || '',
+          });
+        }
+      }
 
       return json(event, 200, { success: true, item: itemToSave });
     }
@@ -582,6 +613,11 @@ export async function handleData(
           actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
           payload: itemToSave,
         });
+
+        // Notify staff on newly submitted lot
+        if (method === 'POST') {
+          void telegramNotifier.notifyNewSellerSubmission(itemToSave);
+        }
 
         return json(event, 200, { success: true, item: itemToSave });
       }

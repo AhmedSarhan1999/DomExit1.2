@@ -18,6 +18,7 @@ import { DevelopersRepository } from '../dal/repositories/DevelopersRepository';
 import { MarketSettingsRepository } from '../dal/repositories/MarketSettingsRepository';
 import { CuratorChatRepository } from '../dal/repositories/CuratorChatRepository';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
+import { TelegramConnectCard } from '../components/telegram/TelegramConnectCard';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { useFeatureFlagsStore } from '../stores/useFeatureFlagsStore';
 
@@ -323,6 +324,9 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Telegram OS Connect Card for Staff & Owner */}
+          <TelegramConnectCard className="mb-6 shadow-sm" />
 
           {/* =========================================================================
               OWNER MODE: Full platform financial view & Triage Desk

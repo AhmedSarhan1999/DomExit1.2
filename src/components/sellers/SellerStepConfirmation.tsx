@@ -3,6 +3,7 @@ import { CheckCircle2, ArrowRight } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatRubles } from '../../utils/formatters';
 import { RussianRegionConfig } from '../../data/russianGeography';
+import { TelegramConnectCard } from '../telegram/TelegramConnectCard';
 
 export interface SellerStepConfirmationProps {
   createdDealId: string;
@@ -82,6 +83,8 @@ export const SellerStepConfirmation: React.FC<SellerStepConfirmationProps> = ({
           <span className="font-bold text-indigo-700">{vaultDocsCount} шт.</span>
         </div>
       </div>
+
+      <TelegramConnectCard className="text-left my-4 shadow-sm" />
 
       <div className="flex flex-col sm:flex-row gap-3 pt-2">
         <button
