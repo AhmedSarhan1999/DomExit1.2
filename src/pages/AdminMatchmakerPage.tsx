@@ -13,6 +13,7 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { StorageService } from '../dal/StorageService';
 import { BuyerCandidate, Lot } from '../types';
 import { FileManager } from '../utils/fileManager';
+import { StagedDropQueueManager } from '../components/admin/StagedDropQueueManager';
 import {
   CheckCircle2,
   Clock,
@@ -294,6 +295,20 @@ export const AdminMatchmakerPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Staged Drop & Hybrid Queue Manager (Phase 6) */}
+              <StagedDropQueueManager
+                lot={lot}
+                onLotUpdated={loadData}
+                onShowToast={(msg) => {
+                  setSuccessToast(msg);
+                  setTimeout(() => setSuccessToast(null), 5000);
+                }}
+                onShowWarning={(msg) => {
+                  setWarningToast(msg);
+                  setTimeout(() => setWarningToast(null), 5000);
+                }}
+              />
 
               {/* 2. Main Area: Candidates Grid & AI Recommendation Sidebar */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

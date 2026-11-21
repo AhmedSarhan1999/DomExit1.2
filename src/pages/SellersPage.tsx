@@ -52,6 +52,7 @@ import { SellerLiveAuditCard } from '../components/sellers/SellerLiveAuditCard';
 import { SellerStepIdentity } from '../components/sellers/SellerStepIdentity';
 import { SellerStepDocuments } from '../components/sellers/SellerStepDocuments';
 import { SellerStepConfirmation } from '../components/sellers/SellerStepConfirmation';
+import { SellerDemandRadarBanner } from '../components/sellers/SellerDemandRadarBanner';
 
 export const SellersPage: React.FC = () => {
   const { language } = useLanguage();
@@ -682,6 +683,13 @@ export const SellersPage: React.FC = () => {
                     <span>Вторичное жилье (ДКП / 218-ФЗ)</span>
                   </button>
                 </div>
+
+                {/* Real-time Liquidity Demand Radar Banner */}
+                <SellerDemandRadarBanner
+                  city={locationRegion}
+                  priceRub={Number(contractPriceStr || 0)}
+                  dealTrack={dealTrack}
+                />
 
                 <SellerStepProperty
                 user={user}

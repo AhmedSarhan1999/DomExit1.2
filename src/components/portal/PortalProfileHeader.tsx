@@ -13,7 +13,7 @@ import {
 import { UserProfile } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 
-export type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'consents';
+export type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'consents' | 'buybox';
 
 export interface PortalProfileHeaderProps {
   user: UserProfile | null;
@@ -145,8 +145,23 @@ export const PortalProfileHeader: React.FC<PortalProfileHeaderProps> = ({
           </div>
         </div>
 
-        {/* 5 Dynamic Portal Tabs */}
+        {/* Dynamic Portal Tabs */}
         <div className="flex flex-wrap gap-2 border-b border-slate-200 pt-2">
+          <button
+            type="button"
+            onClick={() => onSelectTab('buybox')}
+            className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'buybox'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <span>{language === 'ru' ? 'Buy-Box & Очередь' : 'Buy-Box & Queue'}</span>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase">
+              AI
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={() => onSelectTab('buyer')}

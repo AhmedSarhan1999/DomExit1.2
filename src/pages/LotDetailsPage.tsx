@@ -21,6 +21,7 @@ import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { LotDetailsSkeleton } from '../components/common/Skeletons';
 import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
 import { PepSignatureModal } from '../components/legal/PepSignatureModal';
+import { LotDropApplicationCard } from '../components/lot/LotDropApplicationCard';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -1055,7 +1056,18 @@ export const LotDetailsPage: React.FC = () => {
 
               {/* Actions based on lot status */}
               <div className="space-y-3 pt-2">
-                {lotStatus === 'available' && (
+                {/* Staged Drop Quick Application Card */}
+                {lot.dropConfig && lot.dropConfig.mode === 'staged_drop' && (
+                  <LotDropApplicationCard
+                    lot={lot}
+                    user={user}
+                    onOpenAuth={() =>
+                      openAuthModal('Авторизуйтесь для подачи заявки в закрытый тактовый дроп')
+                    }
+                  />
+                )}
+
+                {lotStatus === 'available' && (!lot.dropConfig || lot.dropConfig.mode !== 'staged_drop') && (
                   <>
                     <button
                       type="button"

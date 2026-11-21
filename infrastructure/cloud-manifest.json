@@ -19,7 +19,10 @@
     "apiGatewayUrl": "https://d5dsuuhvetioe2hp0q7i.6brbn2wz.apigw.yandexcloud.net",
     "backupFunctionId": "d4edb2l5n6gcpfbnl3b0",
     "backupTriggerId": "a1sqlo5a1el40u9tmqdn",
-    "backupScheduleUtc": "0 2 * * ? *"
+    "backupScheduleUtc": "0 2 * * ? *",
+    "sweeperFunctionId": "d4eag6buonjeslfpan73",
+    "sweeperTriggerId": "a1sbuqn63f9cmamjeqp7",
+    "sweeperScheduleUtc": "0/15 * * * ? *"
   },
   "staging": {
     "ydbDatabaseId": "etnkpeqnbmb1a6cocipk",

@@ -33,6 +33,7 @@ import { SellerLotsTab } from '../components/portal/SellerLotsTab';
 import { FavoritesTab } from '../components/portal/FavoritesTab';
 import { PartnerPortalTab } from '../components/portal/PartnerPortalTab';
 import { ConsentsArchiveTab } from '../components/portal/ConsentsArchiveTab';
+import { BuyerBuyBoxTab } from '../components/portal/BuyerBuyBoxTab';
 import { PartnerPreliminaryAlertBanner } from '../components/portal/PartnerPreliminaryAlertBanner';
 import { PreliminaryRequestModal } from '../components/portal/PreliminaryRequestModal';
 
@@ -48,7 +49,7 @@ import {
   ProofOfConsentRecord,
 } from '../types';
 
-const VALID_TABS: PortalTab[] = ['buyer', 'seller', 'favorites', 'partner', 'consents'];
+const VALID_TABS: PortalTab[] = ['buybox', 'buyer', 'seller', 'favorites', 'partner', 'consents'];
 
 export const ClientPortalPage: React.FC = () => {
   const navigate = useNavigate();
@@ -569,6 +570,11 @@ export const ClientPortalPage: React.FC = () => {
               setIsCompleteModalOpen(true);
             }}
           />
+        )}
+
+        {/* TAB 0: BUY-BOX & DETERMINISTIC QUEUE */}
+        {activeTab === 'buybox' && (
+          <BuyerBuyBoxTab user={user} />
         )}
 
         {/* TAB 1: BUYER OFFERS VIEW */}

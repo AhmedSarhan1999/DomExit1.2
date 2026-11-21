@@ -1,3 +1,5 @@
+import { BuyerBuyBox, BuyBoxTier, BuyerApplication, LotDropConfig, PriceAcceptance } from '../types';
+
 /**
  * Unified Client API Gateway Client for DomExit Platform
  *
@@ -304,6 +306,141 @@ export const apiClient = {
         total: number;
         signatures: any[];
       }>(`/api/pep/my-signatures${qs}`, { method: 'GET' });
+    },
+  },
+
+  // Hybrid Queue & Buy-Box Matching System (Phase 6)
+  matching: {
+    getMyBuyBox: () =>
+      request<{ ok: boolean; buyBox: BuyerBuyBox | null; tier: BuyBoxTier }>('/api/matching/my-buy-box', {
+        method: 'GET',
+      }),
+
+    saveMyBuyBox: (data: Partial<BuyerBuyBox>) =>
+      request<{ ok: boolean; buyBox: BuyerBuyBox; tier: BuyBoxTier }>('/api/matching/my-buy-box', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getMyMatches: (options?: { limit?: number }) => {
+      const qs = options?.limit ? `?limit=${options.limit}` : '';
+      return request<{
+        ok: boolean;
+        buyBoxTier: BuyBoxTier;
+        totalMatches: number;
+        matches: Array<{
+          lot: any;
+          score: number;
+          breakdown: any;
+          eligibleForDrop: boolean;
+          canApplyNow: boolean;
+          waveStatus: string;
+          remainingSeats: number | null;
+          goldExclusiveUntil?: string;
+          closesAt?: string;
+          reasons: string[];
+        }>;
+      }>(`/api/matching/my-matches${qs}`, { method: 'GET' });
+    },
+
+    launchLotDrop: (
+      lotCode: string,
+      params: { goldExclusiveHours?: number; windowHours?: number; maxApplicationsCap?: number } = {}
+    ) =>
+      request<{ ok: boolean; dropConfig: LotDropConfig }>('/api/matching/launch-drop', {
+        method: 'POST',
+        body: JSON.stringify({ lotCode, ...params }),
+      }),
+
+    applyToLotDrop: (
+      lotCode: string,
+      params: {
+        priceAcceptance: PriceAcceptance;
+        readiness24h: boolean;
+        deposit48h: boolean;
+        ndaSigned?: boolean;
+        offeredPriceRub?: number;
+      }
+    ) =>
+      request<{ ok: boolean; application: BuyerApplication; waveStatus: string }>(
+        `/api/matching/lots/${encodeURIComponent(lotCode)}/apply`,
+        {
+          method: 'POST',
+          body: JSON.stringify(params),
+        }
+      ),
+
+    getLotQueue: (lotCode: string) =>
+      request<{
+        ok: boolean;
+        lotCode: string;
+        totalApplications: number;
+        queue: Array<
+          BuyerApplication & {
+            tier: BuyBoxTier;
+            reliabilityScore: number;
+            noShowCount: number;
+          }
+        >;
+      }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/queue`, { method: 'GET' }),
+
+    selectLotPriority: (
+      lotCode: string,
+      priority1UserId: string,
+      reserve2UserId?: string,
+      reserve3UserId?: string
+    ) =>
+      request<{
+        ok: boolean;
+        priority1UserId: string;
+        viewingDeadlineAt: string;
+        depositDeadlineAt: string;
+      }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/select-priority`, {
+        method: 'POST',
+        body: JSON.stringify({ priority1UserId, reserve2UserId, reserve3UserId }),
+      }),
+
+    promoteNextInQueue: (lotCode: string, reason?: string) =>
+      request<{
+        ok: boolean;
+        lotCode: string;
+        newPriority1: any;
+        demotedUserId?: string;
+      }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/promote-next`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+
+    updateBuyerTier: (
+      targetUserId: string,
+      params: { tier: BuyBoxTier; reliabilityScore?: number; tierNote?: string }
+    ) =>
+      request<{ ok: boolean; buyBox: BuyerBuyBox }>(
+        `/api/matching/buyers/${encodeURIComponent(targetUserId)}/tier`,
+        {
+          method: 'POST',
+          body: JSON.stringify(params),
+        }
+      ),
+
+    getDemandRadar: (params?: { city?: string; maxBudget?: number; dealTrack?: string }) => {
+      const sp = new URLSearchParams();
+      if (params?.city) sp.set('city', params.city);
+      if (params?.maxBudget) sp.set('maxBudget', String(params.maxBudget));
+      if (params?.dealTrack) sp.set('dealTrack', params.dealTrack);
+      const qs = sp.toString() ? `?${sp.toString()}` : '';
+      return request<{
+        ok: boolean;
+        totalMatched: number;
+        goldCount: number;
+        silverCount: number;
+        bronzeCount: number;
+        totalDeclaredLiquidityRub: number;
+        distributionByCity: Record<string, number>;
+        distributionByTrack: Record<string, number>;
+        averageBudgetRub: number;
+        averageExpectedDiscountPercent: number;
+      }>(`/api/matching/demand-radar${qs}`, { method: 'GET' });
     },
   },
 };
