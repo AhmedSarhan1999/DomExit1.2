@@ -18,7 +18,7 @@
     ],
     "certificateId": "fpqivftt1kmksg779uab",
     "certificateName": "domexit-ru-cert",
-    "certificateStatus": "VALIDATING",
+    "certificateStatus": "ISSUED",
     "acmeChallenges": [
       {
         "name": "_acme-challenge.domexit.ru.",
@@ -34,7 +34,30 @@
     "postbox": {
       "senderEmail": "no-reply@domexit.ru",
       "spfRecord": "v=spf1 include:_spf.postbox.cloud.yandex.net ~all",
-      "dmarcRecord": "v=DMARC1; p=quarantine; rua=mailto:postmaster@domexit.ru"
+      "dmarcRecord": "v=DMARC1; p=quarantine; rua=mailto:postmaster@domexit.ru",
+      "serviceAccountId": "ajefccvsjg8fnkpgj5ed",
+      "serviceAccountName": "domexit-postbox-sa",
+      "smtpHost": "postbox.cloud.yandex.net",
+      "smtpPort": 465,
+      "identityStatus": "PENDING",
+      "dkimStatus": "FAILED",
+      "dkimTokens": [
+        "egtdvfr0l58otcmiol03-1",
+        "egtdvfr0l58otcmiol03-2"
+      ],
+      "dkimRecords": [
+        {
+          "name": "egtdvfr0l58otcmiol03-1._domainkey.domexit.ru.",
+          "type": "CNAME",
+          "value": "egtdvfr0l58otcmiol03-1.dkim.postbox.cloud.yandex.net."
+        },
+        {
+          "name": "egtdvfr0l58otcmiol03-2._domainkey.domexit.ru.",
+          "type": "CNAME",
+          "value": "egtdvfr0l58otcmiol03-2.dkim.postbox.cloud.yandex.net."
+        }
+      ],
+      "smtpUser": "ajeqdhes840nhel6mn76"
     }
   },
   "production": {
