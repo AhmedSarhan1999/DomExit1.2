@@ -8,7 +8,10 @@ import {
   validateRussianInn,
 } from '../../utils/validators';
 
+import { PropertyDealTrack } from '../../types';
+
 export interface SellerStepIdentityProps {
+  dealTrack?: PropertyDealTrack;
   sellerName: string;
   onSellerNameChange: (name: string) => void;
   sellerPhone: string;
@@ -26,6 +29,7 @@ export interface SellerStepIdentityProps {
 }
 
 export const SellerStepIdentity: React.FC<SellerStepIdentityProps> = ({
+  dealTrack = 'ddu_cession',
   sellerName,
   onSellerNameChange,
   sellerPhone,
@@ -42,17 +46,20 @@ export const SellerStepIdentity: React.FC<SellerStepIdentityProps> = ({
   onGoToStep3,
 }) => {
   const { language } = useLanguage();
+  const isSecondary = dealTrack === 'secondary_dkp';
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="text-center space-y-2">
         <h3 className="text-xl font-bold text-slate-900">
-          {language === 'ru'
-            ? 'Идентификация правообладателя ДДУ'
-            : 'DDU Holder Verification'}
+          {isSecondary
+            ? (language === 'ru' ? 'Идентификация собственника объекта недвижимости' : 'Property Owner Verification')
+            : (language === 'ru' ? 'Идентификация правообладателя ДДУ' : 'DDU Holder Verification')}
         </h3>
         <p className="text-xs text-slate-500">
-          Данные используются строго для автоматической сверки по базам ФССП и ЕФРСБ и подготовки согласия застройщика.
+          {isSecondary
+            ? 'Данные используются строго для проверки в Росреестре, базах ФССП/ЕФРСБ и подготовки аккредитива.'
+            : 'Данные используются строго для автоматической сверки по базам ФССП и ЕФРСБ и подготовки согласия застройщика.'}
         </p>
       </div>
 
@@ -66,7 +73,9 @@ export const SellerStepIdentity: React.FC<SellerStepIdentityProps> = ({
       <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            ФИО правообладателя по договору ДДУ *
+            {isSecondary
+              ? 'ФИО собственника по выписке ЕГРН / ДКП *'
+              : 'ФИО правообладателя по договору ДДУ *'}
           </label>
           <input
             type="text"
@@ -162,7 +171,7 @@ export const SellerStepIdentity: React.FC<SellerStepIdentityProps> = ({
           onClick={onBackToStep1}
           className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
         >
-          ← Назад к параметрам ДДУ
+          {isSecondary ? '← Назад к параметрам объекта' : '← Назад к параметрам ДДУ'}
         </button>
         <button
           type="button"

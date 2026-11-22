@@ -82,14 +82,21 @@ export const ClientPortalPage: React.FC = () => {
     }
   }, [user, isAuthenticated, authLoading, navigate, language]);
 
+  const isPartnerEligible = Boolean(
+    user?.isPartnerApproved ||
+    user?.roles?.includes('partner') ||
+    user?.role === 'partner' ||
+    user?.activeRole === 'partner'
+  );
+
   const resolveDefaultTab = (): PortalTab => {
     const paramTab = searchParams.get('tab') as PortalTab | null;
     if (paramTab && VALID_TABS.includes(paramTab)) {
-      if (paramTab === 'partner' && !user?.isPartnerApproved) return 'buyer';
+      if (paramTab === 'partner' && !isPartnerEligible) return 'buyer';
       return paramTab;
     }
     if (user?.activeRole === 'seller') return 'seller';
-    if (user?.activeRole === 'partner' && user?.isPartnerApproved) return 'partner';
+    if (user?.activeRole === 'partner' && isPartnerEligible) return 'partner';
     return 'buyer';
   };
 
@@ -101,10 +108,10 @@ export const ClientPortalPage: React.FC = () => {
   useEffect(() => {
     const paramTab = searchParams.get('tab') as PortalTab | null;
     if (paramTab && VALID_TABS.includes(paramTab) && paramTab !== activeTab) {
-      if (paramTab === 'partner' && !user?.isPartnerApproved) return;
+      if (paramTab === 'partner' && !isPartnerEligible) return;
       setActiveTab(paramTab);
     }
-  }, [searchParams, user]);
+  }, [searchParams, user, isPartnerEligible]);
 
   const handleSelectTab = (tab: PortalTab) => {
     setActiveTab(tab);
@@ -197,7 +204,8 @@ export const ClientPortalPage: React.FC = () => {
   const loadData = async () => {
     const uid = user?.id || '';
     const clientCode = user?.clientCode || '';
-    const partnerRefCode = user?.partnerRefCode || '';
+    const partnerRefCode = user?.partnerRefCode || user?.referralCode || '';
+    const partnerId = user?.partnerId || uid;
 
     const [
       lotsData,
@@ -217,7 +225,7 @@ export const ClientPortalPage: React.FC = () => {
       CandidatesRepository.getByUserId(uid, clientCode),
       PartnerRequestsRepository.getPendingByClientCode(clientCode),
       PartnerRequestsRepository.getByPartner(uid, partnerRefCode),
-      partnerRefCode ? DealsRepository.getByPartner(partnerRefCode) : Promise.resolve([]),
+      DealsRepository.getByPartner(partnerRefCode, partnerId),
       EmployeesRepository.getAll(),
       LotsRepository.getBySeller(uid, clientCode, user?.email, user?.phone),
       DealsRepository.getBySeller(uid, clientCode),
@@ -513,7 +521,7 @@ export const ClientPortalPage: React.FC = () => {
         buyerBidsCount={userBids.length}
         sellerLotsCount={sellerLots.length}
         favoritesCount={favoriteLots.length}
-        isPartnerApproved={Boolean(user?.isPartnerApproved)}
+        isPartnerApproved={isPartnerEligible}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onLogout={logout}
       />

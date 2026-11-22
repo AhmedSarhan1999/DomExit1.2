@@ -3,8 +3,10 @@ import { Clock } from 'lucide-react';
 import { RussianRegionConfig } from '../../data/russianGeography';
 import { formatRubles } from '../../utils/formatters';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { PropertyDealTrack } from '../../types';
 
 export interface SellerLiveAuditCardProps {
+  dealTrack?: PropertyDealTrack;
   contractPrice: number;
   paidAmount: number;
   todayMarketPrice: number;
@@ -17,6 +19,7 @@ export interface SellerLiveAuditCardProps {
 }
 
 export const SellerLiveAuditCard: React.FC<SellerLiveAuditCardProps> = ({
+  dealTrack = 'ddu_cession',
   contractPrice,
   paidAmount,
   todayMarketPrice,
@@ -28,80 +31,131 @@ export const SellerLiveAuditCard: React.FC<SellerLiveAuditCardProps> = ({
   netFamilyBenefit,
 }) => {
   const { language } = useLanguage();
+  const isSecondary = dealTrack === 'secondary_dkp';
 
   return (
     <aside className="w-full space-y-5">
       <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
         <div className="flex items-center justify-between pb-3 border-b border-slate-200">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 leading-tight">
-            {language === 'ru'
+            {isSecondary
+              ? 'СРАВНИТЕЛЬНЫЙ АУДИТ ВТОРИЧНОГО РЫНКА — LIVE'
+              : language === 'ru'
               ? 'СРАВНИТЕЛЬНЫЙ ФИНАНСОВЫЙ АУДИТ — LIVE РАСЧЕТ'
               : 'COMPARATIVE AUDIT — LIVE CALC'}
           </h3>
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0 ml-2" />
         </div>
 
-        {/* 1. Cancellation with Developer Penalty */}
-        <div className="bg-[#FEF2F2] border border-rose-200 rounded-2xl p-4 space-y-1.5">
-          <div className="flex justify-between items-center gap-2">
-            <span className="font-bold text-rose-950 text-xs sm:text-sm leading-snug">
-              {language === 'ru'
-                ? 'Односторонний разрыв с девелопером'
-                : 'Direct Cancellation with Developer'}
-            </span>
-            <span className="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-extrabold shrink-0 whitespace-nowrap">
-              штраф {penaltyRatePercent}%
-            </span>
+        {/* 1. Comparison with traditional/developer alternative */}
+        {!isSecondary ? (
+          <div className="bg-[#FEF2F2] border border-rose-200 rounded-2xl p-4 space-y-1.5">
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-bold text-rose-950 text-xs sm:text-sm leading-snug">
+                {language === 'ru'
+                  ? 'Односторонний разрыв с девелопером'
+                  : 'Direct Cancellation with Developer'}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-extrabold shrink-0 whitespace-nowrap">
+                штраф {penaltyRatePercent}%
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight font-mono whitespace-nowrap">
+              {contractPrice > 0 ? `-${formatRubles(devPenalty)}` : '—'}
+            </div>
+            <p className="text-[11px] text-rose-800/80 leading-normal">
+              {contractPrice > 0
+                ? language === 'ru'
+                  ? 'Прямая безвозвратная потеря из внесенных средств при расторжении'
+                  : 'Direct non-refundable loss from deposited capital'
+                : language === 'ru'
+                ? 'Укажите стоимость ДДУ для расчета возможного штрафа'
+                : 'Enter DDU contract price to calculate penalty'}
+            </p>
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight font-mono whitespace-nowrap">
-            {contractPrice > 0 ? `-${formatRubles(devPenalty)}` : '—'}
+        ) : (
+          <div className="bg-[#FEF2F2] border border-rose-200 rounded-2xl p-4 space-y-1.5">
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-bold text-rose-950 text-xs sm:text-sm leading-snug">
+                Обычная продажа (Авито / Циан)
+              </span>
+              <span className="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-extrabold shrink-0 whitespace-nowrap">
+                4–9 мес., торг и простой
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight font-mono whitespace-nowrap">
+              {contractPrice > 0 ? `-${formatRubles(Math.round(contractPrice * 0.08))}` : '—'}
+            </div>
+            <p className="text-[11px] text-rose-800/80 leading-normal">
+              Скрытые потери: скидка при торге (5–10%), комиссия риелтора 3–5%, простой и коммунальные платежи
+            </p>
           </div>
-          <p className="text-[11px] text-rose-800/80 leading-normal">
-            {contractPrice > 0
-              ? language === 'ru'
-                ? 'Прямая безвозвратная потеря из внесенных средств при расторжении'
-                : 'Direct non-refundable loss from deposited capital'
-              : language === 'ru'
-              ? 'Укажите стоимость ДДУ для расчета возможного штрафа'
-              : 'Enter DDU contract price to calculate penalty'}
-          </p>
-        </div>
+        )}
 
         {/* 2. DomExit Clean Return */}
-        <div className="bg-[#ECFDF5] border border-emerald-300 rounded-2xl p-4 space-y-1.5">
-          <div className="flex justify-between items-center gap-2">
-            <span className="font-bold text-emerald-950 text-xs sm:text-sm leading-snug">
-              {language === 'ru'
-                ? 'Чистый возврат через DomExit'
-                : 'Clean Return via DomExit'}
-            </span>
-            <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold shrink-0 whitespace-nowrap">
-              100% средств
-            </span>
+        {!isSecondary ? (
+          <div className="bg-[#ECFDF5] border border-emerald-300 rounded-2xl p-4 space-y-1.5">
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-bold text-emerald-950 text-xs sm:text-sm leading-snug">
+                {language === 'ru'
+                  ? 'Чистый возврат через DomExit'
+                  : 'Clean Return via DomExit'}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold shrink-0 whitespace-nowrap">
+                100% средств
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight font-mono whitespace-nowrap">
+              {paidAmount > 0 ? formatRubles(cleanReturnDomExit) : '—'}
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-normal">
+              {paidAmount > 0
+                ? language === 'ru'
+                  ? 'Полная выплата с аккредитива Сбербанка / ВТБ в день регистрации Росреестра'
+                  : 'Full payout from Sberbank / VTB escrow on Rosreestr registration day'
+                : language === 'ru'
+                ? 'Укажите выплаченную застройщику сумму'
+                : 'Enter amount paid to developer'}
+            </p>
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight font-mono whitespace-nowrap">
-            {paidAmount > 0 ? formatRubles(cleanReturnDomExit) : '—'}
+        ) : (
+          <div className="bg-[#ECFDF5] border border-emerald-300 rounded-2xl p-4 space-y-1.5">
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-bold text-emerald-950 text-xs sm:text-sm leading-snug">
+                Срочный выход через DomExit
+              </span>
+              <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold shrink-0 whitespace-nowrap">
+                100% на аккредитив/СБР
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight font-mono whitespace-nowrap">
+              {paidAmount > 0
+                ? formatRubles(paidAmount)
+                : contractPrice > 0
+                ? formatRubles(contractPrice)
+                : '—'}
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-normal">
+              Закрытие за 7–14 дней, 100% на аккредитив/СБР, 0% комиссии с продавца
+            </p>
           </div>
-          <p className="text-[11px] text-emerald-800/80 leading-normal">
-            {paidAmount > 0
-              ? language === 'ru'
-                ? 'Полная выплата с аккредитива Сбербанка / ВТБ в день регистрации Росреестра'
-                : 'Full payout from Sberbank / VTB escrow on Rosreestr registration day'
-              : language === 'ru'
-              ? 'Укажите выплаченную застройщику сумму'
-              : 'Enter amount paid to developer'}
-          </p>
-        </div>
+        )}
 
         {/* 3. Hero Net Benefit Card */}
         <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-5 space-y-3.5 shadow-lg">
           <span className="text-xs text-emerald-100 font-semibold block uppercase tracking-wider leading-snug">
-            {language === 'ru'
+            {isSecondary
+              ? 'ВАША ВЫГОДА ПО СКОРОСТИ И БЕЗОПАСНОСТИ'
+              : language === 'ru'
               ? 'ВАША ЧИСТАЯ ВЫГОДА (Сохранение капитала)'
               : 'YOUR NET BENEFIT (Capital Preserved)'}
           </span>
           <div className="text-2xl sm:text-3xl font-black text-white tracking-tight font-mono whitespace-nowrap">
-            {contractPrice > 0 ? `+${formatRubles(netFamilyBenefit)}` : '—'}
+            {!isSecondary
+              ? contractPrice > 0
+                ? `+${formatRubles(netFamilyBenefit)}`
+                : '—'
+              : '0% комиссии'}
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-emerald-500/50 text-[11px]">
@@ -112,9 +166,13 @@ export const SellerLiveAuditCard: React.FC<SellerLiveAuditCardProps> = ({
               </span>
             </div>
             <div className="flex justify-between items-center text-emerald-100 gap-2">
-              <span className="shrink-0">Дисконт для покупателя:</span>
+              <span className="shrink-0">
+                {isSecondary ? 'Формат расчетов:' : 'Дисконт для покупателя:'}
+              </span>
               <span className="font-bold text-white text-right whitespace-nowrap">
-                {contractPrice > 0 && todayMarketPrice > contractPrice
+                {isSecondary
+                  ? 'Аккредитив / СБР Сбера'
+                  : contractPrice > 0 && todayMarketPrice > contractPrice
                   ? formatRubles(todayMarketPrice - contractPrice)
                   : '—'}
               </span>
@@ -126,7 +184,9 @@ export const SellerLiveAuditCard: React.FC<SellerLiveAuditCardProps> = ({
               <Clock className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
               <span>{language === 'ru' ? 'Срок закрытия:' : 'Closing time:'}</span>
             </span>
-            <span className="font-bold text-white whitespace-nowrap">9 рабочих дней</span>
+            <span className="font-bold text-white whitespace-nowrap">
+              {isSecondary ? '7–14 рабочих дней' : '9 рабочих дней'}
+            </span>
           </div>
         </div>
       </div>

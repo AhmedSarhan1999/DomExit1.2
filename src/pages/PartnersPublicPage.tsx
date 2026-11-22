@@ -30,6 +30,7 @@ export const PartnersPublicPage: React.FC = () => {
 
   const [fullName, setFullName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone ? formatRussianPhoneInput(user.phone) : '+7 (');
+  const [email, setEmail] = useState(user?.email || '');
   const [organization, setOrganization] = useState('');
   const [inn, setInn] = useState('');
   const [city, setCity] = useState<RussianCityCode>('spb');
@@ -53,6 +54,11 @@ export const PartnersPublicPage: React.FC = () => {
 
     if (!isValidRussianPhone(phone)) {
       setErrorMsg('Введите номер телефона РФ в стандарте +7 (XXX) XXX-XX-XX.');
+      return;
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      setErrorMsg('Укажите корректный рабочий email для уведомлений и доступа.');
       return;
     }
 
@@ -80,6 +86,7 @@ export const PartnersPublicPage: React.FC = () => {
         userId: activeUser.id,
         clientCode: activeUser.clientCode,
         name: fullName.trim(),
+        email: (email || activeUser.email || '').trim().toLowerCase() || undefined,
         organization: organization.trim() || 'Независимый партнер DomExit',
         inn: inn.trim() || undefined,
         city,
@@ -277,6 +284,20 @@ export const PartnersPublicPage: React.FC = () => {
                       value={phone}
                       onChange={(e) => setPhone(formatRussianPhoneInput(e.target.value))}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Email для уведомлений и доступа *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="partner@agency.ru"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 

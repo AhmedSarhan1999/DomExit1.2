@@ -126,20 +126,32 @@ export const SellersPage: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    const refParam = searchParams.get('ref');
+    const refParam = searchParams.get('ref') || searchParams.get('partner');
     if (refParam && refParam.trim()) {
       const cleanRef = refParam.trim().toUpperCase();
       setPartnerRefCode(cleanRef);
       setIsPartnerLocked(true);
       setStoredReferralCode(cleanRef);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('domexit_partner_ref', cleanRef);
+      }
     } else {
-      const stored = getStoredReferralCode();
+      let stored = getStoredReferralCode();
+      if (!stored && typeof window !== 'undefined') {
+        stored = sessionStorage.getItem('domexit_partner_ref');
+      }
       if (stored) {
         setPartnerRefCode(stored);
         setIsPartnerLocked(true);
       }
     }
   }, [searchParams]);
+
+  // Secondary Real Estate Checklist States
+  const [ownershipDuration, setOwnershipDuration] = useState<'less_3_5' | 'more_3_5'>('more_3_5');
+  const [secondaryMatkapOrKids, setSecondaryMatkapOrKids] = useState<'no' | 'yes'>('no');
+  const [registeredTenants, setRegisteredTenants] = useState<'no' | 'yes'>('no');
+  const [readyPndAndFullPrice, setReadyPndAndFullPrice] = useState<boolean>(true);
 
   // Validation Error State
   const [step1Error, setStep1Error] = useState<string | null>(null);
@@ -205,8 +217,9 @@ export const SellersPage: React.FC = () => {
   const paidAmount = Number(paidAmountStr) || 0;
   const todayMarketPrice = Number(todayMarketPriceStr) || Math.round(contractPrice * 1.24);
 
-  const financialValidation = validateSellerFinancials(paidAmount, contractPrice);
-  const devPenalty = Math.round(contractPrice * (penaltyRatePercent / 100));
+  const isSecondary = dealTrack === 'secondary_dkp';
+  const financialValidation = validateSellerFinancials(paidAmount, contractPrice, isSecondary);
+  const devPenalty = isSecondary ? Math.round(contractPrice * 0.08) : Math.round(contractPrice * (penaltyRatePercent / 100));
   const cleanReturnDomExit = paidAmount;
   const netFamilyBenefit = devPenalty;
 
@@ -216,47 +229,60 @@ export const SellersPage: React.FC = () => {
   const handleGoToStep2 = async () => {
     setStep1Error(null);
 
-    const devCheck = validateTextEntityName(developerName, 'Наименование застройщика');
-    if (!devCheck.valid) {
-      markTouched('developerName');
-      setStep1Error(language === 'ru' ? devCheck.messageRu! : devCheck.messageEn!);
-      return;
-    }
+    if (!isSecondary) {
+      const devCheck = validateTextEntityName(developerName, 'Наименование застройщика');
+      if (!devCheck.valid) {
+        markTouched('developerName');
+        setStep1Error(language === 'ru' ? devCheck.messageRu! : devCheck.messageEn!);
+        return;
+      }
 
-    if (isAddingNewDeveloper) {
-      const cleanDevInn = developerInn.replace(/\D/g, '');
-      if (cleanDevInn.length !== 10 && cleanDevInn.length !== 12) {
-        markTouched('developerInn');
+      if (isAddingNewDeveloper) {
+        const cleanDevInn = developerInn.replace(/\D/g, '');
+        if (cleanDevInn.length !== 10 && cleanDevInn.length !== 12) {
+          markTouched('developerInn');
+          setStep1Error(
+            language === 'ru'
+              ? 'Для нового застройщика укажите корректный ИНН юридического лица (10 цифр).'
+              : 'Please enter a valid 10-digit corporate INN for the new developer.'
+          );
+          return;
+        }
+      }
+
+      const complexCheck = validateTextEntityName(complexName, 'Название жилого комплекса');
+      if (!complexCheck.valid) {
+        markTouched('complexName');
+        setStep1Error(language === 'ru' ? complexCheck.messageRu! : complexCheck.messageEn!);
+        return;
+      }
+
+      if (usedMatkap === 'yes') {
+        markTouched('usedMatkap');
         setStep1Error(
           language === 'ru'
-            ? 'Для нового застройщика укажите корректный ИНН юридического лица (10 цифр).'
-            : 'Please enter a valid 10-digit corporate INN for the new developer.'
+            ? 'Объекты с использованием материнского капитала требуют предварительного разрешения органов опеки и не принимаются на платформу DomExit.'
+            : 'Units bought with maternity capital require guardianship approval and are not accepted on DomExit.'
         );
         return;
       }
+    } else {
+      if (!complexName.trim()) {
+        setComplexName(streetAddress.trim() ? `Объект: ${streetAddress.trim()}` : 'Вторичное жилье');
+      }
+      if (!developerName.trim()) {
+        setDeveloperName('Собственник / Вторичный фонд');
+      }
     }
 
-    const complexCheck = validateTextEntityName(complexName, 'Название жилого комплекса');
-    if (!complexCheck.valid) {
-      markTouched('complexName');
-      setStep1Error(language === 'ru' ? complexCheck.messageRu! : complexCheck.messageEn!);
-      return;
-    }
-
-    if (usedMatkap === 'yes') {
-      markTouched('usedMatkap');
-      setStep1Error(
-        language === 'ru'
-          ? 'Объекты с использованием материнского капитала требуют предварительного разрешения органов опеки и не принимаются на платформу DomExit.'
-          : 'Units bought with maternity capital require guardianship approval and are not accepted on DomExit.'
-      );
-      return;
-    }
-
-    const dduCheck = validateDduOrLotCode(dduCode);
+    const dduCheck = validateDduOrLotCode(dduCode, isSecondary);
     if (!dduCheck.valid) {
       markTouched('dduCode');
-      setStep1Error(language === 'ru' ? dduCheck.messageRu! : dduCheck.messageEn!);
+      setStep1Error(
+        isSecondary
+          ? 'Укажите кадастровый номер или номер права собственности (например: 78:34:0004123:4567).'
+          : (language === 'ru' ? dduCheck.messageRu! : dduCheck.messageEn!)
+      );
       return;
     }
 
@@ -302,32 +328,38 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
-    if (isAddingNewDeveloper) {
-      if (!developerName.trim()) {
-        markTouched('developerName');
-        setStep1Error('Укажите наименование нового застройщика.');
-        return;
-      }
-      if (!isValidInn(developerInn)) {
-        markTouched('developerInn');
-        setStep1Error(
-          getInnValidationError(developerInn) ||
-            'Укажите корректный ИНН застройщика (10 цифр для юрлиц или 12 для ИП).'
-        );
-        return;
-      }
-    } else {
-      const matched = accreditedDevelopers.find((d) => d.name === developerName);
-      if (matched && !developerInn) {
-        setDeveloperInn(matched.inn);
+    if (!isSecondary) {
+      if (isAddingNewDeveloper) {
+        if (!developerName.trim()) {
+          markTouched('developerName');
+          setStep1Error('Укажите наименование нового застройщика.');
+          return;
+        }
+        if (!isValidInn(developerInn)) {
+          markTouched('developerInn');
+          setStep1Error(
+            getInnValidationError(developerInn) ||
+              'Укажите корректный ИНН застройщика (10 цифр для юрлиц или 12 для ИП).'
+          );
+          return;
+        }
+      } else {
+        const matched = accreditedDevelopers.find((d) => d.name === developerName);
+        if (matched && !developerInn) {
+          setDeveloperInn(matched.inn);
+        }
       }
     }
 
     if (!agreeTerms) {
       setStep1Error(
-        language === 'ru'
-          ? 'Для продолжения подтвердите согласие на реализацию объекта по цене договора ДДУ без наценки.'
-          : 'Please agree to sell at the original DDU contract price.'
+        isSecondary
+          ? (language === 'ru'
+              ? 'Для продолжения подтвердите согласие на срочную реализацию объекта через платформу DomExit с расчетом через аккредитив / СБР.'
+              : 'Please agree to terms for secondary exit via bank settlement.')
+          : (language === 'ru'
+              ? 'Для продолжения подтвердите согласие на реализацию объекта по цене договора ДДУ без наценки.'
+              : 'Please agree to sell at the original DDU contract price.')
       );
       return;
     }
@@ -446,6 +478,13 @@ export const SellersPage: React.FC = () => {
                 activeRole: 'seller',
               });
 
+          const effectiveDeveloper = isSecondary
+            ? (developerName.trim() || 'Собственник / Вторичный фонд')
+            : developerName.trim();
+          const effectiveComplex = isSecondary
+            ? (complexName.trim() || (streetAddress.trim() ? `Объект: ${streetAddress.trim()}` : 'Вторичное жилье'))
+            : complexName.trim();
+
           const result = await SellerRequestsRepository.submitSellerRequest({
             uid: activeUser.id,
             clientCode: activeUser.clientCode,
@@ -461,8 +500,8 @@ export const SellersPage: React.FC = () => {
             metroTransport,
             coordinates,
             todayDeveloperPrice: todayMarketPrice > 0 ? todayMarketPrice : undefined,
-            complexName: complexName.trim(),
-            developer: developerName.trim(),
+            complexName: effectiveComplex,
+            developer: effectiveDeveloper,
             developerInn: developerInn.trim() || undefined,
             dduNumber: dduCode.trim(),
             areaM2: Number(areaM2),
@@ -470,7 +509,7 @@ export const SellersPage: React.FC = () => {
             floor: Number(floor),
             totalFloors: Number(totalFloors),
             contractPriceRub: contractPrice,
-            paidAmountRub: paidAmount,
+            paidAmountRub: isSecondary ? (paidAmount || contractPrice) : paidAmount,
             dealTrack,
             exitRoute,
             isNegotiable,
@@ -478,11 +517,11 @@ export const SellersPage: React.FC = () => {
             documentIds: vaultDocs.map((d) => d.id),
             photos: uploadedPhotos,
             sellerUploadedPhotos: uploadedPhotos,
-            matCapitalUsed: false,
+            matCapitalUsed: !isSecondary ? false : secondaryMatkapOrKids === 'yes',
             referredByPartnerCode: partnerRefCode.trim() || undefined,
           });
 
-          if (isAddingNewDeveloper) {
+          if (!isSecondary && isAddingNewDeveloper) {
             try {
               await DevelopersRepository.createAccreditationRequest({
                 developerName: developerName.trim(),
@@ -651,156 +690,144 @@ export const SellersPage: React.FC = () => {
           {currentStep === 1 && (
             <div className="flex flex-col lg:flex-row lg:items-start gap-6 xl:gap-8 w-full">
               <div className="w-full lg:flex-1 min-w-0">
-                {/* Dual-Track Mode Switcher */}
-                <div className="mb-6 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 inline-flex flex-wrap items-center gap-1 shadow-inner">
-                  <button
-                    type="button"
-                    onClick={() => setDealTrack('ddu_cession')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-                      dealTrack === 'ddu_cession'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Building className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Уступка ДДУ (214-ФЗ / Новостройка)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDealTrack('secondary_dkp');
-                      if (!paidAmountStr && contractPriceStr) {
-                        setPaidAmountStr(contractPriceStr);
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-                      dealTrack === 'secondary_dkp'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Home className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Вторичное жилье (ДКП / ГК РФ)</span>
-                  </button>
+                {/* Real-time Liquidity Demand Radar Banner */}
+                <div className="mb-4">
+                  <SellerDemandRadarBanner
+                    city={locationRegion}
+                    priceRub={Number(contractPriceStr || 0)}
+                    dealTrack={dealTrack}
+                  />
                 </div>
 
-                {/* Real-time Liquidity Demand Radar Banner */}
-                <SellerDemandRadarBanner
-                  city={locationRegion}
-                  priceRub={Number(contractPriceStr || 0)}
-                  dealTrack={dealTrack}
-                />
+                {partnerRefCode && (
+                  <div className="mb-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-bold flex items-center space-x-2.5 animate-fade-in shadow-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Приглашение аккредитованного партнёра: <strong>{partnerRefCode}</strong></span>
+                  </div>
+                )}
 
                 <SellerStepProperty
-                user={user}
-                onOpenAuthModal={() => {
-                  openAuthModal('Авторизуйтесь в личном кабинете для подачи заявки на выход из ДДУ');
-                }}
-                step1Error={step1Error}
-                locationRegion={locationRegion}
-                onRegionChange={handleRegionChange}
-                district={district}
-                onDistrictChange={setDistrict}
-                streetAddress={streetAddress}
-                onStreetAddressChange={setStreetAddress}
-                onSelectAddressDetails={(details) => {
-                  setStreetAddress(details.address);
-                  if (details.coordinates) setCoordinates(details.coordinates);
-                  if (details.nearestMetro) {
-                    setMetroName(details.nearestMetro.name);
-                    const travelMatch = details.nearestMetro.travelTimeText.match(/^(\d+)/);
-                    if (travelMatch) setMetroTime(travelMatch[1]);
-                    setMetroTransport(details.nearestMetro.mode === 'drive' ? 'transport' : 'walk');
-                  }
-                  if (details.district) {
-                    const regionDistricts = getDistrictsForRegion(locationRegion);
-                    const matchedDist = regionDistricts.find(
-                      (d) =>
-                        d.nameRu.toLowerCase().includes(details.district!.toLowerCase()) ||
-                        details.district!.toLowerCase().includes(d.nameRu.toLowerCase())
-                    );
-                    if (matchedDist) setDistrict(matchedDist.nameRu);
-                  }
-                }}
-                metroName={metroName}
-                onMetroNameChange={setMetroName}
-                metroTime={metroTime}
-                onMetroTimeChange={setMetroTime}
-                metroTransport={metroTransport}
-                onMetroTransportChange={setMetroTransport}
-                developerName={developerName}
-                onDeveloperNameChange={setDeveloperName}
-                developerInn={developerInn}
-                onDeveloperInnChange={setDeveloperInn}
-                isAddingNewDeveloper={isAddingNewDeveloper}
-                onToggleAddingNewDeveloper={() => {
-                  if (!isAddingNewDeveloper) {
-                    setIsAddingNewDeveloper(true);
-                    setDeveloperName('');
-                    setDeveloperInn('');
-                  } else {
-                    setIsAddingNewDeveloper(false);
-                    setDeveloperName(accreditedDevelopers[0]?.name || 'Сетл Групп');
-                    setDeveloperInn(accreditedDevelopers[0]?.inn || '7810245481');
-                  }
-                }}
-                accreditedDevelopers={accreditedDevelopers}
-                complexName={complexName}
-                onComplexNameChange={setComplexName}
-                dduCode={dduCode}
-                onDduCodeChange={setDduCode}
-                rooms={rooms}
-                onRoomsChange={setRooms}
-                areaM2={areaM2}
-                onAreaM2Change={setAreaM2}
-                floor={floor}
-                onFloorChange={setFloor}
-                totalFloors={totalFloors}
-                onTotalFloorsChange={setTotalFloors}
-                contractPriceStr={contractPriceStr}
-                onContractPriceStrChange={setContractPriceStr}
-                paidAmountStr={paidAmountStr}
-                onPaidAmountStrChange={setPaidAmountStr}
-                todayMarketPriceStr={todayMarketPriceStr}
-                onTodayMarketPriceStrChange={setTodayMarketPriceStr}
-                contractPrice={contractPrice}
-                paidAmount={paidAmount}
-                financialValidation={financialValidation}
-                exitRoute={exitRoute}
-                onExitRouteChange={setExitRoute}
-                usedMatkap={usedMatkap}
-                onUsedMatkapChange={setUsedMatkap}
-                isNegotiable={isNegotiable}
-                onIsNegotiableChange={setIsNegotiable}
-                sellerBanks={sellerBanks}
-                onSellerBanksChange={setSellerBanks}
-                agreeTerms={agreeTerms}
-                onAgreeTermsChange={setAgreeTerms}
-                touched={touched}
-                markTouched={markTouched}
-                onGoToStep2={handleGoToStep2}
-              />
-            </div>
+                  dealTrack={dealTrack}
+                  onDealTrackChange={setDealTrack}
+                  ownershipDuration={ownershipDuration}
+                  onOwnershipDurationChange={setOwnershipDuration}
+                  secondaryMatkapOrKids={secondaryMatkapOrKids}
+                  onSecondaryMatkapOrKidsChange={setSecondaryMatkapOrKids}
+                  registeredTenants={registeredTenants}
+                  onRegisteredTenantsChange={setRegisteredTenants}
+                  readyPndAndFullPrice={readyPndAndFullPrice}
+                  onReadyPndAndFullPriceChange={setReadyPndAndFullPrice}
+                  user={user}
+                  onOpenAuthModal={() => {
+                    openAuthModal('Авторизуйтесь в личном кабинете для подачи заявки на выход из ДДУ');
+                  }}
+                  step1Error={step1Error}
+                  locationRegion={locationRegion}
+                  onRegionChange={handleRegionChange}
+                  district={district}
+                  onDistrictChange={setDistrict}
+                  streetAddress={streetAddress}
+                  onStreetAddressChange={setStreetAddress}
+                  onSelectAddressDetails={(details) => {
+                    setStreetAddress(details.address);
+                    if (details.coordinates) setCoordinates(details.coordinates);
+                    if (details.nearestMetro) {
+                      setMetroName(details.nearestMetro.name);
+                      const travelMatch = details.nearestMetro.travelTimeText.match(/^(\d+)/);
+                      if (travelMatch) setMetroTime(travelMatch[1]);
+                      setMetroTransport(details.nearestMetro.mode === 'drive' ? 'transport' : 'walk');
+                    }
+                    if (details.district) {
+                      const regionDistricts = getDistrictsForRegion(locationRegion);
+                      const matchedDist = regionDistricts.find(
+                        (d) =>
+                          d.nameRu.toLowerCase().includes(details.district!.toLowerCase()) ||
+                          details.district!.toLowerCase().includes(d.nameRu.toLowerCase())
+                      );
+                      if (matchedDist) setDistrict(matchedDist.nameRu);
+                    }
+                  }}
+                  metroName={metroName}
+                  onMetroNameChange={setMetroName}
+                  metroTime={metroTime}
+                  onMetroTimeChange={setMetroTime}
+                  metroTransport={metroTransport}
+                  onMetroTransportChange={setMetroTransport}
+                  developerName={developerName}
+                  onDeveloperNameChange={setDeveloperName}
+                  developerInn={developerInn}
+                  onDeveloperInnChange={setDeveloperInn}
+                  isAddingNewDeveloper={isAddingNewDeveloper}
+                  onToggleAddingNewDeveloper={() => {
+                    if (!isAddingNewDeveloper) {
+                      setIsAddingNewDeveloper(true);
+                      setDeveloperName('');
+                      setDeveloperInn('');
+                    } else {
+                      setIsAddingNewDeveloper(false);
+                      setDeveloperName(accreditedDevelopers[0]?.name || 'Сетл Групп');
+                      setDeveloperInn(accreditedDevelopers[0]?.inn || '7810245481');
+                    }
+                  }}
+                  accreditedDevelopers={accreditedDevelopers}
+                  complexName={complexName}
+                  onComplexNameChange={setComplexName}
+                  dduCode={dduCode}
+                  onDduCodeChange={setDduCode}
+                  rooms={rooms}
+                  onRoomsChange={setRooms}
+                  areaM2={areaM2}
+                  onAreaM2Change={setAreaM2}
+                  floor={floor}
+                  onFloorChange={setFloor}
+                  totalFloors={totalFloors}
+                  onTotalFloorsChange={setTotalFloors}
+                  contractPriceStr={contractPriceStr}
+                  onContractPriceStrChange={setContractPriceStr}
+                  paidAmountStr={paidAmountStr}
+                  onPaidAmountStrChange={setPaidAmountStr}
+                  todayMarketPriceStr={todayMarketPriceStr}
+                  onTodayMarketPriceStrChange={setTodayMarketPriceStr}
+                  contractPrice={contractPrice}
+                  paidAmount={paidAmount}
+                  financialValidation={financialValidation}
+                  exitRoute={exitRoute}
+                  onExitRouteChange={setExitRoute}
+                  usedMatkap={usedMatkap}
+                  onUsedMatkapChange={setUsedMatkap}
+                  isNegotiable={isNegotiable}
+                  onIsNegotiableChange={setIsNegotiable}
+                  sellerBanks={sellerBanks}
+                  onSellerBanksChange={setSellerBanks}
+                  agreeTerms={agreeTerms}
+                  onAgreeTermsChange={setAgreeTerms}
+                  touched={touched}
+                  markTouched={markTouched}
+                  onGoToStep2={handleGoToStep2}
+                />
+              </div>
 
-            <div className="w-full lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-24">
-              <SellerLiveAuditCard
-                contractPrice={contractPrice}
-                paidAmount={paidAmount}
-                todayMarketPrice={todayMarketPrice}
-                penaltyRatePercent={penaltyRatePercent}
-                activeRegionConfig={activeRegionConfig}
-                district={district}
-                cleanReturnDomExit={cleanReturnDomExit}
-                devPenalty={devPenalty}
-                netFamilyBenefit={netFamilyBenefit}
-              />
+              <div className="w-full lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:sticky lg:top-24">
+                <SellerLiveAuditCard
+                  dealTrack={dealTrack}
+                  contractPrice={contractPrice}
+                  paidAmount={paidAmount}
+                  todayMarketPrice={todayMarketPrice}
+                  penaltyRatePercent={penaltyRatePercent}
+                  activeRegionConfig={activeRegionConfig}
+                  district={district}
+                  cleanReturnDomExit={cleanReturnDomExit}
+                  devPenalty={devPenalty}
+                  netFamilyBenefit={netFamilyBenefit}
+                />
+              </div>
             </div>
-          </div>
           )}
 
           {/* STEP 2: Strict Seller Contact & ИНН Validation */}
           {currentStep === 2 && (
             <SellerStepIdentity
+              dealTrack={dealTrack}
               sellerName={sellerName}
               onSellerNameChange={setSellerName}
               sellerPhone={sellerPhone}
@@ -821,6 +848,7 @@ export const SellersPage: React.FC = () => {
           {/* STEP 3: Production-Ready Cloud Document Vault */}
           {currentStep === 3 && (
             <SellerStepDocuments
+              dealTrack={dealTrack}
               draftLotCode={draftLotCode}
               step3Error={step3Error}
               vaultDocs={vaultDocs}

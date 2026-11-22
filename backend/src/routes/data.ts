@@ -306,38 +306,106 @@ export async function handleData(
       return json(event, 200, { items: all });
     }
 
-    // 2. Staff collections
+    // 2. Staff collections (with accredited partner access to own partner records & preliminary requests)
     if (STAFF_COLLECTIONS.has(collection)) {
       if (!authUser) {
         return json(event, 401, { error: 'Требуется авторизация' });
       }
 
       const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
+      const isPartner = Boolean(
+        authUser.isPartnerApproved ||
+        authUser.roles?.includes('partner') ||
+        authUser.role === 'partner' ||
+        authUser.activeRole === 'partner'
+      );
 
-      if (!isStaff) {
+      const isPartnerAllowedCol =
+        collection === 'partners' ||
+        collection === 'partner_applications' ||
+        collection === 'partner_preliminary_requests';
+
+      if (!isStaff && (!isPartner || !isPartnerAllowedCol)) {
         return json(event, 403, { error: 'Доступ разрешен только сотрудникам платформы' });
       }
 
       if (id) {
         const item = await ydb.getItem(collection, id);
         if (!item) return json(event, 404, { error: 'Запись не найдена' });
+
+        if (!isStaff && isPartner) {
+          const cleanEmail = (authUser.email || '').trim().toLowerCase();
+          const partnerId = authUser.partnerId || authUser.id;
+          const partnerRef = authUser.partnerRefCode || authUser.referralCode;
+
+          if (collection === 'partners' || collection === 'partner_applications') {
+            const isSelf =
+              item.userId === authUser.id ||
+              item.uid === authUser.id ||
+              (cleanEmail && item.email?.trim().toLowerCase() === cleanEmail) ||
+              item.id === partnerId ||
+              item.referralCode === partnerRef;
+            if (!isSelf) return json(event, 403, { error: 'Доступ к чужой партнерской записи запрещен' });
+          } else if (collection === 'partner_preliminary_requests') {
+            const isMyRequest =
+              item.partnerId === authUser.id ||
+              item.partnerId === partnerId ||
+              item.userId === authUser.id ||
+              (partnerRef && item.partnerRefCode === partnerRef);
+            if (!isMyRequest) return json(event, 403, { error: 'Доступ к чужой брони запрещен' });
+          }
+        }
+
         return json(event, 200, { item });
       }
 
       const all = await ydb.scanAll(collection);
-      if (isPaginated) {
-        return json(event, 200, applyPaginationAndFilters(all, event.queryStringParameters));
+      let visibleItems = all;
+
+      if (!isStaff && isPartner) {
+        const cleanEmail = (authUser.email || '').trim().toLowerCase();
+        const partnerId = authUser.partnerId || authUser.id;
+        const partnerRef = authUser.partnerRefCode || authUser.referralCode;
+
+        if (collection === 'partners' || collection === 'partner_applications') {
+          visibleItems = all.filter((item: any) =>
+            item.userId === authUser.id ||
+            item.uid === authUser.id ||
+            (cleanEmail && item.email?.trim().toLowerCase() === cleanEmail) ||
+            item.id === partnerId ||
+            item.referralCode === partnerRef
+          );
+        } else if (collection === 'partner_preliminary_requests') {
+          visibleItems = all.filter((item: any) =>
+            item.partnerId === authUser.id ||
+            item.partnerId === partnerId ||
+            item.userId === authUser.id ||
+            (partnerRef && item.partnerRefCode === partnerRef)
+          );
+        }
       }
-      return json(event, 200, { items: all });
+
+      if (isPaginated) {
+        return json(event, 200, applyPaginationAndFilters(visibleItems, event.queryStringParameters));
+      }
+      return json(event, 200, { items: visibleItems });
     }
 
-    // 3. Client isolated collections
+    // 3. Client isolated collections (with partner deal & request attribution)
     if (CLIENT_ISOLATED_COLLECTIONS.has(collection)) {
       if (!authUser) {
         return json(event, 401, { error: 'Требуется авторизация' });
       }
 
       const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
+      const isPartner = Boolean(
+        authUser.isPartnerApproved ||
+        authUser.roles?.includes('partner') ||
+        authUser.role === 'partner' ||
+        authUser.activeRole === 'partner'
+      );
+      const partnerRef = authUser.partnerRefCode || authUser.referralCode;
+      const partnerId = authUser.partnerId || authUser.id;
 
       if (id) {
         const item = await ydb.getItem(collection, id);
@@ -349,7 +417,19 @@ export async function handleData(
             item.sellerId === authUser.id ||
             item.buyerId === authUser.id ||
             item.senderId === authUser.id;
-          if (!isOwnerOfRecord) {
+
+          const isPartnerOfRecord = isPartner && (
+            (partnerRef && (
+              item.partnerRefCode?.toUpperCase() === partnerRef.toUpperCase() ||
+              item.referredByPartnerCode?.toUpperCase() === partnerRef.toUpperCase()
+            )) ||
+            (partnerId && (
+              item.partnerId === partnerId ||
+              item.referredByPartnerId === partnerId
+            ))
+          );
+
+          if (!isOwnerOfRecord && !isPartnerOfRecord) {
             return json(event, 403, { error: 'Доступ к чужой записи запрещен' });
           }
         }
@@ -359,13 +439,28 @@ export async function handleData(
       const all = await ydb.scanAll(collection);
       const visibleItems = isStaff
         ? all
-        : all.filter(
-            (item: any) =>
+        : all.filter((item: any) => {
+            const isOwnerOfRecord =
               item.userId === authUser.id ||
               item.sellerId === authUser.id ||
               item.buyerId === authUser.id ||
-              item.senderId === authUser.id
-          );
+              item.senderId === authUser.id;
+            if (isOwnerOfRecord) return true;
+
+            if (isPartner) {
+              const isPartnerOfRecord =
+                (partnerRef && (
+                  item.partnerRefCode?.toUpperCase() === partnerRef.toUpperCase() ||
+                  item.referredByPartnerCode?.toUpperCase() === partnerRef.toUpperCase()
+                )) ||
+                (partnerId && (
+                  item.partnerId === partnerId ||
+                  item.referredByPartnerId === partnerId
+                ));
+              if (isPartnerOfRecord) return true;
+            }
+            return false;
+          });
 
       if (isPaginated) {
         return json(event, 200, applyPaginationAndFilters(visibleItems, event.queryStringParameters));
@@ -722,12 +817,91 @@ export async function handleData(
       return json(event, 200, { success: true, item: safeItem });
     }
 
-    // 2. Staff-only collections write
+    // 2. Staff-only collections write (with partner applications & reservations allowed for clients/partners)
     if (STAFF_COLLECTIONS.has(collection)) {
       if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
       const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
-      if (!isStaff) {
+      const isPartner = Boolean(
+        authUser.isPartnerApproved ||
+        authUser.roles?.includes('partner') ||
+        authUser.role === 'partner' ||
+        authUser.activeRole === 'partner'
+      );
+
+      // Check non-staff submissions:
+      // a) partner_applications / partners: allow non-staff to submit pending applications
+      if (!isStaff && (collection === 'partner_applications' || collection === 'partners')) {
+        itemToSave.status = 'pending';
+        itemToSave.isApproved = false;
+        delete itemToSave.approvedAt;
+        delete itemToSave.approvedBy;
+        delete itemToSave.fixedRewardPerDealRub;
+        itemToSave.userId = authUser.id;
+        itemToSave.uid = authUser.id;
+        if (!itemToSave.email) itemToSave.email = authUser.email;
+        if (!itemToSave.referralCode) {
+          itemToSave.referralCode = `PART-${Math.floor(1000 + Math.random() * 9000)}`;
+        }
+      }
+      // b) partner_preliminary_requests: allow accredited partner to submit 7-day preliminary request
+      else if (!isStaff && collection === 'partner_preliminary_requests') {
+        if (!isPartner) {
+          return json(event, 403, { error: 'Фиксация клиентов доступна только аккредитованным партнерам' });
+        }
+        itemToSave.partnerId = authUser.id;
+        itemToSave.partnerRefCode = authUser.partnerRefCode || authUser.referralCode || itemToSave.partnerRefCode || 'PART-0000';
+        itemToSave.status = 'pending_client';
+        itemToSave.fixedRewardPerDealRub = 30000;
+        itemToSave.expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+      }
+      // c) other staff collections or non-partner: block with 403
+      else if (!isStaff) {
         return json(event, 403, { error: 'Модификация разрешена только сотрудникам платформы' });
+      }
+
+      // If staff is approving a partner in partners or partner_applications:
+      if (isStaff && (collection === 'partners' || collection === 'partner_applications')) {
+        if (itemToSave.status === 'approved' || itemToSave.isApproved === true) {
+          itemToSave.isApproved = true;
+          itemToSave.status = 'approved';
+          itemToSave.fixedRewardPerDealRub = 30000;
+          if (!itemToSave.referralCode || !itemToSave.referralCode.startsWith('PART-')) {
+            itemToSave.referralCode = `PART-${Math.floor(1000 + Math.random() * 9000)}`;
+          }
+          itemToSave.approvedAt = new Date().toISOString();
+          itemToSave.approvedBy = authUser.email || authUser.name || 'owner';
+
+          // Atomic upgrade of matching user in users table while strictly preserving passwordHash
+          try {
+            let targetUser: UserProfile | null = null;
+            if (itemToSave.userId || itemToSave.uid) {
+              targetUser = await ydb.getItem<UserProfile>('users', itemToSave.userId || itemToSave.uid);
+            }
+            if (!targetUser && itemToSave.email) {
+              const usersByEmail = await ydb.findByField<UserProfile>('users', 'email', itemToSave.email.trim().toLowerCase());
+              targetUser = usersByEmail[0] || null;
+            }
+            if (!targetUser && itemToSave.clientCode) {
+              const usersByCode = await ydb.findByField<UserProfile>('users', 'clientCode', itemToSave.clientCode);
+              targetUser = usersByCode[0] || null;
+            }
+
+            if (targetUser) {
+              targetUser.isPartnerApproved = true;
+              targetUser.partnerId = itemToSave.id;
+              targetUser.partnerRefCode = itemToSave.referralCode;
+              targetUser.referralCode = itemToSave.referralCode;
+              if (!targetUser.roles) targetUser.roles = [targetUser.role];
+              if (!targetUser.roles.includes('partner')) {
+                targetUser.roles.push('partner');
+              }
+              // STRICTLY preserve passwordHash!
+              await ydb.putItem('users', targetUser);
+            }
+          } catch (uErr) {
+            console.warn('[data] Non-fatal user role update on partner approval:', uErr);
+          }
+        }
       }
 
       await ydb.putItem(collection, itemToSave);
@@ -743,7 +917,7 @@ export async function handleData(
 
       // Telegram notifications for staff applications
       if (method === 'POST') {
-        if (collection === 'partner_applications') {
+        if (collection === 'partner_applications' || collection === 'partners') {
           void telegramNotifier.notifyNewPartnerOrInvestor('partner', itemToSave);
         } else if (collection === 'investor_applications') {
           void telegramNotifier.notifyNewPartnerOrInvestor('investor', itemToSave);
@@ -763,6 +937,48 @@ export async function handleData(
         itemToSave.userId = authUser.id;
         if (collection === 'seller_requests') itemToSave.sellerId = authUser.id;
         if (collection === 'curator_messages') itemToSave.senderId = authUser.id;
+      }
+
+      // Auto-match preliminary requests on seller_requests submission
+      if (collection === 'seller_requests') {
+        if (!itemToSave.partnerRefCode) {
+          try {
+            const sellerPhoneDigits = (itemToSave.sellerPhone || itemToSave.phone || '').replace(/\D/g, '');
+            if (sellerPhoneDigits.length >= 10) {
+              const last10 = sellerPhoneDigits.slice(-10);
+              const allPre = await ydb.scanAll<any>('partner_preliminary_requests');
+              const nowMs = Date.now();
+              const activeMatch = allPre.find((p: any) => {
+                if (p.status === 'expired' || p.status === 'converted_to_lot') return false;
+                if (new Date(p.expiresAt).getTime() < nowMs) return false;
+                const preDigits = (p.clientPhone || '').replace(/\D/g, '');
+                return preDigits.length >= 10 && preDigits.slice(-10) === last10;
+              });
+
+              if (activeMatch) {
+                itemToSave.partnerId = activeMatch.partnerId;
+                itemToSave.partnerRefCode = activeMatch.partnerRefCode;
+                itemToSave.referredByPartnerCode = activeMatch.partnerRefCode;
+                activeMatch.status = 'converted_to_lot';
+                activeMatch.activatedLotCode = itemToSave.lotCode || itemToSave.id;
+                activeMatch.activatedAt = new Date().toISOString();
+                await ydb.putItem('partner_preliminary_requests', activeMatch);
+              }
+            }
+          } catch (mErr) {
+            console.warn('[data] Non-fatal preliminary request matching in seller_requests:', mErr);
+          }
+        }
+      }
+
+      // When deals completed, ensure partner commission is payable
+      if (collection === 'deals') {
+        if (itemToSave.stage === 'completed' || itemToSave.status === 'completed' || itemToSave.status === 'sold') {
+          if (itemToSave.partnerRefCode || itemToSave.partnerId) {
+            itemToSave.partnerPayoutStatus = 'payable';
+            itemToSave.partnerRewardRub = 30000;
+          }
+        }
       }
 
       await ydb.putItem(collection, itemToSave);
@@ -831,6 +1047,36 @@ export async function handleData(
           // Disallow modifying curator approved fields
           delete itemToSave.curatorApprovedImages;
           delete itemToSave.legalVerification;
+        }
+
+        // Auto-match preliminary requests on lot creation if not explicitly passed
+        if (!itemToSave.partnerRefCode) {
+          try {
+            const sellerPhoneDigits = (itemToSave.sellerPhone || itemToSave.phone || '').replace(/\D/g, '');
+            if (sellerPhoneDigits.length >= 10) {
+              const last10 = sellerPhoneDigits.slice(-10);
+              const allPre = await ydb.scanAll<any>('partner_preliminary_requests');
+              const nowMs = Date.now();
+              const activeMatch = allPre.find((p: any) => {
+                if (p.status === 'expired' || p.status === 'converted_to_lot') return false;
+                if (new Date(p.expiresAt).getTime() < nowMs) return false;
+                const preDigits = (p.clientPhone || '').replace(/\D/g, '');
+                return preDigits.length >= 10 && preDigits.slice(-10) === last10;
+              });
+
+              if (activeMatch) {
+                itemToSave.partnerId = activeMatch.partnerId;
+                itemToSave.partnerRefCode = activeMatch.partnerRefCode;
+                itemToSave.referredByPartnerCode = activeMatch.partnerRefCode;
+                activeMatch.status = 'converted_to_lot';
+                activeMatch.activatedLotCode = itemToSave.lotCode || itemToSave.id;
+                activeMatch.activatedAt = new Date().toISOString();
+                await ydb.putItem('partner_preliminary_requests', activeMatch);
+              }
+            }
+          } catch (mErr) {
+            console.warn('[data] Non-fatal preliminary request matching in lots:', mErr);
+          }
         }
 
         await ydb.putItem(collection, itemToSave);

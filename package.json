@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "verify:staging": "node infrastructure/scripts/master-e2e-verify.mjs --env=staging",
     "verify:prod": "node infrastructure/scripts/master-e2e-verify.mjs --env=production --read-only",
+    "verify:partners-sellers": "node infrastructure/scripts/verify-partners-and-sellers.mjs",
     "verify:all": "node infrastructure/scripts/master-e2e-verify.mjs --env=staging"
   },
   "dependencies": {

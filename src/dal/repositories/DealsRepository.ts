@@ -46,11 +46,16 @@ export class DealsRepository {
     );
   }
 
-  static async getByPartner(partnerRefCode: string): Promise<DealTrack[]> {
-    if (!partnerRefCode) return [];
-    const clean = partnerRefCode.trim().toUpperCase();
+  static async getByPartner(partnerRefCode?: string, partnerId?: string): Promise<DealTrack[]> {
+    if (!partnerRefCode && !partnerId) return [];
+    const cleanRef = partnerRefCode?.trim().toUpperCase();
+    const cleanId = partnerId?.trim().toUpperCase();
     const deals = await this.getAll();
-    return deals.filter((d) => d.partnerRefCode?.trim().toUpperCase() === clean);
+    return deals.filter(
+      (d) =>
+        (cleanRef && d.partnerRefCode?.trim().toUpperCase() === cleanRef) ||
+        (cleanId && (d.partnerId?.trim().toUpperCase() === cleanId || (d as any).referredByPartnerId?.trim().toUpperCase() === cleanId))
+    );
   }
 
   static async updateStage(dealId: string, stage: DealTrack['stage']): Promise<DealTrack | null> {

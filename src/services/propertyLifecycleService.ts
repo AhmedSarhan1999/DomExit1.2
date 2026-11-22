@@ -305,7 +305,7 @@ export class PropertyLifecycleService {
       sellerUserId: payload.uid,
       sellerClientCode: payload.clientCode,
       partnerRefCode: payload.referredByPartnerCode,
-      partnerRewardRub: payload.referredByPartnerCode ? 35000 : undefined,
+      partnerRewardRub: payload.referredByPartnerCode ? 30000 : undefined,
       partnerPayoutStatus: payload.referredByPartnerCode ? 'pending' : undefined,
       route: payload.exitRoute,
       dealTrack: payload.dealTrack || 'ddu_cession',
@@ -356,7 +356,7 @@ export class PropertyLifecycleService {
 
     if (payload.referredByPartnerCode) {
       try {
-        await PartnersRepository.recordReferral(payload.referredByPartnerCode, 35000);
+        await PartnersRepository.recordReferral(payload.referredByPartnerCode, 30000);
       } catch {}
     }
     if (payload.preliminaryReferralId) {

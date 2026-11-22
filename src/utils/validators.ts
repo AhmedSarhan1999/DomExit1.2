@@ -94,22 +94,34 @@ export function validateRussianInn(inn: string): { valid: boolean; messageRu?: s
 }
 
 /**
- * Validates DDU contract / property code (must include digits, allowed letters/digits/hyphens/slashes, no pure text).
+ * Validates DDU contract / property code or cadastral number.
  */
-export function validateDduOrLotCode(code: string): { valid: boolean; messageRu?: string; messageEn?: string } {
+export function validateDduOrLotCode(
+  code: string,
+  isSecondary = false
+): { valid: boolean; messageRu?: string; messageEn?: string } {
   const clean = code.trim();
-  if (clean.length < 3 || clean.length > 32) {
+  const maxLen = isSecondary ? 40 : 32;
+  if (clean.length < 3 || clean.length > maxLen) {
     return {
       valid: false,
-      messageRu: 'Код договора ДДУ / лота должен содержать от 3 до 32 символов (например: ДДУ-78/10566).',
-      messageEn: 'DDU / Lot code must be 3–32 characters (e.g. DDU-78/10566).',
+      messageRu: isSecondary
+        ? `Кадастровый номер или номер документа должен содержать от 3 до ${maxLen} символов (например: 78:34:0004123:4567).`
+        : 'Код договора ДДУ / лота должен содержать от 3 до 32 символов (например: ДДУ-78/10566).',
+      messageEn: isSecondary
+        ? `Cadastral or ownership number must be 3–${maxLen} characters (e.g. 78:34:0004123:4567).`
+        : 'DDU / Lot code must be 3–32 characters (e.g. DDU-78/10566).',
     };
   }
-  if (!/\d/.test(clean) || !/^[A-Za-zА-Яа-яЁё0-9№\-/_.\s]+$/.test(clean)) {
+  if (!/\d/.test(clean) || !/^[A-Za-zА-Яа-яЁё0-9№\-/_.:\s]+$/.test(clean)) {
     return {
       valid: false,
-      messageRu: 'Код объекта/ДДУ должен содержать номер (цифры) и допустимые символы (-, /, №).',
-      messageEn: 'Property/DDU code must contain digits and valid separators (-, /).',
+      messageRu: isSecondary
+        ? 'Номер объекта должен содержать цифры и допустимые разделители (-, /, :, №).'
+        : 'Код объекта/ДДУ должен содержать номер (цифры) и допустимые символы (-, /, №).',
+      messageEn: isSecondary
+        ? 'Property code must contain digits and valid separators (-, /, :).'
+        : 'Property/DDU code must contain digits and valid separators (-, /).',
     };
   }
   return { valid: true };
@@ -146,11 +158,13 @@ export const MAX_SELLER_PAID_RUB = 50_000_000;
 /**
  * Strictly validates seller financial parameters:
  * - paidAmount between 2,000,000 ₽ and 50,000,000 ₽
- * - paidAmount strictly less than contractPrice
+ * - For DDU: paidAmount strictly less than contractPrice
+ * - For Secondary: paidAmount can equal contractPrice (no developer debt), cannot exceed contractPrice
  */
 export function validateSellerFinancials(
   paidAmount: number,
-  contractPrice: number
+  contractPrice: number,
+  isSecondary = false
 ): {
   valid: boolean;
   paidErrorRu?: string;
@@ -164,16 +178,27 @@ export function validateSellerFinancials(
   let contractErrorEn: string | undefined;
 
   if (!Number.isFinite(paidAmount) || paidAmount < MIN_SELLER_PAID_RUB || paidAmount > MAX_SELLER_PAID_RUB) {
-    paidErrorRu = 'Выплаченная застройщику сумма должна быть в диапазоне от 2 000 000 ₽ до 50 000 000 ₽.';
-    paidErrorEn = 'Amount paid to developer must be between 2,000,000 ₽ and 50,000,000 ₽.';
+    paidErrorRu = isSecondary
+      ? 'Желаемая сумма к получению должна быть в диапазоне от 2 000 000 ₽ до 50 000 000 ₽.'
+      : 'Выплаченная застройщику сумма должна быть в диапазоне от 2 000 000 ₽ до 50 000 000 ₽.';
+    paidErrorEn = isSecondary
+      ? 'Desired exit payout must be between 2,000,000 ₽ and 50,000,000 ₽.'
+      : 'Amount paid to developer must be between 2,000,000 ₽ and 50,000,000 ₽.';
   }
 
   if (!Number.isFinite(contractPrice) || contractPrice <= MIN_SELLER_PAID_RUB) {
-    contractErrorRu = 'Полная стоимость договора ДДУ должна превышать 2 000 000 ₽.';
-    contractErrorEn = 'Total DDU contract price must exceed 2,000,000 ₽.';
-  } else if (paidAmount >= contractPrice) {
+    contractErrorRu = isSecondary
+      ? 'Рыночная стоимость недвижимости должна превышать 2 000 000 ₽.'
+      : 'Полная стоимость договора ДДУ должна превышать 2 000 000 ₽.';
+    contractErrorEn = isSecondary
+      ? 'Market value of the property must exceed 2,000,000 ₽.'
+      : 'Total DDU contract price must exceed 2,000,000 ₽.';
+  } else if (!isSecondary && paidAmount >= contractPrice) {
     contractErrorRu = 'Сумма, выплаченная застройщику, должна быть строго меньше полной стоимости договора ДДУ.';
     contractErrorEn = 'Amount paid to developer must be strictly less than total DDU contract price.';
+  } else if (isSecondary && paidAmount > contractPrice) {
+    contractErrorRu = 'Желаемая цена выхода не может превышать рыночную стоимость аналогов.';
+    contractErrorEn = 'Desired exit price cannot exceed the market value of analogues.';
   }
 
   return {

@@ -576,7 +576,7 @@ export async function validateCollectionPayload(params: {
     }
   }
 
-  if (collection === 'partner_applications' || collection === 'investor_applications') {
+  if (collection === 'partners' || collection === 'partner_applications' || collection === 'investor_applications') {
     if (sanitized.phone || sanitized.contactTelegramOrPhone) {
       const ph = sanitized.phone || sanitized.contactTelegramOrPhone;
       // If looks like phone number, check format
@@ -593,6 +593,7 @@ export async function validateCollectionPayload(params: {
 
     if (sanitized.name) sanitized.name = sanitizeText(sanitized.name, 160);
     if (sanitized.fullName) sanitized.fullName = sanitizeText(sanitized.fullName, 160);
+    if (sanitized.email) sanitized.email = sanitizeText(sanitized.email, 160).trim().toLowerCase();
     if (sanitized.organization) sanitized.organization = sanitizeText(sanitized.organization, 160);
     if (sanitized.customProposal) sanitized.customProposal = sanitizeText(sanitized.customProposal, 2000);
   }

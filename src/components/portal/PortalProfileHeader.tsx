@@ -212,13 +212,13 @@ export const PortalProfileHeader: React.FC<PortalProfileHeaderProps> = ({
               onClick={() => onSelectTab('partner')}
               className={`pb-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
                 activeTab === 'partner'
-                  ? 'border-purple-600 text-purple-700'
+                  ? 'border-emerald-600 text-emerald-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Users className="w-3.5 h-3.5 text-purple-600" />
+              <Users className="w-3.5 h-3.5 text-emerald-600" />
               <span>{language === 'ru' ? 'Кабинет Партнера' : 'Partner Portal'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
                 PRO
               </span>
             </button>

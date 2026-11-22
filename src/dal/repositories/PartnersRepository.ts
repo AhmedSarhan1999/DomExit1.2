@@ -42,8 +42,10 @@ export class PartnersRepository {
   static async add(partner: Partial<PartnerEntry>): Promise<PartnerEntry> {
     const nowIso = new Date().toISOString();
     const uid = partner.uid || partner.userId;
+    const generatedRef = `PART-${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newPartner: PartnerEntry = {
-      id: `partner-${Date.now()}`,
+      id: partner.id || `partner-${Date.now()}`,
       userId: uid,
       uid,
       clientCode: partner.clientCode || 'DEX-000000',
@@ -52,21 +54,25 @@ export class PartnersRepository {
       role: partner.role || 'Ипотечный брокер',
       organization: partner.organization || 'Независимый эксперт',
       inn: partner.inn,
-      email: partner.email,
+      email: partner.email?.trim().toLowerCase(),
       city: partner.city,
       category: partner.category || 'mortgage_broker',
       leadsCountMonthly: 0,
       paidBonusesRub: 0,
       pendingBonusesRub: 0,
       fixedRewardPerDealRub: 30000,
-      referralCode:
-        partner.referralCode || `DOMEXIT-REF-${Math.floor(1000 + Math.random() * 9000)}`,
+      referralCode: partner.referralCode || generatedRef,
       phone: partner.phone || '+7 (999) 000-00-00',
       documentIds: partner.documentIds || [],
       status: partner.status || 'pending',
+      isApproved: partner.status === 'approved',
     };
 
-    await DatabaseGateway.save<PartnerEntry>(COLLECTION, newPartner);
+    // Save to both collections for guaranteed consistency
+    await Promise.all([
+      DatabaseGateway.save<PartnerEntry>(COLLECTION, newPartner),
+      DatabaseGateway.save<PartnerEntry>(LEGACY_COLLECTION, newPartner),
+    ]);
 
     await AuditLogsRepository.addLog({
       operatorId: uid || newPartner.id,
@@ -88,31 +94,45 @@ export class PartnersRepository {
     const partner = list.find((p) => p.id === partnerId);
     if (!partner) return null;
 
-    partner.status = 'approved';
-    partner.rejectionReason = undefined;
-    await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
+    const nowIso = new Date().toISOString();
+    const cleanRef = partner.referralCode && partner.referralCode.startsWith('PART-')
+      ? partner.referralCode
+      : `PART-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    partner.status = 'approved';
+    partner.isApproved = true;
+    partner.referralCode = cleanRef;
+    partner.fixedRewardPerDealRub = 30000;
+    partner.approvedAt = nowIso;
+    partner.approvedBy = operatorName;
+    partner.rejectionReason = undefined;
+
+    // Dual-write to keep both tables in sync
+    await Promise.all([
+      DatabaseGateway.save<PartnerEntry>(COLLECTION, partner),
+      DatabaseGateway.save<PartnerEntry>(LEGACY_COLLECTION, partner),
+    ]);
+
+    // Atomic User Role Upgrade while strictly preserving passwordHash
     const targetUid = partner.uid || partner.userId;
-    if (targetUid) {
-      const user = await UsersRepository.getById(targetUid);
-      if (user) {
-        user.isPartnerApproved = true;
-        user.partnerRefCode = partner.referralCode || user.partnerRefCode;
-        if (!user.roles.includes('partner')) {
-          user.roles.push('partner');
-        }
-        await UsersRepository.save(user);
+    let targetUser = targetUid ? await UsersRepository.getById(targetUid) : null;
+
+    if (!targetUser && partner.clientCode) {
+      targetUser = await UsersRepository.getByClientCode(partner.clientCode);
+    }
+    if (!targetUser && partner.email) {
+      targetUser = await UsersRepository.getByEmail(partner.email);
+    }
+
+    if (targetUser) {
+      targetUser.isPartnerApproved = true;
+      targetUser.partnerId = partner.id;
+      targetUser.partnerRefCode = cleanRef;
+      targetUser.referralCode = cleanRef;
+      if (!targetUser.roles.includes('partner')) {
+        targetUser.roles.push('partner');
       }
-    } else if (partner.clientCode) {
-      const user = await UsersRepository.getByClientCode(partner.clientCode);
-      if (user) {
-        user.isPartnerApproved = true;
-        user.partnerRefCode = partner.referralCode || user.partnerRefCode;
-        if (!user.roles.includes('partner')) {
-          user.roles.push('partner');
-        }
-        await UsersRepository.save(user);
-      }
+      await UsersRepository.save(targetUser);
     }
 
     await AuditLogsRepository.addLog({
@@ -120,7 +140,7 @@ export class PartnersRepository {
       operatorRole: 'owner',
       actionType: 'partner_application_decided',
       title: `Одобрена аккредитация партнера: ${partner.name} (${partner.organization})`,
-      description: `Партнеру активирован реферальный код ${partner.referralCode} и доступ к кабинету B2B.`,
+      description: `Партнеру активирован реферальный код ${cleanRef} и предоставлен доступ к кабинету B2B. Вознаграждение: 30 000 ₽ / сделка.`,
     });
 
     return partner;
@@ -136,8 +156,13 @@ export class PartnersRepository {
     if (!partner) return null;
 
     partner.status = 'rejected';
+    partner.isApproved = false;
     partner.rejectionReason = reason;
-    await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
+
+    await Promise.all([
+      DatabaseGateway.save<PartnerEntry>(COLLECTION, partner),
+      DatabaseGateway.save<PartnerEntry>(LEGACY_COLLECTION, partner),
+    ]);
 
     await AuditLogsRepository.addLog({
       operatorName,
@@ -161,7 +186,11 @@ export class PartnersRepository {
 
     partner.status = 'docs_requested';
     partner.requestedDocsNotes = notes;
-    await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
+
+    await Promise.all([
+      DatabaseGateway.save<PartnerEntry>(COLLECTION, partner),
+      DatabaseGateway.save<PartnerEntry>(LEGACY_COLLECTION, partner),
+    ]);
 
     await AuditLogsRepository.addLog({
       operatorName,
@@ -184,9 +213,12 @@ export class PartnersRepository {
         p.clientCode?.toUpperCase() === clean
     );
     if (partner) {
-      partner.leadsCountMonthly += 1;
-      partner.pendingBonusesRub += leadReward;
-      await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
+      partner.leadsCountMonthly = (partner.leadsCountMonthly || 0) + 1;
+      partner.pendingBonusesRub = (partner.pendingBonusesRub || 0) + leadReward;
+      await Promise.all([
+        DatabaseGateway.save<PartnerEntry>(COLLECTION, partner),
+        DatabaseGateway.save<PartnerEntry>(LEGACY_COLLECTION, partner),
+      ]);
     }
   }
 
@@ -209,7 +241,10 @@ export class PartnersRepository {
     partner.lastPayoutTransactionNumber = transactionNumber;
     partner.lastPayoutBankName = bankName;
 
-    await DatabaseGateway.save<PartnerEntry>(COLLECTION, partner);
+    await Promise.all([
+      DatabaseGateway.save<PartnerEntry>(COLLECTION, partner),
+      DatabaseGateway.save<PartnerEntry>(LEGACY_COLLECTION, partner),
+    ]);
 
     await AuditLogsRepository.addLog({
       operatorName,

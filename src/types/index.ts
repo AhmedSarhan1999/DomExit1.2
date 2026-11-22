@@ -446,9 +446,10 @@ export interface DealTrack {
   buyerEmail?: string;
   status?: 'active' | 'in_deal' | 'closed' | 'cancelled';
   closedAt?: string;
+  partnerId?: string;
   partnerRefCode?: string;
   partnerRewardRub?: number;
-  partnerPayoutStatus?: 'pending' | 'paid';
+  partnerPayoutStatus?: 'pending' | 'payable' | 'paid';
   route: 'ddu_assignment' | 'fast_cash' | 'trade_in_6';
   dealTrack?: PropertyDealTrack;
   stage: 'initial_audit' | 'document_check' | 'packaging' | 'buyer_matching' | 'closing_escrow' | 'completed';
@@ -505,6 +506,9 @@ export interface InvestorApplication {
   selectedPackage?: 'flipping' | 'turnkey' | 'syndicate';
   documentIds?: string[];
   status?: 'pending' | 'approved' | 'rejected' | 'docs_requested';
+  isApproved?: boolean;
+  approvedAt?: string;
+  approvedBy?: string;
   rejectionReason?: string;
   requestedDocsNotes?: string;
 }
@@ -530,6 +534,9 @@ export interface PartnerEntry {
   phone: string;
   documentIds?: string[];
   status?: 'pending' | 'approved' | 'rejected' | 'docs_requested';
+  isApproved?: boolean;
+  approvedAt?: string;
+  approvedBy?: string;
   rejectionReason?: string;
   requestedDocsNotes?: string;
   lastPayoutAmountRub?: number;
@@ -575,6 +582,8 @@ export interface UserProfile {
   isInvestorApproved: boolean;
   agreedPolicyVersion?: string;
   partnerRefCode?: string;
+  partnerId?: string;
+  referralCode?: string;
   assignedEmployeeId?: string;
   favorites: string[];
   registeredAt: string;
@@ -716,7 +725,7 @@ export interface PartnerPreliminaryRequest {
   notes?: string;
   createdAt: string;
   expiresAt: string; // 7-day countdown deadline
-  status: 'pending_client' | 'completed' | 'expired';
+  status: 'pending_client' | 'completed' | 'converted_to_lot' | 'expired';
   activatedLotId?: string;
   activatedLotCode?: string;
   activatedDealId?: string;

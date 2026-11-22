@@ -126,6 +126,34 @@ export const AdminBrokersPage: React.FC = () => {
     }
   };
 
+  const handleApprovePartner = async (partnerId: string) => {
+    try {
+      const updated = await PartnersRepository.approve(partnerId, user?.name || 'Владелец DomExit');
+      if (updated) {
+        setNotice(`✓ Партнер ${updated.name} успешно одобрен! Сгенерирован код: ${updated.referralCode}. Роль partner присвоена.`);
+        loadData();
+        setTimeout(() => setNotice(null), 6000);
+      }
+    } catch (err: any) {
+      alert(`Ошибка при одобрении партнера: ${err?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleRejectPartner = async (partnerId: string) => {
+    const reason = window.prompt('Укажите причину отклонения заявки на партнерство:', 'Несоответствие критериям аккредитации');
+    if (!reason) return;
+    try {
+      const updated = await PartnersRepository.reject(partnerId, reason, user?.name || 'Владелец DomExit');
+      if (updated) {
+        setNotice(`Заявка партнера ${updated.name} отклонена.`);
+        loadData();
+        setTimeout(() => setNotice(null), 5000);
+      }
+    } catch (err: any) {
+      alert(`Ошибка при отклонении заявки: ${err?.message || 'Сбой'}`);
+    }
+  };
+
   const handleCreatePartner = async (e: React.FormEvent) => {
     e.preventDefault();
     setPartnerFormError(null);
@@ -142,7 +170,7 @@ export const AdminBrokersPage: React.FC = () => {
 
     try {
       setIsSubmittingPartner(true);
-      const generatedCode = `PARTNER-${newPartnerOrg.slice(0, 3).toUpperCase()}-${Math.floor(10 + Math.random() * 89)}`;
+      const generatedCode = `PART-${Math.floor(1000 + Math.random() * 9000)}`;
 
       await PartnersRepository.add({
         name: newPartnerName.trim(),
@@ -173,7 +201,10 @@ export const AdminBrokersPage: React.FC = () => {
   const totalLeads = partners.reduce((sum, p) => sum + (p.leadsCountMonthly || 0), 0);
 
   // Filtered partners
-  const filteredPartners = partners.filter((p) => {
+  const pendingPartners = partners.filter((p) => p.status === 'pending' || (!p.isApproved && p.status !== 'rejected'));
+  const approvedPartners = partners.filter((p) => p.status === 'approved' || p.isApproved);
+
+  const filteredPartners = approvedPartners.filter((p) => {
     if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
 
     if (commissionStatusFilter === 'in_progress' && (p.leadsCountMonthly === 0 || p.pendingBonusesRub === 0)) {
@@ -272,6 +303,90 @@ export const AdminBrokersPage: React.FC = () => {
                 30-дневное окно cookie/localStorage атрибуции
               </p>
             </div>
+          </div>
+
+          {/* Pending Partner Applications Section (Awaiting Owner Approval) */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2 bg-slate-50/60">
+              <div className="flex items-center space-x-2.5">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-black text-sm text-slate-900">
+                  Заявки на партнёрство (Ожидают одобрения)
+                </h3>
+              </div>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                pendingPartners.length > 0
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-slate-100 text-slate-600'
+              }`}>
+                {pendingPartners.length} {pendingPartners.length === 1 ? 'заявка' : 'заявок'}
+              </span>
+            </div>
+
+            {pendingPartners.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400">
+                Нет ожидающих заявок на партнерство. Все поступившие анкеты обработаны.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {pendingPartners.map((p) => (
+                  <div key={p.id} className="p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors">
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black text-sm text-slate-900">{p.name}</span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                          {p.category === 'mortgage_broker' && 'Ипотечный брокер'}
+                          {p.category === 'developer_cancellation' && 'Отдел отмен застройщика'}
+                          {p.category === 'lawyer' && 'Юрист по недвижимости'}
+                          {p.category === 'trade_in_developer' && 'Трейд-ин партнер'}
+                          {!['mortgage_broker', 'developer_cancellation', 'lawyer', 'trade_in_developer'].includes(p.category) && p.category}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {p.timestamp ? new Date(p.timestamp).toLocaleString('ru-RU') : ''}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-600">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Организация / Опыт:</span>
+                          <span className="font-semibold text-slate-800">{p.organization || 'Не указана'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Телефон:</span>
+                          <span className="font-mono font-semibold text-slate-800">{p.phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Email:</span>
+                          <span className="font-mono text-slate-800">{p.email || 'Не указан'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">ИНН:</span>
+                          <span className="font-mono text-slate-800">{p.inn || 'Не указан'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleApprovePartner(p.id)}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Одобрить партнёра</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectPartner(p.id)}
+                        className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-bold text-xs transition-colors cursor-pointer"
+                      >
+                        <span>Отклонить</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Controls: Search, Filters & Add Partner Button */}

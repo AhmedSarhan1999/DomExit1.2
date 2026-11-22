@@ -12,9 +12,10 @@ import {
 import { useLanguage } from '../../i18n/LanguageContext';
 import { SELLER_MANDATORY_DOC_SLOTS, StorageService } from '../../dal/StorageService';
 import { ConsentCheckboxes, ConsentState } from '../compliance/ConsentCheckboxes';
-import { DocumentMetadata } from '../../types';
+import { DocumentCategory, DocumentMetadata, PropertyDealTrack } from '../../types';
 
 export interface SellerStepDocumentsProps {
+  dealTrack?: PropertyDealTrack;
   draftLotCode: string;
   step3Error: string | null;
   vaultDocs: DocumentMetadata[];
@@ -31,7 +32,50 @@ export interface SellerStepDocumentsProps {
   onSubmitFinal: () => void;
 }
 
+export const SECONDARY_MANDATORY_DOC_SLOTS: Array<{
+  category: DocumentCategory;
+  titleRu: string;
+  titleEn: string;
+  hintRu: string;
+  hintEn: string;
+  required: boolean;
+}> = [
+  {
+    category: 'ddu_contract',
+    titleRu: '1. Правоустанавливающий документ (ДКП / Приватизация / Дарение)',
+    titleEn: '1. Title Document (Purchase Agreement / Privatization / Gift)',
+    hintRu: 'Скан или фото договора купли-продажи, приватизации или свидетельства о праве на собственность (PDF / JPG)',
+    hintEn: 'Scanned sales contract or ownership title deed (PDF / JPG)',
+    required: true,
+  },
+  {
+    category: 'additional',
+    titleRu: '2. Свежая выписка из ЕГРН (Госуслуги с ЭЦП)',
+    titleEn: '2. Recent EGRN Extract from Gosuslugi',
+    hintRu: 'Электронная выписка об объекте недвижимости с цифровой подписью Росреестра (PDF)',
+    hintEn: 'Official real estate registry extract with digital signature (PDF)',
+    required: true,
+  },
+  {
+    category: 'developer_payment_cert',
+    titleRu: '3. Справка о зарегистрированных лицах (Форма 9 / Госуслуги)',
+    titleEn: '3. Registered Persons Certificate (Form 9)',
+    hintRu: 'Опционально. Справка о регистрации по месту жительства или архивная Форма 9',
+    hintEn: 'Optional. Household registration certificate Form 9',
+    required: false,
+  },
+  {
+    category: 'sfr_maternal_cap',
+    titleRu: '4. Дополнительные документы (ПНД/НД, справки об отсутствии долгов ЖКУ)',
+    titleEn: '4. Additional Documents (PND/ND, Utility Debt Clearances)',
+    hintRu: 'Опционально. Справки из диспансеров, согласие супруга или квитанции ЖКУ',
+    hintEn: 'Optional. Medical clearances or spousal consent documents',
+    required: false,
+  },
+];
+
 export const SellerStepDocuments: React.FC<SellerStepDocumentsProps> = ({
+  dealTrack,
   draftLotCode,
   step3Error,
   vaultDocs,
@@ -48,8 +92,10 @@ export const SellerStepDocuments: React.FC<SellerStepDocumentsProps> = ({
   onSubmitFinal,
 }) => {
   const { language } = useLanguage();
+  const isSecondary = dealTrack === 'secondary_dkp';
 
-  const mandatorySlots = SELLER_MANDATORY_DOC_SLOTS.filter((s) => s.required);
+  const docSlots = isSecondary ? SECONDARY_MANDATORY_DOC_SLOTS : SELLER_MANDATORY_DOC_SLOTS;
+  const mandatorySlots = docSlots.filter((s) => s.required);
   const mandatoryUploadedCount = mandatorySlots.filter((slot) =>
     vaultDocs.some((d) => d.category === slot.category && d.status !== 'rejected')
   ).length;
@@ -103,7 +149,7 @@ export const SellerStepDocuments: React.FC<SellerStepDocumentsProps> = ({
 
       {/* Live Checklist of Seller Documents */}
       <div className="space-y-2.5">
-        {SELLER_MANDATORY_DOC_SLOTS.map((slot) => {
+        {docSlots.map((slot) => {
           const found = vaultDocs.find((d) => d.category === slot.category);
           return (
             <div

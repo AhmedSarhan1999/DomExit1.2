@@ -52,6 +52,8 @@ export interface UserProfile {
   isPartnerApproved?: boolean;
   isInvestorApproved?: boolean;
   partnerRefCode?: string;
+  partnerId?: string;
+  referralCode?: string;
   favorites?: string[];
   registeredAt?: string;
   authProvider?: string;

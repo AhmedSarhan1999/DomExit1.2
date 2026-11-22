@@ -10,6 +10,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
+  Building,
+  Home,
+  ShieldCheck,
+  FileCheck,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
@@ -22,9 +26,11 @@ import { sanitizeDigitsOnly } from '../../utils/validators';
 import { formatRubles } from '../../utils/formatters';
 import { AddressAutocompleteInput } from '../maps/AddressAutocompleteInput';
 import { RUSSIAN_BANKS } from '../../data/russianBanks';
-import { AccreditedDeveloper, Lot, RussianCityCode, UserProfile } from '../../types';
+import { AccreditedDeveloper, Lot, PropertyDealTrack, RussianCityCode, UserProfile } from '../../types';
 
 export interface SellerStepPropertyProps {
+  dealTrack: PropertyDealTrack;
+  onDealTrackChange: (track: PropertyDealTrack) => void;
   user: UserProfile | null;
   onOpenAuthModal: () => void;
   step1Error: string | null;
@@ -84,6 +90,14 @@ export interface SellerStepPropertyProps {
   onExitRouteChange: (route: 'ddu_assignment' | 'fast_cash' | 'trade_in_6') => void;
   usedMatkap: 'no' | 'yes';
   onUsedMatkapChange: (val: 'no' | 'yes') => void;
+  ownershipDuration?: 'less_3_5' | 'more_3_5';
+  onOwnershipDurationChange?: (val: 'less_3_5' | 'more_3_5') => void;
+  secondaryMatkapOrKids?: 'no' | 'yes';
+  onSecondaryMatkapOrKidsChange?: (val: 'no' | 'yes') => void;
+  registeredTenants?: 'no' | 'yes';
+  onRegisteredTenantsChange?: (val: 'no' | 'yes') => void;
+  readyPndAndFullPrice?: boolean;
+  onReadyPndAndFullPriceChange?: (val: boolean) => void;
   isNegotiable: boolean;
   onIsNegotiableChange: (val: boolean) => void;
   sellerBanks: string[];
@@ -96,6 +110,8 @@ export interface SellerStepPropertyProps {
 }
 
 export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
+  dealTrack,
+  onDealTrackChange,
   user,
   onOpenAuthModal,
   step1Error,
@@ -144,6 +160,14 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
   onExitRouteChange,
   usedMatkap,
   onUsedMatkapChange,
+  ownershipDuration = 'more_3_5',
+  onOwnershipDurationChange,
+  secondaryMatkapOrKids = 'no',
+  onSecondaryMatkapOrKidsChange,
+  registeredTenants = 'no',
+  onRegisteredTenantsChange,
+  readyPndAndFullPrice = true,
+  onReadyPndAndFullPriceChange,
   isNegotiable,
   onIsNegotiableChange,
   sellerBanks,
@@ -157,6 +181,7 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
   const { language } = useLanguage();
   const regionDistricts = getDistrictsForRegion(locationRegion);
   const activeRegionConfig = getRegionByCode(locationRegion);
+  const isSecondary = dealTrack === 'secondary_dkp';
 
   return (
     <div className="min-w-0 space-y-5">
@@ -173,7 +198,7 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
             type="button"
             onClick={() => {
               if (typeof window !== 'undefined') {
-                sessionStorage.setItem('domexit_return_url', '/app/seller');
+                sessionStorage.setItem('domexit_return_url', '/sellers');
               }
               onOpenAuthModal();
             }}
@@ -190,6 +215,44 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
           <span>{step1Error}</span>
         </div>
       )}
+
+      {/* DYNAMIC PROPERTY TYPE & DEAL FORMAT SELECTOR */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-emerald-500/40 shadow-xs space-y-2">
+        <label className="block text-xs font-black text-slate-900 flex items-center space-x-2">
+          {isSecondary ? (
+            <Home className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <Building className="w-4 h-4 text-emerald-600 shrink-0" />
+          )}
+          <span>{language === 'ru' ? 'Тип объекта и формат сделки *' : 'Property Type & Deal Format *'}</span>
+        </label>
+        <select
+          value={dealTrack}
+          onChange={(e) => {
+            const nextTrack = e.target.value as PropertyDealTrack;
+            onDealTrackChange(nextTrack);
+            if (nextTrack === 'secondary_dkp' && contractPriceStr && !paidAmountStr) {
+              onPaidAmountStrChange(contractPriceStr);
+            }
+          }}
+          className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-xs sm:text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner cursor-pointer"
+        >
+          <option value="ddu_cession">
+            Новостройка — переуступка по ДДУ / рассрочка (214-ФЗ)
+          </option>
+          <option value="secondary_dkp">
+            Вторичное жилье — готовая собственность (ДКП / ГК РФ)
+          </option>
+        </select>
+        <div className="flex items-center gap-2 text-[11px] text-slate-600 pt-0.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span>
+            {isSecondary
+              ? 'Готовая квартира с оформленным правом собственности. Без комиссий с продавца, расчет через безопасный аккредитив Сбербанк/ВТБ.'
+              : 'Строящийся дом по 214-ФЗ. Возврат 100% внесенных застройщику средств без штрафов и потери капитала.'}
+          </span>
+        </div>
+      </div>
 
       {/* Hierarchical Russian Region, District, Address & Metro */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
@@ -308,162 +371,183 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
         </div>
       </div>
 
-      {/* Developer & Complex Name */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-xs font-bold text-slate-800">
-              {language === 'ru' ? 'Застройщик *' : 'Developer *'}
-            </label>
-            <button
-              type="button"
-              onClick={onToggleAddingNewDeveloper}
-              className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
-            >
-              {isAddingNewDeveloper
-                ? '← Выбрать из списка застройщиков'
-                : '+ Добавить нового застройщика'}
-            </button>
+      {/* Developer & Complex Name (Conditional for DDU vs Secondary) */}
+      {!isSecondary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-800">
+                {language === 'ru' ? 'Застройщик *' : 'Developer *'}
+              </label>
+              <button
+                type="button"
+                onClick={onToggleAddingNewDeveloper}
+                className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+              >
+                {isAddingNewDeveloper
+                  ? '← Выбрать из списка застройщиков'
+                  : '+ Добавить нового застройщика'}
+              </button>
+            </div>
+
+            {!isAddingNewDeveloper ? (
+              <>
+                <select
+                  value={developerName}
+                  onChange={(e) => {
+                    if (e.target.value === '__ADD_NEW__') {
+                      onToggleAddingNewDeveloper();
+                    } else {
+                      onDeveloperNameChange(e.target.value);
+                      const matched = accreditedDevelopers.find((d) => d.name === e.target.value);
+                      if (matched) onDeveloperInnChange(matched.inn);
+                    }
+                  }}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                >
+                  {accreditedDevelopers.length === 0 ? (
+                    <option value="" disabled>
+                      -- Нет аккредитованных застройщиков (0) --
+                    </option>
+                  ) : (
+                    accreditedDevelopers.map((d) => (
+                      <option key={d.id} value={d.name}>
+                        {formatDeveloperOption(d)}
+                      </option>
+                    ))
+                  )}
+                  <option value="__ADD_NEW__" className="font-bold text-emerald-700 bg-emerald-50">
+                    + Добавить нового застройщика
+                  </option>
+                </select>
+                {accreditedDevelopers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {activeRegionConfig.majorDevelopers
+                      .filter((dev) => accreditedDevelopers.some((a) => a.name === dev))
+                      .slice(0, 4)
+                      .map((dev) => (
+                        <button
+                          key={dev}
+                          type="button"
+                          onClick={() => {
+                            onDeveloperNameChange(dev);
+                            const matched = accreditedDevelopers.find(
+                              (d) => d.name === dev || normalizeDeveloperName(d.name) === normalizeDeveloperName(dev)
+                            );
+                            if (matched?.inn) onDeveloperInnChange(matched.inn);
+                          }}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                            developerName === dev
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {dev}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3 bg-amber-50/80 border border-amber-200 rounded-2xl p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-amber-700" />
+                    <span>Добавление нового застройщика</span>
+                  </span>
+                  {accreditedDevelopers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={onToggleAddingNewDeveloper}
+                      className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
+                    >
+                      Выбрать из списка ({accreditedDevelopers.length})
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Наименование нового застройщика *
+                  </label>
+                  <input
+                    type="text"
+                    value={developerName}
+                    onChange={(e) => onDeveloperNameChange(e.target.value)}
+                    onBlur={() => markTouched('developerName')}
+                    placeholder="Например: СК «Северный Горизонт»"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    ИНН застройщика (10 цифр) *
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={12}
+                    value={developerInn}
+                    onChange={(e) => onDeveloperInnChange(sanitizeDigitsOnly(e.target.value))}
+                    onBlur={() => markTouched('developerInn')}
+                    placeholder="Например: 7813654902"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-white/90 border border-amber-300/80 rounded-xl text-[11px] text-amber-950 leading-relaxed font-medium">
+                  «Заявка на добавление застройщика отправлена администратору платформы. После проверки ИНН застройщик появится в общем списке».
+                </div>
+              </div>
+            )}
           </div>
 
-          {!isAddingNewDeveloper ? (
-            <>
-              <select
-                value={developerName}
-                onChange={(e) => {
-                  if (e.target.value === '__ADD_NEW__') {
-                    onToggleAddingNewDeveloper();
-                  } else {
-                    onDeveloperNameChange(e.target.value);
-                    const matched = accreditedDevelopers.find((d) => d.name === e.target.value);
-                    if (matched) onDeveloperInnChange(matched.inn);
-                  }
-                }}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
-              >
-                {accreditedDevelopers.length === 0 ? (
-                  <option value="" disabled>
-                    -- Нет аккредитованных застройщиков (0) --
-                  </option>
-                ) : (
-                  accreditedDevelopers.map((d) => (
-                    <option key={d.id} value={d.name}>
-                      {formatDeveloperOption(d)}
-                    </option>
-                  ))
-                )}
-                <option value="__ADD_NEW__" className="font-bold text-emerald-700 bg-emerald-50">
-                  + Добавить нового застройщика
-                </option>
-              </select>
-              {accreditedDevelopers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {activeRegionConfig.majorDevelopers
-                    .filter((dev) => accreditedDevelopers.some((a) => a.name === dev))
-                    .slice(0, 4)
-                    .map((dev) => (
-                      <button
-                        key={dev}
-                        type="button"
-                        onClick={() => {
-                          onDeveloperNameChange(dev);
-                          const matched = accreditedDevelopers.find(
-                            (d) => d.name === dev || normalizeDeveloperName(d.name) === normalizeDeveloperName(dev)
-                          );
-                          if (matched?.inn) onDeveloperInnChange(matched.inn);
-                        }}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
-                          developerName === dev
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {dev}
-                      </button>
-                    ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="space-y-3 bg-amber-50/80 border border-amber-200 rounded-2xl p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4 text-amber-700" />
-                  <span>Добавление нового застройщика</span>
-                </span>
-                {accreditedDevelopers.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={onToggleAddingNewDeveloper}
-                    className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
-                  >
-                    Выбрать из списка ({accreditedDevelopers.length})
-                  </button>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Наименование нового застройщика *
-                </label>
-                <input
-                  type="text"
-                  value={developerName}
-                  onChange={(e) => onDeveloperNameChange(e.target.value)}
-                  onBlur={() => markTouched('developerName')}
-                  placeholder="Например: СК «Северный Горизонт»"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  ИНН застройщика (10 цифр) *
-                </label>
-                <input
-                  type="text"
-                  maxLength={12}
-                  value={developerInn}
-                  onChange={(e) => onDeveloperInnChange(sanitizeDigitsOnly(e.target.value))}
-                  onBlur={() => markTouched('developerInn')}
-                  placeholder="Например: 7813654902"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-mono font-bold focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="p-3 bg-white/90 border border-amber-300/80 rounded-xl text-[11px] text-amber-950 leading-relaxed font-medium">
-                «Заявка на добавление застройщика отправлена администратору платформы. После проверки ИНН застройщик появится в общем списке».
-              </div>
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1">
+              {language === 'ru' ? 'Название Жилого Комплекса *' : 'Residential Complex *'}
+            </label>
+            <input
+              type="text"
+              value={complexName}
+              onChange={(e) => onComplexNameChange(e.target.value)}
+              onBlur={() => markTouched('complexName')}
+              placeholder="Например: ЖК «Чистое Небо»"
+              className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-semibold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
         </div>
-
-        <div>
+      ) : (
+        /* Secondary Housing: Developer is not required, Complex is optional/landmark */
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
           <label className="block text-xs font-bold text-slate-800 mb-1">
-            {language === 'ru' ? 'Название Жилого Комплекса *' : 'Residential Complex *'}
+            {language === 'ru' ? 'ЖК или ориентир (необязательно)' : 'Complex or Landmark (Optional)'}
           </label>
           <input
             type="text"
             value={complexName}
             onChange={(e) => onComplexNameChange(e.target.value)}
             onBlur={() => markTouched('complexName')}
-            placeholder="Например: ЖК «Чистое Небо»"
-            className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-semibold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+            placeholder="Например: ЖК «Приморский квартал», дом старого фонда или ориентир"
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
           />
         </div>
-      </div>
+      )}
 
-      {/* DDU Number + Rooms + Area + Floors */}
+      {/* DDU Number / Cadastral Number + Rooms + Area + Floors */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="col-span-2 sm:col-span-1">
           <label className="block text-[11px] font-bold text-slate-700 mb-1">
-            {language === 'ru' ? 'Номер договора ДДУ *' : 'DDU Number *'}
+            {isSecondary
+              ? 'Кадастровый номер / Право собственности *'
+              : language === 'ru'
+              ? 'Номер договора ДДУ *'
+              : 'DDU Number *'}
           </label>
           <input
             type="text"
             value={dduCode}
             onChange={(e) => onDduCodeChange(e.target.value)}
             onBlur={() => markTouched('dduCode')}
-            placeholder="Например: ДДУ-78/10566"
+            placeholder={isSecondary ? '78:34:0004123:4567' : 'Например: ДДУ-78/10566'}
             className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
           />
         </div>
@@ -530,11 +614,13 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
         </div>
       </div>
 
-      {/* Strict Financial Inputs */}
+      {/* Dynamic Financial Inputs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-bold text-slate-800 mb-1">
-            {language === 'ru'
+            {isSecondary
+              ? 'Рыночная стоимость аналогов (₽) *'
+              : language === 'ru'
               ? 'Полная цена договора ДДУ (₽) *'
               : 'Total DDU Contract Price (₽) *'}
           </label>
@@ -542,8 +628,14 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
             type="text"
             inputMode="numeric"
             value={contractPriceStr}
-            placeholder="Например: 10 500 000"
-            onChange={(e) => onContractPriceStrChange(sanitizeDigitsOnly(e.target.value, 10))}
+            placeholder={isSecondary ? 'Например: 11 000 000' : 'Например: 10 500 000'}
+            onChange={(e) => {
+              const val = sanitizeDigitsOnly(e.target.value, 10);
+              onContractPriceStrChange(val);
+              if (isSecondary && (!paidAmountStr || paidAmountStr === contractPriceStr)) {
+                onPaidAmountStrChange(val);
+              }
+            }}
             onBlur={() => markTouched('contractPrice')}
             className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none transition-colors ${
               touched.contractPrice && financialValidation.contractErrorRu
@@ -559,20 +651,22 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
         <div>
           <div className="flex justify-between items-center mb-1">
             <label className="text-xs font-bold text-slate-800">
-              {language === 'ru'
+              {isSecondary
+                ? 'Желаемая цена срочного выхода (₽) *'
+                : language === 'ru'
                 ? 'Выплачено застройщику (₽) *'
                 : 'Paid to Developer (₽) *'}
             </label>
             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-              2 – 50 млн ₽
+              {isSecondary ? 'Срочная выплата' : '2 – 50 млн ₽'}
             </span>
           </div>
           <input
             type="text"
             inputMode="numeric"
             value={paidAmountStr}
-            placeholder="Например: 3 500 000"
-            onChange={(e) => onPaidAmountStrChange(sanitizeDigitsOnly(e.target.value, 9))}
+            placeholder={isSecondary ? 'Например: 10 200 000' : 'Например: 3 500 000'}
+            onChange={(e) => onPaidAmountStrChange(sanitizeDigitsOnly(e.target.value, 10))}
             onBlur={() => markTouched('paidAmount')}
             className={`w-full px-4 py-3 rounded-xl border text-sm font-mono font-bold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none transition-colors ${
               touched.paidAmount && financialValidation.paidErrorRu
@@ -582,10 +676,14 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
           />
           <span className="text-[11px] text-emerald-700 font-mono font-bold block mt-1">
             {paidAmount > 0 ? (
-              <>
-                На руки 100%: {formatRubles(paidAmount)} • Остаток долга:{' '}
-                {formatRubles(Math.max(0, contractPrice - paidAmount))}
-              </>
+              isSecondary ? (
+                <>К получению на аккредитив / СБР: {formatRubles(paidAmount)} (0% комиссии с продавца)</>
+              ) : (
+                <>
+                  На руки 100%: {formatRubles(paidAmount)} • Остаток долга:{' '}
+                  {formatRubles(Math.max(0, contractPrice - paidAmount))}
+                </>
+              )
             ) : (
               <span className="text-slate-400 font-normal">Сумма к получению на аккредитив</span>
             )}
@@ -606,7 +704,9 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-bold text-slate-800 mb-1">
-            {language === 'ru'
+            {isSecondary
+              ? 'Ориентировочная скидка для срочной продажи (₽)'
+              : language === 'ru'
               ? 'Текущая цена аналога у застройщика (₽)'
               : 'Current Developer Price (₽)'}
           </label>
@@ -615,9 +715,9 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
             inputMode="numeric"
             value={todayMarketPriceStr}
             placeholder={
-              contractPrice > 0
-                ? `Например: ${Math.round(contractPrice * 1.24)}`
-                : 'Например: 13 200 000'
+              isSecondary
+                ? (contractPrice > 0 ? `Дисконт: ${formatRubles(Math.max(0, contractPrice - paidAmount))}` : '0')
+                : (contractPrice > 0 ? `Например: ${Math.round(contractPrice * 1.24)}` : 'Например: 13 200 000')
             }
             onChange={(e) =>
               onTodayMarketPriceStrChange(sanitizeDigitsOnly(e.target.value, 10))
@@ -628,84 +728,226 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
 
         <div>
           <label className="block text-xs font-bold text-slate-800 mb-1">
-            {language === 'ru' ? 'Маршрут выхода из ДДУ' : 'Exit Route'}
+            {isSecondary ? 'Формат срочного выхода' : language === 'ru' ? 'Маршрут выхода из ДДУ' : 'Exit Route'}
           </label>
           <select
             value={exitRoute}
             onChange={(e) => onExitRouteChange(e.target.value as any)}
             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold focus:outline-none focus:border-emerald-500"
           >
-            <option value="ddu_assignment">Классическая уступка прав (100% возврат)</option>
-            <option value="fast_cash">Срочный выход за 5–7 дней (приоритетный пул)</option>
-            <option value="trade_in_6">Обмен / Перевод на Семейную ипотеку 6%</option>
+            {isSecondary ? (
+              <>
+                <option value="ddu_assignment">Срочный выход через DomExit (закрытие 7–14 дней, 0% комиссии)</option>
+                <option value="fast_cash">Экспресс-выкуп за наличные / СБР (3–5 дней)</option>
+                <option value="trade_in_6">Trade-In / Обмен вторички на новостройку</option>
+              </>
+            ) : (
+              <>
+                <option value="ddu_assignment">Классическая уступка прав (100% возврат)</option>
+                <option value="fast_cash">Срочный выход за 5–7 дней (приоритетный пул)</option>
+                <option value="trade_in_6">Обмен / Перевод на Семейную ипотеку 6%</option>
+              </>
+            )}
           </select>
         </div>
       </div>
 
-      {/* Maternal Capital Check (Deal-Breaker) */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-            <span className="text-rose-600">*</span>
-            <span>Использовался ли материнский капитал (Маткапитал) при оплате договора ДДУ?</span>
-          </label>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-            Маткапитал
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <button
-            type="button"
-            onClick={() => onUsedMatkapChange('no')}
-            className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-              usedMatkap === 'no'
-                ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className={`w-4 h-4 ${usedMatkap === 'no' ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span>Нет, не использовался</span>
+      {/* DYNAMIC LEGAL CHECKLIST: DDU Maternal Capital vs Russian Secondary 4-question checklist */}
+      {!isSecondary ? (
+        /* Maternal Capital Check (Deal-Breaker for DDU) */
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+              <span className="text-rose-600">*</span>
+              <span>Использовался ли материнский капитал (Маткапитал) при оплате договора ДДУ?</span>
+            </label>
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+              Маткапитал
             </span>
-            <span className="text-[10px] font-semibold text-emerald-700">✓ Подходит для DomExit</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onUsedMatkapChange('yes')}
-            className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-              usedMatkap === 'yes'
-                ? 'bg-rose-50 border-rose-500 text-rose-950 ring-2 ring-rose-500/20 shadow-xs'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <AlertTriangle className={`w-4 h-4 ${usedMatkap === 'yes' ? 'text-rose-600' : 'text-slate-400'}`} />
-              <span>Да, использовался</span>
-            </span>
-            <span className="text-[10px] font-semibold text-rose-700">Ограничение платформы</span>
-          </button>
-        </div>
-
-        {usedMatkap === 'yes' && (
-          <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-2 animate-fade-in">
-            <div className="flex items-center space-x-2 font-bold text-xs text-rose-900">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>Переуступка прав с материнским капиталом не осуществляется</span>
-            </div>
-            <p className="text-xs text-rose-800 leading-relaxed">
-              Переуступка прав по ДДУ с использованием материнского капитала требует предварительного разрешения органов опеки и обязательного выделения долей детям. В целях защиты участников и соблюдения регламента сроков платформа DomExit не принимает такие объекты в работу.
-            </p>
           </div>
-        )}
-      </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => onUsedMatkapChange('no')}
+              className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                usedMatkap === 'no'
+                  ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className={`w-4 h-4 ${usedMatkap === 'no' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <span>Нет, не использовался</span>
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-700">✓ Подходит для DomExit</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onUsedMatkapChange('yes')}
+              className={`px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                usedMatkap === 'yes'
+                  ? 'bg-rose-50 border-rose-500 text-rose-950 ring-2 ring-rose-500/20 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <AlertTriangle className={`w-4 h-4 ${usedMatkap === 'yes' ? 'text-rose-600' : 'text-slate-400'}`} />
+                <span>Да, использовался</span>
+              </span>
+              <span className="text-[10px] font-semibold text-rose-700">Ограничение платформы</span>
+            </button>
+          </div>
+
+          {usedMatkap === 'yes' && (
+            <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-2 animate-fade-in">
+              <div className="flex items-center space-x-2 font-bold text-xs text-rose-900">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Переуступка прав с материнским капиталом не осуществляется</span>
+              </div>
+              <p className="text-xs text-rose-800 leading-relaxed">
+                Переуступка прав по ДДУ с использованием материнского капитала требует предварительного разрешения органов опеки и обязательного выделения долей детям. В целях защиты участников и соблюдения регламента сроков платформа DomExit не принимает такие объекты в работу.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Secondary Market 4-Question Real Legal Checklist */
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex items-center space-x-2 pb-2 border-b border-slate-200">
+            <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <h4 className="text-xs font-black text-slate-900">
+              Юридический аудит вторичного жилья (ДКП / Росреестр)
+            </h4>
+          </div>
+
+          {/* 1. Ownership Duration */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 block">
+              1. Срок владения квартирой в собственности *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onOwnershipDurationChange?.('more_3_5')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                  ownershipDuration === 'more_3_5'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <span>Более 3–5 лет (без налога НДФЛ)</span>
+                {ownershipDuration === 'more_3_5' && <span className="text-emerald-700">✓</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => onOwnershipDurationChange?.('less_3_5')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                  ownershipDuration === 'less_3_5'
+                    ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <span>Менее 3–5 лет (с налогом / зачет)</span>
+                {ownershipDuration === 'less_3_5' && <span className="text-amber-700">✓</span>}
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Children / Maternal Capital */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 block">
+              2. Использовался ли материнский капитал / выделены доли детям? *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onSecondaryMatkapOrKidsChange?.('no')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                  secondaryMatkapOrKids === 'no'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <span>Нет, детских долей нет</span>
+                {secondaryMatkapOrKids === 'no' && <span className="text-emerald-700">✓</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSecondaryMatkapOrKidsChange?.('yes')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                  secondaryMatkapOrKids === 'yes'
+                    ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <span>Да, есть детские доли / маткапитал</span>
+                {secondaryMatkapOrKids === 'yes' && <span className="text-amber-700">⚠</span>}
+              </button>
+            </div>
+            {secondaryMatkapOrKids === 'yes' && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                Потребуется согласование приказа органов опеки. Сделка проводится через нотариуса и аккредитив.
+              </p>
+            )}
+          </div>
+
+          {/* 3. Registered Tenants (Form 9) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 block">
+              3. Зарегистрированные лица (Справка Форма 9) *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onRegisteredTenantsChange?.('no')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                  registeredTenants === 'no'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <span>Никто не прописан (свободна)</span>
+                {registeredTenants === 'no' && <span className="text-emerald-700">✓</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRegisteredTenantsChange?.('yes')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                  registeredTenants === 'yes'
+                    ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <span>Есть прописанные (выписка до сделки)</span>
+                {registeredTenants === 'yes' && <span className="text-amber-700">✓</span>}
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Willingness to provide PND/ND certificates & full price */}
+          <div className="pt-1">
+            <label className="flex items-start space-x-2.5 cursor-pointer text-xs font-bold text-slate-800">
+              <input
+                type="checkbox"
+                checked={readyPndAndFullPrice}
+                onChange={(e) => onReadyPndAndFullPriceChange?.(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-emerald-600 accent-emerald-600"
+              />
+              <span className="leading-snug">
+                Готовность предоставить справки ПНД / НД и указать полную стоимость в договоре купли-продажи (ДКП) *
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Commercial Conditions: Negotiation & Settlement Banks */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
         <div>
           <label className="text-xs font-black text-slate-900 block mb-1">
-            {language === 'ru' ? 'Возможен ли торг по цене уступки?' : 'Is price negotiation allowed?'}
+            {language === 'ru' ? 'Возможен ли торг по цене выхода?' : 'Is price negotiation allowed?'}
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <button
@@ -787,7 +1029,9 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
             className="mt-0.5 w-4 h-4 rounded text-emerald-600 accent-emerald-600"
           />
           <span className="leading-snug">
-            {language === 'ru'
+            {isSecondary
+              ? 'Согласен на срочную реализацию объекта через платформу DomExit с расчетом через банковский аккредитив / СБР (0% комиссии с продавца).'
+              : language === 'ru'
               ? 'Согласен на реализацию лота по цене старого договора ДДУ без наценки (0 ₽ НДФЛ) с расчетом через банковский аккредитив.'
               : 'I agree to sell the lot at original DDU contract price with 0% markup via bank letter of credit.'}
           </span>
@@ -797,16 +1041,18 @@ export const SellerStepProperty: React.FC<SellerStepPropertyProps> = ({
       <div className="pt-2">
         <button
           type="button"
-          disabled={usedMatkap === 'yes'}
+          disabled={!isSecondary && usedMatkap === 'yes'}
           onClick={onGoToStep2}
           className={`w-full py-4 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center space-x-2 ${
-            usedMatkap === 'yes'
+            !isSecondary && usedMatkap === 'yes'
               ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none'
               : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
           }`}
         >
           <span>
-            {language === 'ru'
+            {isSecondary
+              ? 'Подтвердить параметры и перейти к данным собственника'
+              : language === 'ru'
               ? 'Подтвердить расчет и перейти к данным дольщика'
               : 'Confirm Calculation & Proceed'}
           </span>

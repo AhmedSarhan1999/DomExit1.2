@@ -126,6 +126,33 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       };
     }
 
+    // Auto-link accredited partner if approved in partners
+    try {
+      const allPartners = await ydb.scanAll<any>('partners');
+      const cleanEmail = (userToSave.email || '').trim().toLowerCase();
+      const approvedPartner = allPartners.find(
+        (p: any) =>
+          p.email &&
+          p.email.trim().toLowerCase() === cleanEmail &&
+          (p.status === 'approved' || p.isApproved)
+      );
+      if (approvedPartner) {
+        if (!userToSave.roles.includes('partner')) {
+          userToSave.roles.push('partner');
+        }
+        userToSave.isPartnerApproved = true;
+        userToSave.partnerId = approvedPartner.id;
+        userToSave.partnerRefCode = approvedPartner.referralCode || userToSave.partnerRefCode;
+        userToSave.referralCode = approvedPartner.referralCode || userToSave.referralCode;
+        if (!approvedPartner.userId) {
+          approvedPartner.userId = userToSave.id;
+          await ydb.putItem('partners', approvedPartner);
+        }
+      }
+    } catch (partnerErr) {
+      console.warn('[auth] Non-fatal partner auto-link error:', partnerErr);
+    }
+
     await ydb.putItem('users', userToSave);
 
     const sessionToken = createJwt(
@@ -448,6 +475,34 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         authProvider: 'yandex',
       };
       await ydb.putItem('users', user);
+    }
+
+    // Auto-link accredited partner if approved in partners
+    try {
+      const allPartners = await ydb.scanAll<any>('partners');
+      const cleanEmail = yandexEmail.trim().toLowerCase();
+      const approvedPartner = allPartners.find(
+        (p: any) =>
+          p.email &&
+          p.email.trim().toLowerCase() === cleanEmail &&
+          (p.status === 'approved' || p.isApproved)
+      );
+      if (approvedPartner) {
+        if (!user.roles.includes('partner')) {
+          user.roles.push('partner');
+        }
+        user.isPartnerApproved = true;
+        user.partnerId = approvedPartner.id;
+        user.partnerRefCode = approvedPartner.referralCode || user.partnerRefCode;
+        user.referralCode = approvedPartner.referralCode || user.referralCode;
+        if (!approvedPartner.userId) {
+          approvedPartner.userId = user.id;
+          await ydb.putItem('partners', approvedPartner);
+        }
+        await ydb.putItem('users', user);
+      }
+    } catch (partnerErr) {
+      console.warn('[auth] Non-fatal partner auto-link in yandex callback:', partnerErr);
     }
 
     const sessionToken = createJwt(

@@ -7,6 +7,9 @@ import {
   Clock,
   AlertCircle,
   CheckCircle2,
+  Users,
+  ShieldCheck,
+  Building2,
 } from 'lucide-react';
 import {
   UserProfile,
@@ -66,6 +69,17 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
   const [refDduPrice, setRefDduPrice] = useState<number>(10500000);
   const [partnerError, setPartnerError] = useState<string | null>(null);
 
+  const activeRefCode =
+    user?.partnerRefCode ||
+    partnerAppRecord?.referralCode ||
+    user?.referralCode ||
+    'PART-0000';
+
+  const referralUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/sellers?ref=${activeRefCode}`
+      : `https://domexit.ru/sellers?ref=${activeRefCode}`;
+
   const handlePartnerReferralSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPartnerError(null);
@@ -87,7 +101,7 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
 
     const finCheck = validateSellerFinancials(refPaidAmount, refDduPrice);
     if (!finCheck.valid) {
-      setPartnerError(finCheck.paidErrorRu || finCheck.contractErrorRu || 'Проверьте финансовые параметры ДДУ.');
+      setPartnerError(finCheck.paidErrorRu || finCheck.contractErrorRu || 'Проверьте финансовые параметры объекта.');
       return;
     }
 
@@ -104,7 +118,7 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
     const newReq = await PartnerRequestsRepository.createPreliminaryRequest({
       partnerId: user?.id || 'partner-current',
       partnerName: user?.name || 'Партнер DomExit',
-      partnerRefCode: user?.partnerRefCode || partnerAppRecord?.referralCode || 'PARTNER-SPB-12',
+      partnerRefCode: activeRefCode,
       clientCode: cleanCode,
       clientName: refClientName.trim() || verifiedUser.name || 'Дольщик',
       clientPhone: refClientPhone,
@@ -126,31 +140,45 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
     );
   };
 
+  const isApprovedPartner = Boolean(
+    user?.isPartnerApproved ||
+    user?.roles?.includes('partner') ||
+    user?.role === 'partner' ||
+    user?.activeRole === 'partner' ||
+    partnerAppRecord?.status === 'approved'
+  );
+
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
         {/* Partner Status Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold uppercase tracking-wider">
-                {user?.isPartnerApproved || partnerAppRecord?.status === 'approved'
-                  ? 'Аккредитованный партнер DomExit'
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                isApprovedPartner
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   : partnerAppRecord?.status === 'pending'
-                  ? 'Заявка партнера на модерации у Владельца'
+                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                  : 'bg-slate-100 text-slate-800 border border-slate-200'
+              }`}>
+                {isApprovedPartner
+                  ? '✓ Аккредитованный партнер DomExit'
+                  : partnerAppRecord?.status === 'pending'
+                  ? '⏳ Заявка партнера на модерации у Владельца'
                   : partnerAppRecord?.status === 'docs_requested'
                   ? 'Запрошены реквизиты партнера'
                   : 'Партнерский кабинет B2B'}
               </span>
-              <span className="text-xs font-mono font-bold text-slate-600">
+              <span className="text-xs font-mono font-bold text-slate-700">
                 Реф-код:{' '}
-                <strong>
-                  {user?.partnerRefCode || partnerAppRecord?.referralCode || 'НЕ АКТИВИРОВАН'}
+                <strong className="text-emerald-800">
+                  {activeRefCode}
                 </strong>
               </span>
             </div>
             <h2 className="text-xl font-black text-slate-950 tracking-tight mt-1">
-              Партнерский деск: передача клиентов по DEX-ID и контроль выплат
+              Партнерский деск: передача клиентов и учет вознаграждений
             </h2>
             {partnerAppRecord?.requestedDocsNotes && (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl mt-1.5">
@@ -159,35 +187,35 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
             )}
           </div>
 
-          {!user?.isPartnerApproved && !partnerAppRecord && (
+          {!isApprovedPartner && !partnerAppRecord && (
             <button
               type="button"
               onClick={onUpgradeToPartner}
-              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer"
             >
               Подать заявку на партнерский статус
             </button>
           )}
         </div>
 
-        {/* SMART PARTNER REFERRAL LINK CARD (Section 6) */}
-        <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-white border-2 border-purple-300 rounded-3xl p-6 sm:p-7 shadow-xs space-y-3.5">
+        {/* SMART PARTNER REFERRAL LINK CARD (Unified Light Emerald) */}
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-white border-2 border-emerald-400/60 rounded-3xl p-6 sm:p-7 shadow-xs space-y-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-black shadow-xs">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-xs">
                 <Share2 className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900">
-                  Ваша реферальная ссылка для продавцов ДДУ
+                  Ваша реферальная ссылка для продавцов недвижимости
                 </h3>
                 <p className="text-xs text-slate-600">
-                  Автоматическая фиксация вашего партнерского кода при переходе клиента
+                  Автоматическая фиксация партнерского кода и 30-дневное окно атрибуции
                 </p>
               </div>
             </div>
-            <span className="px-3 py-1 rounded-full bg-purple-600 text-white text-xs font-black self-start sm:self-auto shadow-xs">
-              30 000 – 50 000 ₽ / выход
+            <span className="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-black self-start sm:self-auto shadow-xs">
+              30 000 ₽ / сделка
             </span>
           </div>
 
@@ -195,42 +223,39 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
             <input
               type="text"
               readOnly
-              value={`https://domexit.ru/sellers?ref=${
-                user?.partnerRefCode || partnerAppRecord?.referralCode || user?.clientCode || 'DEX-PARTNER-77'
-              }`}
-              className="flex-1 bg-white border border-purple-300 text-purple-950 font-mono text-xs px-4 py-3 rounded-xl font-bold select-all focus:outline-none"
+              value={referralUrl}
+              className="flex-1 bg-white border border-emerald-300 text-emerald-950 font-mono text-xs px-4 py-3 rounded-xl font-bold select-all focus:outline-none"
             />
             <button
               type="button"
               onClick={() => {
-                const refCode = user?.partnerRefCode || partnerAppRecord?.referralCode || user?.clientCode || 'DEX-PARTNER-77';
-                navigator.clipboard.writeText(`https://domexit.ru/sellers?ref=${refCode}`);
+                navigator.clipboard.writeText(referralUrl);
                 setCopiedPartnerLink(true);
                 setTimeout(() => setCopiedPartnerLink(false), 2500);
               }}
-              className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shrink-0 shadow-xs"
+              className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shrink-0 shadow-xs"
             >
               {copiedPartnerLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               <span>{copiedPartnerLink ? 'Скопировано!' : 'Копировать ссылку'}</span>
             </button>
           </div>
 
-          <p className="text-[11px] text-purple-900 leading-relaxed">
-            * Отправляйте эту ссылку клиентам, желающим выйти из ДДУ. При переходе по ссылке ваш партнерский код будет зафиксирован автоматически, гарантируя вам комиссию 30 000 – 50 000 ₽ при закрытии сделки.
+          <p className="text-[11px] text-emerald-900 leading-relaxed">
+            * Отправляйте эту ссылку клиентам, желающим выйти из ДДУ или срочно продать вторичное жилье. При переходе по ссылке ваш партнерский код будет зафиксирован автоматически, гарантируя выплату 30 000 ₽ при закрытии сделки.
           </p>
         </div>
 
-        {/* Refer Distressed Client Form with mandatory DEX-ID & strict financial validation */}
-        <div className="bg-purple-50/50 border border-purple-200 rounded-3xl p-6 space-y-4">
-          <div className="flex items-center space-x-2 text-purple-950 font-black text-sm">
-            <Share2 className="w-4 h-4 text-purple-600" />
+        {/* Preliminary Client Reservation Form (7-Day Hold) */}
+        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 space-y-4">
+          <div className="flex items-center space-x-2 text-slate-900 font-black text-sm">
+            <Clock className="w-4 h-4 text-emerald-600" />
             <span>
-              Передать дольщика: регистрация по персональному ID клиента (DEX-XXXXXX)
+              Фиксация клиента на 7 дней по персональному ID (DEX-XXXXXX)
             </span>
           </div>
 
           <p className="text-xs text-slate-600">
-            Клиент регистрируется на DomExit и сообщает вам свой код (например, <code>DEX-784105</code>). У клиента открывается 7-дневный регламент загрузки скана ДДУ.
+            Клиент регистрируется на DomExit и сообщает вам свой код (например, <code>DEX-784105</code>). У клиента открывается 7-дневный регламент подачи заявки с автоматической привязкой к вашей партнерской комиссии.
           </p>
 
           {partnerError && (
@@ -252,19 +277,19 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
                 placeholder="DEX-784105"
                 value={refClientCode}
                 onChange={(e) => setRefClientCode(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 rounded-xl border border-purple-300 bg-white font-mono font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block text-slate-700 font-bold mb-1">ФИО дольщика *</label>
+              <label className="block text-slate-700 font-bold mb-1">ФИО клиента *</label>
               <input
                 type="text"
                 required
                 placeholder="Белов Александр Владимирович"
                 value={refClientName}
                 onChange={(e) => setRefClientName(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-emerald-500"
               />
             </div>
 
@@ -276,7 +301,7 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
                 placeholder="+7 (911) 234-56-78"
                 value={refClientPhone}
                 onChange={(e) => setRefClientPhone(formatRussianPhoneInput(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-emerald-500"
               />
             </div>
 
@@ -288,73 +313,74 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
                 placeholder="ЖК «Чистое Небо»"
                 value={refComplexName}
                 onChange={(e) => setRefComplexName(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block text-slate-700 font-bold mb-1">Застройщик *</label>
+              <label className="block text-slate-700 font-bold mb-1">Застройщик / Фонд *</label>
               <input
                 type="text"
                 required
-                placeholder="Сетл Групп"
+                placeholder="Сетл Групп / Вторичка"
                 value={refDeveloper}
                 onChange={(e) => setRefDeveloper(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div>
               <label className="block text-slate-700 font-bold mb-1">
-                Выплачено девелоперу (≥ 2 млн ₽) *
+                Внесенная сумма (₽) *
               </label>
               <input
                 type="number"
                 required
-                min={2000000}
-                max={50000000}
+                min={1000000}
+                max={500000000}
                 value={refPaidAmount}
                 onChange={(e) => setRefPaidAmount(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div>
               <label className="block text-slate-700 font-bold mb-1">
-                Полная цена по ДДУ (₽) *
+                Полная цена договора (₽) *
               </label>
               <input
                 type="number"
                 required
-                min={2100000}
+                min={1000000}
+                max={500000000}
                 value={refDduPrice}
                 onChange={(e) => setRefDduPrice(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div className="flex items-end">
               <button
                 type="submit"
-                className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Отправить запрос (7 дней)</span>
+                <span>Зафиксировать (7 дней)</span>
               </button>
             </div>
           </form>
         </div>
 
-        {/* Strictly Isolated 7-Day Referral Requests Table */}
+        {/* 7-Day Referral Requests Table */}
         <div className="space-y-3 pt-2">
           <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-            <Clock className="w-4 h-4 text-purple-600" />
-            <span>Ваши переданные запросы ({partnerRequests.length}):</span>
+            <Clock className="w-4 h-4 text-emerald-600" />
+            <span>Ваши предварительные фиксации ({partnerRequests.length}):</span>
           </h3>
 
           {partnerRequests.length === 0 ? (
             <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
-              У вас пока нет отправленных 7-дневных запросов. Заполните форму выше, используя DEX-ID клиента.
+              У вас пока нет активных 7-дневных броней. Заполните форму выше, используя DEX-ID клиента.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -365,7 +391,7 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
                     <th className="py-3 px-3">ID клиента</th>
                     <th className="py-3 px-3">Клиент</th>
                     <th className="py-3 px-3">Объект / ЖК</th>
-                    <th className="py-3 px-3">Выплачено</th>
+                    <th className="py-3 px-3">Внесено</th>
                     <th className="py-3 px-3 text-right">Статус</th>
                   </tr>
                 </thead>
@@ -392,10 +418,10 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
                           {formatRubles(req.paidAmountRub)}
                         </td>
                         <td className="py-3 px-3 text-right">
-                          {req.status === 'completed' ? (
+                          {req.status === 'completed' || req.status === 'converted_to_lot' ? (
                             <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] inline-flex items-center space-x-1">
                               <Check className="w-3 h-3" />
-                              <span>Подтвержден ({req.activatedLotCode || 'В работе'})</span>
+                              <span>Сконвертирован в лот ({req.activatedLotCode || 'В работе'})</span>
                             </span>
                           ) : req.status === 'expired' || countdown.isExpired ? (
                             <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px]">
@@ -417,16 +443,16 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
           )}
         </div>
 
-        {/* Live 5-Stage Partner Deal Commission Table (from DealsRepository.getByPartner) */}
+        {/* Live Partner Deal Commission Table */}
         <div className="space-y-3 pt-4 border-t border-slate-100">
           <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>Активные сделки по вашему реф-коду и агентское вознаграждение ({partnerDeals.length}):</span>
+            <span>Сделки по вашему реф-коду и агентское вознаграждение ({partnerDeals.length}):</span>
           </h3>
 
           {partnerDeals.length === 0 ? (
             <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
-              Когда клиент подтвердит ваш запрос и загрузит ДДУ, сделка автоматически отобразится здесь с расчетом комиссии.
+              Когда клиент перейдет по вашей ссылке или подтвердит запрос и подаст заявку, сделка появится здесь со статусом вознаграждения.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -442,38 +468,47 @@ export const PartnerPortalTab: React.FC<PartnerPortalTabProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {partnerDeals.map((d) => (
-                    <tr key={d.dealId} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-mono font-bold text-slate-900">
-                        {d.dealId}
-                      </td>
-                      <td className="py-3 px-3 font-semibold text-slate-800">
-                        {d.clientName || d.sellerName}
-                      </td>
-                      <td className="py-3 px-3">
-                        {d.complexName || d.lotTitle} (#{d.lotCode})
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-bold text-[10px]">
-                          {STAGE_LABEL_RU[d.stage]}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 font-mono font-bold text-emerald-700">
-                        {formatRubles(d.partnerRewardRub || 35000)}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {d.stage === 'completed' || d.partnerPayoutStatus === 'paid' ? (
-                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                            Выплачено
+                  {partnerDeals.map((d) => {
+                    const isPaid = d.partnerPayoutStatus === 'paid';
+                    const isPayable = d.stage === 'completed' || d.partnerPayoutStatus === 'payable';
+
+                    return (
+                      <tr key={d.dealId} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                          {d.dealId}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-slate-800">
+                          {d.clientName || d.sellerName}
+                        </td>
+                        <td className="py-3 px-3">
+                          {d.complexName || d.lotTitle} (#{d.lotCode})
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-bold text-[10px]">
+                            {STAGE_LABEL_RU[d.stage] || d.stage}
                           </span>
-                        ) : (
-                          <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
-                            После раскрытия эскроу
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3 px-3 font-mono font-bold text-emerald-700">
+                          {formatRubles(d.partnerRewardRub || 30000)}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          {isPaid ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                              Выплачено
+                            </span>
+                          ) : isPayable ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500 text-white font-bold text-[10px] shadow-xs">
+                              К выплате 30 000 ₽
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
+                              В работе
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
