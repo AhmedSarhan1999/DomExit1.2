@@ -315,7 +315,12 @@ export async function validateCollectionPayload(params: {
     }
 
     const isSecondary = sanitized.dealTrack === 'secondary_dkp';
-    const contractPrice = Number(sanitized.dduContractPrice ?? sanitized.contractPriceRub ?? sanitized.price);
+    const contractPrice = Number(
+      sanitized.dduContractPrice ??
+      sanitized.contractPriceRub ??
+      sanitized.contractPrice ??
+      sanitized.price
+    );
     if (!isNaN(contractPrice)) {
       if (contractPrice < 1000000 || contractPrice > 500000000) {
         return {
@@ -328,7 +333,11 @@ export async function validateCollectionPayload(params: {
       }
     }
 
-    const paidAmount = Number(sanitized.cashPaidBySeller ?? sanitized.paidAmountRub);
+    const paidAmount = Number(
+      sanitized.cashPaidBySeller ??
+      sanitized.paidAmountRub ??
+      sanitized.paidAmount
+    );
     if (!isNaN(paidAmount)) {
       if (paidAmount <= 0) {
         return { valid: false, statusCode: 400, error: 'Внесенная сумма должна быть больше 0 ₽' };
@@ -394,7 +403,11 @@ export async function validateCollectionPayload(params: {
     }
 
     const isSecondary = sanitized.dealTrack === 'secondary_dkp';
-    const rawContractPrice = sanitized.contractPriceRub ?? sanitized.dduContractPrice ?? sanitized.price;
+    const rawContractPrice =
+      sanitized.contractPriceRub ??
+      sanitized.dduContractPrice ??
+      sanitized.contractPrice ??
+      sanitized.price;
     const hasContractPrice = rawContractPrice !== undefined && rawContractPrice !== null;
 
     if (!isStaff || hasContractPrice) {
@@ -409,7 +422,10 @@ export async function validateCollectionPayload(params: {
         };
       }
 
-      const rawPaidAmount = sanitized.paidAmountRub ?? sanitized.cashPaidBySeller;
+      const rawPaidAmount =
+        sanitized.paidAmountRub ??
+        sanitized.cashPaidBySeller ??
+        sanitized.paidAmount;
       const hasPaidAmount = rawPaidAmount !== undefined && rawPaidAmount !== null;
       if (!isStaff || hasPaidAmount) {
         const paidAmount = Number(rawPaidAmount);

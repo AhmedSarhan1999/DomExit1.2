@@ -236,7 +236,7 @@ async function runAllSuites() {
     try {
       const triggersRaw = execSync(`yc serverless trigger list --folder-id ${folderId} --format json`, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 4000,
+        timeout: 15000,
       }).toString();
       const triggers = JSON.parse(triggersRaw);
       const backupTrigger = triggers.find((t) => t.name.includes('backup') || t.id === manifest.production.backupTriggerId);

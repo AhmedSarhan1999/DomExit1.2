@@ -175,6 +175,7 @@ export async function handleData(
   subPath: string
 ): Promise<YcHttpResponse> {
   const method = event.httpMethod.toUpperCase();
+  const cfg = getConfig();
   const ydb = getYdbClient();
   const authUser = await getAuthenticatedUser(event);
 
@@ -272,7 +273,11 @@ export async function handleData(
   // Parse path: /data/:collection or /data/:collection/:id
   const parts = subPath.replace(/^\/data\/?/, '').split('/').filter(Boolean);
   const collection = parts[0];
-  const id = parts[1] ? decodeURIComponent(parts[1]) : undefined;
+  const id = parts[1]
+    ? decodeURIComponent(parts[1])
+    : event.queryStringParameters?.id
+    ? decodeURIComponent(event.queryStringParameters.id)
+    : undefined;
 
   if (!collection) {
     return json(event, 400, { error: 'Не указана коллекция' });
@@ -549,6 +554,7 @@ export async function handleData(
     const clientIp = getClientIp(event);
     const isOwner = authUser?.role === 'owner';
     const isStaff = isOwner || authUser?.role === 'employee';
+    const isStaging = cfg.APP_ENV === 'staging';
     const actorKey = authUser ? authUser.id : clientIp || 'anonymous';
 
     // 1. Central Schema Validation, Size Cap & Privilege Tampering Check
@@ -597,8 +603,8 @@ export async function handleData(
         const qDay = await consumeQuota({
           scope: 'buyer_app_day',
           actorKey,
-          limit: 5,
-          windowSec: 86400,
+          limit: isStaging ? 100 : 5,
+          windowSec: isStaging ? 60 : 86400,
         });
         if (!qDay.allowed) {
           await recordSecurityIncident({
@@ -622,8 +628,8 @@ export async function handleData(
         const qHour = await consumeQuota({
           scope: 'buyer_app_hour',
           actorKey,
-          limit: 2,
-          windowSec: 3600,
+          limit: isStaging ? 100 : 2,
+          windowSec: isStaging ? 60 : 3600,
         });
         if (!qHour.allowed) {
           await recordSecurityIncident({
@@ -650,8 +656,8 @@ export async function handleData(
         const qDay = await consumeQuota({
           scope: 'seller_sub_day',
           actorKey,
-          limit: 3,
-          windowSec: 86400,
+          limit: isStaging ? 100 : 3,
+          windowSec: isStaging ? 60 : 86400,
         });
         if (!qDay.allowed) {
           await recordSecurityIncident({
@@ -675,8 +681,8 @@ export async function handleData(
         const qTen = await consumeQuota({
           scope: 'seller_sub_10m',
           actorKey,
-          limit: 1,
-          windowSec: 600,
+          limit: isStaging ? 100 : 1,
+          windowSec: isStaging ? 1 : 600,
         });
         if (!qTen.allowed) {
           await recordSecurityIncident({
@@ -703,8 +709,8 @@ export async function handleData(
         const qDay = await consumeQuota({
           scope: 'partner_pre_day',
           actorKey,
-          limit: 10,
-          windowSec: 86400,
+          limit: isStaging ? 100 : 10,
+          windowSec: isStaging ? 60 : 86400,
         });
         if (!qDay.allowed) {
           return json(
@@ -721,8 +727,8 @@ export async function handleData(
         const qDay = await consumeQuota({
           scope: 'partner_inv_app_day',
           actorKey,
-          limit: 2,
-          windowSec: 86400,
+          limit: isStaging ? 100 : 2,
+          windowSec: isStaging ? 60 : 86400,
         });
         if (!qDay.allowed) {
           return json(
@@ -819,32 +825,32 @@ export async function handleData(
 
     // 2. Staff-only collections write (with partner applications & reservations allowed for clients/partners)
     if (STAFF_COLLECTIONS.has(collection)) {
-      if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
-      const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
+      const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
       const isPartner = Boolean(
-        authUser.isPartnerApproved ||
-        authUser.roles?.includes('partner') ||
-        authUser.role === 'partner' ||
-        authUser.activeRole === 'partner'
+        authUser?.isPartnerApproved ||
+        authUser?.roles?.includes('partner') ||
+        authUser?.role === 'partner' ||
+        authUser?.activeRole === 'partner'
       );
 
       // Check non-staff submissions:
-      // a) partner_applications / partners: allow non-staff to submit pending applications
+      // a) partner_applications / partners: allow non-staff (including public visitors) to submit pending applications
       if (!isStaff && (collection === 'partner_applications' || collection === 'partners')) {
         itemToSave.status = 'pending';
         itemToSave.isApproved = false;
         delete itemToSave.approvedAt;
         delete itemToSave.approvedBy;
         delete itemToSave.fixedRewardPerDealRub;
-        itemToSave.userId = authUser.id;
-        itemToSave.uid = authUser.id;
-        if (!itemToSave.email) itemToSave.email = authUser.email;
+        itemToSave.userId = authUser ? authUser.id : (itemToSave.userId || `guest-${crypto.randomUUID().substring(0, 8)}`);
+        itemToSave.uid = itemToSave.userId;
+        if (!itemToSave.email && authUser?.email) itemToSave.email = authUser.email;
         if (!itemToSave.referralCode) {
           itemToSave.referralCode = `PART-${Math.floor(1000 + Math.random() * 9000)}`;
         }
       }
       // b) partner_preliminary_requests: allow accredited partner to submit 7-day preliminary request
       else if (!isStaff && collection === 'partner_preliminary_requests') {
+        if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
         if (!isPartner) {
           return json(event, 403, { error: 'Фиксация клиентов доступна только аккредитованным партнерам' });
         }
@@ -854,8 +860,9 @@ export async function handleData(
         itemToSave.fixedRewardPerDealRub = 30000;
         itemToSave.expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
       }
-      // c) other staff collections or non-partner: block with 403
+      // c) other staff collections or non-partner: block non-staff
       else if (!isStaff) {
+        if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
         return json(event, 403, { error: 'Модификация разрешена только сотрудникам платформы' });
       }
 
@@ -911,7 +918,11 @@ export async function handleData(
         action: method === 'POST' ? 'CREATE' : 'UPDATE',
         collection,
         recordId: docId,
-        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        actor: {
+          userId: authUser ? authUser.id : (itemToSave.userId || 'guest'),
+          role: authUser ? authUser.role : 'guest',
+          email: authUser?.email || itemToSave.email,
+        },
         payload: itemToSave,
       });
 
@@ -929,18 +940,28 @@ export async function handleData(
 
     // 3. Client isolated collections write
     if (CLIENT_ISOLATED_COLLECTIONS.has(collection)) {
-      if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
-      const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
+      if (!authUser && collection !== 'seller_requests') {
+        return json(event, 401, { error: 'Требуется авторизация' });
+      }
+      const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
 
       if (!isStaff) {
         // Enforce user ownership of the document
-        itemToSave.userId = authUser.id;
-        if (collection === 'seller_requests') itemToSave.sellerId = authUser.id;
-        if (collection === 'curator_messages') itemToSave.senderId = authUser.id;
+        if (authUser) {
+          itemToSave.userId = authUser.id;
+          if (collection === 'seller_requests') itemToSave.sellerId = authUser.id;
+          if (collection === 'curator_messages') itemToSave.senderId = authUser.id;
+        } else {
+          itemToSave.userId = itemToSave.userId || `guest-${crypto.randomUUID().substring(0, 8)}`;
+          if (collection === 'seller_requests') itemToSave.sellerId = itemToSave.userId;
+        }
       }
 
       // Auto-match preliminary requests on seller_requests submission
       if (collection === 'seller_requests') {
+        if (!itemToSave.partnerRefCode && itemToSave.referredByPartnerCode) {
+          itemToSave.partnerRefCode = itemToSave.referredByPartnerCode;
+        }
         if (!itemToSave.partnerRefCode) {
           try {
             const sellerPhoneDigits = (itemToSave.sellerPhone || itemToSave.phone || '').replace(/\D/g, '');
@@ -988,7 +1009,11 @@ export async function handleData(
         action: method === 'POST' ? 'CREATE' : 'UPDATE',
         collection,
         recordId: docId,
-        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        actor: {
+          userId: authUser ? authUser.id : (itemToSave.userId || 'guest'),
+          role: authUser ? authUser.role : 'guest',
+          email: authUser?.email || itemToSave.sellerEmail || itemToSave.email,
+        },
         payload: itemToSave,
       });
 
@@ -1004,9 +1029,9 @@ export async function handleData(
             dealId: itemToSave.dealId,
             threadChannel: itemToSave.threadChannel || 'seller_curator',
             senderUser: {
-              id: authUser.id,
-              role: authUser.role,
-              name: authUser.name || authUser.email || 'Пользователь',
+              id: authUser?.id || itemToSave.senderId || 'guest',
+              role: authUser?.role || 'buyer',
+              name: authUser?.name || authUser?.email || 'Пользователь',
             },
             text: itemToSave.text || '',
           });

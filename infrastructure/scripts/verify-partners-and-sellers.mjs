@@ -153,6 +153,22 @@ async function run() {
   const applicantToken = createSessionToken(testPartnerUser, jwtSecret);
   const applicantSession = { user: testPartnerUser, token: applicantToken, cookie: `domexit_session=${applicantToken}` };
 
+  if (!isReadOnly) {
+    await fetch(`${gatewayUrl}/api/data/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerSession.cookie },
+      body: JSON.stringify(testSellerUser),
+    });
+    createdRecordIds.users.push(testSellerUser.id);
+
+    await fetch(`${gatewayUrl}/api/data/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerSession.cookie },
+      body: JSON.stringify(testPartnerUser),
+    });
+    createdRecordIds.users.push(testPartnerUser.id);
+  }
+
   // ===========================================================================
   // GROUP 1: Dynamic Property Type Validation (/sellers API)
   // ===========================================================================
@@ -413,9 +429,9 @@ async function run() {
         `3.1 Owner approved partner: refCode=${approvedPartnerRefCode}, reward=${item.fixedRewardPerDealRub} ₽`
       );
 
-      // Create simulated partner session token
+      // Create simulated partner session token (using approved user)
       const partnerUser = {
-        id: `user-${Date.now()}`,
+        id: testPartnerUser.id,
         email: testPartnerEmail,
         role: 'partner',
         activeRole: 'partner',
@@ -462,6 +478,12 @@ async function run() {
       roles: ['buyer'],
       name: 'Обычный Клиент',
     };
+    await fetch(`${gatewayUrl}/api/data/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerSession.cookie },
+      body: JSON.stringify(regularClientUser),
+    });
+    createdRecordIds.users.push(regularClientUser.id);
     const clientToken = createSessionToken(regularClientUser, jwtSecret);
     const clientCookie = `domexit_session=${clientToken}`;
 
@@ -554,6 +576,21 @@ async function run() {
 
   if (!isReadOnly && createdPreReqId && approvedPartnerRefCode) {
     // 5.1 Seller request submitted matching clientPhone of active preliminary reservation
+    const testSeller51 = {
+      id: `seller-51-${Date.now()}`,
+      email: 'test_seller_51@domexit.ru',
+      name: 'Кузнецов Артем',
+      role: 'seller',
+      roles: ['seller'],
+    };
+    await fetch(`${gatewayUrl}/api/data/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerSession.cookie },
+      body: JSON.stringify(testSeller51),
+    });
+    createdRecordIds.users.push(testSeller51.id);
+    const token51 = createSessionToken(testSeller51, jwtSecret);
+
     const matchingSellerPayload = {
       dealTrack: 'ddu_cession',
       developer: 'Главстрой-СПб',
@@ -561,7 +598,9 @@ async function run() {
       city: 'spb',
       dduNumber: 'ГС-СД-9912-25',
       contractPrice: 9000000,
+      contractPriceRub: 9000000,
       paidAmount: 2500000,
+      paidAmountRub: 2500000,
       sellerName: 'Кузнецов Артем',
       sellerPhone: clientPhoneToReserve, // Exactly matches preliminary reservation phone!
     };
@@ -569,7 +608,10 @@ async function run() {
     try {
       const res = await fetch(`${gatewayUrl}/api/data/seller_requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `domexit_session=${token51}`,
+        },
         body: JSON.stringify(matchingSellerPayload),
       });
       const data = await res.json().catch(() => ({}));
@@ -587,13 +629,30 @@ async function run() {
     }
 
     // 5.2 Direct referral code attribution via ?ref=PART-XXXX
+    const testSeller52 = {
+      id: `seller-52-${Date.now()}`,
+      email: 'test_seller_52@domexit.ru',
+      name: 'Воронова Екатерина',
+      role: 'seller',
+      roles: ['seller'],
+    };
+    await fetch(`${gatewayUrl}/api/data/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerSession.cookie },
+      body: JSON.stringify(testSeller52),
+    });
+    createdRecordIds.users.push(testSeller52.id);
+    const token52 = createSessionToken(testSeller52, jwtSecret);
+
     const directRefSellerPayload = {
       dealTrack: 'secondary_dkp',
       complexName: 'ЖК Лиговский (ориентир)',
       city: 'spb',
       cadastralNumber: '78:34:0005555:1234',
       contractPrice: 8500000,
+      contractPriceRub: 8500000,
       paidAmount: 8500000,
+      paidAmountRub: 8500000,
       sellerName: 'Воронова Екатерина',
       sellerPhone: '+7 (921) 444-55-66',
       referredByPartnerCode: approvedPartnerRefCode, // Direct attribution via URL query param!
@@ -602,7 +661,10 @@ async function run() {
     try {
       const res = await fetch(`${gatewayUrl}/api/data/seller_requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `domexit_session=${token52}`,
+        },
         body: JSON.stringify(directRefSellerPayload),
       });
       const data = await res.json().catch(() => ({}));
@@ -642,7 +704,7 @@ async function run() {
     for (const [coll, ids] of Object.entries(createdRecordIds)) {
       for (const id of ids) {
         try {
-          await fetch(`${gatewayUrl}/api/data/${coll}?id=${encodeURIComponent(id)}`, {
+          await fetch(`${gatewayUrl}/api/data/${coll}/${encodeURIComponent(id)}`, {
             method: 'DELETE',
             headers: { Cookie: ownerSession.cookie },
           });
