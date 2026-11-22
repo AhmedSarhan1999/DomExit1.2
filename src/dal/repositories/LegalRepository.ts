@@ -33,7 +33,7 @@ export const DEFAULT_LEGAL_SETTINGS: LegalSettings = {
   banks_email: 'banks@domexit.ru',
   security_email: 'security@domexit.ru',
   security_phone: '+7 (999) 249-98-59',
-  domain_url: 'https://domexit-official.netlify.app',
+  domain_url: typeof window !== 'undefined' ? window.location.origin : 'https://domexit.ru',
   hosting_info: 'Российская Федерация (Yandex Cloud, 152-ФЗ)',
   social_links: {
     telegram_channel: 'https://t.me/domexit_official',

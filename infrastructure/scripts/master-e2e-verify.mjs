@@ -42,7 +42,9 @@ for (const line of envContent.split('\n')) {
 
 const isProd = targetEnv === 'production';
 const envConfig = isProd ? manifest.production : manifest.staging;
-const gatewayUrl = envConfig.apiGatewayUrl;
+const gatewayUrl = isProd
+  ? (manifest.production.productionCustomDomain || 'https://domexit.ru')
+  : envConfig.apiGatewayUrl;
 
 const ownerEmail = (envVars.PROD_OWNER_EMAIL || envVars.BOOTSTRAP_OWNER_EMAIL || 'amaas9499@gmail.com').trim().toLowerCase();
 const ownerPassword = (isProd ? envVars.PROD_OWNER_PASSWORD : envVars.BOOTSTRAP_OWNER_PASSWORD)?.trim();

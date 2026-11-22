@@ -75,6 +75,7 @@ export function resolveCorsHeaders(
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
   };
 
+  const isDomExit = origin === 'https://domexit.ru' || origin === 'https://www.domexit.ru';
   const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
   const isYandexApigw = /^https:\/\/.*\.apigw\.yandexcloud\.net$/.test(origin);
   const isMatchPublicBase = Boolean(publicBaseUrl && origin === publicBaseUrl);
@@ -82,12 +83,12 @@ export function resolveCorsHeaders(
 
   let isAllowed = false;
   if (appEnv === 'production') {
-    // In production: Strictly allow only publicBaseUrl, customDomain, or production Yandex API Gateway
+    // In production: Strictly allow domexit.ru, publicBaseUrl, customDomain, or production Yandex API Gateway
     // Ban localhost completely in production!
-    isAllowed = Boolean(origin && (isMatchPublicBase || isMatchCustomDomain || isYandexApigw));
+    isAllowed = Boolean(origin && (isMatchPublicBase || isMatchCustomDomain || isYandexApigw || isDomExit));
   } else {
     // In staging / dev: allow localhost as well
-    isAllowed = Boolean(origin && (isLocalhost || isYandexApigw || isMatchPublicBase || isMatchCustomDomain));
+    isAllowed = Boolean(origin && (isLocalhost || isYandexApigw || isMatchPublicBase || isMatchCustomDomain || isDomExit));
   }
 
   if (isAllowed) {

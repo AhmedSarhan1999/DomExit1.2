@@ -54,7 +54,7 @@ const botUsername = isProd
   : envVars.TELEGRAM_BOT_USERNAME_STAGING || envVars.TELEGRAM_BOT_USERNAME || 'DomExitStageBot';
 
 const gatewayUrl = isProd
-  ? manifest.production.apiGatewayUrl
+  ? manifest.production.productionCustomDomain || 'https://domexit.ru'
   : manifest.staging.apiGatewayUrl;
 
 if (!token || token.length < 20) {

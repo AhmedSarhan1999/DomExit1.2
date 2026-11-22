@@ -124,8 +124,10 @@ try {
   console.log('✓ Created API Gateway (ID:', apigwId, 'Domain:', apigwDomain + ')');
 }
 
-const publicBaseUrl = `https://${apigwDomain}`;
-console.log('Public Production API Gateway URL:', publicBaseUrl);
+const rawApigwUrl = `https://${apigwDomain}`;
+const publicBaseUrl = manifest.production?.productionCustomDomain || 'https://domexit.ru';
+console.log('API Gateway Direct URL:       ', rawApigwUrl);
+console.log('Public Production Base URL:   ', publicBaseUrl);
 
 // 4. Deploy Cloud Function Version with Injected Environment
 console.log('\n[4/5] Deploying Cloud Function Version with Production Environment...');
@@ -143,7 +145,9 @@ const envMap = {
   YANDEX_OAUTH_CLIENT_ID: envVars.YANDEX_OAUTH_CLIENT_ID || '72f6de11197d4e9da68ea1fec90c72e1',
   YANDEX_OAUTH_CLIENT_SECRET: envVars.YANDEX_OAUTH_CLIENT_SECRET || '',
   PUBLIC_BASE_URL: publicBaseUrl,
-  PROD_CUSTOM_DOMAIN: envVars.PROD_CUSTOM_DOMAIN || '',
+  FRONTEND_URL: publicBaseUrl,
+  PROD_CUSTOM_DOMAIN: publicBaseUrl,
+  RAW_APIGW_URL: rawApigwUrl,
   BOOTSTRAP_OWNER_EMAIL: envVars.PROD_OWNER_EMAIL || envVars.BOOTSTRAP_OWNER_EMAIL || 'amaas9499@gmail.com',
   TELEGRAM_BOT_TOKEN: envVars.TELEGRAM_BOT_TOKEN_PROD || envVars.TELEGRAM_BOT_TOKEN || '',
   TELEGRAM_BOT_USERNAME: envVars.TELEGRAM_BOT_USERNAME_PROD || envVars.TELEGRAM_BOT_USERNAME || 'DomExitOfficialBot',
