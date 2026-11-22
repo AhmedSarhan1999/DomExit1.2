@@ -272,7 +272,7 @@ if (activeTokens.length > 0) {
   // Ensure active tokens exist
   for (const token of activeTokens) {
     const cnameName = `${token}._domainkey.domexit.ru.`;
-    const cnameValue = `${token}.dkim.postbox.cloud.yandex.net.`;
+    const cnameValue = `${token}.dkim.pstbx.ru.`;
     const alreadyExists = currentRecords.some((r) => r.type === 'CNAME' && r.name === cnameName);
 
     if (alreadyExists) {
@@ -370,7 +370,7 @@ manifest.domain.postbox.dkimTokens = activeTokens;
 manifest.domain.postbox.dkimRecords = activeTokens.map((t) => ({
   name: `${t}._domainkey.domexit.ru.`,
   type: 'CNAME',
-  value: `${t}.dkim.postbox.cloud.yandex.net.`,
+  value: `${t}.dkim.pstbx.ru.`,
 }));
 
 fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2), 'utf-8');

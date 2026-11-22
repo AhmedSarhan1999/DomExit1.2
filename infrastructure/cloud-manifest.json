@@ -49,12 +49,12 @@
         {
           "name": "egtdvfr0l58otcmiol03-1._domainkey.domexit.ru.",
           "type": "CNAME",
-          "value": "egtdvfr0l58otcmiol03-1.dkim.postbox.cloud.yandex.net."
+          "value": "egtdvfr0l58otcmiol03-1.dkim.pstbx.ru."
         },
         {
           "name": "egtdvfr0l58otcmiol03-2._domainkey.domexit.ru.",
           "type": "CNAME",
-          "value": "egtdvfr0l58otcmiol03-2.dkim.postbox.cloud.yandex.net."
+          "value": "egtdvfr0l58otcmiol03-2.dkim.pstbx.ru."
         }
       ],
       "smtpUser": "ajeqdhes840nhel6mn76"
