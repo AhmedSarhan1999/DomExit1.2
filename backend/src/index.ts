@@ -16,6 +16,7 @@ import { handleTelegram } from './routes/telegram.js';
 import { handleTools } from './routes/tools.js';
 import { handlePep } from './routes/pep.js';
 import { handleMatching } from './routes/matching.js';
+import { handleMessenger } from './routes/messenger.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -74,6 +75,11 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
     else if (path.startsWith('/api/telegram')) {
       const subPath = path.substring('/api'.length);
       response = await handleTelegram(event, subPath);
+    }
+    // 6b. Messenger Multi-Provider Engine & Webhooks (/api/messenger/*)
+    else if (path.startsWith('/api/messenger')) {
+      const subPath = path.substring('/api/messenger'.length) || '/';
+      response = await handleMessenger(event, subPath);
     }
     // 7. Tools & Registry Lookups (/api/tools/*)
     else if (path.startsWith('/api/tools')) {

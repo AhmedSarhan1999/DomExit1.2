@@ -132,6 +132,17 @@ const envMap = {
   TELEGRAM_BOT_TOKEN: envVars.TELEGRAM_BOT_TOKEN_STAGING || envVars.TELEGRAM_BOT_TOKEN || '',
   TELEGRAM_BOT_USERNAME: envVars.TELEGRAM_BOT_USERNAME_STAGING || envVars.TELEGRAM_BOT_USERNAME || 'DomExitStageBot',
   TELEGRAM_WEBHOOK_SECRET: envVars.TELEGRAM_WEBHOOK_SECRET_STAGING || envVars.TELEGRAM_WEBHOOK_SECRET || '',
+  EMAIL_PROVIDER: envVars.EMAIL_PROVIDER || (envVars.POSTBOX_SMTP_USER ? 'postbox' : 'console'),
+  POSTBOX_SMTP_HOST: envVars.POSTBOX_SMTP_HOST || 'postbox.cloud.yandex.net',
+  POSTBOX_SMTP_PORT: envVars.POSTBOX_SMTP_PORT || '465',
+  POSTBOX_SMTP_USER: envVars.POSTBOX_SMTP_USER || '',
+  POSTBOX_SMTP_PASS: envVars.POSTBOX_SMTP_PASS || '',
+  EMAIL_FROM: envVars.EMAIL_FROM || 'DomExit <no-reply@domexit.ru>',
+  MESSENGER_PROVIDER: envVars.MESSENGER_PROVIDER || 'telegram',
+  MAX_BOT_TOKEN: envVars.MAX_BOT_TOKEN || '',
+  MAX_BOT_USERNAME: envVars.MAX_BOT_USERNAME || '',
+  MAX_WEBHOOK_SECRET: envVars.MAX_WEBHOOK_SECRET || '',
+  MAX_API_BASE_URL: envVars.MAX_API_BASE_URL || 'https://api.max-messenger.ru/bot/v1',
 };
 
 // Build environment string without printing secrets to console

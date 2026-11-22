@@ -165,6 +165,20 @@ export const apiClient = {
   delete: <T = any>(endpoint: string, options?: RequestOptions) =>
     request<T>(endpoint, { method: 'DELETE', ...options }),
 
+  // Authentication & Recovery helpers
+  auth: {
+    forgotPassword: (email: string) =>
+      request<{ ok: boolean; message: string }>('/api/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    resetPassword: (email: string, code: string, newPassword: string) =>
+      request<{ ok: boolean; message: string }>('/api/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ email, code, newPassword }),
+      }),
+  },
+
   // Telegram Operating System helpers
   telegram: {
     getStatus: () =>
@@ -265,17 +279,23 @@ export const apiClient = {
         method: 'GET',
       }),
 
-    requestOtp: (documentType: string, lotCode: string) =>
+    requestOtp: (documentType: string, lotCode: string, deliveryChannel: 'email' | 'telegram' | 'both' = 'email') =>
       request<{
-        success: boolean;
+        ok?: boolean;
+        success?: boolean;
+        deliveryChannel?: 'email' | 'telegram' | 'both';
+        targetEmailMasked?: string;
+        telegramUsername?: string | null;
+        emailDelivered?: boolean;
+        telegramDelivered?: boolean;
         expiresInSec: number;
-        telegramChatIdMasked: string;
-        documentType: string;
-        lotCode: string;
-        docHashSha256: string;
+        documentType?: string;
+        lotCode?: string;
+        documentTextHashSha256?: string;
+        docHashSha256?: string;
       }>('/api/pep/request-otp', {
         method: 'POST',
-        body: JSON.stringify({ documentType, lotCode }),
+        body: JSON.stringify({ documentType, lotCode, deliveryChannel }),
       }),
 
     verifyAndSign: (documentType: string, lotCode: string, otpCode: string) =>

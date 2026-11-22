@@ -10,6 +10,7 @@ import { generatePepDocument, PepDocumentType } from '../lib/pepTemplates.js';
 import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
 import { recordJournalEvent } from '../lib/journal.js';
 import { logger } from '../lib/logger.js';
+import { sendEmail, renderPepOtpEmail, maskEmail } from '../lib/emailService.js';
 
 export async function handlePep(event: YcHttpEvent, subPath: string): Promise<YcHttpResponse> {
   const method = (event.httpMethod || 'GET').toUpperCase();
@@ -69,9 +70,14 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
 
   // 2. POST /api/pep/request-otp
   if (subPath === '/request-otp' && method === 'POST') {
-    const body = parseBody<{ documentType?: PepDocumentType; lotCode?: string }>(event);
+    const body = parseBody<{
+      documentType?: PepDocumentType;
+      lotCode?: string;
+      deliveryChannel?: 'email' | 'telegram' | 'both';
+    }>(event);
     const documentType = body?.documentType || 'nda_viewing_act';
     const lotCode = (body?.lotCode || '').trim();
+    const requestedChannel = body?.deliveryChannel || 'email';
 
     if (!lotCode) {
       return json(event, 400, { error: 'Укажите lotCode' });
@@ -98,12 +104,19 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
 
     // Check Telegram binding
     const binding = await findTelegramBindingByUser(authUser.id);
-    if (!binding || !binding.chatId) {
+    const hasTelegram = Boolean(binding?.chatId);
+
+    if (requestedChannel === 'telegram' && !hasTelegram) {
       return json(event, 412, {
-        error: 'Для подтверждения подписи кодом ПЭП (63-ФЗ) необходимо привязать Telegram-аккаунт.',
+        error: 'Для подтверждения подписи через Telegram необходимо привязать Telegram-аккаунт.',
         code: 'TELEGRAM_NOT_LINKED',
       });
     }
+
+    // Resolve effective delivery channel:
+    // If 'both' was requested but no Telegram is bound, smoothly fall back to 'email'
+    const effectiveChannel: 'email' | 'telegram' | 'both' =
+      requestedChannel === 'both' ? (hasTelegram ? 'both' : 'email') : requestedChannel;
 
     const doc = generatePepDocument({
       documentType,
@@ -131,6 +144,7 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
       documentType,
       lotCode,
       documentTextHashSha256: doc.documentTextHashSha256,
+      deliveryChannel: effectiveChannel,
       otpSalt,
       otpHash,
       attempts: 0,
@@ -140,33 +154,74 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
       used: false,
     });
 
-    // Send Telegram Notification with OTP
-    const tgText = [
-      `🔐 <b>КОД ПОДТВЕРЖДЕНИЯ ПЭП (63-ФЗ)</b>`,
-      `Документ: <b>${escapeHtml(doc.documentTitle)}</b>`,
-      `Объект: <code>#${escapeHtml(lotCode)}</code>`,
-      ``,
-      `Ваш одноразовый код: <code>${rawOtp}</code>`,
-      `Срок действия: <b>5 минут</b>`,
-      ``,
-      `⚠️ <i>Никому не сообщайте этот код! Вводя его на портале DomExit, вы подписываете документ простой электронной подписью (ст. 5 и 9 Федерального закона № 63-ФЗ).</i>`,
-    ].join('\n');
+    let emailDelivered = false;
+    let telegramDelivered = false;
 
-    try {
-      await telegramClient.sendMessage({
-        chat_id: binding.chatId,
-        text: tgText,
-      });
-    } catch (tgErr: any) {
-      logger.error('Failed to send Telegram OTP message', { meta: { error: tgErr.message, userId: authUser.id } });
-      return json(event, 502, { error: 'Не удалось доставить код в Telegram. Проверьте активность бота.' });
+    // 1. Deliver via Email (Default / Primary)
+    if (effectiveChannel === 'email' || effectiveChannel === 'both') {
+      try {
+        const emailContent = renderPepOtpEmail({
+          code: rawOtp,
+          documentTitle: doc.documentTitle,
+          lotCode,
+          sha256Fingerprint: doc.documentTextHashSha256,
+          expiresInMinutes: 5,
+        });
+
+        const sendRes = await sendEmail({
+          to: authUser.email,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          text: emailContent.text,
+        });
+        emailDelivered = sendRes.success;
+      } catch (emailErr: any) {
+        logger.error('Failed to send PEP OTP email', {
+          meta: { error: emailErr.message, userId: authUser.id },
+        });
+      }
+    }
+
+    // 2. Deliver via Telegram (Optional)
+    if ((effectiveChannel === 'telegram' || effectiveChannel === 'both') && hasTelegram && binding?.chatId) {
+      const tgText = [
+        `🔐 <b>КОД ПОДТВЕРЖДЕНИЯ ПЭП (63-ФЗ)</b>`,
+        `Документ: <b>${escapeHtml(doc.documentTitle)}</b>`,
+        `Объект: <code>#${escapeHtml(lotCode)}</code>`,
+        ``,
+        `Ваш одноразовый код: <code>${rawOtp}</code>`,
+        `Срок действия: <b>5 минут</b>`,
+        ``,
+        `⚠️ <i>Никому не сообщайте этот код! Вводя его на портале DomExit, вы подписываете документ простой электронной подписью (ст. 5 и 9 Федерального закона № 63-ФЗ).</i>`,
+      ].join('\n');
+
+      try {
+        await telegramClient.sendMessage({
+          chat_id: binding.chatId,
+          text: tgText,
+        });
+        telegramDelivered = true;
+      } catch (tgErr: any) {
+        logger.error('Failed to send Telegram OTP message', {
+          meta: { error: tgErr.message, userId: authUser.id },
+        });
+        if (effectiveChannel === 'telegram') {
+          return json(event, 502, {
+            error: 'Не удалось доставить код в Telegram. Попробуйте выбрать получение по email.',
+          });
+        }
+      }
     }
 
     return json(event, 200, {
       ok: true,
+      deliveryChannel: effectiveChannel,
+      targetEmailMasked: maskEmail(authUser.email),
+      telegramUsername: binding?.telegramUsername || null,
+      emailDelivered,
+      telegramDelivered,
       expiresInSec: 300,
       documentTextHashSha256: doc.documentTextHashSha256,
-      telegramUsername: binding.telegramUsername || null,
     });
   }
 
@@ -282,6 +337,14 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
         'Web Client'
     ).slice(0, 100);
 
+    const channelUsed = otpRecord.deliveryChannel || 'email';
+    const verificationMethod =
+      channelUsed === 'email'
+        ? 'email_otp_63fz'
+        : channelUsed === 'telegram'
+        ? 'telegram_otp_63fz'
+        : 'hybrid_otp_63fz';
+
     const signatureRecord = {
       id: sigId,
       documentType,
@@ -291,6 +354,7 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
       userRole: authUser.role,
       userEmail: authUser.email,
       userName: authUser.name,
+      deliveryChannel: channelUsed,
       telegramChatId: binding?.chatId || undefined,
       telegramUsername: binding?.telegramUsername || undefined,
       documentTitle: doc.documentTitle,
@@ -298,7 +362,7 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
       signedAt: nowIso,
       ipHash,
       userAgentShort,
-      verificationMethod: 'telegram_otp_63fz',
+      verificationMethod,
       status: 'signed',
     };
 

@@ -8,6 +8,35 @@
     "id": "aje70eogmpm04c84rsnl",
     "name": "domexit-runtime-sa"
   },
+  "domain": {
+    "name": "domexit.ru",
+    "dnsZoneId": "dnsdb9agcsdq3fn2n87q",
+    "dnsZoneName": "domexit-ru-zone",
+    "nameservers": [
+      "ns1.yandexcloud.net.",
+      "ns2.yandexcloud.net."
+    ],
+    "certificateId": "fpqivftt1kmksg779uab",
+    "certificateName": "domexit-ru-cert",
+    "certificateStatus": "VALIDATING",
+    "acmeChallenges": [
+      {
+        "name": "_acme-challenge.domexit.ru.",
+        "type": "CNAME",
+        "value": "fpqivftt1kmksg779uab.cm.yandexcloud.net."
+      },
+      {
+        "name": "_acme-challenge.www.domexit.ru.",
+        "type": "CNAME",
+        "value": "fpqivftt1kmksg779uab.cm.yandexcloud.net."
+      }
+    ],
+    "postbox": {
+      "senderEmail": "no-reply@domexit.ru",
+      "spfRecord": "v=spf1 include:_spf.postbox.cloud.yandex.net ~all",
+      "dmarcRecord": "v=DMARC1; p=quarantine; rua=mailto:postmaster@domexit.ru"
+    }
+  },
   "production": {
     "ydbDatabaseId": "etnckg937628mnid7tnb",
     "ydbDocApiEndpoint": "https://docapi.serverless.yandexcloud.net/ru-central1/b1gbu0q3jqnheri2srsu/etnckg937628mnid7tnb",

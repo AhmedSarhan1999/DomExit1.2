@@ -23,6 +23,7 @@ import {
   resetFailedLogin,
 } from '../lib/cryptoAuth.js';
 import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
+import { sendEmail, renderPasswordResetEmail, maskEmail } from '../lib/emailService.js';
 
 export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<YcHttpResponse> {
   const method = event.httpMethod.toUpperCase();
@@ -245,6 +246,238 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
   // POST /api/auth/logout
   if (subPath === '/logout' && method === 'POST') {
     return json(event, 200, { success: true }, { cookies: [clearSessionCookie()] });
+  }
+
+  // POST /api/auth/forgot-password
+  if (subPath === '/forgot-password' && method === 'POST') {
+    const clientIp = getClientIp(event);
+    const body = parseBody<{ email?: string }>(event);
+    const email = body?.email?.trim().toLowerCase();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return json(event, 400, { error: 'Укажите корректный адрес электронной почты' });
+    }
+
+    // Rate Limiting: max 5 requests per 15 minutes per IP
+    const ipQuota = await consumeQuota({
+      scope: 'auth_forgot_ip',
+      actorKey: clientIp || 'unknown_ip',
+      limit: 5,
+      windowSec: 900,
+    });
+    if (!ipQuota.allowed) {
+      return json(
+        event,
+        429,
+        {
+          error: 'Слишком много запросов на восстановление пароля. Пожалуйста, подождите 15 минут.',
+          retryAfter: ipQuota.retryAfterSec,
+        },
+        { extraHeaders: { 'Retry-After': String(ipQuota.retryAfterSec) } }
+      );
+    }
+
+    // Rate Limiting: max 3 requests per 15 minutes per email
+    const emailQuota = await consumeQuota({
+      scope: 'auth_forgot_email',
+      actorKey: email,
+      limit: 3,
+      windowSec: 900,
+    });
+    if (!emailQuota.allowed) {
+      return json(
+        event,
+        429,
+        {
+          error: 'Слишком много запросов для этого адреса. Пожалуйста, подождите 15 минут.',
+          retryAfter: emailQuota.retryAfterSec,
+        },
+        { extraHeaders: { 'Retry-After': String(emailQuota.retryAfterSec) } }
+      );
+    }
+
+    // Generic anti-enumeration response message
+    const genericSuccessMessage =
+      'Если аккаунт существует, код восстановления отправлен на указанный email.';
+
+    try {
+      const users = await ydb.findByField<UserProfile>('users', 'email', email);
+      const user = users.find((u) => Boolean(u.passwordHash)) || users[0];
+
+      if (user) {
+        // Generate random 6-digit code
+        const rawCode = crypto.randomInt(100000, 1000000).toString();
+        const otpSalt = crypto.randomBytes(16).toString('hex');
+        const otpHash = crypto
+          .createHash('sha256')
+          .update(`${rawCode}:${otpSalt}`)
+          .digest('hex');
+
+        const now = Date.now();
+        const expiresAt = new Date(now + 15 * 60 * 1000).toISOString(); // 15 minutes
+        const otpRecordKey = `pwreset:${email}`;
+
+        await ydb.putItem('pep_otps', {
+          id: otpRecordKey,
+          userId: user.id,
+          email,
+          type: 'password_reset',
+          otpSalt,
+          otpHash,
+          attempts: 0,
+          maxAttempts: 5,
+          createdAt: new Date(now).toISOString(),
+          expiresAt,
+          used: false,
+        });
+
+        // Send email with emerald template
+        const emailContent = renderPasswordResetEmail({
+          code: rawCode,
+          expiresInMinutes: 15,
+        });
+
+        await sendEmail({
+          to: email,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          text: emailContent.text,
+        });
+      }
+    } catch (err: any) {
+      console.warn('[auth:forgot-password] Error processing reset request:', err.message);
+    }
+
+    return json(event, 200, {
+      ok: true,
+      message: genericSuccessMessage,
+    });
+  }
+
+  // POST /api/auth/reset-password
+  if (subPath === '/reset-password' && method === 'POST') {
+    const clientIp = getClientIp(event);
+    const body = parseBody<{
+      email?: string;
+      code?: string;
+      newPassword?: string;
+    }>(event);
+
+    const email = body?.email?.trim().toLowerCase();
+    const code = String(body?.code || '').trim();
+    const newPassword = body?.newPassword;
+
+    if (!email || !code || !newPassword) {
+      return json(event, 400, { error: 'Укажите email, код подтверждения и новый пароль' });
+    }
+
+    if (newPassword.length < 8) {
+      return json(event, 400, { error: 'Новый пароль должен содержать не менее 8 символов' });
+    }
+
+    if (!/^\d{6}$/.test(code)) {
+      return json(event, 400, { error: 'Код подтверждения должен состоять из 6 цифр' });
+    }
+
+    const otpRecordKey = `pwreset:${email}`;
+    const otpRecord = await ydb.getItem<any>('pep_otps', otpRecordKey);
+
+    if (!otpRecord || otpRecord.used) {
+      return json(event, 400, {
+        error: 'Код восстановления не запрашивался или уже был использован. Запросите новый код.',
+      });
+    }
+
+    if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
+      return json(event, 400, {
+        error: 'Срок действия кода восстановления истек (15 минут). Запросите новый код.',
+      });
+    }
+
+    if (otpRecord.attempts >= 5) {
+      return json(event, 423, {
+        error: 'Превышено максимальное количество попыток (5). Код заблокирован. Запросите новый.',
+        locked: true,
+      });
+    }
+
+    // Timing-safe comparison
+    const candidateHash = crypto
+      .createHash('sha256')
+      .update(`${code}:${otpRecord.otpSalt}`)
+      .digest('hex');
+
+    const isMatch = crypto.timingSafeEqual(
+      Buffer.from(candidateHash),
+      Buffer.from(otpRecord.otpHash)
+    );
+
+    if (!isMatch) {
+      const newAttempts = (otpRecord.attempts || 0) + 1;
+      const isLocked = newAttempts >= 5;
+
+      await ydb.putItem('pep_otps', {
+        ...otpRecord,
+        attempts: newAttempts,
+        used: isLocked ? true : otpRecord.used,
+      });
+
+      if (isLocked) {
+        await recordSecurityIncident({
+          type: 'auth_bruteforce_or_probe',
+          severity: 'high',
+          clientIp,
+          endpoint: '/api/auth/reset-password',
+          summary: `Блокировка подбора кода сброса пароля для: ${maskEmail(email)}`,
+        });
+        return json(event, 423, {
+          error: 'Превышено максимальное число неверных попыток (5). Код аннулирован.',
+          locked: true,
+        });
+      }
+
+      return json(event, 400, {
+        error: `Неверный код подтверждения. Осталось попыток: ${5 - newAttempts}`,
+        remainingAttempts: 5 - newAttempts,
+      });
+    }
+
+    // Code is valid! Mark used
+    await ydb.putItem('pep_otps', {
+      ...otpRecord,
+      used: true,
+      usedAt: new Date().toISOString(),
+    });
+
+    // Update user password
+    const users = await ydb.findByField<UserProfile>('users', 'email', email);
+    const user = users.find((u) => Boolean(u.passwordHash)) || users[0];
+
+    if (!user) {
+      return json(event, 404, { error: 'Пользователь не найден' });
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    user.passwordHash = newPasswordHash;
+    (user as any).updatedAt = new Date().toISOString();
+    await ydb.putItem('users', user);
+
+    // Audit log
+    try {
+      await ydb.putItem('audit_logs', {
+        id: `aud-${crypto.randomUUID()}`,
+        action: 'PASSWORD_RESET',
+        targetUserId: user.id,
+        targetEmailMasked: maskEmail(email),
+        clientIp,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {}
+
+    return json(event, 200, {
+      ok: true,
+      message: 'Пароль успешно обновлен. Теперь вы можете войти в систему с новым паролем.',
+    });
   }
 
   // GET /api/auth/me

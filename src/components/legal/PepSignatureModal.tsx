@@ -4,6 +4,7 @@ import {
   Shield,
   X,
   Send,
+  Mail,
   Loader2,
   CheckCircle2,
   AlertTriangle,
@@ -35,12 +36,13 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // OTP flow state
+  const [deliveryChannel, setDeliveryChannel] = useState<'email' | 'telegram'>('email');
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [signLoading, setSignLoading] = useState(false);
   const [timerSec, setTimerSec] = useState(300);
-  const [telegramMasked, setTelegramMasked] = useState('');
+  const [deliveryTargetText, setDeliveryTargetText] = useState('');
   const [needsTelegramLink, setNeedsTelegramLink] = useState(false);
   const [signedCertificate, setSignedCertificate] = useState<any | null>(null);
 
@@ -73,6 +75,7 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
           documentType: res.existingSignature.documentType,
           title: res.title,
           docHashSha256: res.existingSignature.docHashSha256,
+          verificationMethod: res.existingSignature.verificationMethod || 'email_otp_63fz',
           signatory: {
             name: res.existingSignature.userNameMasked || 'Пользователь',
             email: 'Защищено 152-ФЗ',
@@ -89,20 +92,28 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
     }
   };
 
-  const handleRequestOtp = async () => {
+  const handleRequestOtp = async (channelToUse?: 'email' | 'telegram') => {
+    const ch = channelToUse || deliveryChannel;
     try {
       setOtpLoading(true);
       setError(null);
-      const res = await apiClient.pep.requestOtp(documentType, lotCode);
+      setNeedsTelegramLink(false);
+
+      const res = await apiClient.pep.requestOtp(documentType, lotCode, ch);
       setOtpRequested(true);
       setTimerSec(res.expiresInSec || 300);
-      setTelegramMasked(res.telegramChatIdMasked || 'Telegram');
+
+      if (res.deliveryChannel === 'telegram') {
+        setDeliveryTargetText(res.telegramUsername ? `@${res.telegramUsername}` : 'Telegram');
+      } else {
+        setDeliveryTargetText(res.targetEmailMasked || 'ваш адрес эл. почты');
+      }
     } catch (err: any) {
       if (err instanceof ApiError && err.status === 412) {
         setNeedsTelegramLink(true);
-        setError('Для подписания документа необходимо привязать Telegram-аккаунт.');
+        setError('Для получения кода в Telegram необходимо привязать аккаунт. Вы также можете получить код прямо на ваш Email.');
       } else {
-        setError(err?.message || 'Не удалось отправить код подтверждения');
+        setError(err?.message || 'Не удалось отправить проверочный код');
       }
     } finally {
       setOtpLoading(false);
@@ -112,7 +123,7 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
   const handleVerifyAndSign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otpCode || otpCode.length !== 6) {
-      setError('Введите 6-значный код из Telegram');
+      setError('Введите 6-значный проверочный код');
       return;
     }
 
@@ -134,13 +145,13 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-fade-in overflow-y-auto">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 my-8 max-h-[92vh] overflow-y-auto font-sans">
         {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-100 pb-4">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2 text-indigo-700">
-              <Shield className="w-5 h-5 text-indigo-600" />
+            <div className="flex items-center space-x-2 text-emerald-700">
+              <Shield className="w-5 h-5 text-emerald-600" />
               <span className="text-xs font-bold uppercase tracking-wider">
                 ПРОСТАЯ ЭЛЕКТРОННАЯ ПОДПИСЬ (ПЭП • 63-ФЗ)
               </span>
@@ -171,7 +182,7 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
 
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-500">
-            <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+            <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
             <span className="text-xs font-bold">Подготовка юридического проекта документа...</span>
           </div>
         ) : signedCertificate ? (
@@ -184,7 +195,7 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
               <div>
                 <h4 className="text-base font-black">ДОКУМЕНТ УСПЕШНО ПОДПИСАН</h4>
                 <p className="text-emerald-800 font-medium">
-                  Юридический сертификат ПЭП зарегистрирован в защищенном журнале платформы
+                  Юридический сертификат ПЭП зарегистрирован в защищенном реестре платформы
                 </p>
               </div>
             </div>
@@ -206,6 +217,12 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
                 <span className="text-slate-500">SHA-256 хеш текста:</span>
                 <span className="font-bold truncate max-w-xs">{signedCertificate.docHashSha256}</span>
               </div>
+              <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                <span className="text-slate-500">Канал доставки OTP:</span>
+                <span className="font-bold text-emerald-800">
+                  {deliveryChannel === 'email' ? 'Электронная почта' : 'Telegram-бот'}
+                </span>
+              </div>
               <div className="flex justify-between pt-0.5">
                 <span className="text-slate-500">Правовой статус:</span>
                 <span className="font-bold text-emerald-700">ст. 5, 6, 9 ФЗ № 63-ФЗ</span>
@@ -225,14 +242,24 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
             </button>
           </div>
         ) : needsTelegramLink ? (
-          /* Telegram Binding Required */
+          /* Telegram Binding Option with 1-click Email fallback */
           <div className="space-y-4">
-            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
-              <span className="font-bold block">Требуется привязка Telegram:</span>
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2">
+              <span className="font-bold block text-amber-950">Telegram не привязан к вашему аккаунту:</span>
               <p>
-                В соответствии с регламентом 63-ФЗ одноразовый СМС/OTP код подтверждения направляется в ваш
-                верифицированный Telegram-аккаунт. Пожалуйста, привяжите бота в 1 клик.
+                Вы можете привязать Telegram-бота ниже, либо сразу получить проверочный код на ваш Email без дополнительных привязок.
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeliveryChannel('email');
+                  handleRequestOtp('email');
+                }}
+                className="mt-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center space-x-1.5 cursor-pointer shadow-xs"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Получить код на Email прямо сейчас</span>
+              </button>
             </div>
             <TelegramConnectCard onLinkComplete={() => loadPreview()} />
           </div>
@@ -252,41 +279,81 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
 
             {/* OTP Section */}
             {!otpRequested ? (
-              <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
                 <div className="space-y-0.5">
-                  <span className="font-black text-xs text-indigo-950 block">
-                    Подписание через одноразовый пароль (OTP)
+                  <span className="font-black text-xs text-emerald-950 block">
+                    Подписание через одноразовый проверочный код (ПЭП • 63-ФЗ)
                   </span>
-                  <p className="text-[11px] text-indigo-900/80">
-                    6-значный проверочный код будет мгновенно отправлен в ваш Telegram.
+                  <p className="text-[11px] text-emerald-900/80">
+                    Выберите удобный способ получения 6-значного кода подтверждения:
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={otpLoading}
-                  onClick={handleRequestOtp}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer shadow-xs shrink-0"
-                >
-                  {otpLoading ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Отправка...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Получить код в Telegram</span>
-                    </>
-                  )}
-                </button>
+
+                {/* Channel Selector */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryChannel('email')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                      deliveryChannel === 'email'
+                        ? 'border-emerald-500 bg-white text-emerald-950 font-bold shadow-xs'
+                        : 'border-emerald-200/60 bg-emerald-50/50 text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <div className="text-xs">На Email (63-ФЗ)</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Основной канал</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryChannel('telegram')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                      deliveryChannel === 'telegram'
+                        ? 'border-emerald-500 bg-white text-emerald-950 font-bold shadow-xs'
+                        : 'border-emerald-200/60 bg-emerald-50/50 text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    <Send className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <div className="text-xs">В Telegram-бот</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Для привязанных</div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    disabled={otpLoading}
+                    onClick={() => handleRequestOtp()}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    {otpLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Отправка...</span>
+                      </>
+                    ) : (
+                      <>
+                        {deliveryChannel === 'email' ? <Mail className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                        <span>
+                          {deliveryChannel === 'email' ? 'Получить код на Email' : 'Получить код в Telegram'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             ) : (
-              <form onSubmit={handleVerifyAndSign} className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-4">
+              <form onSubmit={handleVerifyAndSign} className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-4">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-indigo-950">
-                    Код отправлен в Telegram ({telegramMasked})
+                  <span className="font-bold text-emerald-950">
+                    Код отправлен: {deliveryTargetText}
                   </span>
-                  <span className="font-mono text-indigo-700 flex items-center space-x-1">
+                  <span className="font-mono text-emerald-800 flex items-center space-x-1">
                     <Clock className="w-3.5 h-3.5" />
                     <span>
                       {Math.floor(timerSec / 60)}:{(timerSec % 60).toString().padStart(2, '0')}
@@ -304,15 +371,15 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
                       required
                       value={otpCode}
                       onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="6 цифр из Telegram"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 font-mono font-bold text-sm tracking-widest text-slate-900 focus:outline-none focus:border-indigo-600"
+                      placeholder="6 цифр из сообщения"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 font-mono font-bold text-sm tracking-widest text-slate-900 focus:outline-none focus:border-emerald-600"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={signLoading || otpCode.length !== 6 || timerSec <= 0}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs transition-colors cursor-pointer shadow-xs shrink-0 flex items-center space-x-1.5"
+                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 text-white font-black text-xs transition-colors cursor-pointer shadow-xs shrink-0 flex items-center space-x-1.5"
                   >
                     {signLoading ? (
                       <>
@@ -329,12 +396,12 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                  <span>Осталось попыток: 3 (после 3 неверных попыток форма блокируется)</span>
+                  <span>Осталось попыток: 3 (после 3 неверных попыток код аннулируется)</span>
                   {timerSec <= 0 && (
                     <button
                       type="button"
-                      onClick={handleRequestOtp}
-                      className="text-indigo-600 hover:underline font-bold"
+                      onClick={() => handleRequestOtp()}
+                      className="text-emerald-700 hover:underline font-bold cursor-pointer"
                     >
                       Запросить новый код
                     </button>

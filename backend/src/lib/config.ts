@@ -40,6 +40,17 @@ export interface BackendConfig {
   TELEGRAM_WEBHOOK_SECRET?: string;
   TELEGRAM_API_BASE_URL?: string;
   DADATA_API_KEY?: string;
+  EMAIL_PROVIDER?: 'postbox' | 'smtp' | 'console';
+  POSTBOX_SMTP_HOST?: string;
+  POSTBOX_SMTP_PORT?: number;
+  POSTBOX_SMTP_USER?: string;
+  POSTBOX_SMTP_PASS?: string;
+  EMAIL_FROM?: string;
+  MESSENGER_PROVIDER?: 'telegram' | 'max';
+  MAX_BOT_TOKEN?: string;
+  MAX_BOT_USERNAME?: string;
+  MAX_WEBHOOK_SECRET?: string;
+  MAX_API_BASE_URL?: string;
 }
 
 export function getConfig(): BackendConfig {
@@ -95,6 +106,17 @@ export function getConfig(): BackendConfig {
       '',
     TELEGRAM_API_BASE_URL: process.env.TELEGRAM_API_BASE_URL || '',
     DADATA_API_KEY: process.env.DADATA_API_KEY || '',
+    EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER as any) || (process.env.POSTBOX_SMTP_USER ? 'postbox' : 'console'),
+    POSTBOX_SMTP_HOST: process.env.POSTBOX_SMTP_HOST || 'postbox.cloud.yandex.net',
+    POSTBOX_SMTP_PORT: process.env.POSTBOX_SMTP_PORT ? Number(process.env.POSTBOX_SMTP_PORT) : 465,
+    POSTBOX_SMTP_USER: process.env.POSTBOX_SMTP_USER || '',
+    POSTBOX_SMTP_PASS: process.env.POSTBOX_SMTP_PASS || '',
+    EMAIL_FROM: process.env.EMAIL_FROM || 'DomExit <no-reply@domexit.ru>',
+    MESSENGER_PROVIDER: (process.env.MESSENGER_PROVIDER as any) || 'telegram',
+    MAX_BOT_TOKEN: process.env.MAX_BOT_TOKEN || '',
+    MAX_BOT_USERNAME: process.env.MAX_BOT_USERNAME || '',
+    MAX_WEBHOOK_SECRET: process.env.MAX_WEBHOOK_SECRET || '',
+    MAX_API_BASE_URL: process.env.MAX_API_BASE_URL || 'https://api.max.im/v1',
   };
 
   const missing: string[] = [];
