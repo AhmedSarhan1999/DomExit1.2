@@ -390,7 +390,9 @@ export const UnifiedNavbar: React.FC = () => {
               }
               className={`h-9 px-3 rounded-xl border transition-all flex items-center space-x-2 cursor-pointer ${
                 isAuthenticated 
-                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60 shadow-xs'
+                  ? location.pathname.startsWith('/portal')
+                    ? 'bg-emerald-900/90 border-emerald-400 text-emerald-200 ring-2 ring-emerald-500/40 shadow-xs'
+                    : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60 shadow-xs'
                   : 'bg-slate-800/90 border-slate-700 hover:border-slate-600 text-slate-200 hover:text-white shadow-xs'
               }`}
             >
@@ -477,7 +479,11 @@ export const UnifiedNavbar: React.FC = () => {
               setMobileMenuOpen(false);
               handleProfileClick();
             }}
-            className="w-full text-left block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            className={`w-full text-left block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              location.pathname.startsWith('/portal')
+                ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-500/40'
+                : 'text-slate-200 hover:bg-slate-800'
+            }`}
           >
             {language === 'ru' ? 'Личный кабинет' : 'Client Portal'}
           </button>

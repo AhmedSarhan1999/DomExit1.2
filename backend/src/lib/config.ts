@@ -34,6 +34,8 @@ export interface BackendConfig {
   YANDEX_OAUTH_CLIENT_ID: string;
   YANDEX_OAUTH_CLIENT_SECRET: string;
   PUBLIC_BASE_URL: string;
+  FRONTEND_URL?: string;
+  YANDEX_REDIRECT_URI?: string;
   PROD_CUSTOM_DOMAIN?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_BOT_USERNAME?: string;
@@ -85,6 +87,10 @@ export function getConfig(): BackendConfig {
     YANDEX_OAUTH_CLIENT_ID: process.env.YANDEX_OAUTH_CLIENT_ID || '72f6de11197d4e9da68ea1fec90c72e1',
     YANDEX_OAUTH_CLIENT_SECRET: process.env.YANDEX_OAUTH_CLIENT_SECRET || '',
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || 'http://localhost:5173',
+    FRONTEND_URL: process.env.FRONTEND_URL || process.env.PUBLIC_BASE_URL || 'http://localhost:5173',
+    YANDEX_REDIRECT_URI:
+      process.env.YANDEX_REDIRECT_URI ||
+      `${process.env.PUBLIC_BASE_URL || 'http://localhost:5173'}/api/auth/yandex/callback`,
     PROD_CUSTOM_DOMAIN: process.env.PROD_CUSTOM_DOMAIN || '',
     TELEGRAM_BOT_TOKEN:
       process.env.TELEGRAM_BOT_TOKEN ||

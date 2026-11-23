@@ -591,7 +591,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
   // GET /api/auth/yandex/start
   if (subPath === '/yandex/start' && method === 'GET') {
     const state = crypto.randomBytes(24).toString('hex');
-    const redirectUri = `${cfg.PUBLIC_BASE_URL}/api/auth/yandex/callback`;
+    const redirectUri = cfg.YANDEX_REDIRECT_URI || `${cfg.PUBLIC_BASE_URL}/api/auth/yandex/callback`;
     const yandexAuthUrl = `https://oauth.yandex.ru/authorize?response_type=code&client_id=${
       cfg.YANDEX_OAUTH_CLIENT_ID
     }&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
@@ -616,7 +616,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       return json(event, 400, { error: 'Отсутствует код авторизации Yandex' });
     }
 
-    const redirectUri = `${cfg.PUBLIC_BASE_URL}/api/auth/yandex/callback`;
+    const redirectUri = cfg.YANDEX_REDIRECT_URI || `${cfg.PUBLIC_BASE_URL}/api/auth/yandex/callback`;
 
     // Exchange code for token
     const tokenRes = await fetch('https://oauth.yandex.ru/token', {
@@ -751,13 +751,13 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     const redirectPath =
       user.role === 'owner' || user.role === 'employee' ? '/admin/dashboard' : '/portal';
-    const finalUrl = `${cfg.PUBLIC_BASE_URL}${redirectPath}`;
+    const finalUrl = `${cfg.FRONTEND_URL || cfg.PUBLIC_BASE_URL}${redirectPath}`;
 
     return redirect(
       event,
       finalUrl,
       [createSessionCookie(sessionToken), clearOAuthStateCookie()],
-      cfg.PUBLIC_BASE_URL
+      cfg.FRONTEND_URL || cfg.PUBLIC_BASE_URL
     );
   }
 

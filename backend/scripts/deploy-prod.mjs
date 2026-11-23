@@ -146,6 +146,7 @@ const envMap = {
   YANDEX_OAUTH_CLIENT_SECRET: envVars.YANDEX_OAUTH_CLIENT_SECRET || '',
   PUBLIC_BASE_URL: publicBaseUrl,
   FRONTEND_URL: publicBaseUrl,
+  YANDEX_REDIRECT_URI: `${publicBaseUrl}/api/auth/yandex/callback`,
   PROD_CUSTOM_DOMAIN: publicBaseUrl,
   RAW_APIGW_URL: rawApigwUrl,
   BOOTSTRAP_OWNER_EMAIL: envVars.PROD_OWNER_EMAIL || envVars.BOOTSTRAP_OWNER_EMAIL || 'amaas9499@gmail.com',

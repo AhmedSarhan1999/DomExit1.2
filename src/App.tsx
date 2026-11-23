@@ -103,17 +103,17 @@ export const App: React.FC = () => {
                 <Route path="/legal-archive" element={<LegalArchivePage />} />
                 <Route path="/legal-archive/:archiveId" element={<LegalArchiveSnapshotPage />} />
 
+                {/* Client & Buyer Portal */}
+                <Route path="/portal" element={<ClientPortalPage />} />
+                <Route path="/portal/:tab" element={<ClientPortalPage />} />
+                <Route path="/track/:token" element={<ClientTrackerPage />} />
+
                 {/* Legacy / Direct URL Redirects */}
                 <Route path="/catalog" element={<Navigate to="/opportunities" replace />} />
                 <Route path="/catalog/:id" element={<OpportunityRedirect />} />
                 <Route path="/invest" element={<Navigate to="/opportunities" replace />} />
                 <Route path="/dossier/:lotId" element={<AdminOpsAuditRedirect />} />
               </Route>
-
-              {/* Client & Buyer Portal */}
-              <Route path="/portal" element={<ClientPortalPage />} />
-              <Route path="/portal/:tab" element={<ClientPortalPage />} />
-              <Route path="/track/:token" element={<ClientTrackerPage />} />
 
               {/* Protected Operations & Admin Desk (Guarded by AdminRouteGuard) */}
               <Route element={<AdminRouteGuard />}>
