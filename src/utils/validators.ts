@@ -39,13 +39,162 @@ export function sanitizeDigitsOnly(raw: string, maxLen = 15): string {
 }
 
 /**
+ * Normalizes developer name by stripping any trailing (ИНН ...) or extra whitespace.
+ */
+export function cleanDeveloperName(name: string): string {
+  if (!name) return '';
+  return name.replace(/\s*\([Ии][Нн][Нн]\s*[\d\s]+\)\s*$/, '').trim();
+}
+
+/**
+ * Strict mathematical FNS checksum validation for Russian INN:
+ * - 10 digits: Legal entity (Юридическое лицо)
+ * - 12 digits: Individual or sole proprietor (Физическое лицо / ИП)
+ */
+export function validateRussianInnChecksum(inn: string | number): {
+  valid: boolean;
+  type?: 'legal_entity' | 'individual';
+  messageRu?: string;
+  messageEn?: string;
+} {
+  const clean = String(inn || '').trim().replace(/\D/g, '');
+  if (!clean) {
+    return {
+      valid: false,
+      messageRu: 'ИНН не может быть пустым.',
+      messageEn: 'INN cannot be empty.',
+    };
+  }
+
+  if (clean.length !== 10 && clean.length !== 12) {
+    return {
+      valid: false,
+      messageRu: 'ИНН должен содержать ровно 10 цифр (для юрлиц) или 12 цифр (для физлиц/ИП).',
+      messageEn: 'INN must contain strictly 10 digits (corporate) or 12 digits (individual).',
+    };
+  }
+
+  if (/^(\d)\1+$/.test(clean)) {
+    return {
+      valid: false,
+      messageRu: 'Указан некорректный ИНН (все цифры одинаковые).',
+      messageEn: 'Invalid INN sequence (all digits identical).',
+    };
+  }
+
+  const digits = clean.split('').map(Number);
+
+  // 10-digit legal entity checksum
+  if (digits.length === 10) {
+    const weights = [2, 4, 10, 3, 5, 9, 4, 6, 8];
+    const sum = weights.reduce((acc, w, i) => acc + w * digits[i], 0);
+    const checkDigit = (sum % 11) % 10;
+    if (checkDigit !== digits[9]) {
+      return {
+        valid: false,
+        messageRu: 'Неверная контрольная сумма 10-значного ИНН юрлица.',
+        messageEn: 'Invalid checksum for 10-digit corporate INN.',
+      };
+    }
+    return { valid: true, type: 'legal_entity' };
+  }
+
+  // 12-digit individual / entrepreneur checksum
+  if (digits.length === 12) {
+    const weights11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+    const sum11 = weights11.reduce((acc, w, i) => acc + w * digits[i], 0);
+    const check11 = (sum11 % 11) % 10;
+
+    const weights12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+    const sum12 = weights12.reduce((acc, w, i) => acc + w * digits[i], 0);
+    const check12 = (sum12 % 11) % 10;
+
+    if (check11 !== digits[10] || check12 !== digits[11]) {
+      return {
+        valid: false,
+        messageRu: 'Неверная контрольная сумма 12-значного ИНН физического лица.',
+        messageEn: 'Invalid checksum for 12-digit individual INN.',
+      };
+    }
+    return { valid: true, type: 'individual' };
+  }
+
+  return { valid: false, messageRu: 'Некорректный ИНН.', messageEn: 'Invalid INN.' };
+}
+
+/**
+ * Validates Developer INN (strictly 10 digits for Russian corporate developers with FNS checksum).
+ */
+export function validateDeveloperInn(inn: string | number): {
+  valid: boolean;
+  messageRu?: string;
+  messageEn?: string;
+} {
+  const clean = String(inn || '').trim().replace(/\D/g, '');
+  if (!clean) {
+    return {
+      valid: false,
+      messageRu: 'Укажите ИНН застройщика (10 цифр).',
+      messageEn: 'Please enter developer INN (10 digits).',
+    };
+  }
+  if (clean.length !== 10) {
+    return {
+      valid: false,
+      messageRu: 'ИНН застройщика (юрлица) должен состоять строго из 10 цифр.',
+      messageEn: 'Developer INN must contain strictly 10 digits.',
+    };
+  }
+  const res = validateRussianInnChecksum(clean);
+  if (!res.valid) {
+    return {
+      valid: false,
+      messageRu: 'Неверная контрольная сумма ИНН застройщика (10 цифр).',
+      messageEn: 'Invalid checksum for 10-digit developer INN.',
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates Right-holder / Seller INN (12 digits for individuals, 10 digits for legal entities).
+ */
+export function validateRightHolderInn(
+  inn: string | number,
+  optional = false
+): {
+  valid: boolean;
+  messageRu?: string;
+  messageEn?: string;
+} {
+  const clean = String(inn || '').trim().replace(/\D/g, '');
+  if (!clean) {
+    if (optional) return { valid: true };
+    return {
+      valid: false,
+      messageRu: 'Укажите ИНН правообладателя (12 цифр для физлиц или 10 для юрлиц).',
+      messageEn: 'Please enter right-holder INN.',
+    };
+  }
+  const res = validateRussianInnChecksum(clean);
+  if (!res.valid) {
+    return {
+      valid: false,
+      messageRu: 'Неверная контрольная сумма ИНН правообладателя (12 или 10 цифр).',
+      messageEn: 'Invalid checksum for right-holder INN.',
+    };
+  }
+  return { valid: true };
+}
+
+/**
  * Validates Russian Individual Taxpayer Identification Number (ИНН физического лица - 12 digits, optional by default).
  */
 export function validateIndividualInn(
   inn: string,
   optional = true
 ): { valid: boolean; messageRu?: string; messageEn?: string } {
-  const clean = inn.trim();
+  const clean = inn.trim().replace(/\D/g, '');
   if (!clean) {
     if (optional) return { valid: true };
     return {
@@ -54,18 +203,19 @@ export function validateIndividualInn(
       messageEn: 'Please enter individual INN (12 digits).',
     };
   }
-  if (!/^\d{12}$/.test(clean)) {
+  if (clean.length !== 12) {
     return {
       valid: false,
       messageRu: 'ИНН физического лица должен содержать строго 12 цифр без букв и спецсимволов.',
       messageEn: 'Individual INN must contain strictly 12 digits.',
     };
   }
-  if (/^(\d)\1+$/.test(clean)) {
+  const res = validateRussianInnChecksum(clean);
+  if (!res.valid || res.type !== 'individual') {
     return {
       valid: false,
-      messageRu: 'Указан некорректный ИНН (повторяющиеся цифры).',
-      messageEn: 'Invalid INN sequence.',
+      messageRu: 'Неверная контрольная сумма 12-значного ИНН физического лица.',
+      messageEn: 'Invalid checksum for 12-digit individual INN.',
     };
   }
   return { valid: true };
@@ -75,7 +225,7 @@ export function validateIndividualInn(
  * Validates Russian Taxpayer Identification Number (ИНН: 10 digits for legal entities or 12 digits for individuals).
  */
 export function validateRussianInn(inn: string): { valid: boolean; messageRu?: string; messageEn?: string } {
-  const clean = inn.trim();
+  const clean = inn.trim().replace(/\D/g, '');
   if (!/^\d{10}(\d{2})?$/.test(clean)) {
     return {
       valid: false,
@@ -83,14 +233,7 @@ export function validateRussianInn(inn: string): { valid: boolean; messageRu?: s
       messageEn: 'INN must contain strictly 12 digits (individual) or 10 digits (company).',
     };
   }
-  if (/^(\d)\1+$/.test(clean)) {
-    return {
-      valid: false,
-      messageRu: 'Указан некорректный ИНН (повторяющиеся цифры).',
-      messageEn: 'Invalid INN sequence.',
-    };
-  }
-  return { valid: true };
+  return validateRussianInnChecksum(clean);
 }
 
 /**
@@ -142,7 +285,9 @@ export function validateTextEntityName(
       messageEn: 'Please enter a valid name (at least 2 characters).',
     };
   }
-  if (/^\d+$/.test(clean) || !/[A-Za-zА-Яа-яЁё]{2,}/.test(clean)) {
+  // Allow letters combined with numbers and symbols (e.g. "А101", "СК-10", "3S Group").
+  // Reject only if there are NO letters at all (pure digits, pure symbols, or punctuation).
+  if (!/[A-Za-zА-Яа-яЁё]/.test(clean)) {
     return {
       valid: false,
       messageRu: `${fieldLabelRu} не может состоять только из цифр или спецсимволов.`,

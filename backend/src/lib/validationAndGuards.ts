@@ -377,11 +377,23 @@ export async function validateCollectionPayload(params: {
 
     if (sanitized.sellerInn) {
       const innRes = validateRussianInn(sanitized.sellerInn);
-      if (!innRes.valid) return { valid: false, statusCode: 400, error: innRes.message };
+      if (!innRes.valid) {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: 'Неверная контрольная сумма ИНН правообладателя (12 или 10 цифр)',
+        };
+      }
     }
     if (sanitized.developerInn) {
       const innRes = validateRussianInn(sanitized.developerInn);
-      if (!innRes.valid) return { valid: false, statusCode: 400, error: innRes.message };
+      if (!innRes.valid || innRes.type !== 'legal_entity') {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: 'Неверная контрольная сумма ИНН застройщика (10 цифр)',
+        };
+      }
     }
 
     // Force non-staff submission defaults
@@ -464,9 +476,26 @@ export async function validateCollectionPayload(params: {
       if (!phRes.valid) return { valid: false, statusCode: 400, error: 'Укажите корректный номер телефона РФ' };
     }
 
+    if (sanitized.sellerInn) {
+      const innRes = validateRussianInn(sanitized.sellerInn);
+      if (!innRes.valid) {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: 'Неверная контрольная сумма ИНН правообладателя (12 или 10 цифр)',
+        };
+      }
+    }
+
     if (sanitized.developerInn) {
       const innRes = validateRussianInn(sanitized.developerInn);
-      if (!innRes.valid) return { valid: false, statusCode: 400, error: innRes.message };
+      if (!innRes.valid || innRes.type !== 'legal_entity') {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: 'Неверная контрольная сумма ИНН застройщика (10 цифр)',
+        };
+      }
     }
 
     if (sanitized.complexName) sanitized.complexName = sanitizeText(sanitized.complexName, 160);
@@ -612,6 +641,22 @@ export async function validateCollectionPayload(params: {
     if (sanitized.email) sanitized.email = sanitizeText(sanitized.email, 160).trim().toLowerCase();
     if (sanitized.organization) sanitized.organization = sanitizeText(sanitized.organization, 160);
     if (sanitized.customProposal) sanitized.customProposal = sanitizeText(sanitized.customProposal, 2000);
+  }
+
+  if (collection === 'developer_accreditation_requests' || collection === 'developers') {
+    const rawDevInn = sanitized.developerInn ?? sanitized.inn;
+    if (rawDevInn) {
+      const innRes = validateRussianInn(rawDevInn);
+      if (!innRes.valid || innRes.type !== 'legal_entity') {
+        return {
+          valid: false,
+          statusCode: 400,
+          error: 'Неверная контрольная сумма ИНН застройщика (10 цифр)',
+        };
+      }
+    }
+    if (sanitized.developerName) sanitized.developerName = sanitizeText(sanitized.developerName, 160);
+    if (sanitized.name) sanitized.name = sanitizeText(sanitized.name, 160);
   }
 
   return { valid: true, sanitizedPayload: sanitized };

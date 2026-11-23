@@ -15,11 +15,14 @@ import {
   getRegionByCode,
 } from '../data/russianGeography';
 import {
+  cleanDeveloperName,
   formatRussianPhoneInput,
   isValidRussianPhone,
   sanitizeDigitsOnly,
   validateDduOrLotCode,
+  validateDeveloperInn,
   validateIndividualInn,
+  validateRightHolderInn,
   validateSellerFinancials,
   validateTextEntityName,
 } from '../utils/validators';
@@ -230,24 +233,32 @@ export const SellersPage: React.FC = () => {
     setStep1Error(null);
 
     if (!isSecondary) {
-      const devCheck = validateTextEntityName(developerName, 'Наименование застройщика');
+      const cleanDev = cleanDeveloperName(developerName);
+      const devCheck = validateTextEntityName(cleanDev, 'Наименование застройщика');
       if (!devCheck.valid) {
         markTouched('developerName');
         setStep1Error(language === 'ru' ? devCheck.messageRu! : devCheck.messageEn!);
         return;
       }
 
-      if (isAddingNewDeveloper) {
-        const cleanDevInn = developerInn.replace(/\D/g, '');
-        if (cleanDevInn.length !== 10 && cleanDevInn.length !== 12) {
-          markTouched('developerInn');
-          setStep1Error(
-            language === 'ru'
-              ? 'Для нового застройщика укажите корректный ИНН юридического лица (10 цифр).'
-              : 'Please enter a valid 10-digit corporate INN for the new developer.'
-          );
-          return;
+      let effectiveDevInn = developerInn;
+      if (!isAddingNewDeveloper) {
+        const matched = accreditedDevelopers.find(
+          (d) => cleanDeveloperName(d.name) === cleanDev || d.name === developerName
+        );
+        if (matched?.inn) {
+          effectiveDevInn = matched.inn;
+          if (developerInn !== matched.inn) {
+            setDeveloperInn(matched.inn);
+          }
         }
+      }
+
+      const devInnCheck = validateDeveloperInn(effectiveDevInn);
+      if (!devInnCheck.valid) {
+        markTouched('developerInn');
+        setStep1Error(language === 'ru' ? devInnCheck.messageRu! : devInnCheck.messageEn!);
+        return;
       }
 
       const complexCheck = validateTextEntityName(complexName, 'Название жилого комплекса');
@@ -328,29 +339,6 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
-    if (!isSecondary) {
-      if (isAddingNewDeveloper) {
-        if (!developerName.trim()) {
-          markTouched('developerName');
-          setStep1Error('Укажите наименование нового застройщика.');
-          return;
-        }
-        if (!isValidInn(developerInn)) {
-          markTouched('developerInn');
-          setStep1Error(
-            getInnValidationError(developerInn) ||
-              'Укажите корректный ИНН застройщика (10 цифр для юрлиц или 12 для ИП).'
-          );
-          return;
-        }
-      } else {
-        const matched = accreditedDevelopers.find((d) => d.name === developerName);
-        if (matched && !developerInn) {
-          setDeveloperInn(matched.inn);
-        }
-      }
-    }
-
     if (!agreeTerms) {
       setStep1Error(
         isSecondary
@@ -387,10 +375,10 @@ export const SellersPage: React.FC = () => {
       return;
     }
 
-    const innCheck = validateIndividualInn(sellerInn, true);
-    if (!innCheck.valid) {
+    const rightHolderCheck = validateRightHolderInn(sellerInn, false);
+    if (!rightHolderCheck.valid) {
       markTouched('sellerInn');
-      setStep2Error(language === 'ru' ? innCheck.messageRu! : innCheck.messageEn!);
+      setStep2Error(language === 'ru' ? rightHolderCheck.messageRu! : rightHolderCheck.messageEn!);
       return;
     }
 
@@ -480,7 +468,7 @@ export const SellersPage: React.FC = () => {
 
           const effectiveDeveloper = isSecondary
             ? (developerName.trim() || 'Собственник / Вторичный фонд')
-            : developerName.trim();
+            : cleanDeveloperName(developerName.trim());
           const effectiveComplex = isSecondary
             ? (complexName.trim() || (streetAddress.trim() ? `Объект: ${streetAddress.trim()}` : 'Вторичное жилье'))
             : complexName.trim();
@@ -524,7 +512,7 @@ export const SellersPage: React.FC = () => {
           if (!isSecondary && isAddingNewDeveloper) {
             try {
               await DevelopersRepository.createAccreditationRequest({
-                developerName: developerName.trim(),
+                developerName: cleanDeveloperName(developerName.trim()),
                 developerInn: developerInn.trim() || '7700000000',
                 lotId: result.lot.id,
                 lotCode: result.lot.lotCode,

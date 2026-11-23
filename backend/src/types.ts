@@ -48,6 +48,8 @@ export interface UserProfile {
   inn?: string;
   clientCode?: string;
   photoURL?: string;
+  telegram?: string;
+  telegramUsername?: string;
   assignedEmployeeId?: string;
   isPartnerApproved?: boolean;
   isInvestorApproved?: boolean;

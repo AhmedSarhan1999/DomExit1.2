@@ -100,7 +100,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     if (isOpen) {
       setName(currentUser.name || '');
       setPhone(currentUser.phone || '+7 ');
-      setTelegram(currentUser.telegram || '');
+      setTelegram(currentUser.telegram || (currentUser.telegramUsername ? `@${currentUser.telegramUsername}` : ''));
       setInn(currentUser.inn || '');
       setPhotoURL(currentUser.photoURL || '');
       setCustomPhotoInput(currentUser.photoURL || '');
@@ -110,7 +110,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       setSuccessMessage(null);
       setErrorMessage(null);
     }
-  }, [currentUser.name, currentUser.phone, currentUser.photoURL, currentUser.telegram, currentUser.inn, isOpen]);
+  }, [currentUser.name, currentUser.phone, currentUser.photoURL, currentUser.telegram, currentUser.telegramUsername, currentUser.inn, isOpen]);
 
   if (!isOpen) return null;
 
@@ -189,14 +189,22 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
     setIsSaving(true);
     try {
+      const cleanTg = telegram
+        .replace(/^https?:\/\/t\.me\//i, '')
+        .replace(/^t\.me\//i, '')
+        .replace(/^@+/, '')
+        .trim();
+      const formattedTg = cleanTg ? `@${cleanTg}` : '';
+
       if (updateUserProfile) {
         await updateUserProfile({
           name: cleanName,
           phone: cleanPhone,
-          telegram: telegram.trim(),
+          telegram: formattedTg,
+          telegramUsername: cleanTg || undefined,
           inn: cleanInn || undefined,
           photoURL: photoURL.trim() || undefined,
-        });
+        } as any);
       }
 
       // Synchronize with EmployeesRepository and assigned lots if employee

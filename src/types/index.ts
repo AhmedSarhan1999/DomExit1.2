@@ -571,6 +571,7 @@ export interface UserProfile {
   inn?: string;
   email?: string;
   telegram?: string;
+  telegramUsername?: string;
   whatsapp?: string;
   maxProfile?: string;
   bankName?: string;

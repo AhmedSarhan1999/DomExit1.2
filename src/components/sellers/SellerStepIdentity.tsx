@@ -6,6 +6,7 @@ import {
   isValidRussianPhone,
   sanitizeDigitsOnly,
   validateRussianInn,
+  validateRightHolderInn,
 } from '../../utils/validators';
 
 import { PropertyDealTrack } from '../../types';
@@ -108,21 +109,38 @@ export const SellerStepIdentity: React.FC<SellerStepIdentityProps> = ({
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              ИНН налогоплательщика (12 или 10 цифр) *
+              {isSecondary
+                ? 'ИНН собственника / продавца (12 цифр для физлиц, 10 для юрлиц) *'
+                : 'ИНН правообладателя / продавца (12 цифр для физлиц, 10 для юрлиц) *'}
             </label>
             <input
               type="text"
               inputMode="numeric"
+              maxLength={12}
               value={sellerInn}
               onChange={(e) => onSellerInnChange(sanitizeDigitsOnly(e.target.value, 12))}
               onBlur={() => markTouched('sellerInn')}
               placeholder="Например: 781432994102"
               className={`w-full px-4 py-3 rounded-xl border bg-white text-sm font-mono font-bold placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:outline-none ${
-                validateRussianInn(sellerInn).valid
+                validateRightHolderInn(sellerInn, false).valid
                   ? 'border-emerald-400'
+                  : touched['sellerInn'] && sellerInn.length > 0
+                  ? 'border-rose-400 focus:border-rose-500'
                   : 'border-slate-300 focus:border-emerald-500'
               }`}
             />
+            {sellerInn.length > 0 && validateRightHolderInn(sellerInn, false).valid && (
+              <p className="text-[11px] text-emerald-700 mt-1 flex items-center gap-1 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>ИНН подтвержден ({sellerInn.length === 12 ? 'физическое лицо' : 'юридическое лицо'})</span>
+              </p>
+            )}
+            {touched['sellerInn'] && sellerInn.length > 0 && !validateRightHolderInn(sellerInn, false).valid && (
+              <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{validateRightHolderInn(sellerInn, false).messageRu}</span>
+              </p>
+            )}
           </div>
         </div>
 

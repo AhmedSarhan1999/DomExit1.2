@@ -106,7 +106,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   {
     id: 'dev-lsr',
     name: 'ЛСР',
-    inn: '7838001457',
+    inn: '7838360491',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.7, 20.1, 20.8, 19.4, 50, 50, 50, 50),
     createdAt: '2026-01-01T09:00:00.000Z',
@@ -124,7 +124,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   {
     id: 'dev-fsk',
     name: 'ФСК',
-    inn: '7704569102',
+    inn: '7704569100',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.9, 20.3, 21.0, 19.5, 50, 50, 50, 50),
     createdAt: '2026-01-01T09:00:00.000Z',
@@ -169,7 +169,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   {
     id: 'dev-rbi',
     name: 'RBI',
-    inn: '7825431809',
+    inn: '7825431804',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.5, 19.9, 20.3, 19.2, 50, 60, 60, 50),
     createdAt: '2026-01-01T09:00:00.000Z',
@@ -187,7 +187,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   {
     id: 'dev-pioneer',
     name: 'ГК Пионер',
-    inn: '7701638294',
+    inn: '7703635416',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.8, 20.2, 20.7, 19.4, 50, 60, 50, 50),
     createdAt: '2026-01-01T09:00:00.000Z',
@@ -205,7 +205,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   {
     id: 'dev-sminex',
     name: 'Sminex',
-    inn: '7705789123',
+    inn: '7705886616',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.5, 19.8, 20.2, 19.1, 60, 60, 60, 50),
     createdAt: '2026-01-01T09:00:00.000Z',
@@ -214,7 +214,7 @@ export const INITIAL_ACCREDITED_DEVELOPERS: AccreditedDeveloper[] = [
   {
     id: 'dev-donstroy',
     name: 'Донстрой',
-    inn: '7709298345',
+    inn: '7709298340',
     isAccredited: true,
     bankTerms: buildDefaultBankTerms(19.4, 19.7, 20.3, 19.0, 50, 60, 50, 60),
     createdAt: '2026-01-01T09:00:00.000Z',
@@ -226,7 +226,7 @@ export const INITIAL_DEVELOPER_ACCREDITATION_REQUESTS: DeveloperAccreditationReq
   {
     id: 'DEV-ACC-2026-01',
     developerName: 'СК «Северный Горизонт Девелопмент»',
-    developerInn: '7813654902',
+    developerInn: '7813654901',
     lotId: 'lot-pending-acc-1',
     lotCode: 'U-10566',
     complexName: 'ЖК «Аквамарин Резиденс»',
@@ -243,6 +243,7 @@ export const INITIAL_DEVELOPER_ACCREDITATION_REQUESTS: DeveloperAccreditationReq
 ];
 
 import { normalizeDeveloperName } from '../../utils/formatters';
+import { validateDeveloperInn, cleanDeveloperName } from '../../utils/validators';
 export { normalizeDeveloperName };
 
 /**
@@ -251,8 +252,9 @@ export { normalizeDeveloperName };
  */
 export function formatDeveloperOption(dev: { name: string; inn?: string }): string {
   if (!dev || !dev.name) return '';
+  const cleanName = cleanDeveloperName(dev.name);
   const cleanInn = dev.inn?.trim();
-  return cleanInn ? `${dev.name} (ИНН ${cleanInn})` : dev.name;
+  return cleanInn ? `${cleanName} (ИНН ${cleanInn})` : cleanName;
 }
 
 /**
@@ -300,17 +302,21 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
     if (existingIndex >= 0) {
       const existing = mergedList[existingIndex];
 
-      // 1. Prefer valid INN
-      const mergedInn = hasValidInn ? cleanInn : (existing.inn || cleanInn || '7700000000');
+      // 1. Prefer valid checksum INN from seed or valid corporate INN
+      const seedDev = INITIAL_ACCREDITED_DEVELOPERS.find((s) => normalizeDeveloperName(s.name) === normName);
+      let mergedInn = hasValidInn ? cleanInn : (existing.inn || cleanInn || '7700000000');
+      if (seedDev?.inn && (!validateDeveloperInn(mergedInn).valid || !hasValidInn)) {
+        mergedInn = seedDev.inn;
+      }
 
       // 2. Canonical name: prefer seed developer name if available, else cleanName
       const isRawSeed = INITIAL_ACCREDITED_DEVELOPERS.some((s) => s.id === rawItem.id);
       const isExistingSeed = INITIAL_ACCREDITED_DEVELOPERS.some((s) => s.id === existing.id);
-      let mergedName = existing.name;
+      let mergedName = cleanDeveloperName(existing.name);
       if (isRawSeed && !isExistingSeed) {
-        mergedName = rawItem.name;
+        mergedName = cleanDeveloperName(rawItem.name);
       } else if (!isExistingSeed && cleanName.length > existing.name.length && !cleanName.includes('__')) {
-        mergedName = cleanName;
+        mergedName = cleanDeveloperName(cleanName);
       }
 
       // 3. Merge bank terms safely

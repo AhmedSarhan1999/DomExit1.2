@@ -502,12 +502,29 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     // Strict boundary: Only allow safe fields for profile update
-    const allowedKeys = ['name', 'phone', 'inn', 'favorites', 'photoURL'];
+    const allowedKeys = ['name', 'phone', 'inn', 'favorites', 'photoURL', 'telegram', 'telegramUsername'];
     const updates: Record<string, any> = {};
 
     for (const key of allowedKeys) {
       if (body[key] !== undefined) {
         updates[key] = body[key];
+      }
+    }
+
+    // Auto-sanitize and harmonize Telegram account (@username and username)
+    if (body.telegram !== undefined || body.telegramUsername !== undefined) {
+      const rawTg = String(body.telegram ?? body.telegramUsername ?? '').trim();
+      const cleanTg = rawTg
+        .replace(/^https?:\/\/t\.me\//i, '')
+        .replace(/^t\.me\//i, '')
+        .replace(/^@+/, '')
+        .trim();
+      if (cleanTg) {
+        updates.telegram = `@${cleanTg}`;
+        updates.telegramUsername = cleanTg;
+      } else {
+        updates.telegram = '';
+        updates.telegramUsername = '';
       }
     }
 
