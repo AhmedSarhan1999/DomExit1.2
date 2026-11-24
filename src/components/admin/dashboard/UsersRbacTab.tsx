@@ -1,12 +1,14 @@
-import React, { useState, useMemo } from 'react';
-import { Briefcase, UserPlus, Edit, X, Loader2, Search } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Briefcase, UserPlus, Edit, X, Loader2, Search, Award } from 'lucide-react';
 import { UserProfile, Employee, Lot } from '../../../types';
 import { EmployeesRepository } from '../../../dal/repositories/EmployeesRepository';
 import { UsersRepository } from '../../../dal/repositories/UsersRepository';
 import { AuditLogsRepository } from '../../../dal/repositories/AuditLogsRepository';
+import { TierVerificationRepository } from '../../../dal/repositories/TierVerificationRepository';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../../../utils/asyncGuard';
 import { formatRussianPhoneInput } from '../../../utils/validators';
 import { PaginationControls } from '../PaginationControls';
+import { TierVerificationTab } from './TierVerificationTab';
 
 export interface UsersRbacTabProps {
   usersList: UserProfile[];
@@ -37,8 +39,15 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
   showToast,
   showError,
 }) => {
-  const [staffTab, setStaffTab] = useState<'users' | 'employees'>('users');
+  const [staffTab, setStaffTab] = useState<'users' | 'employees' | 'tier_verification'>('users');
+  const [pendingTierCount, setPendingTierCount] = useState<number>(0);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    TierVerificationRepository.getRequests({ status: 'pending', limit: 1 })
+      .then((res) => setPendingTierCount(res.total || 0))
+      .catch(() => {});
+  }, []);
 
   // Users pagination and filtering state
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -308,6 +317,23 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                 }`}
               >
                 Штатные кураторы ({employees.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStaffTab('tier_verification')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                  staffTab === 'tier_verification'
+                    ? 'bg-white text-indigo-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Award className="w-3.5 h-3.5 text-amber-600" />
+                <span>Верификация Gold</span>
+                {pendingTierCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-black animate-pulse">
+                    {pendingTierCount}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -579,6 +605,17 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {staffTab === 'tier_verification' && (
+          <div className="pt-2">
+            <TierVerificationTab
+              operatorName={operatorName}
+              showToast={showToast}
+              showError={showError}
+              onPendingCountChange={setPendingTierCount}
+            />
           </div>
         )}
       </div>

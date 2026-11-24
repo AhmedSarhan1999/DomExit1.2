@@ -894,9 +894,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
   }
 
   // =========================================================================
-  // 9. PATCH /api/matching/buyers/:userId/tier (Staff Only)
+  // 9. PATCH/PUT/POST /api/matching/buyers/:userId/tier OR /buy-boxes/:userId/tier (Staff Only, strictly audited)
   // =========================================================================
-  const tierMatch = subPath.match(/^\/buyers\/([^/]+)\/tier$/);
+  const tierMatch = subPath.match(/^\/(?:buyers|buy-boxes)\/([^/]+)\/tier$/);
   if (tierMatch && (method === 'PATCH' || method === 'POST' || method === 'PUT')) {
     if (!isStaff) {
       return json(event, 403, { error: 'Изменение уровня верификации разрешено только сотрудникам' });
@@ -907,10 +907,19 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       tier: BuyBoxTier;
       reliabilityScore?: number;
       tierNote?: string;
+      reason?: string;
     }>(event);
 
     if (!body?.tier || !['gold', 'silver', 'bronze'].includes(body.tier)) {
       return json(event, 400, { error: 'Укажите корректный уровень tier: gold, silver или bronze' });
+    }
+
+    const isOwner = authUser.role === 'owner';
+    const reason = (body.reason || body.tierNote || '').trim();
+    if (!isOwner && reason.length < 3) {
+      return json(event, 400, {
+        error: 'Для ручного изменения ранга куратором обязательно указание обоснования (reason, минимум 3 символа)',
+      });
     }
 
     try {
@@ -946,26 +955,168 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       if (body.reliabilityScore !== undefined) {
         updatedBuyBox.reliabilityScore = Math.max(0, Math.min(100, Number(body.reliabilityScore)));
       }
-      if (body.tierNote !== undefined) {
-        updatedBuyBox.tierNote = body.tierNote;
+      if (reason) {
+        updatedBuyBox.tierNote = reason;
       }
       updatedBuyBox.updatedAt = now;
 
       await ydb.putItem('buy_boxes', updatedBuyBox);
       memoryCache.invalidate('demand_radar_summary');
 
+      // Mandatory Audit Log for manual tier changes
+      await ydb.putItem('audit_logs', {
+        id: `log-${crypto.randomUUID()}`,
+        timestamp: now,
+        operatorId: authUser.id,
+        operatorName: authUser.name || authUser.email,
+        operatorRole: isOwner ? 'owner' : 'curator',
+        actionType: 'tier_modified_manual',
+        title: `Ручное изменение ранга инвестора ${targetUserId} на ${body.tier.toUpperCase()}`,
+        description: `Ранг изменен на ${body.tier.toUpperCase()} сотрудником ${authUser.email}. Обоснование: ${reason || 'Установлено владельцем платформы'}`,
+        performedBy: authUser.id,
+        userEmail: authUser.email,
+        action: 'MANUAL_TIER_UPDATE',
+        metadata: {
+          targetUserId,
+          newTier: body.tier,
+          reliabilityScore: updatedBuyBox.reliabilityScore,
+          reason: reason || null,
+          operatorRole: authUser.role,
+        },
+      });
+
       await recordJournalEvent({
         action: existing ? 'UPDATE' : 'CREATE',
         collection: 'buy_boxes',
         recordId: updatedBuyBox.id,
         actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
-        payload: { tier: body.tier, reliabilityScore: updatedBuyBox.reliabilityScore, tierNote: body.tierNote },
+        payload: { tier: body.tier, reliabilityScore: updatedBuyBox.reliabilityScore, reason },
       });
 
       return json(event, 200, { ok: true, buyBox: updatedBuyBox });
     } catch (err: any) {
       logger.error('Error updating buyer tier', { meta: { error: err.message, targetUserId } });
       return json(event, 500, { error: 'Не удалось обновить статус покупателя' });
+    }
+  }
+
+  // =========================================================================
+  // 9b. POST /api/matching/confirm-step (Staff Only: SLA Reliability Recovery)
+  // =========================================================================
+  if (subPath === '/confirm-step' && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Подтверждение этапов сделки доступно только сотрудникам' });
+    }
+
+    const body = parseBody<{
+      lotCode?: string;
+      userId: string;
+      step: 'completed_viewing' | 'escrow_confirmed';
+      notes?: string;
+    }>(event);
+
+    const targetUserId = body?.userId;
+    const step = body?.step;
+
+    if (!targetUserId || (step !== 'completed_viewing' && step !== 'escrow_confirmed')) {
+      return json(event, 400, {
+        error: 'Укажите userId и корректный этап step: completed_viewing или escrow_confirmed',
+      });
+    }
+
+    try {
+      const existing = await ydb.getItem<BuyerBuyBox>('buy_boxes', `bb:${targetUserId}`);
+      const now = new Date().toISOString();
+
+      const updatedBuyBox: BuyerBuyBox = existing || {
+        id: `bb:${targetUserId}`,
+        userId: targetUserId,
+        active: true,
+        cities: ['spb'],
+        districts: [],
+        complexNames: [],
+        dealTracks: ['ddu_cession'],
+        rooms: [],
+        maxBudgetRub: 20000000,
+        minDiscountPercent: 10,
+        paymentMethod: 'cash_100',
+        preferredBanks: [],
+        goal: 'living',
+        readinessHours: 24,
+        tier: 'silver',
+        reliabilityScore: 100,
+        noShowCount: 0,
+        completedViewingsCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const prevScore = updatedBuyBox.reliabilityScore ?? 100;
+      const newScore = Math.min(100, prevScore + 5);
+      const prevCount = updatedBuyBox.completedViewingsCount ?? 0;
+      const newCount = prevCount + 1;
+
+      updatedBuyBox.reliabilityScore = newScore;
+      updatedBuyBox.completedViewingsCount = newCount;
+      updatedBuyBox.updatedAt = now;
+
+      await ydb.putItem('buy_boxes', updatedBuyBox);
+      memoryCache.invalidate('demand_radar_summary');
+
+      const stepLabel =
+        step === 'completed_viewing'
+          ? 'Успешный просмотр объекта'
+          : 'Подтверждение эскроу-депозита';
+
+      await ydb.putItem('audit_logs', {
+        id: `log-${crypto.randomUUID()}`,
+        timestamp: now,
+        operatorId: authUser.id,
+        operatorName: authUser.name || authUser.email,
+        operatorRole: authUser.role === 'owner' ? 'owner' : 'curator',
+        actionType: 'sla_reliability_restored',
+        title: `Восстановление рейтинга SLA (+5) для покупателя ${targetUserId}`,
+        description: `Подтвержден этап: «${stepLabel}». Рейтинг надежности: ${prevScore}% -> ${newScore}%. Всего завершенных просмотров: ${newCount}.`,
+        performedBy: authUser.id,
+        userEmail: authUser.email,
+        action: 'SLA_RELIABILITY_RESTORED',
+        metadata: {
+          targetUserId,
+          lotCode: body?.lotCode || null,
+          step,
+          prevScore,
+          newScore,
+          completedViewingsCount: newCount,
+          notes: body?.notes || null,
+        },
+      });
+
+      await recordJournalEvent({
+        action: 'UPDATE',
+        collection: 'buy_boxes',
+        recordId: updatedBuyBox.id,
+        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        payload: {
+          step,
+          prevScore,
+          newScore,
+          completedViewingsCount: newCount,
+          lotCode: body?.lotCode,
+        },
+      });
+
+      return json(event, 200, {
+        ok: true,
+        message: `Этап «${stepLabel}» успешно подтвержден. Рейтинг надежности SLA увеличен на +5 (текущий: ${newScore}%).`,
+        reliabilityScore: newScore,
+        completedViewingsCount: newCount,
+        buyBox: updatedBuyBox,
+      });
+    } catch (err: any) {
+      logger.error('Error confirming deal step for SLA recovery', {
+        meta: { error: err.message, targetUserId, step },
+      });
+      return json(event, 500, { error: 'Не удалось подтвердить этап сделки' });
     }
   }
 

@@ -17,12 +17,17 @@ import {
   Lock,
   Layers,
   Award,
+  UploadCloud,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { apiClient } from '../../services/apiClient';
 import { formatRubles } from '../../utils/formatters';
-import { BuyerBuyBox, BuyBoxTier, BuyBoxPaymentMethod, BuyerApplication } from '../../types';
+import { BuyerBuyBox, BuyBoxTier, BuyBoxPaymentMethod, BuyerApplication, TierVerificationRequest } from '../../types';
 import { RUSSIAN_REGIONS } from '../../data/russianGeography';
 import { PepSignatureModal } from '../legal/PepSignatureModal';
+import { GoldUpgradeModal } from './GoldUpgradeModal';
 
 export interface BuyerBuyBoxTabProps {
   user: any;
@@ -62,16 +67,22 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
   const [ndaModalOpen, setNdaModalOpen] = useState(false);
   const [selectedLotForNda, setSelectedLotForNda] = useState<string>('');
 
+  // Tier Verification (Gold Request) state
+  const [tierModalOpen, setTierModalOpen] = useState(false);
+  const [currentTierRequest, setCurrentTierRequest] = useState<TierVerificationRequest | null>(null);
+  const [showRulesGuide, setShowRulesGuide] = useState(false);
+
   // Active Applications / Queue Status
   const [applications, setApplications] = useState<BuyerApplication[]>([]);
 
   const loadBuyBoxAndMatches = async () => {
     setLoading(true);
     try {
-      const [bbRes, matchesRes, appsRes] = await Promise.allSettled([
+      const [bbRes, matchesRes, appsRes, tierReqsRes] = await Promise.allSettled([
         apiClient.matching.getMyBuyBox(),
         apiClient.matching.getMyMatches({ limit: 10 }),
         apiClient.get<any>('/api/data/buyer_applications?limit=100'),
+        apiClient.tierVerification.getMyRequests(),
       ]);
 
       if (bbRes.status === 'fulfilled' && bbRes.value.ok) {
@@ -97,6 +108,10 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
           (a: any) => a.userId === user?.id && a.queueStatus !== 'withdrawn'
         );
         setApplications(activeApps);
+      }
+
+      if (tierReqsRes.status === 'fulfilled' && tierReqsRes.value.ok) {
+        setCurrentTierRequest(tierReqsRes.value.currentRequest || null);
       }
     } catch (err: any) {
       console.warn('[BuyerBuyBoxTab] Non-fatal load error:', err.message);
@@ -229,6 +244,175 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
           </span>
         </div>
       </div>
+
+      {/* 1b. TIER STATUS & GOLD UPGRADE WORKFLOW BANNER */}
+      {tier === 'gold' ? (
+        <div className="p-4 sm:p-5 rounded-3xl bg-amber-50/80 border-2 border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 font-black text-lg">
+              🥇
+            </div>
+            <div>
+              <div className="text-sm font-black text-amber-950 flex items-center space-x-2">
+                <span>Инвестиционный статус Gold подтвержден ✓</span>
+              </div>
+              <p className="text-xs text-amber-900/80 mt-0.5">
+                Вам открыт эксклюзивный доступ к закрытым лотам в первые 24 часа (Стадия P1) с максимальным инвестиционным дисконтом.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowRulesGuide(!showRulesGuide)}
+            className="text-xs font-bold text-amber-900 hover:text-amber-950 underline underline-offset-4 cursor-pointer shrink-0 self-start sm:self-auto"
+          >
+            {showRulesGuide ? 'Скрыть регламент' : 'Правила рангов и SLA'}
+          </button>
+        </div>
+      ) : currentTierRequest?.status === 'pending' ? (
+        <div className="p-5 rounded-3xl bg-indigo-50/80 border-2 border-indigo-200 text-indigo-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 font-bold">
+              <Clock className="w-5 h-5 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-black text-indigo-950">
+                Заявка на статус Gold находится на рассмотрении у куратора
+              </div>
+              <p className="text-xs text-indigo-900/80 leading-relaxed">
+                Заявленный бюджет: <strong>{currentTierRequest.declaredBudgetRub?.toLocaleString('ru-RU')} ₽</strong> •
+                Документ: <strong>{currentTierRequest.documentName}</strong> ({currentTierRequest.proofType === 'cash_100_statement' ? '100% средств' : 'Одобрение ипотеки'}).
+                Куратор проверяет подлинность документов. Решение принимается обычно в течение нескольких часов.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1.5 rounded-xl bg-indigo-100 text-indigo-900 font-bold text-xs shrink-0 self-start sm:self-auto">
+            Ожидает решения
+          </span>
+        </div>
+      ) : currentTierRequest?.status === 'rejected' ? (
+        <div className="p-5 rounded-3xl bg-red-50 border-2 border-red-200 text-red-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-black text-red-950">
+                Заявка на получение статуса Gold была отклонена
+              </div>
+              <p className="text-xs text-red-900/80 leading-relaxed">
+                <strong>Причина куратора:</strong> <i>{currentTierRequest.reviewNote || 'Предоставленные документы не подтверждают заявленный объем ликвидности'}</i>
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTierModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span>Подать заявку повторно</span>
+          </button>
+        </div>
+      ) : (
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-amber-50/90 via-white to-amber-50/50 border-2 border-amber-200 text-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-black">
+              🥇
+            </div>
+            <div>
+              <div className="text-sm font-black text-slate-900">
+                Желаете получать лоты раньше всех? Подайте заявку на статус Gold
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Загрузите выписку 100% средств или одобрение ипотеки для открытия закрытой стадии P1 (24 часа до публичной премьеры).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowRulesGuide(!showRulesGuide)}
+              className="px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+            >
+              Регламент
+            </button>
+            <button
+              type="button"
+              onClick={() => setTierModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Award className="w-4 h-4" />
+              <span>Подать заявку на Gold</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 1c. EDUCATIONAL & GOVERNANCE GUIDE (RULES FOR BRONZE / SILVER / GOLD & SLA) */}
+      {showRulesGuide && (
+        <div className="bg-slate-50 rounded-3xl p-6 border border-slate-200 text-slate-900 space-y-4 shadow-inner animate-fade-in">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                РЕГЛАМЕНТ РАНЖИРОВАНИЯ И СИСТЕМА НАДЕЖНОСТИ (SLA)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRulesGuide(false)}
+              className="text-xs text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+            >
+              Закрыть
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Bronze */}
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+              <div className="flex items-center space-x-1.5 text-xs font-black text-orange-950">
+                <span>🥉 Ранг Bronze (Базовый)</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Доступ к объектам после завершения закрытых дропов и публикации в общем каталоге. Оплата стандартной ипотекой без предварительного подтверждения собственных средств.
+              </p>
+            </div>
+
+            {/* Silver */}
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+              <div className="flex items-center space-x-1.5 text-xs font-black text-slate-800">
+                <span>🥈 Ранг Silver (Стандарт)</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Доступ к дропам через 24 часа после старта (Стадия P2). Присваивается автоматически при заполнении параметров Buy-Box и указании готовности к сделке.
+              </p>
+            </div>
+
+            {/* Gold */}
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-300 space-y-2">
+              <div className="flex items-center space-x-1.5 text-xs font-black text-amber-950">
+                <span>🥇 Ранг Gold (Институциональный)</span>
+              </div>
+              <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                Эксклюзивный доступ в первые 24 часа (Стадия P1) к самым доходным срочным лотам. Присваивается только после проверки выписки 100% средств или одобрения банка куратором.
+              </p>
+            </div>
+          </div>
+
+          {/* SLA Rules Box */}
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-950 space-y-1.5 text-xs leading-relaxed">
+            <div className="font-bold flex items-center space-x-1.5 text-indigo-900">
+              <Clock className="w-4 h-4 text-indigo-600" />
+              <span>Динамический рейтинг надежности SLA (0–100 баллов):</span>
+            </div>
+            <p className="text-[11px] text-indigo-900/80">
+              Каждый инвестор начинает со 100 баллов надежности. Если инвестор подтвердил дату показа и не явился на просмотр без предупреждения — начисляется штраф <strong>-15 баллов</strong>.
+              За каждый успешно проведенный просмотр или подтвержденный шаг сделки рейтинг восстанавливается: <strong>+5 баллов</strong> (до максимума 100). Высокий SLA гарантирует первенство в очереди распределения лотов.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 2. PRIORITY #1 BANNER (If Buyer is #1 for any lot) */}
       {priority1App && (
@@ -617,6 +801,19 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
           lotCode={selectedLotForNda}
           onSigned={() => {
             setNdaModalOpen(false);
+            loadBuyBoxAndMatches();
+          }}
+        />
+      )}
+
+      {/* 7. Gold Upgrade Modal */}
+      {tierModalOpen && (
+        <GoldUpgradeModal
+          isOpen={tierModalOpen}
+          onClose={() => setTierModalOpen(false)}
+          currentTier={tier}
+          onSuccess={(newReq) => {
+            setCurrentTierRequest(newReq);
             loadBuyBoxAndMatches();
           }}
         />

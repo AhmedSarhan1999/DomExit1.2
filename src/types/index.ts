@@ -843,7 +843,11 @@ export interface AuditLogEntry {
     | 'market_settings_updated'
     | 'company_profile_updated'
     | 'security_incident_reported'
-    | 'employee_created_modified';
+    | 'employee_created_modified'
+    | 'tier_upgrade_approved'
+    | 'tier_upgrade_rejected'
+    | 'tier_modified_manual'
+    | 'sla_reliability_restored';
   title: string;
   description: string;
   attachments?: Array<{ name: string; url: string }>;
@@ -1136,6 +1140,31 @@ export interface BuyerApplication {
   source?: 'web' | 'telegram';
   createdAt: string;
   updatedAt?: string;
+}
+
+export type TierVerificationProofType = 'cash_100_statement' | 'mortgage_approval';
+export type TierVerificationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface TierVerificationRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  currentTier: BuyBoxTier;
+  requestedTier: 'gold';
+  proofType: TierVerificationProofType;
+  declaredBudgetRub: number;
+  documentKey: string;
+  documentName: string;
+  documentMime: string;
+  documentSize: number;
+  comment?: string;
+  status: TierVerificationStatus;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewNote?: string;
+  createdAt: string;
+  reviewedAt?: string;
 }
 
 export * from './legal';

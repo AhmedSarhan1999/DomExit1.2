@@ -133,15 +133,25 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
     }
   };
 
-  const handleTierChange = async (userId: string, newTier: BuyBoxTier) => {
+  const handleConfirmStep = async (step: 'completed_viewing' | 'escrow_confirmed') => {
+    const currentP1 = queue.find((a) => a.queueStatus === 'priority_1') || queue[0];
+    if (!currentP1) return;
+    setActionLoading(true);
     try {
-      const res = await apiClient.matching.updateBuyerTier(userId, { tier: newTier });
+      const res = await apiClient.matching.confirmStep({
+        lotCode: lot.lotCode,
+        userId: currentP1.userId,
+        step,
+      });
       if (res.ok) {
-        onShowToast?.(`Ранг инвестора успешно изменен на ${newTier.toUpperCase()}`);
+        onShowToast?.(res.message || 'Этап успешно подтвержден! Начислено +5 к SLA надежности.');
         loadQueue();
+        onLotUpdated?.();
       }
     } catch (err: any) {
-      onShowWarning?.(err.message || 'Не удалось обновить ранг инвестора');
+      onShowWarning?.(err.message || 'Не удалось подтвердить этап сделки');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -281,6 +291,19 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               <ArrowRight className="w-3.5 h-3.5" />
               <span>Передать очередь №2</span>
             </button>
+
+            {queue.some((a) => a.queueStatus === 'priority_1') && (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => handleConfirmStep('completed_viewing')}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                title="Подтвердить завершение просмотра и начислить +5 баллов к SLA надежности"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                <span>Просмотр завершен (+5 к SLA)</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -352,15 +375,18 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
                       </td>
 
                       <td className="py-3 px-3">
-                        <select
-                          value={app.tier || 'silver'}
-                          onChange={(e) => handleTierChange(app.userId, e.target.value as BuyBoxTier)}
-                          className="px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold bg-white text-slate-800 cursor-pointer"
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black border ${
+                            app.tier === 'gold'
+                              ? 'bg-amber-50 text-amber-900 border-amber-300'
+                              : app.tier === 'bronze'
+                              ? 'bg-orange-50 text-orange-900 border-orange-200'
+                              : 'bg-slate-100 text-slate-800 border-slate-300'
+                          }`}
+                          title="Повышение ранга до Gold возможно только через официальную верификацию документов в разделе «Верификация»"
                         >
-                          <option value="gold">🥇 Gold</option>
-                          <option value="silver">🥈 Silver</option>
-                          <option value="bronze">🥉 Bronze</option>
-                        </select>
+                          {app.tier === 'gold' ? '🥇 Gold' : app.tier === 'bronze' ? '🥉 Bronze' : '🥈 Silver'}
+                        </span>
                       </td>
 
                       <td className="py-3 px-3 font-mono">

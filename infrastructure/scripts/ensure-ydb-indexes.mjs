@@ -114,6 +114,10 @@ const DESIRED_INDEXES = {
     { name: 'lotCode-index', attribute: 'lotCode', type: 'S' },
     { name: 'status-index', attribute: 'status', type: 'S' },
   ],
+  tier_verification_requests: [
+    { name: 'userId-index', attribute: 'userId', type: 'S' },
+    { name: 'status-index', attribute: 'status', type: 'S' },
+  ],
 };
 
 async function ensureTableIndexes(tableName, indexes) {

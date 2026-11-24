@@ -1,4 +1,12 @@
-import { BuyerBuyBox, BuyBoxTier, BuyerApplication, LotDropConfig, PriceAcceptance } from '../types';
+import {
+  BuyerBuyBox,
+  BuyBoxTier,
+  BuyerApplication,
+  LotDropConfig,
+  PriceAcceptance,
+  TierVerificationRequest,
+  TierVerificationProofType,
+} from '../types';
 
 /**
  * Unified Client API Gateway Client for DomExit Platform
@@ -486,7 +494,7 @@ export const apiClient = {
 
     updateBuyerTier: (
       targetUserId: string,
-      params: { tier: BuyBoxTier; reliabilityScore?: number; tierNote?: string }
+      params: { tier: BuyBoxTier; reliabilityScore?: number; tierNote?: string; reason?: string }
     ) =>
       request<{ ok: boolean; buyBox: BuyerBuyBox }>(
         `/api/matching/buyers/${encodeURIComponent(targetUserId)}/tier`,
@@ -495,6 +503,23 @@ export const apiClient = {
           body: JSON.stringify(params),
         }
       ),
+
+    confirmStep: (params: {
+      lotCode?: string;
+      userId: string;
+      step: 'completed_viewing' | 'escrow_confirmed';
+      notes?: string;
+    }) =>
+      request<{
+        ok: boolean;
+        message: string;
+        reliabilityScore: number;
+        completedViewingsCount: number;
+        buyBox: BuyerBuyBox;
+      }>('/api/matching/confirm-step', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }),
 
     getDemandRadar: (params?: { city?: string; maxBudget?: number; dealTrack?: string }) => {
       const sp = new URLSearchParams();
@@ -515,5 +540,67 @@ export const apiClient = {
         averageExpectedDiscountPercent: number;
       }>(`/api/matching/demand-radar${qs}`, { method: 'GET' });
     },
+  },
+
+  // Tier Verification & Governance
+  tierVerification: {
+    getMyRequests: () =>
+      request<{
+        ok: boolean;
+        requests: TierVerificationRequest[];
+        currentRequest: TierVerificationRequest | null;
+      }>('/api/tier-requests/my', { method: 'GET' }),
+
+    submitRequest: (data: {
+      proofType: TierVerificationProofType;
+      declaredBudgetRub: number;
+      documentKey: string;
+      documentName: string;
+      documentMime?: string;
+      documentSize?: number;
+      comment?: string;
+    }) =>
+      request<{
+        ok: boolean;
+        request: TierVerificationRequest;
+        message: string;
+      }>('/api/tier-requests', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getRequests: (params?: { status?: 'pending' | 'archive'; page?: number; limit?: number }) => {
+      const sp = new URLSearchParams();
+      if (params?.status) sp.set('status', params.status);
+      if (params?.page) sp.set('page', String(params.page));
+      if (params?.limit) sp.set('limit', String(params.limit));
+      const qs = sp.toString() ? `?${sp.toString()}` : '';
+      return request<PaginatedResult<TierVerificationRequest>>(`/api/tier-requests${qs}`, {
+        method: 'GET',
+      });
+    },
+
+    getDocumentUrl: (id: string) =>
+      request<{
+        ok: boolean;
+        downloadUrl: string;
+        expiresIn: number;
+        filename?: string;
+      }>(`/api/tier-requests/${encodeURIComponent(id)}/document-url`, {
+        method: 'GET',
+      }),
+
+    makeDecision: (
+      id: string,
+      data: { decision: 'approved' | 'rejected'; reviewNote?: string }
+    ) =>
+      request<{
+        ok: boolean;
+        request: TierVerificationRequest;
+        message: string;
+      }>(`/api/tier-requests/${encodeURIComponent(id)}/decision`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 };

@@ -17,6 +17,7 @@ import { handleTools } from './routes/tools.js';
 import { handlePep } from './routes/pep.js';
 import { handleMatching } from './routes/matching.js';
 import { handleMessenger } from './routes/messenger.js';
+import { handleTierVerification } from './routes/tierVerification.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -95,6 +96,11 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
     else if (path.startsWith('/api/matching')) {
       const subPath = path.substring('/api/matching'.length) || '/';
       response = await handleMatching(event, subPath);
+    }
+    // 9b. Tier Verification & Governance (/api/tier-requests/*)
+    else if (path.startsWith('/api/tier-requests')) {
+      const subPath = path.substring('/api/tier-requests'.length) || '/';
+      response = await handleTierVerification(event, subPath);
     }
     // 10. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {

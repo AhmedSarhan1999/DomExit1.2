@@ -180,3 +180,29 @@ export interface BuyerApplication {
   createdAt: string;
   updatedAt?: string;
 }
+
+export type TierVerificationProofType = 'cash_100_statement' | 'mortgage_approval';
+export type TierVerificationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface TierVerificationRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  currentTier: BuyBoxTier;
+  requestedTier: 'gold';
+  proofType: TierVerificationProofType;
+  declaredBudgetRub: number;
+  documentKey: string;
+  documentName: string;
+  documentMime: string;
+  documentSize: number;
+  comment?: string;
+  status: TierVerificationStatus;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewNote?: string;
+  createdAt: string;
+  reviewedAt?: string;
+}
+
