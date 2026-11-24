@@ -24,6 +24,22 @@ import {
 } from '../lib/cryptoAuth.js';
 import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
 import { sendEmail, renderPasswordResetEmail, maskEmail } from '../lib/emailService.js';
+import { logger } from '../lib/logger.js';
+
+export function normalizeRussianPhone(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return undefined;
+  let normalized = digits;
+  if (normalized.startsWith('8') || normalized.startsWith('7')) {
+    normalized = normalized.slice(1);
+  }
+  normalized = normalized.slice(0, 10);
+  if (normalized.length === 10) {
+    return `+7 (${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6, 8)}-${normalized.slice(8, 10)}`;
+  }
+  return raw.trim();
+}
 
 export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<YcHttpResponse> {
   const method = event.httpMethod.toUpperCase();
@@ -69,7 +85,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     const email = body?.email?.trim().toLowerCase();
     const password = body?.password;
     const name = body?.name?.trim();
-    const phone = body?.phone?.trim();
+    const phone = normalizeRussianPhone(body?.phone);
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json(event, 400, { error: 'Некорректный адрес электронной почты' });
@@ -81,11 +97,9 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       return json(event, 400, { error: 'Имя обязательно для заполнения' });
     }
 
-    // Role security check: public registration only allows buyer or seller
-    let assignedRole: UserRole = 'buyer';
-    if (body?.role === 'seller') {
-      assignedRole = 'seller';
-    }
+    // Role security check: public registration always creates a unified client (buyer + seller)
+    const assignedRole: UserRole = 'buyer';
+    const clientRoles: UserRole[] = ['buyer', 'seller'];
 
     // Check if user already exists
     const existingList = await ydb.findByField<UserProfile>('users', 'email', email);
@@ -119,7 +133,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         phone,
         role: assignedRole,
         activeRole: assignedRole,
-        roles: [assignedRole],
+        roles: clientRoles,
         registeredAt: now,
         authProvider: 'local',
         favorites: [],
@@ -486,6 +500,25 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     if (!user) {
       return json(event, 401, { error: 'Не авторизован' }, { cookies: [clearSessionCookie()] });
     }
+
+    // Auto-sync Telegram binding into user profile if missing in users table
+    if (!user.telegram || !user.telegramUsername) {
+      try {
+        const binding = await ydb.getItem<any>('telegram_bindings', `user:${user.id}`);
+        if (binding?.telegramUsername) {
+          const rawUname = binding.telegramUsername.replace(/^@+/, '');
+          user.telegram = user.telegram || `@${rawUname}`;
+          user.telegramUsername = user.telegramUsername || rawUname;
+          user.telegramChatId = user.telegramChatId || String(binding.chatId || '');
+          user.telegramBotUsername = user.telegramBotUsername || rawUname;
+          user.updatedAt = new Date().toISOString();
+          void ydb.putItem('users', user);
+        }
+      } catch (err: any) {
+        logger.warn('Failed to auto-sync telegram binding in /api/auth/me', { meta: { error: err.message, userId: user.id } });
+      }
+    }
+
     return json(event, 200, { user });
   }
 
@@ -509,6 +542,11 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       if (body[key] !== undefined) {
         updates[key] = body[key];
       }
+    }
+
+    // Auto-normalize Russian phone if provided
+    if (body.phone !== undefined) {
+      updates.phone = normalizeRussianPhone(String(body.phone)) || '';
     }
 
     // Auto-sanitize and harmonize Telegram account (@username and username)

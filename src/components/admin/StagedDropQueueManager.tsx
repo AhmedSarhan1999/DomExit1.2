@@ -36,8 +36,8 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
-  // Drop configuration parameters
-  const [goldExclusiveHours, setGoldExclusiveHours] = useState<number>(6);
+  // Drop configuration parameters (Default 0: open to all clients immediately)
+  const [goldExclusiveHours, setGoldExclusiveHours] = useState<number>(0);
   const [windowHours, setWindowHours] = useState<number>(48);
   const [maxApplicationsCap, setMaxApplicationsCap] = useState<number>(5);
 
@@ -159,17 +159,23 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               {isStagedDrop && (
                 <span
                   className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                    dropConfig.waveStatus === 'gold_wave'
+                    dropConfig.waveStatus === 'silver_wave' ||
+                    (dropConfig.goldExclusiveHours || 0) === 0 ||
+                    (dropConfig.goldExclusiveUntil && new Date() >= new Date(dropConfig.goldExclusiveUntil))
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      : dropConfig.waveStatus === 'gold_wave'
                       ? 'bg-amber-100 text-amber-900 border-amber-300'
-                      : dropConfig.waveStatus === 'silver_wave'
-                      ? 'bg-slate-100 text-slate-800 border-slate-300'
-                      : 'bg-rose-100 text-rose-800 border-rose-300'
+                      : dropConfig.waveStatus === 'capped_closed'
+                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                      : 'bg-slate-100 text-slate-800 border-slate-300'
                   }`}
                 >
-                  {dropConfig.waveStatus === 'gold_wave'
-                    ? '🥇 Волна Gold (24ч)'
-                    : dropConfig.waveStatus === 'silver_wave'
-                    ? '🥈 Волна Silver'
+                  {dropConfig.waveStatus === 'silver_wave' ||
+                  (dropConfig.goldExclusiveHours || 0) === 0 ||
+                  (dropConfig.goldExclusiveUntil && new Date() >= new Date(dropConfig.goldExclusiveUntil))
+                    ? '🟢 Открытый прием заявок (Все клиенты)'
+                    : dropConfig.waveStatus === 'gold_wave'
+                    ? `🥇 Волна Gold (${dropConfig.goldExclusiveHours || 24}ч)`
                     : dropConfig.waveStatus === 'capped_closed'
                     ? '🛑 Квота исчерпана'
                     : '⌛ Раунд закрыт'}
@@ -199,14 +205,14 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
             <span className="text-slate-600 font-medium block text-[11px]">
-              Эксклюзивное окно Gold (часы):
+              Эксклюзивное окно Gold (0 — открыт сразу):
             </span>
             <input
               type="number"
-              min="1"
+              min="0"
               max="72"
               value={goldExclusiveHours}
-              onChange={(e) => setGoldExclusiveHours(Number(e.target.value))}
+              onChange={(e) => setGoldExclusiveHours(Math.max(0, Number(e.target.value)))}
               className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500 focus:outline-hidden"
             />
           </div>

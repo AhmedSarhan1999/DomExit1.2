@@ -19,6 +19,7 @@ import { apiClient } from '../../services/apiClient';
 import { ConsentCheckboxes, ConsentState } from '../compliance/ConsentCheckboxes';
 import { LegalRepository } from '../../dal/repositories/LegalRepository';
 import { sanitizeReturnUrl } from '../../utils/securityGuards';
+import { formatRussianPhoneInput, isValidRussianPhone } from '../../utils/validators';
 
 export const AuthModal: React.FC = () => {
   const navigate = useNavigate();
@@ -40,7 +41,6 @@ export const AuthModal: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('+7 ');
-  const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller' | 'partner'>('buyer');
   const [localError, setLocalError] = useState<string | null>(null);
   const [consents, setConsents] = useState<ConsentState>({
     pdProcessing: false,
@@ -161,7 +161,16 @@ export const AuthModal: React.FC = () => {
           return;
         }
 
-        const registered = await registerWithEmail(email, password, name, phone, selectedRole);
+        if (!isValidRussianPhone(phone.trim())) {
+          setLocalError(
+            language === 'ru'
+              ? 'Номер телефона должен соответствовать стандарту РФ: +7 (XXX) XXX-XX-XX'
+              : 'Phone number must match format: +7 (XXX) XXX-XX-XX'
+          );
+          return;
+        }
+
+        const registered = await registerWithEmail(email, password, name, phone, 'buyer');
         if (registered) {
           try {
             await LegalRepository.logUserConsent({
@@ -506,50 +515,9 @@ export const AuthModal: React.FC = () => {
                       required
                       placeholder="+7 (911) 000-00-00"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(formatRussianPhoneInput(e.target.value))}
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-500 bg-slate-50 focus:bg-white font-mono"
                     />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    {language === 'ru' ? 'Основной статус:' : 'Initial Account Role:'}
-                  </label>
-                  <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('buyer')}
-                      className={`py-2 rounded-xl border text-center transition-all ${
-                        selectedRole === 'buyer'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold shadow-xs'
-                          : 'border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      Покупатель
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('seller')}
-                      className={`py-2 rounded-xl border text-center transition-all ${
-                        selectedRole === 'seller'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold shadow-xs'
-                          : 'border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      Продавец
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('partner')}
-                      className={`py-2 rounded-xl border text-center transition-all ${
-                        selectedRole === 'partner'
-                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-bold shadow-xs'
-                          : 'border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      Партнер
-                    </button>
                   </div>
                 </div>
               </>

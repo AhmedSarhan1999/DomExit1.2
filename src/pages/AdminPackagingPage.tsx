@@ -389,6 +389,7 @@ export const AdminPackagingPage: React.FC = () => {
     const updatedLot = buildUpdatedLotData();
     if (isLive) {
       updatedLot.isPublished = true;
+      updatedLot.isApproved = true;
       if (updatedLot.status === 'draft') updatedLot.status = 'available';
     }
     await LotsRepository.update(updatedLot);

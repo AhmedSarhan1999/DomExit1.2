@@ -377,20 +377,6 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
     }
   }
 
-  // Ensure all institutional seed developers are present ONLY in Demo / Sandbox mode
-  for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
-      const seedNorm = normalizeDeveloperName(seed.name);
-      const seedCleanInn = seed.inn.trim().replace(/\D/g, '');
-      const alreadyIn = mergedList.some((m) => {
-        const mNorm = normalizeDeveloperName(m.name);
-        const mCleanInn = (m.inn || '').trim().replace(/\D/g, '');
-        return mNorm === seedNorm || (seedCleanInn && mCleanInn === seedCleanInn);
-      });
-      if (!alreadyIn) {
-        mergedList.push({ ...seed });
-      }
-    }
-
   // Sort alphabetically by Russian collation and ensure isActive is boolean
   return mergedList
     .map((d) => ({ ...d, isActive: d.isActive !== false }))
@@ -401,8 +387,15 @@ class DevelopersRepositoryController {
   async getAllDevelopers(): Promise<AccreditedDeveloper[]> {
     const raw = await DatabaseGateway.getAll<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
-      INITIAL_ACCREDITED_DEVELOPERS
+      []
     );
+    if (raw.length === 0) {
+      // One-time initial seed into database if collection has never been initialized
+      for (const seed of INITIAL_ACCREDITED_DEVELOPERS) {
+        await DatabaseGateway.save(DEVELOPERS_COLLECTION, seed);
+      }
+      return deduplicateDevelopers(INITIAL_ACCREDITED_DEVELOPERS);
+    }
     return deduplicateDevelopers(raw);
   }
 
@@ -421,15 +414,7 @@ class DevelopersRepositoryController {
         (d.inn && developerName.trim() === d.inn.trim()) ||
         d.id === developerName
     );
-    if (found) return found;
-
-    const seed = INITIAL_ACCREDITED_DEVELOPERS.find(
-      (d) =>
-        normalizeDeveloperName(d.name) === norm ||
-        (d.inn && developerName.trim() === d.inn.trim()) ||
-        d.id === developerName
-    );
-    return seed || null;
+    return found || null;
   }
 
   async isDeveloperAccredited(developerName: string): Promise<boolean> {
@@ -443,16 +428,8 @@ class DevelopersRepositoryController {
     const norm = normalizeDeveloperName(developerName);
     const all = await this.getAllDevelopers();
 
-    // 1. Look in loaded developers (Firestore / cache)
+    // Look in loaded developers (Database / cache)
     const dev = all.find(
-      (d) =>
-        normalizeDeveloperName(d.name) === norm ||
-        (d.inn && developerName.trim() === d.inn.trim()) ||
-        d.id === developerName
-    );
-
-    // 2. Look in seed accredited developers
-    const seedDev = INITIAL_ACCREDITED_DEVELOPERS.find(
       (d) =>
         normalizeDeveloperName(d.name) === norm ||
         (d.inn && developerName.trim() === d.inn.trim()) ||
@@ -463,11 +440,6 @@ class DevelopersRepositoryController {
     if (dev && dev.bankTerms && dev.bankTerms.length > 0) {
       const active = dev.bankTerms.filter((b) => b.isAccredited);
       if (active.length > 0) return active;
-    }
-
-    // Fallback to institutional seed terms for top developers
-    if (seedDev && seedDev.bankTerms && seedDev.bankTerms.length > 0) {
-      return seedDev.bankTerms.filter((b) => b.isAccredited);
     }
 
     return [];
@@ -695,10 +667,10 @@ class DevelopersRepositoryController {
     developerId: string,
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<AccreditedDeveloper | null> {
-        const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
       developerId,
-      INITIAL_ACCREDITED_DEVELOPERS
+      []
     );
     if (!dev) return null;
 
@@ -721,10 +693,10 @@ class DevelopersRepositoryController {
     developerId: string,
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<boolean> {
-        const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
       developerId,
-      INITIAL_ACCREDITED_DEVELOPERS
+      []
     );
     const devName = dev?.name || developerId;
     const devInn = dev?.inn || '—';
@@ -747,10 +719,10 @@ class DevelopersRepositoryController {
     updates: { name: string; inn: string },
     operatorName: string = 'Ahmed Abdallah (Владелец)'
   ): Promise<AccreditedDeveloper | null> {
-        const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
+    const dev = await DatabaseGateway.getById<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,
       developerId,
-      INITIAL_ACCREDITED_DEVELOPERS
+      []
     );
     if (!dev) return null;
 

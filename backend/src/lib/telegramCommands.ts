@@ -720,6 +720,16 @@ export async function handleTelegramMessage(
       await ydb.putItem('telegram_bindings', { ...bindingData, id: `chat:${chatId}` });
       await ydb.putItem('telegram_bindings', { ...bindingData, id: `user:${linkToken.userId}` });
 
+      // Synchronize Telegram handle into user profile record
+      if (user) {
+        user.telegram = msg.from?.username ? `@${msg.from.username}` : (user.telegram || '');
+        user.telegramUsername = msg.from?.username || user.telegramUsername || '';
+        user.telegramChatId = String(chatId);
+        user.telegramBotUsername = msg.from?.username || user.telegramBotUsername || '';
+        user.updatedAt = new Date().toISOString();
+        await ydb.putItem('users', user);
+      }
+
       // Send Role-Tailored Russian Welcome
       let welcomeMsg = '';
       if (bindingData.role === 'owner') {

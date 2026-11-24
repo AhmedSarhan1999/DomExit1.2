@@ -25,6 +25,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { apiClient } from '../../services/apiClient';
+import { TelegramConnectCard } from '../telegram/TelegramConnectCard';
 import { formatRussianPhoneInput, isValidRussianPhone, validateIndividualInn, sanitizeDigitsOnly } from '../../utils/validators';
 import { UserProfile, Employee } from '../../types';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
@@ -99,8 +101,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   useEffect(() => {
     if (isOpen) {
       setName(currentUser.name || '');
-      setPhone(currentUser.phone || '+7 ');
-      setTelegram(currentUser.telegram || (currentUser.telegramUsername ? `@${currentUser.telegramUsername}` : ''));
+      setPhone(currentUser.phone ? formatRussianPhoneInput(currentUser.phone) : '+7 ');
+      const rawTg = currentUser.telegram || (currentUser.telegramUsername ? `@${currentUser.telegramUsername.replace(/^@+/, '')}` : '');
+      setTelegram(rawTg);
       setInn(currentUser.inn || '');
       setPhotoURL(currentUser.photoURL || '');
       setCustomPhotoInput(currentUser.photoURL || '');
@@ -109,6 +112,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       setConfirmPassword('');
       setSuccessMessage(null);
       setErrorMessage(null);
+
+      // Auto-populate Telegram handle from live bot status if missing
+      apiClient.telegram.getStatus().then((st) => {
+        if (st?.telegramUsername) {
+          setTelegram((prev) => prev || `@${st.telegramUsername!.replace(/^@+/, '')}`);
+        }
+      }).catch(() => {});
     }
   }, [currentUser.name, currentUser.phone, currentUser.photoURL, currentUser.telegram, currentUser.telegramUsername, currentUser.inn, isOpen]);
 
@@ -468,7 +478,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                     value={telegram}
                     onChange={(e) => setTelegram(e.target.value)}
                     placeholder="@username"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 font-medium"
+                  />
+                </div>
+                {/* Live Telegram Bot Connection Status Card */}
+                <div className="mt-2.5">
+                  <TelegramConnectCard
+                    compact={true}
+                    onLinkComplete={() => {
+                      apiClient.telegram.getStatus().then((st) => {
+                        if (st?.telegramUsername) {
+                          setTelegram(`@${st.telegramUsername.replace(/^@+/, '')}`);
+                        }
+                      }).catch(() => {});
+                    }}
                   />
                 </div>
               </div>

@@ -50,6 +50,8 @@ export interface UserProfile {
   photoURL?: string;
   telegram?: string;
   telegramUsername?: string;
+  telegramChatId?: string;
+  telegramBotUsername?: string;
   assignedEmployeeId?: string;
   isPartnerApproved?: boolean;
   isInvestorApproved?: boolean;
@@ -58,6 +60,7 @@ export interface UserProfile {
   referralCode?: string;
   favorites?: string[];
   registeredAt?: string;
+  updatedAt?: string;
   authProvider?: string;
   passwordHash?: string;
   yandexId?: string;

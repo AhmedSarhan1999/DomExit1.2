@@ -110,6 +110,7 @@ export interface Lot {
   seller_banks?: string[];
   isFeatured: boolean;
   isPublished?: boolean;
+  isApproved?: boolean;
   dealTrack?: PropertyDealTrack;
   dropConfig?: LotDropConfig;
   cadastralNumber?: string;

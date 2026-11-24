@@ -146,23 +146,24 @@ export class UsersRepository {
     if (!user) return null;
 
     const oldRole = user.activeRole || user.role || 'buyer';
-    user.activeRole = newRole;
-    user.role = newRole === 'owner' ? 'admin' : newRole;
-
-    if (!user.roles.includes(newRole as any)) {
-      user.roles.push(newRole as any);
+    if (newRole === 'buyer' || newRole === 'seller') {
+      user.activeRole = 'buyer';
+      user.role = 'buyer';
+      user.roles = ['buyer', 'seller'];
+    } else {
+      user.activeRole = newRole;
+      user.role = newRole === 'owner' ? 'admin' : newRole;
+      if (!user.roles.includes(newRole as any)) {
+        user.roles.push(newRole as any);
+      }
     }
 
     if (newRole === 'partner') {
       user.isPartnerApproved = true;
     }
-    if (newRole === 'investor') {
-      user.isInvestorApproved = true;
-    }
     if (newRole === 'owner') {
       user.isPartnerApproved = true;
-      user.isInvestorApproved = true;
-      user.roles = ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer'];
+      user.roles = ['owner', 'employee', 'partner', 'seller', 'buyer'];
     }
 
     await DatabaseGateway.save<UserProfile>(COLLECTION, user);

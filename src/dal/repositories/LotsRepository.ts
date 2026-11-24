@@ -244,6 +244,7 @@ export class LotsRepository {
       ...additionalUpdates,
       status: 'available',
       approvalStatus: 'approved',
+      isApproved: true,
       isPublished: true,
       currentStage: 3,
       publishedAt: new Date().toISOString(),

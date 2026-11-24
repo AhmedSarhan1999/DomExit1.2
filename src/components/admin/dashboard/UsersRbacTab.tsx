@@ -211,11 +211,10 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
           role: mappedRole === 'owner' ? 'admin' : mappedRole,
           roles:
             mappedRole === 'owner'
-              ? ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer']
+              ? ['owner', 'employee', 'partner', 'seller', 'buyer']
               : [mappedRole],
           activeRole: mappedRole,
           isPartnerApproved: true,
-          isInvestorApproved: true,
         }),
         15000
       );
@@ -339,16 +338,14 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                       <td className="py-3 px-3">
                         <select
                           disabled={updatingUserId === u.id}
-                          value={currentRole === 'admin' ? 'owner' : currentRole}
+                          value={currentRole === 'admin' ? 'owner' : (currentRole === 'seller' ? 'buyer' : currentRole)}
                           onChange={(e) => handleUpdateUserRole(u.id, e.target.value)}
                           className="px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50"
                         >
                           <option value="owner">👑 Владелец (owner)</option>
                           <option value="employee">👨‍💼 Куратор (employee)</option>
                           <option value="partner">🤝 Партнер B2B (partner)</option>
-                          <option value="investor">Инвестор (investor)</option>
-                          <option value="seller">🏠 Продавец ДДУ (seller)</option>
-                          <option value="buyer">🔑 Покупатель (buyer)</option>
+                          <option value="buyer">👤 Клиент (Покупатель / Продавец)</option>
                         </select>
                       </td>
                       <td className="py-3 px-3 text-center">
@@ -361,15 +358,6 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                             }`}
                           >
                             Партнер {u.isPartnerApproved ? '✓' : '—'}
-                          </span>
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              u.isInvestorApproved
-                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                : 'bg-slate-100 text-slate-400'
-                            }`}
-                          >
-                            Инвестор {u.isInvestorApproved ? '✓' : '—'}
                           </span>
                         </div>
                       </td>

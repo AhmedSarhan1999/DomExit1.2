@@ -295,16 +295,13 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         let remainingSeats = dropConfig ? Math.max(0, dropConfig.maxApplicationsCap - dropConfig.currentValidApplications) : null;
 
         if (dropConfig && dropConfig.mode === 'staged_drop') {
-          const goldUntil = new Date(dropConfig.goldExclusiveUntil);
-          const closesAt = new Date(dropConfig.closesAt);
+          const goldUntil = dropConfig.goldExclusiveUntil ? new Date(dropConfig.goldExclusiveUntil) : now;
+          const closesAt = dropConfig.closesAt ? new Date(dropConfig.closesAt) : null;
 
-          if (now > closesAt) {
-            waveStatus = 'expired_closed';
-            canApplyNow = false;
-          } else if (dropConfig.currentValidApplications >= dropConfig.maxApplicationsCap) {
+          if (dropConfig.currentValidApplications >= dropConfig.maxApplicationsCap) {
             waveStatus = 'capped_closed';
             canApplyNow = false;
-          } else if (now < goldUntil) {
+          } else if ((dropConfig.goldExclusiveHours || 0) > 0 && now < goldUntil) {
             waveStatus = 'gold_wave';
             if (buyBox.tier === 'gold') {
               canApplyNow = true;
@@ -313,8 +310,8 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
               unlocksAt = dropConfig.goldExclusiveUntil;
             }
           } else {
-            waveStatus = 'silver_wave';
-            canApplyNow = buyBox.tier === 'gold' || buyBox.tier === 'silver';
+            waveStatus = 'open';
+            canApplyNow = true;
           }
         }
 
@@ -383,9 +380,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       return json(event, 403, { error: 'Запуск дропа разрешен только владельцу или назначенному куратору' });
     }
 
-    const goldExclusiveHours = Math.max(1, Math.min(24, Number(body.goldExclusiveHours || 2)));
-    const windowHours = Math.max(4, Math.min(72, Number(body.windowHours || 24)));
-    const maxApplicationsCap = Math.max(2, Math.min(20, Number(body.maxApplicationsCap || 5)));
+    const goldExclusiveHours = Math.max(0, Math.min(72, Number(body.goldExclusiveHours !== undefined ? body.goldExclusiveHours : 0)));
+    const windowHours = Math.max(4, Math.min(168, Number(body.windowHours || 48)));
+    const maxApplicationsCap = Math.max(2, Math.min(50, Number(body.maxApplicationsCap || 5)));
 
     try {
       // Scan active buy-boxes to compute matched gold and silver buyers
@@ -407,7 +404,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       }
 
       const now = new Date();
-      const goldUntil = new Date(now.getTime() + goldExclusiveHours * 3600 * 1000).toISOString();
+      const goldUntil = goldExclusiveHours > 0
+        ? new Date(now.getTime() + goldExclusiveHours * 3600 * 1000).toISOString()
+        : now.toISOString();
       const closesAt = new Date(now.getTime() + windowHours * 3600 * 1000).toISOString();
 
       const dropConfig: LotDropConfig = {
@@ -420,7 +419,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         closesAt,
         maxApplicationsCap,
         currentValidApplications: 0,
-        waveStatus: 'gold_wave',
+        waveStatus: goldExclusiveHours > 0 ? 'gold_wave' : 'silver_wave',
         matchedGoldCount,
         matchedSilverCount,
         reDropCount: (lot.dropConfig?.reDropCount || 0) + 1,
@@ -508,21 +507,44 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
 
     // Check buyer's Buy-Box
-    const buyBox = await ydb.getItem<BuyerBuyBox>('buy_boxes', `bb:${authUser.id}`);
-    if (!buyBox) {
-      return json(event, 400, { error: 'Сначала настройте параметры в разделе Buy-Box' });
-    }
-    if (buyBox.tier === 'bronze') {
-      return json(event, 403, { error: 'Покупатели с уровнем Bronze не допускаются к участию в закрытых дропах' });
+    const fetchedBuyBox = await ydb.getItem<BuyerBuyBox>('buy_boxes', `bb:${authUser.id}`);
+    let buyBox: BuyerBuyBox;
+    if (!fetchedBuyBox) {
+      // Auto-provision standard Buy-Box for registered client so application is not blocked
+      buyBox = {
+        id: `bb:${authUser.id}`,
+        userId: authUser.id,
+        active: true,
+        cities: [],
+        districts: [],
+        complexNames: [],
+        dealTracks: ['ddu_cession', 'secondary_dkp'],
+        rooms: [],
+        maxBudgetRub: 50000000,
+        minDiscountPercent: 0,
+        paymentMethod: 'cash_100',
+        preferredBanks: [],
+        goal: 'living',
+        readinessHours: 24,
+        tier: 'silver',
+        reliabilityScore: 100,
+        noShowCount: 0,
+        completedViewingsCount: 0,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+      await ydb.putItem('buy_boxes', buyBox);
+    } else {
+      buyBox = fetchedBuyBox;
     }
 
-    // Check Gold wave exclusivity
-    if (dropConfig && dropConfig.waveStatus === 'gold_wave') {
+    // Check Gold wave exclusivity: only active if goldExclusiveHours > 0 AND now < goldExclusiveUntil AND waveStatus === 'gold_wave'
+    if (dropConfig && dropConfig.waveStatus === 'gold_wave' && (dropConfig.goldExclusiveHours || 0) > 0) {
       if (now < new Date(dropConfig.goldExclusiveUntil)) {
         if (buyBox.tier !== 'gold') {
           return json(event, 403, {
             code: 'gold_exclusive_wave',
-            error: `Эксклюзивная волна для инвесторов Gold. Для уровня Silver лот откроется в ${dropConfig.goldExclusiveUntil}`,
+            error: `Эксклюзивная волна для инвесторов Gold. Для всех остальных клиентов лот откроется в ${dropConfig.goldExclusiveUntil}`,
             unlocksAt: dropConfig.goldExclusiveUntil,
           });
         }

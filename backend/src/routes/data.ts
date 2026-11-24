@@ -515,7 +515,7 @@ export async function handleData(
           ]);
           filtered = all.filter(
             (lot: any) =>
-              (lot.isApproved === true && allowedStatuses.has(lot.status)) ||
+              ((lot.isApproved === true || lot.isPublished === true || lot.approvalStatus === 'approved') && allowedStatuses.has(lot.status)) ||
               (authUser?.id && lot.sellerId === authUser.id)
           );
         }
