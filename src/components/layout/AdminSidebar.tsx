@@ -131,7 +131,7 @@ export const AdminSidebar: React.FC = () => {
   };
 
   const displayName =
-    user?.name || (isOwner ? 'Ахмед Абдалла (Владелец / CEO)' : 'Алексей Смирнов (Куратор)');
+    user?.name || (isOwner ? 'Ahmed Abdallah (Владелец / CEO)' : 'Куратор DomExit');
   const initials = displayName
     .split(/\s+/)
     .slice(0, 2)

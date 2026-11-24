@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Landmark,
   ShieldCheck,
@@ -86,6 +86,10 @@ export const BankSettlementAssistant: React.FC<BankSettlementAssistantProps> = (
   const [selectedMethodId, setSelectedMethodId] = useState<string>('sbr');
   const [customPrice, setCustomPrice] = useState<number>(dealPriceRub);
 
+  useEffect(() => {
+    setCustomPrice(dealPriceRub);
+  }, [dealPriceRub]);
+
   const selectedMethod = METHODS.find((m) => m.id === selectedMethodId) || METHODS[0];
   const cost = selectedMethod.calcCost(customPrice);
 
@@ -113,10 +117,15 @@ export const BankSettlementAssistant: React.FC<BankSettlementAssistantProps> = (
         </div>
 
         {/* Price Input / Indicator */}
-        <div className="flex items-center space-x-2 bg-slate-50 px-3.5 py-2 rounded-2xl border border-slate-200">
-          <span className="text-xs text-slate-500 font-bold">Сумма сделки:</span>
-          <span className="text-sm font-black font-mono text-slate-900">
-            {formatRubles(customPrice)}
+        <div className="flex flex-col sm:items-end space-y-1">
+          <div className="flex items-center space-x-2 bg-slate-50 px-3.5 py-2 rounded-2xl border border-slate-200">
+            <span className="text-xs text-slate-600 font-bold">Сумма расчёта с продавцом (депонируется в СБР/аккредитив):</span>
+            <span className="text-sm font-black font-mono text-slate-900">
+              {formatRubles(customPrice)}
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-400 italic">
+            * Остаток долга по ДДУ перед застройщиком выплачивается по графику рассрочки/эскроу, а не при подписании.
           </span>
         </div>
       </div>

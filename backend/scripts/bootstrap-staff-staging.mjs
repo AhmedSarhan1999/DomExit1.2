@@ -238,7 +238,7 @@ async function run() {
   const canonicalEmployee = {
     id: { S: employeeId },
     email: { S: employeeEmail },
-    name: { S: 'Алексей Смирнов (Ведущий куратор)' },
+    name: { S: 'Куратор DomExit' },
     clientCode: { S: 'DEX-000002' },
     role: { S: 'employee' },
     activeRole: { S: 'employee' },
@@ -250,8 +250,8 @@ async function run() {
       ],
     },
     assignedEmployeeId: { S: 'emp-1' },
-    phone: { S: '+7 (921) 888-11-22' },
-    telegram: { S: '@domexit_smirnov' },
+    phone: { S: '+7 (812) 409-00-00' },
+    telegram: { S: '@domexit_official' },
     passwordHash: { S: employeeHash },
     isPartnerApproved: { BOOL: false },
     isInvestorApproved: { BOOL: false },
@@ -268,20 +268,20 @@ async function run() {
   if (putEmpRes.status !== 200) {
     throw new Error(`Failed to save employee account: ${JSON.stringify(putEmpRes)}`);
   }
-  console.log(`✓ Employee account initialized (ID: ${employeeId}, Role: employee, assignedEmployeeId: emp-1)`);
+  console.log(`✓ Employee account initialized (ID: ${employeeId}, Role: employee)`);
 
   // Ensure emp-1 in employees table
   const empTableItem = {
     id: { S: 'emp-1' },
-    name: { S: 'Алексей Смирнов' },
+    name: { S: 'Куратор DomExit' },
     email: { S: employeeEmail },
     role: { S: 'Ведущий куратор отдела выходов' },
-    phone: { S: '+7 (921) 888-11-22' },
-    telegram: { S: '@domexit_smirnov' },
-    whatsapp: { S: '+7 (921) 888-11-22' },
-    maxProfile: { S: '+7 (921) 888-11-22' },
-    bio: { S: '12 лет в сфере уступки прав по 214-ФЗ и аккредитивов. Экс-руководитель юридического блока строительного холдинга.' },
-    photoUrl: { S: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80' },
+    phone: { S: '+7 (812) 409-00-00' },
+    telegram: { S: '@domexit_official' },
+    whatsapp: { S: '+7 (812) 409-00-00' },
+    maxProfile: { S: '+7 (812) 409-00-00' },
+    bio: { S: 'Сопровождение сделок по переуступкам прав по 214-ФЗ и аккредитивным расчетам без скрытых рисков.' },
+    photoUrl: { S: '' },
     activeLotsCount: { N: '1' },
     closedDealsCount: { N: '18' },
     avgSpeedDays: { N: '8.5' },

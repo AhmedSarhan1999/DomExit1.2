@@ -78,52 +78,135 @@ export function sanitizeLotForPublic(lot: Record<string, any>, authUser: UserPro
 }
 
 export function projectLotForCard(lot: Record<string, any>): Record<string, any> {
-  const photos = Array.isArray(lot.curatorApprovedImages) && lot.curatorApprovedImages.length > 0
-    ? lot.curatorApprovedImages.slice(0, 4)
-    : Array.isArray(lot.photos)
-    ? lot.photos.slice(0, 4)
+  const rawPhotos = Array.isArray(lot.curatorApprovedImages) && lot.curatorApprovedImages.length > 0
+    ? lot.curatorApprovedImages
+    : Array.isArray(lot.approvedGalleryImages) && lot.approvedGalleryImages.length > 0
+    ? lot.approvedGalleryImages
+    : Array.isArray(lot.photos) && lot.photos.length > 0
+    ? lot.photos
+    : Array.isArray(lot.images) && lot.images.length > 0
+    ? lot.images
     : [];
+
+  const photos = rawPhotos.slice(0, 4);
+  const images = rawPhotos.slice(0, 3);
+  const imageUrl = lot.imageUrl || rawPhotos[0] || '';
+
+  const areaM2 = lot.areaM2 ?? lot.area ?? 0;
+  const totalFloors = lot.totalFloors ?? lot.floorsTotal ?? 0;
+  const cashPaidBySeller = lot.cashPaidBySeller ?? lot.sellerReturnRub ?? lot.price ?? 0;
+  const dduContractPrice = lot.dduContractPrice ?? lot.oldPrice ?? 0;
+  const todayDeveloperPrice = lot.todayDeveloperPrice ?? lot.currentPrice ?? lot.price ?? 0;
+  const remainingInstallmentDebt =
+    lot.remainingInstallmentDebt ?? Math.max(0, dduContractPrice - cashPaidBySeller);
+
+  const deliveryDate =
+    lot.deliveryDate ||
+    lot.deadline ||
+    (lot.completionQuarter && lot.completionYear
+      ? `${lot.completionQuarter} кв. ${lot.completionYear} г.`
+      : lot.completionYear
+      ? `${lot.completionYear} г.`
+      : '');
+
+  const metroName =
+    lot.metro ||
+    (Array.isArray(lot.metroStations) && lot.metroStations[0]?.name) ||
+    '';
+  const metroTime =
+    lot.metroTime ||
+    (Array.isArray(lot.metroStations) && lot.metroStations[0]?.travelTimeText) ||
+    '';
+  const metroAccessType =
+    lot.metroAccessType ||
+    (Array.isArray(lot.metroStations) && lot.metroStations[0]?.mode) ||
+    'walk';
+
+  const discountRub =
+    lot.discountRub ?? Math.max(0, todayDeveloperPrice - dduContractPrice);
+  const discountPercent =
+    lot.discountPercent ??
+    lot.discount ??
+    (todayDeveloperPrice > 0 ? Math.round((discountRub / todayDeveloperPrice) * 100) : 0);
 
   return {
     id: lot.id,
     lotCode: lot.lotCode || lot.code || lot.id,
     code: lot.code || lot.lotCode || lot.id,
-    title: lot.title,
+    title: lot.title || lot.complexName || 'Лот DomExit',
     description: lot.description ? String(lot.description).slice(0, 200) : '',
-    propertyType: lot.propertyType,
-    rooms: lot.rooms,
-    floor: lot.floor,
-    floorsTotal: lot.floorsTotal,
-    area: lot.area,
+    propertyType: lot.propertyType || 'apartment',
+    rooms: lot.rooms || '1-room',
+    floor: lot.floor ?? 0,
+    floorsTotal: totalFloors,
+    totalFloors,
+    floorRange: lot.floorRange || lot.ownerDossier?.floorRangeDisplay || '',
+    ownerDossier: lot.ownerDossier
+      ? {
+          hideExactFloor: Boolean(lot.ownerDossier.hideExactFloor),
+          floorRangeDisplay: lot.ownerDossier.floorRangeDisplay || '',
+        }
+      : undefined,
+    area: areaM2,
+    areaM2,
     livingArea: lot.livingArea,
     kitchenArea: lot.kitchenArea,
-    price: lot.price ?? lot.currentPrice ?? 0,
-    currentPrice: lot.currentPrice ?? lot.price ?? 0,
-    oldPrice: lot.oldPrice,
-    discount: lot.discount ?? lot.discountPercent ?? 0,
-    discountPercent: lot.discountPercent ?? lot.discount ?? 0,
-    discountRub: lot.discountRub,
-    city: lot.city,
-    region: lot.region,
-    district: lot.district,
-    address: lot.address,
-    complexName: lot.complexName || lot.housingComplex,
-    housingComplex: lot.housingComplex || lot.complexName,
-    developer: lot.developer,
-    developerName: lot.developerName || lot.developer,
-    developerInn: lot.developerInn,
-    deadline: lot.deadline,
-    completionYear: lot.completionYear,
+    price: cashPaidBySeller,
+    currentPrice: todayDeveloperPrice,
+    oldPrice: dduContractPrice,
+    dduContractPrice,
+    cashPaidBySeller,
+    sellerReturnRub: cashPaidBySeller,
+    todayDeveloperPrice,
+    remainingInstallmentDebt,
+    serviceCommissionRate: lot.serviceCommissionRate ?? 2.5,
+    serviceCommissionRub:
+      lot.serviceCommissionRub ?? Math.round((dduContractPrice || cashPaidBySeller) * 0.025),
+    developerConsentFeeRub: lot.developerConsentFeeRub ?? 0,
+    developerConsentPolicy: lot.developerConsentPolicy || 'included_in_platform_fee',
+    discount: discountPercent,
+    discountPercent,
+    discountRub,
+    city: lot.city || 'spb',
+    region: lot.region || 'spb',
+    district: lot.district || '',
+    address: lot.address || lot.streetAddress || '',
+    streetAddress: lot.streetAddress || lot.address || '',
+    complexName: lot.complexName || lot.housingComplex || '',
+    housingComplex: lot.housingComplex || lot.complexName || '',
+    developer: lot.developer || lot.developerName || '',
+    developerName: lot.developerName || lot.developer || '',
+    developerInn: lot.developerInn || '',
+    deadline: deliveryDate,
+    deliveryDate,
+    completionYear: lot.completionYear || lot.deliveryYear,
+    deliveryYear: lot.deliveryYear || lot.completionYear,
     completionQuarter: lot.completionQuarter,
     renovation: lot.renovation,
-    curatorApprovedImages: photos,
+    metro: metroName,
+    metroTime,
+    metroAccessType,
+    metroStations: Array.isArray(lot.metroStations) ? lot.metroStations.slice(0, 2) : [],
+    escrowBank: lot.escrowBank || 'Сбербанк',
+    coordinates: lot.coordinates,
+    imageUrl,
+    images,
     photos,
-    tags: lot.tags,
-    badges: lot.badges,
-    status: lot.status,
-    approvalStatus: lot.approvalStatus,
-    isApproved: lot.isApproved,
-    isPublished: lot.isPublished,
+    curatorApprovedImages: photos,
+    approvedGalleryImages: images,
+    tags: lot.tags || [],
+    badges: lot.badges || [],
+    status: lot.status || 'available',
+    approvalStatus: lot.approvalStatus || 'approved',
+    isApproved: Boolean(lot.isApproved ?? (lot.approvalStatus === 'approved')),
+    isPublished: Boolean(lot.isPublished ?? (lot.status === 'available' || lot.status === 'in_deal')),
+    isUrgentExit: Boolean(lot.isUrgentExit),
+    isFeatured: Boolean(lot.isFeatured),
+    isVerified: Boolean(lot.isVerified),
+    isNegotiable: Boolean(lot.isNegotiable || lot.is_negotiable),
+    is_negotiable: Boolean(lot.is_negotiable || lot.isNegotiable),
+    currentStage: lot.currentStage ?? 3,
+    dropConfig: lot.dropConfig,
     publishedAt: lot.publishedAt,
     createdAt: lot.createdAt,
     updatedAt: lot.updatedAt,
@@ -1475,6 +1558,44 @@ export async function handleData(
           delete itemToSave.legalVerification;
         }
 
+        // Backend State Guards for Lots:
+        // Publishing or setting available or advancing to Stage 3+ strictly requires verified legal audit and complete packaging
+        if (
+          itemToSave.isPublished === true ||
+          itemToSave.status === 'available' ||
+          (itemToSave.currentStage !== undefined && Number(itemToSave.currentStage) >= 3)
+        ) {
+          const isLegallyApproved =
+            itemToSave.isVerified === true ||
+            itemToSave.approvalStatus === 'approved_for_packaging' ||
+            itemToSave.approvalStatus === 'approved';
+
+          if (!isLegallyApproved) {
+            return json(event, 400, {
+              error: 'Правовой аудит не завершен. Публикация лота или переход к подбору покупателя запрещены до проверки юристом.',
+              code: 'LEGAL_AUDIT_REQUIRED',
+            });
+          }
+
+          const hasDeveloper = Boolean(itemToSave.developer && String(itemToSave.developer).trim());
+          const hasComplex = Boolean(itemToSave.complexName && String(itemToSave.complexName).trim());
+          const hasArea = Boolean(itemToSave.areaM2 || itemToSave.area || (itemToSave.specs && itemToSave.specs.totalArea));
+          const hasPrice = Boolean(itemToSave.cashPaidBySeller || itemToSave.sellerReturnRub || itemToSave.price || itemToSave.dduContractPrice);
+          const hasImage = Boolean(
+            itemToSave.imageUrl ||
+            (Array.isArray(itemToSave.images) && itemToSave.images.length > 0) ||
+            (Array.isArray(itemToSave.photos) && itemToSave.photos.length > 0) ||
+            (Array.isArray(itemToSave.curatorApprovedImages) && itemToSave.curatorApprovedImages.length > 0)
+          );
+
+          if (!hasDeveloper || !hasComplex || !hasArea || !hasPrice || !hasImage) {
+            return json(event, 400, {
+              error: 'Упаковка лота не завершена (отсутствуют обязательные поля: ЖК, Застройщик, Площадь, Цена или Фотографии)',
+              code: 'PACKAGING_INCOMPLETE',
+            });
+          }
+        }
+
         // Auto-match preliminary requests on lot creation if not explicitly passed
         if (!itemToSave.partnerRefCode) {
           try {
@@ -1506,6 +1627,37 @@ export async function handleData(
         }
 
         await ydb.putItem(collection, itemToSave);
+
+        // Auto-sync status with linked seller_requests
+        try {
+          const lotCode = itemToSave.lotCode || itemToSave.id;
+          const allSellerReqs = await ydb.scanAll<any>('seller_requests');
+          const linkedReq = (allSellerReqs || []).find((r: any) =>
+            (itemToSave.sellerRequestId && r.id === itemToSave.sellerRequestId) ||
+            (r.lotCode && String(r.lotCode).trim().toUpperCase() === String(lotCode).trim().toUpperCase()) ||
+            (r.lotId && (String(r.lotId).trim().toUpperCase() === String(itemToSave.id).trim().toUpperCase() || String(r.lotId).trim().toUpperCase() === String(lotCode).trim().toUpperCase()))
+          );
+
+          if (linkedReq) {
+            let reqStatusChanged = false;
+            if ((itemToSave.isPublished || itemToSave.status === 'available') && linkedReq.status !== 'published') {
+              linkedReq.status = 'published';
+              reqStatusChanged = true;
+            } else if (itemToSave.status === 'in_deal' && linkedReq.status !== 'in_deal') {
+              linkedReq.status = 'in_deal';
+              reqStatusChanged = true;
+            } else if ((itemToSave.status === 'closed' || itemToSave.status === 'completed' || Number(itemToSave.currentStage) === 5) && linkedReq.status !== 'closed') {
+              linkedReq.status = 'closed';
+              reqStatusChanged = true;
+            }
+            if (reqStatusChanged) {
+              linkedReq.updatedAt = new Date().toISOString();
+              await ydb.putItem('seller_requests', linkedReq);
+            }
+          }
+        } catch (srErr) {
+          console.warn('[data] Non-fatal seller_requests sync in lots:', srErr);
+        }
 
         // Record immutable journal event for lots
         await recordJournalEvent({

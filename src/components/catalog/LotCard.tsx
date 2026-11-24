@@ -22,21 +22,27 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
   const geo = resolveLotGeoDetails(lot);
   const primaryMetro = geo.metroStations[0];
 
-  const savingsRub = lot.todayDeveloperPrice - lot.dduContractPrice;
+  const savingsRub = (lot.todayDeveloperPrice || 0) - (lot.dduContractPrice || 0);
   const savingsPercent =
-    lot.todayDeveloperPrice > 0 ? (savingsRub / lot.todayDeveloperPrice) * 100 : 0;
+    (lot.todayDeveloperPrice || 0) > 0 ? (savingsRub / lot.todayDeveloperPrice) * 100 : (lot.discountPercent || 0);
 
   const lotStatus = lot.status || 'available';
   const cardImage =
     lot.imageUrl ||
     (lot.images && lot.images[0]) ||
     (lot.approvedGalleryImages && lot.approvedGalleryImages[0]) ||
+    (lot.curatorApprovedImages && (lot.curatorApprovedImages as any)[0]) ||
+    (lot.photos && (lot.photos as any)[0]) ||
     '';
   const floorLabel = lot.ownerDossier?.hideExactFloor
-    ? `${lot.ownerDossier.floorRangeDisplay} ${language === 'ru' ? 'эт.' : 'fl.'}`
-    : language === 'ru'
-    ? `Этаж ${lot.floor} из ${lot.totalFloors}`
-    : `Floor ${lot.floor}/${lot.totalFloors}`;
+    ? `${lot.ownerDossier.floorRangeDisplay || lot.floorRange || '—'} ${language === 'ru' ? 'эт.' : 'fl.'}`
+    : lot.floor && (lot.totalFloors || (lot as any).floorsTotal)
+    ? language === 'ru'
+      ? `Этаж ${lot.floor} из ${lot.totalFloors || (lot as any).floorsTotal}`
+      : `Floor ${lot.floor}/${lot.totalFloors || (lot as any).floorsTotal}`
+    : lot.floor
+    ? `${language === 'ru' ? 'Этаж' : 'Floor'} ${lot.floor}`
+    : '';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
@@ -109,12 +115,16 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
 
         {/* Bottom Badges over Image */}
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] font-bold pointer-events-none">
-          <span className="px-2.5 py-0.5 rounded-md bg-white/95 text-slate-800 shadow-xs border border-slate-200/60 backdrop-blur-sm">
-            {language === 'ru' ? `Сдача: ${lot.deliveryDate}` : `Handover: ${lot.deliveryDate}`}
-          </span>
-          <span className="px-2.5 py-0.5 rounded-md bg-emerald-50/95 text-emerald-800 border border-emerald-300 shadow-xs backdrop-blur-sm">
-            {lot.escrowBank} Эскроу
-          </span>
+          {lot.deliveryDate ? (
+            <span className="px-2.5 py-0.5 rounded-md bg-white/95 text-slate-800 shadow-xs border border-slate-200/60 backdrop-blur-sm">
+              {language === 'ru' ? `Сдача: ${lot.deliveryDate}` : `Handover: ${lot.deliveryDate}`}
+            </span>
+          ) : <span />}
+          {lot.escrowBank ? (
+            <span className="px-2.5 py-0.5 rounded-md bg-emerald-50/95 text-emerald-800 border border-emerald-300 shadow-xs backdrop-blur-sm">
+              {lot.escrowBank} Эскроу
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -127,7 +137,7 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
             <span className="font-semibold text-slate-700 inline-flex items-center space-x-1 truncate pr-2">
               <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
               <span className="truncate">
-                {language === 'ru' ? geo.region.shortLabelRu : geo.region.shortLabelEn} • {lot.district}
+                {(language === 'ru' ? geo.region?.shortLabelRu : geo.region?.shortLabelEn) || 'РФ'} {lot.district ? `• ${lot.district}` : ''}
               </span>
             </span>
             <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
@@ -135,12 +145,13 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
             </span>
           </div>
           <h3 className="text-lg font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
-            {lot.complexName}
+            {lot.complexName || 'Объект DomExit'}
           </h3>
           <p className="text-xs text-slate-600 mt-0.5">
-            {lot.developer} • {lot.areaM2} м² •{' '}
-            {lot.rooms === 'studio' ? (language === 'ru' ? 'Студия' : 'Studio') : `${lot.rooms.replace('-room', '')}-комн.`} •{' '}
-            {floorLabel}
+            {lot.developer || 'Застройщик'}
+            {(lot.areaM2 || (lot as any).area) ? ` • ${lot.areaM2 || (lot as any).area} м²` : ''}
+            {lot.rooms ? ` • ${lot.rooms === 'studio' ? (language === 'ru' ? 'Студия' : 'Studio') : `${lot.rooms.replace('-room', '')}-комн.`}` : ''}
+            {floorLabel ? ` • ${floorLabel}` : ''}
           </p>
 
           {primaryMetro && (

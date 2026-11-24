@@ -265,7 +265,9 @@ export const LotDetailsPage: React.FC = () => {
   const dduPricePerM2 = Math.round(dduPrice / lotArea);
   const devPricePerM2 = Math.round(todayDevPrice / lotArea);
   const savingsPerM2 = Math.max(0, devPricePerM2 - dduPricePerM2);
-  const totalFirstPaymentDeal = cashPaid + commission;
+  const isConsentPaidByBuyer = lot.developerConsentPolicy === 'paid_by_buyer';
+  const consentFee = isConsentPaidByBuyer ? Number(lot.developerConsentFeeRub || 0) : 0;
+  const totalFirstPaymentDeal = cashPaid + commission + consentFee;
   const favorited = isFavorite(lot.lotCode);
   const lotStatus = lot.status || 'available';
 
@@ -433,7 +435,7 @@ export const LotDetailsPage: React.FC = () => {
 
               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>42 ПУНКТА ПРОВЕРКИ</span>
+                <span>5 РАЗДЕЛОВ ПРАВОВОГО АУДИТА</span>
               </span>
 
               {lot.isUrgentExit && lotStatus === 'available' && (
@@ -693,7 +695,7 @@ export const LotDetailsPage: React.FC = () => {
 
             {/* Phase 5B Requirement: Safe Bank Settlement Assistant & Calculator */}
             <BankSettlementAssistant
-              dealPriceRub={lot.dduContractPrice || 10000000}
+              dealPriceRub={lot.cashPaidBySeller || lot.sellerReturnRub || 0}
               dealTrack={lot.dealTrack}
               className="my-2"
             />
@@ -1075,6 +1077,29 @@ export const LotDetailsPage: React.FC = () => {
                 <span className="text-[10px] text-slate-400 block italic">
                   * Сервисный сбор оплачивается строго после регистрации уступки в Росреестре.
                 </span>
+
+                {/* Developer consent fee display */}
+                {isConsentPaidByBuyer ? (
+                  <div className="space-y-0.5 pt-1">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Согласие застройщика на уступку:</span>
+                      <span className="font-semibold text-slate-900">{formatRubles(lot.developerConsentFeeRub || 0)}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block italic">
+                      * Оплачивается покупателем по установленному регламенту застройщика.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-0.5 pt-1">
+                    <div className="flex justify-between text-emerald-800 font-bold bg-emerald-50/70 px-2.5 py-1.5 rounded-lg border border-emerald-200/60">
+                      <span>Согласие застройщика на уступку:</span>
+                      <span className="text-emerald-700 font-extrabold">Включено в сбор (0 ₽ доплат)</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 block italic px-1">
+                      * Если по регламенту застройщика сбор вносится покупателем напрямую, эта сумма полностью вычитается из сервисного сбора DomExit.
+                    </span>
+                  </div>
+                )}
 
                 <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-xl flex justify-between items-center font-bold text-xs mt-3">
                   <span>Итого первый взнос на сделке:</span>

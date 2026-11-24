@@ -15,7 +15,7 @@ import { json, parseBody, getClientIp } from '../lib/http.js';
 import { getYdbClient } from '../lib/ydbClient.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
-import { memoryCache } from '../lib/memoryCache.js';
+import { memoryCache, appCache } from '../lib/memoryCache.js';
 import { recordJournalEvent } from '../lib/journal.js';
 import { callTelegramApi, escapeHtml } from '../lib/telegramClient.js';
 import { findTelegramBindingByUser } from '../lib/telegramWorkflow.js';
@@ -785,6 +785,46 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         payload: { priority1AppId: p1Id, reserve2AppId: r2Id, reserve3AppId: r3Id },
       });
 
+      // Atomically sync winning buyer to Lot and Deal
+      if (priority1App) {
+        try {
+          const allLots = await ydb.scanAll<any>('lots');
+          const targetLot = (allLots || []).find((l: any) =>
+            (l.lotCode && String(l.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
+            (l.id && String(l.id).trim().toUpperCase() === lotCode.toUpperCase())
+          );
+          if (targetLot) {
+            targetLot.buyerUserId = priority1App.userId;
+            targetLot.buyerName = priority1App.userName || targetLot.buyerName || 'Покупатель';
+            targetLot.status = 'in_deal';
+            targetLot.currentStage = 4;
+            targetLot.updatedAt = now.toISOString();
+            await ydb.putItem('lots', targetLot);
+            memoryCache.invalidate('lots');
+            appCache.invalidatePrefix('lots');
+            appCache.invalidatePrefix('lot:');
+
+            const allDeals = await ydb.scanAll<any>('deals');
+            let targetDeal = (allDeals || []).find((d: any) =>
+              (d.lotCode && String(d.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
+              (d.lotId && String(d.lotId).trim().toUpperCase() === String(targetLot.id).toUpperCase())
+            );
+            if (targetDeal) {
+              targetDeal.buyerUserId = priority1App.userId;
+              targetDeal.buyerName = priority1App.userName || targetDeal.buyerName || 'Покупатель';
+              targetDeal.stage = 'closing_escrow';
+              targetDeal.status = 'in_deal';
+              targetDeal.updatedAt = now.toISOString();
+              await ydb.putItem('deals', targetDeal);
+              memoryCache.invalidate('deals');
+              appCache.invalidatePrefix('deals');
+            }
+          }
+        } catch (lotSyncErr) {
+          logger.warn('Failed to sync lot and deal for priority1 winner', { meta: { error: lotSyncErr, lotCode } });
+        }
+      }
+
       return json(event, 200, {
         ok: true,
         lotCode,
@@ -876,6 +916,64 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
           promotedAppId: reserve2?.id,
         },
       });
+
+      // Atomically sync promoted winner (or revert) to Lot and Deal
+      try {
+        const allLots = await ydb.scanAll<any>('lots');
+        const targetLot = (allLots || []).find((l: any) =>
+          (l.lotCode && String(l.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
+          (l.id && String(l.id).trim().toUpperCase() === lotCode.toUpperCase())
+        );
+        const allDeals = await ydb.scanAll<any>('deals');
+        let targetDeal = (allDeals || []).find((d: any) =>
+          (d.lotCode && String(d.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
+          (targetLot && d.lotId && String(d.lotId).trim().toUpperCase() === String(targetLot.id).toUpperCase())
+        );
+
+        if (reserve2) {
+          if (targetLot) {
+            targetLot.buyerUserId = reserve2.userId;
+            targetLot.buyerName = reserve2.userName || targetLot.buyerName || 'Покупатель';
+            targetLot.status = 'in_deal';
+            targetLot.currentStage = 4;
+            targetLot.updatedAt = now.toISOString();
+            await ydb.putItem('lots', targetLot);
+          }
+          if (targetDeal) {
+            targetDeal.buyerUserId = reserve2.userId;
+            targetDeal.buyerName = reserve2.userName || targetDeal.buyerName || 'Покупатель';
+            targetDeal.stage = 'closing_escrow';
+            targetDeal.status = 'in_deal';
+            targetDeal.updatedAt = now.toISOString();
+            await ydb.putItem('deals', targetDeal);
+          }
+        } else {
+          // No reserves left - revert lot to available Stage 3
+          if (targetLot) {
+            targetLot.buyerUserId = null;
+            targetLot.buyerName = null;
+            targetLot.status = 'available';
+            targetLot.currentStage = 3;
+            targetLot.updatedAt = now.toISOString();
+            await ydb.putItem('lots', targetLot);
+          }
+          if (targetDeal) {
+            targetDeal.buyerUserId = null;
+            targetDeal.buyerName = null;
+            targetDeal.stage = 'buyer_matching';
+            targetDeal.status = 'active';
+            targetDeal.updatedAt = now.toISOString();
+            await ydb.putItem('deals', targetDeal);
+          }
+        }
+        memoryCache.invalidate('lots');
+        memoryCache.invalidate('deals');
+        appCache.invalidatePrefix('lots');
+        appCache.invalidatePrefix('lot:');
+        appCache.invalidatePrefix('deals');
+      } catch (syncErr) {
+        logger.warn('Failed to sync lot and deal on promote-next', { meta: { error: syncErr, lotCode } });
+      }
 
       return json(event, 200, {
         ok: true,
@@ -1123,7 +1221,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
   // =========================================================================
   // 11. POST /api/matching/run-sla-sweep (Staff Only: Manual SLA Sweep Trigger)
   // =========================================================================
-  if (subPath === '/run-sla-sweep' && method === 'POST') {
+  if ((subPath === '/run-sla-sweep' || subPath === '/sla-sweep') && method === 'POST') {
     if (!isStaff) {
       return json(event, 403, { error: 'Запуск SLA Sweeper разрешен только сотрудникам' });
     }

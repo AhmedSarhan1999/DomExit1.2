@@ -109,7 +109,7 @@ export const HowItWorksPage: React.FC = () => {
                 {language === 'ru' ? 'Полный аудит лота' : 'Full Lot Audit'}
               </span>
               <span className="text-[11px] text-slate-500 mt-0.5 block">
-                {language === 'ru' ? 'Чек-лист 42 параметра' : '42-parameter checklist'}
+                {language === 'ru' ? '5 разделов правового аудита' : '5 legal audit sections'}
               </span>
             </div>
           </div>
@@ -292,8 +292,8 @@ export const HowItWorksPage: React.FC = () => {
                     </h4>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
                       {language === 'ru'
-                        ? 'Изучите паспорт лота: 42 параметра проверки, антибанкротный индекс продавца 98/100, справки об отсутствии обременений.'
-                        : 'Review 42-point checklist, anti-bankruptcy score 98/100, and debt clearance.'}
+                        ? 'Изучите паспорт лота: 5 ключевых разделов правового аудита (214-ФЗ / 127-ФЗ), антибанкротный индекс чистоты, справки об отсутствии обременений.'
+                        : 'Review 5 legal audit sections (214-FZ / 127-FZ), anti-bankruptcy purity index, and debt clearance.'}
                     </p>
                   </div>
                 </div>

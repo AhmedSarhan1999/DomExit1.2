@@ -314,6 +314,21 @@ export class LotsRepository {
       isPublished: true,
       currentStage: 3,
       publishedAt: new Date().toISOString(),
+      dropConfig: lot.dropConfig || {
+        mode: 'staged_drop',
+        launchedAt: new Date().toISOString(),
+        launchedBy: operatorName,
+        goldExclusiveHours: 0,
+        goldExclusiveUntil: new Date().toISOString(),
+        windowHours: 48,
+        closesAt: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+        maxApplicationsCap: 5,
+        currentValidApplications: 0,
+        waveStatus: 'silver_wave',
+        matchedGoldCount: 0,
+        matchedSilverCount: 0,
+        reDropCount: 1,
+      },
     };
     await DatabaseGateway.save<Lot>(COLLECTION, updated);
 
@@ -481,10 +496,10 @@ export class LotsRepository {
     if (!lot) return null;
 
     lot.isVerified = true;
-    lot.isPublished = true;
-    lot.approvalStatus = 'approved';
-    lot.status = lot.status === 'closed' ? 'closed' : lot.status === 'processing' ? 'processing' : 'available';
-    lot.currentStage = 3;
+    lot.isPublished = false;
+    lot.approvalStatus = 'approved_for_packaging';
+    lot.status = 'draft';
+    lot.currentStage = 2;
     if (customAntiBankruptcyIndex !== undefined) {
       lot.legalPassport.antiBankruptcyIndex = customAntiBankruptcyIndex;
     }
@@ -503,11 +518,19 @@ export class LotsRepository {
       timestamp: new Date().toISOString(),
       curatorName,
       action: 'Утвержден правовой аудит — Выдан штамп «Документы проверены»',
-      notes: `Итоговый индекс юридической чистоты: ${lot.legalPassport.antiBankruptcyIndex}%. 42 параметра соответствуют стандарту 214-ФЗ. Лот допущен к открытому матчмейкингу.`,
+      notes: `Итоговый индекс юридической чистоты: ${lot.legalPassport.antiBankruptcyIndex}%. 5 ключевых разделов правового аудита соответствуют стандарту 214-ФЗ / 127-ФЗ. Лот передан на этап упаковки (Этап 2).`,
     });
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
     this.invalidateLotCache(lot.lotCode);
+
+    // Synchronize linked deal to packaging stage
+    try {
+      const { DealsRepository } = await import('./DealsRepository');
+      await DealsRepository.updateStage(lot.lotCode, 'packaging');
+    } catch (dealErr) {
+      console.warn('[LotsRepository] Non-fatal deal stage sync on legal approval:', dealErr);
+    }
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,

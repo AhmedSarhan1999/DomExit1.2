@@ -85,7 +85,7 @@ export const VerifyCertificatePage: React.FC = () => {
 
   const axes = resolveLotLegalAxes(lot);
   const verifiedSafeCount = axes.filter((a) => a.status === 'verified_safe').length;
-  const curatorName = lot.assignedEmployeeName || lot.curator?.name || 'Алексей Смирнов (Ведущий юрист-куратор)';
+  const curatorName = lot.assignedEmployeeName || lot.curator?.name || 'Юридический департамент DomExit';
   const lastUpdatedFormatted = (() => {
     const raw = lot.publishedAt || new Date().toISOString();
     const d = new Date(raw);

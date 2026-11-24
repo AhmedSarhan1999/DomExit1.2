@@ -521,6 +521,18 @@ export const apiClient = {
         body: JSON.stringify(params),
       }),
 
+    runSlaSweep: (options?: { dryRun?: boolean }) =>
+      request<{
+        ok: boolean;
+        scannedLotsCount: number;
+        promotedCount: number;
+        penalizedCount: number;
+        results: any[];
+      }>('/api/matching/run-sla-sweep', {
+        method: 'POST',
+        body: JSON.stringify(options || {}),
+      }),
+
     getDemandRadar: (params?: { city?: string; maxBudget?: number; dealTrack?: string }) => {
       const sp = new URLSearchParams();
       if (params?.city) sp.set('city', params.city);

@@ -74,7 +74,7 @@ export const CuratorEmployeeView: React.FC<CuratorEmployeeViewProps> = ({
               <span>Объекты в вашей непосредственной ответственности ({employeeLots.length})</span>
             </h3>
             <p className="text-xs text-slate-500">
-              Управляйте упаковкой объектов, юридическим аудитом (42 параметра) и отбором покупателей.
+              Управляйте упаковкой объектов, правовым аудитом (5 ключевых разделов 214-ФЗ / 127-ФЗ) и отбором покупателей.
             </p>
           </div>
         </div>

@@ -273,7 +273,7 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               {[
                 { num: 1, title: '1. Оценка ДДУ', sub: '100% возврат' },
-                { num: 2, title: '2. Проверка', sub: '42 параметра' },
+                { num: 2, title: '2. Проверка', sub: '5 разделов 214-ФЗ' },
                 { num: 3, title: '3. Упаковка', sub: 'Публикация' },
                 { num: 4, title: '4. Подбор', sub: 'Матчмейкинг' },
                 { num: 5, title: '5. Выплата', sub: 'Аккредитив банка' },

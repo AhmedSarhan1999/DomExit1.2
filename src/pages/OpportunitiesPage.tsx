@@ -309,8 +309,8 @@ export const OpportunitiesPage: React.FC = () => {
               </h1>
               <p className="text-xs sm:text-sm text-slate-600">
                 {language === 'ru'
-                  ? 'Каждый лот прошел комплексную проверку по 42 параметрам. Покупка по цене старого договора ДДУ с защитой персональных данных.'
-                  : 'Every property vetted by 42 parameters. Buy at original DDU contract price with privacy protection.'}
+                  ? 'Каждый лот прошел комплексный правовой аудит (5 ключевых разделов 214-ФЗ / 127-ФЗ). Покупка по цене старого договора ДДУ с защитой персональных данных.'
+                  : 'Every property vetted across 5 key legal audit sections (214-FZ / 127-FZ). Buy at original DDU contract price with privacy protection.'}
               </p>
             </div>
           </div>

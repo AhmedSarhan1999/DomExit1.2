@@ -35,6 +35,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
   const [totalApplications, setTotalApplications] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [isSweeping, setIsSweeping] = useState<boolean>(false);
 
   // Drop configuration parameters (Default 0: open to all clients immediately)
   const [goldExclusiveHours, setGoldExclusiveHours] = useState<number>(0);
@@ -155,6 +156,22 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
     }
   };
 
+  const handleRunSlaSweep = async () => {
+    setIsSweeping(true);
+    try {
+      const res = await apiClient.matching.runSlaSweep();
+      if (res.ok) {
+        onShowToast?.(`SLA Sweeper выполнен: проверено лотов: ${res.scannedLotsCount}, продвинуто: ${res.promotedCount}, штрафов: ${res.penalizedCount}`);
+        loadQueue();
+        onLotUpdated?.();
+      }
+    } catch (err: any) {
+      onShowWarning?.(err.message || 'Ошибка запуска SLA Sweeper');
+    } finally {
+      setIsSweeping(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Staged Drop Control Panel */}
@@ -255,6 +272,31 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
             />
           </div>
         </div>
+      </div>
+
+      {/* Explanatory SLA & State Machine Ribbon */}
+      <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 text-xs space-y-2 border border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2 font-bold text-amber-400">
+            <Clock className="w-4 h-4 shrink-0" />
+            <span>РЕГЛАМЕНТ ТАКТОВОГО ДРОПА И SLA ОЧЕРЕДИ (Этап 3 → Этап 4)</span>
+          </div>
+          <button
+            type="button"
+            disabled={isSweeping}
+            onClick={handleRunSlaSweep}
+            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition-all flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto shrink-0"
+            title="Запустить принудительную проверку просроченных дедлайнов (SLA Sweeper)"
+          >
+            <RotateCcw className={`w-3 h-3 ${isSweeping ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
+            <span>{isSweeping ? 'Проверка SLA...' : 'Тест SLA Sweeper (Staging)'}</span>
+          </button>
+        </div>
+        <p className="text-slate-300 text-[11px] leading-relaxed">
+          • <strong>Кандидат №1</strong> получает эксклюзивное окно: <strong>24 часа</strong> на подтверждение просмотра объекта и <strong>48 часов</strong> на внесение обеспечения/депозита в эскроу. При фиксации №1 лот и связанная сделка автоматически переходят в статус <em>«Сделка / Эскроу» (Этап 4)</em>.
+          <br />
+          • Если Кандидат №1 срывает дедлайн или отказывается от сделки, SLA Sweeper автоматически понижает его рейтинг надежности (-15 баллов) и передает приоритет <strong>Резерву №2</strong>. Если резерва нет — лот возвращается на открытую витрину <em>(Этап 3)</em>.
+        </p>
       </div>
 
       {/* 2. Hybrid Queue Table */}

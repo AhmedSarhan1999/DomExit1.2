@@ -27,16 +27,14 @@ export const AdminCuratorProfilePage: React.FC = () => {
   const { user, updateUserProfile, updateUserPassword } = useAuth();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
-  const [name, setName] = useState<string>('Алексей Смирнов');
-  const [role, setRole] = useState<string>('Ведущий юрист по переуступкам и эскроу-расчетам');
-  const [phone, setPhone] = useState<string>('+7 (812) 409-32-11');
-  const [telegram, setTelegram] = useState<string>('@domexit_smirnov');
-  const [maxProfile, setMaxProfile] = useState<string>('+7 (812) 409-32-11');
-  const [photoUrl, setPhotoUrl] = useState<string>(
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
-  );
+  const [name, setName] = useState<string>(user?.name || 'Куратор DomExit');
+  const [role, setRole] = useState<string>('Куратор сопровождения сделок DomExit');
+  const [phone, setPhone] = useState<string>(user?.phone || '+7 (812) 409-00-00');
+  const [telegram, setTelegram] = useState<string>(user?.telegram || '@domexit_official');
+  const [maxProfile, setMaxProfile] = useState<string>(user?.phone || '+7 (812) 409-00-00');
+  const [photoUrl, setPhotoUrl] = useState<string>('');
   const [bio, setBio] = useState<string>(
-    '11 лет опыта в сопровождении сделок с недвижимостью, аккредитивам Сбербанка и ВТБ. Провел более 320 успешных уступок прав требований без судебных рисков.'
+    'Сопровождение сделок по переуступкам прав по 214-ФЗ и аккредитивным расчетам без скрытых рисков.'
   );
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -55,17 +53,19 @@ export const AdminCuratorProfilePage: React.FC = () => {
 
   useEffect(() => {
     async function load() {
-      const empId = user?.assignedEmployeeId || 'emp-1';
-      const emp = await EmployeesRepository.getById(empId);
-      if (emp) {
-        setEmployee(emp);
-        setName(emp.name);
-        setRole(emp.role);
-        setPhone(formatRussianPhoneInput(emp.phone));
-        setTelegram(emp.telegram);
-        setMaxProfile(emp.maxProfile || emp.whatsapp || emp.phone);
-        if (emp.photoUrl) setPhotoUrl(emp.photoUrl);
-        if (emp.bio) setBio(emp.bio);
+      const empId = user?.assignedEmployeeId || user?.id || '';
+      if (empId) {
+        const emp = await EmployeesRepository.getById(empId);
+        if (emp) {
+          setEmployee(emp);
+          setName(emp.name);
+          setRole(emp.role);
+          setPhone(formatRussianPhoneInput(emp.phone));
+          setTelegram(emp.telegram);
+          setMaxProfile(emp.maxProfile || emp.whatsapp || emp.phone);
+          if (emp.photoUrl) setPhotoUrl(emp.photoUrl);
+          if (emp.bio) setBio(emp.bio);
+        }
       }
     }
     load();
@@ -82,11 +82,11 @@ export const AdminCuratorProfilePage: React.FC = () => {
 
     setIsSaving(true);
 
-    const empId = employee?.id || 'emp-1';
+    const empId = employee?.id || user?.assignedEmployeeId || user?.id || `emp-${Date.now()}`;
     const updated: Employee = {
       id: empId,
       name: name.trim(),
-      email: employee?.email || 'smirnov@domexit.ru',
+      email: employee?.email || user?.email || 'curator@domexit.ru',
       role: role.trim(),
       phone,
       telegram: telegram.startsWith('@') ? telegram.trim() : `@${telegram.trim()}`,

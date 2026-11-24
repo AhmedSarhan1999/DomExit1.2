@@ -93,10 +93,14 @@ export interface Lot {
   // Financial Truth Engine variables
   dduContractPrice: number; // e.g. 10 972 000 ₽
   developerConsentFeeRub?: number; // Плата застройщика за согласование уступки
+  developerConsentPolicy?: 'included_in_platform_fee' | 'paid_by_buyer'; // Включено в сбор платформы 2.5% или оплачивается покупателем
   contractTemplateRequirement?: 'developer_template' | 'domexit_template'; // Требование к шаблону договора
   cashPaidBySeller: number; // e.g. 2 485 230 ₽ (what seller gets now: 100% cash, 0% commission)
+  sellerReturnRub?: number;
   remainingInstallmentDebt: number; // e.g. 8 486 770 ₽ (transfers to buyer)
   todayDeveloperPrice: number; // e.g. 14 200 000 ₽
+  discountPercent?: number;
+  discountRub?: number;
   installmentQuarterlyPayment: number; // e.g. 210 779 ₽ / квартал
   serviceCommissionRate: number; // 2.5%
   serviceCommissionRub: number; // 274 300 ₽ (paid strictly by buyer after Rosreestr)
@@ -121,7 +125,7 @@ export interface Lot {
   tags: string[];
   status?: 'available' | 'processing' | 'in_deal' | 'closed' | 'draft' | 'hidden' | 'blocked'; // Status in Catalog
   currentStage?: number; // Current deal stage 1-5
-  approvalStatus?: 'approved' | 'approved_for_packaging' | 'pending_owner_approval' | 'rejected';
+  approvalStatus?: 'approved' | 'approved_for_packaging' | 'pending_legal_audit' | 'pending_owner_approval' | 'rejected';
   rejectionReason?: string;
   blockedReason?: string;
   moderationReason?: string;
@@ -144,6 +148,10 @@ export interface Lot {
   sellerUploadedPhotos?: string[];
   sellerSubmittedImages?: string[];
   approvedGalleryImages?: string[];
+  curatorApprovedImages?: string[];
+  photos?: string[];
+  floorRange?: string;
+  legalReviewedByName?: string;
 
   // Additional documents requested by legal curator
   additionalDocsRequested?: {
@@ -246,6 +254,7 @@ export interface DocumentMetadata {
   id: string;
   bucket: string; // e.g. 'domexit-yandex-s3-152fz'
   objectKey: string; // S3-compatible key e.g. 'sellers/DEX-784105/U-10566/ddu_contract_1730.pdf'
+  key?: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
@@ -342,6 +351,7 @@ export interface LegalAuditCheckpoint {
   status: 'clean' | 'attention' | 'critical';
   notes: string;
   proofDocUrl?: string;
+  proofDocKey?: string;
   proofDocName?: string;
   evaluated: boolean;
   verifiedAt?: string;

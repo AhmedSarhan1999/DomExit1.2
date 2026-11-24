@@ -50,9 +50,9 @@ export const AdminClosingPage: React.FC = () => {
   const [rosreestrStampDoc, setRosreestrStampDoc] = useState<string>('');
 
   const isEmployee = user?.activeRole === 'employee';
-  const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
+  const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
   const operatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор)' : 'Ahmed Abdallah (Владелец / CEO)');
+    user?.name || (isEmployee ? 'Куратор DomExit' : 'Ahmed Abdallah (Владелец / CEO)');
 
   const loadDeal = async () => {
     const pool = isEmployee

@@ -78,13 +78,13 @@ const REGISTRIES: FastRegistry[] = [
     category: 'property',
   },
   {
-    id: 'reestr_zalogov',
-    name: 'Реестр уведомлений о залоге движимого имущества (ФНП)',
-    shortLabel: 'Реестр залогов ФНП',
-    url: 'https://www.reestr-zalogov.ru/',
-    description: 'Проверка обременений долей, прав требования и залогов в Федеральной нотариальной палате',
-    recommendedParam: 'inn',
-    category: 'property',
+    id: 'sudrf',
+    name: 'ГАС «Правосудие» (Суды общей юрисдикции РФ)',
+    shortLabel: 'ГАС Правосудие / СОЮ',
+    url: 'https://bsr.sudrf.ru/bigs/portal.html',
+    description: 'Поиск гражданских исков, имущественных споров и семейных разбирательств в районных судах РФ',
+    recommendedParam: 'name',
+    category: 'seller',
   },
 ];
 
@@ -112,7 +112,7 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
   const sellerInn = (lot.sellerInn || '').trim() || '—';
   const sellerFullName = lot.ownerDossier?.fullNameMasked || 'Правообладатель';
   const developerName = lot.developer || 'Застройщик';
-  const cadastralNumber = lot.cadastralNumber || '78:14:0005520:1042';
+  const cadastralNumber = lot.cadastralNumber || 'Не указан (запросить из ДДУ)';
 
   const copyToClipboard = (text: string, key: string) => {
     if (!text || text === '—') return;

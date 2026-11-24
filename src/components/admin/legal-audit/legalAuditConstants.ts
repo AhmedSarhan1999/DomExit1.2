@@ -10,8 +10,8 @@ export const INITIAL_CHECKPOINTS: LegalAuditCheckpoint[] = [
     score: 10,
     status: 'clean',
     notes: 'Сведений о банкротстве продавца или заявлениях по ст. 213.4 127-ФЗ в картотеке не зафиксировано.',
-    proofDocName: 'Выписка_ЕФРСБ_Федресурс.pdf',
-    evaluated: true,
+    proofDocName: '',
+    evaluated: false,
   },
   {
     id: 'fssp',
@@ -22,8 +22,8 @@ export const INITIAL_CHECKPOINTS: LegalAuditCheckpoint[] = [
     score: 10,
     status: 'clean',
     notes: 'Открытых исполнительных производств, долгов по кредитам и запретов на регистрационные действия в Росреестре нет.',
-    proofDocName: 'Справка_ФССП_отсутствие_задолженности.pdf',
-    evaluated: true,
+    proofDocName: '',
+    evaluated: false,
   },
   {
     id: 'courts',
@@ -34,8 +34,8 @@ export const INITIAL_CHECKPOINTS: LegalAuditCheckpoint[] = [
     score: 10,
     status: 'clean',
     notes: 'Судебных споров, исков о разделе совместно нажитого имущества супругов и арбитражных споров не выявлено.',
-    proofDocName: 'Отчет_ГАС_Правосудие_Арбитраж.pdf',
-    evaluated: true,
+    proofDocName: '',
+    evaluated: false,
   },
   {
     id: 'ddu_sfr',
@@ -46,7 +46,7 @@ export const INITIAL_CHECKPOINTS: LegalAuditCheckpoint[] = [
     score: 10,
     status: 'clean',
     notes: 'Оплата ДДУ подтверждена справкой девелопера. Справка СФР подтверждает отсутствие средств маткапитала.',
-    proofDocName: 'Справка_СФР_и_Застройщик_214ФЗ.pdf',
-    evaluated: true,
+    proofDocName: '',
+    evaluated: false,
   },
 ];

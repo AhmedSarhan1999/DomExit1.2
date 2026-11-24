@@ -12,6 +12,7 @@ interface InspectorModalProps {
   editNotes: string;
   setEditNotes: (notes: string) => void;
   editProofName: string;
+  editProofUrl?: string;
   isUploadingProof: boolean;
   onUploadProofFile: () => void;
   onClose: () => void;
@@ -27,6 +28,7 @@ export const InspectorModal: React.FC<InspectorModalProps> = ({
   editNotes,
   setEditNotes,
   editProofName,
+  editProofUrl,
   isUploadingProof,
   onUploadProofFile,
   onClose,
@@ -81,7 +83,13 @@ export const InspectorModal: React.FC<InspectorModalProps> = ({
               <label className="block text-xs font-bold text-slate-800 mb-1">Статус заключения:</label>
               <select
                 value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value as any)}
+                onChange={(e) => {
+                  const s = e.target.value as 'clean' | 'attention' | 'critical';
+                  setEditStatus(s);
+                  if (s === 'clean' && editScore < 8) setEditScore(10);
+                  else if (s === 'attention' && (editScore < 5 || editScore > 7)) setEditScore(6);
+                  else if (s === 'critical' && editScore >= 5) setEditScore(3);
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
               >
                 <option value="clean">ЧИСТО (8-10 баллов)</option>
@@ -92,7 +100,19 @@ export const InspectorModal: React.FC<InspectorModalProps> = ({
           </div>
 
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-800">Скан подтверждения:</label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-800">Скан подтверждения:</label>
+              {editProofUrl && (
+                <a
+                  href={editProofUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold text-emerald-700 hover:text-emerald-800 underline flex items-center space-x-1"
+                >
+                  <span>Открыть скан ↗</span>
+                </a>
+              )}
+            </div>
             <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl flex items-center justify-between">
               <span className="text-xs text-slate-700 truncate">{editProofName || 'Файл не выбран'}</span>
               <button
@@ -270,6 +290,7 @@ export interface LegalAuditModalsContainerProps {
   editNotes: string;
   setEditNotes: (notes: string) => void;
   editProofName: string;
+  editProofUrl?: string;
   isUploadingProof: boolean;
   onUploadProofFile: () => void;
   onCloseInspector: () => void;
@@ -298,6 +319,7 @@ export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps>
   editNotes,
   setEditNotes,
   editProofName,
+  editProofUrl,
   isUploadingProof,
   onUploadProofFile,
   onCloseInspector,
@@ -328,6 +350,7 @@ export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps>
           editNotes={editNotes}
           setEditNotes={setEditNotes}
           editProofName={editProofName}
+          editProofUrl={editProofUrl}
           isUploadingProof={isUploadingProof}
           onUploadProofFile={onUploadProofFile}
           onClose={onCloseInspector}

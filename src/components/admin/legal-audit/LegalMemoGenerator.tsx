@@ -9,16 +9,18 @@ interface LegalMemoGeneratorProps {
 
 export const LegalMemoGenerator: React.FC<LegalMemoGeneratorProps> = ({ lot }) => {
   const [includePlenum63, setIncludePlenum63] = useState<boolean>(true);
+  const [penaltyPercent, setPenaltyPercent] = useState<number>(15);
   const [memoCopied, setMemoCopied] = useState<boolean>(false);
 
   const getMemoText = () => {
     const cashStr = formatRubles(lot?.cashPaidBySeller || 0);
     const dduNum = lot?.ownerDossier?.dduNumber || `№ ДДУ-${lot?.lotCode || '—'}`;
     const devName = lot?.developer || 'Застройщик';
-    const penaltyStr = formatRubles(Math.round((lot?.dduContractPrice || 0) * 0.15));
+    const penaltyAmount = Math.round((lot?.dduContractPrice || 0) * (penaltyPercent / 100));
+    const penaltyStr = formatRubles(penaltyAmount);
 
     let text = `Цена сделки в размере ${cashStr} строго соответствует сумме фактически внесенных Цедентом денежных средств по договору ${dduNum}.\n\n`;
-    text += `Стороны констатируют, что установление данной цены экономически обусловлено предотвращением финансовых убытков Цедента в виде контрактного штрафа Застройщика (${devName}) в размере 15% (${penaltyStr}) при одностороннем отказе от договора. В силу ст. 302 ГК РФ и ст. 61.2 ФЗ-127 Покупатель признается добросовестным приобретателем, действовавшим в стандартных условиях делового оборота без цели причинения вреда кредиторам.`;
+    text += `Стороны констатируют, что установление данной цены экономически обусловлено предотвращением финансовых убытков Цедента в виде контрактного штрафа Застройщика (${devName}) в размере ${penaltyPercent}% (${penaltyStr}) при одностороннем отказе от договора. В силу ст. 302 ГК РФ и ст. 61.2 ФЗ-127 Покупатель признается добросовестным приобретателем, действовавшим в стандартных условиях делового оборота без цели причинения вреда кредиторам.`;
 
     if (includePlenum63) {
       text += `\n\nПрименена правовая позиция Постановления Пленума ВАС РФ № 63: «Экономическая целесообразность предотвращения штрафных санкций подтверждена документально».`;
@@ -41,14 +43,28 @@ export const LegalMemoGenerator: React.FC<LegalMemoGeneratorProps> = ({ lot }) =
           </h3>
           <span className="text-xs text-emerald-700">Защита сделки по ст. 302 ГК РФ и ст. 61.2 ФЗ-127</span>
         </div>
-        <button
-          type="button"
-          onClick={handleCopyMemo}
-          className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-        >
-          <Copy className="w-3.5 h-3.5" />
-          <span>{memoCopied ? 'Скопировано!' : 'Скопировать в договор'}</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs">
+            <span className="text-slate-600 font-medium">Штраф застройщика:</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={penaltyPercent}
+              onChange={(e) => setPenaltyPercent(Math.max(1, Math.min(50, Number(e.target.value) || 0)))}
+              className="w-12 px-1.5 py-0.5 text-center font-bold bg-white border border-slate-300 rounded text-slate-900 focus:outline-emerald-500"
+            />
+            <span className="font-bold text-slate-700">%</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyMemo}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>{memoCopied ? 'Скопировано!' : 'Скопировать в договор'}</span>
+          </button>
+        </div>
       </div>
       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 whitespace-pre-line leading-relaxed">
         {getMemoText()}

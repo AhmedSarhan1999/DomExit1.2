@@ -183,8 +183,8 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                       linkedDeal?.assignedEmployeeName ||
                       linkedDeal?.curatorName ||
                       curatorData?.name ||
-                      'Алексей Смирнов';
-                    const curatorPhone = curatorData?.phone || '+7 (921) 456-78-90';
+                      'Куратор DomExit';
+                    const curatorPhone = curatorData?.phone || '+7 (812) 409-00-00';
                     const curatorTelegram = curatorData?.telegram || '@domexit_official';
                     const curatorMax = curatorData?.maxProfile || curatorData?.whatsapp;
                     const curatorPhoto = curatorData?.photoUrl;

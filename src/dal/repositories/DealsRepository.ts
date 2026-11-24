@@ -96,7 +96,7 @@ export class DealsRepository {
   static async handoverToBank(
     dealId: string,
     curatorName: string,
-    bankName: string = 'ПАО Сбербанк'
+    bankName: string = ''
   ): Promise<DealTrack | null> {
     const deal = await this.getById(dealId);
     if (!deal) return null;
@@ -104,15 +104,13 @@ export class DealsRepository {
     deal.stage = 'closing_escrow';
     deal.escrowWorkflow = deal.escrowWorkflow || {
       step: 'bank_escrow_deposit',
-      bankName,
-      escrowAccountNumber: `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-${
-        bankName.includes('Сбер') ? 'СБЕР' : bankName.includes('Альфа') ? 'АЛЬФА' : 'ВТБ'
-      }`,
+      bankName: bankName || '',
+      escrowAccountNumber: '',
       depositedAmountRub: Math.round(deal.sellerReturnRub + deal.sellerReturnRub * 0.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
-    deal.escrowWorkflow.bankName = bankName;
+    deal.escrowWorkflow.bankName = bankName || deal.escrowWorkflow.bankName || '';
     deal.escrowWorkflow.step = 'bank_escrow_deposit';
     deal.escrowWorkflow.curatorHandoverAt = new Date().toISOString();
 
@@ -124,7 +122,7 @@ export class DealsRepository {
       operatorName: curatorName,
       operatorRole: 'curator',
       actionType: 'escrow_transferred_to_bank',
-      title: `Сделка передана в ${bankName} на открытие аккредитива`,
+      title: `Сделка передана в ${bankName || 'банк эскроу'} на открытие аккредитива`,
       description: `Куратор проверил пакет цессии и передал реквизиты в банковский шлюз.`,
     });
 
@@ -141,17 +139,18 @@ export class DealsRepository {
     const deal = await this.getById(dealId);
     if (!deal) return null;
 
-    const resolvedBank = bankName || deal.escrowWorkflow?.bankName || 'ПАО Сбербанк';
+    const resolvedBank = bankName || deal.escrowWorkflow?.bankName || '';
     deal.escrowWorkflow = deal.escrowWorkflow || {
       step: 'signing_photos',
       bankName: resolvedBank,
-      escrowAccountNumber: escrowAccount || `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-${resolvedBank.replace(/[^A-Za-zА-Яа-я0-9]/g, '').slice(0, 4).toUpperCase()}`,
+      escrowAccountNumber: escrowAccount || '',
       depositedAmountRub: amount || Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
     };
     deal.escrowWorkflow.step = 'signing_photos';
     deal.escrowWorkflow.depositConfirmedAt = new Date().toISOString();
+    if (escrowAccount) deal.escrowWorkflow.escrowAccountNumber = escrowAccount;
     if (bankName) deal.escrowWorkflow.bankName = bankName;
     if (escrowAccount) deal.escrowWorkflow.escrowAccountNumber = escrowAccount;
     if (amount) deal.escrowWorkflow.depositedAmountRub = amount;
@@ -183,8 +182,8 @@ export class DealsRepository {
 
     deal.escrowWorkflow = deal.escrowWorkflow || {
       step: 'bank_funds_release',
-      bankName: 'ПАО Сбербанк',
-      escrowAccountNumber: 'АК-78401/2026-СБЕР',
+      bankName: '',
+      escrowAccountNumber: '',
       depositedAmountRub: Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
@@ -215,8 +214,8 @@ export class DealsRepository {
 
     deal.escrowWorkflow = deal.escrowWorkflow || {
       step: 'deal_finalized',
-      bankName: 'ПАО Сбербанк',
-      escrowAccountNumber: 'АК-78401/2026-СБЕР',
+      bankName: '',
+      escrowAccountNumber: '',
       depositedAmountRub: Math.round(deal.sellerReturnRub * 1.025),
       signingProofPhotos: [],
       signingProofVideos: [],
@@ -336,9 +335,9 @@ export class DealsRepository {
       updatedDate: new Date().toISOString().split('T')[0],
       escrowWorkflow: deal.escrowWorkflow || {
         step: 'curator_review',
-        bankName: 'ПАО Сбербанк',
-        escrowAccountNumber: `АК-${Math.floor(10000 + Math.random() * 90000)}/2026-СБЕР`,
-        depositedAmountRub: Math.round((deal.sellerReturnRub || 2500000) * 1.025),
+        bankName: '',
+        escrowAccountNumber: '',
+        depositedAmountRub: Math.round((deal.sellerReturnRub || 0) * 1.025),
         signingProofPhotos: [],
         signingProofVideos: [],
       },

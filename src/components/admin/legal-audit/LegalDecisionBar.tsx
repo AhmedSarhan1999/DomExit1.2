@@ -1,7 +1,10 @@
 import React from 'react';
-import { Check } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Check, ArrowRight } from 'lucide-react';
+import { Lot } from '../../../types';
 
 interface LegalDecisionBarProps {
+  lot?: Lot | null;
   curatorName: string;
   onOpenRequestDocsModal: () => void;
   onOpenRejectModal: () => void;
@@ -9,11 +12,19 @@ interface LegalDecisionBarProps {
 }
 
 export const LegalDecisionBar: React.FC<LegalDecisionBarProps> = ({
+  lot,
   curatorName,
   onOpenRequestDocsModal,
   onOpenRejectModal,
   onApproveLegal,
 }) => {
+  const isApproved = Boolean(
+    lot?.isVerified ||
+    lot?.approvalStatus === 'approved_for_packaging' ||
+    lot?.approvalStatus === 'approved' ||
+    (lot?.currentStage && lot.currentStage >= 2)
+  );
+
   return (
     <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-sm">
       <div className="flex items-center space-x-3">
@@ -41,14 +52,25 @@ export const LegalDecisionBar: React.FC<LegalDecisionBarProps> = ({
         >
           ✕ Отклонить
         </button>
-        <button
-          type="button"
-          onClick={onApproveLegal}
-          className="px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center space-x-2 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          <Check className="w-4 h-4 stroke-[3]" />
-          <span>Утвердить: Выдать штамп</span>
-        </button>
+
+        {isApproved && lot?.lotCode ? (
+          <Link
+            to={`/admin/packaging/${lot.lotCode}`}
+            className="px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center space-x-2 transition-all cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            <span>Перейти к упаковке лота (Этап 2)</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onApproveLegal}
+            className="px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center space-x-2 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Check className="w-4 h-4 stroke-[3]" />
+            <span>Утвердить и передать в упаковку (Этап 2)</span>
+          </button>
+        )}
       </div>
     </div>
   );

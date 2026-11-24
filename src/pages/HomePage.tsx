@@ -236,7 +236,7 @@ export const HomePage: React.FC = () => {
               <div>
                 <h4 className="text-xs font-bold text-slate-900 uppercase">{t.statsBar.stage1}</h4>
                 <p className="text-[11px] text-slate-600 mt-0.5">
-                  {language === 'ru' ? '42 пункта проверки: ЕФРСБ, ФССП, застройщик' : '42 verification points: EFRSB, FSSP, Developer'}
+                  {language === 'ru' ? '5 разделов правового аудита: ЕФРСБ, ФССП, застройщик' : '5 legal audit sections: EFRSB, FSSP, Developer'}
                 </p>
               </div>
             </div>

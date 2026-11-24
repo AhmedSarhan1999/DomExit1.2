@@ -20,7 +20,7 @@ interface LegalAuditAxesSectionProps {
   onAxisStatusChange: (axisId: string, status: LegalAuditAxisStatus) => void;
   onAxisNotesChange: (axisId: string, notes: string) => void;
   onSaveAxis: (axisId: string) => void;
-  onApplyStandardVerdict: () => void;
+  onApplyStandardVerdict?: () => void;
   onUpdateSecondaryChecklist?: (checklist: SecondaryRiskChecklist) => void;
 }
 
@@ -87,15 +87,6 @@ export const LegalAuditAxesSection: React.FC<LegalAuditAxesSectionProps> = ({
             </p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onApplyStandardVerdict}
-          className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs self-start sm:self-auto shrink-0"
-        >
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>Применить стандартный вердикт ({axes.length} разделов)</span>
-        </button>
       </div>
 
       {/* Secondary Specific Checklist (Only shown for secondary_dkp) */}

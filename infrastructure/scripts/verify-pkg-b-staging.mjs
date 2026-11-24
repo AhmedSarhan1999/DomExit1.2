@@ -108,6 +108,7 @@ function createSignedJwt(payload, secret) {
 let testRequestId = null;
 let testBuyerUserId = null;
 let testBuyerEmail = null;
+let testCuratorUserId = null;
 let createdAuditLogIds = [];
 
 async function runTests() {
@@ -396,6 +397,7 @@ async function runTests() {
     console.log('\n[Step 14] Testing Staff Loophole Guard on direct tier update...');
     // Create an employee curator user in YDB to verify role guards with tokenVersion
     const curatorId = `usr-curator-${Date.now()}`;
+    testCuratorUserId = curatorId;
     const curatorEmail = `curator.${Date.now()}@domexit-staging.test`;
     await callDocApi('DynamoDB_20120810.PutItem', {
       TableName: 'users',
@@ -483,6 +485,13 @@ async function runTests() {
           Key: { id: { S: testBuyerUserId } },
         });
         console.log(`  ✓ Removed test buyer: ${testBuyerUserId}`);
+      }
+      if (testCuratorUserId) {
+        await callDocApi('DynamoDB_20120810.DeleteItem', {
+          TableName: 'users',
+          Key: { id: { S: testCuratorUserId } },
+        });
+        console.log(`  ✓ Removed test curator: ${testCuratorUserId}`);
       }
       for (const logId of createdAuditLogIds) {
         await callDocApi('DynamoDB_20120810.DeleteItem', {

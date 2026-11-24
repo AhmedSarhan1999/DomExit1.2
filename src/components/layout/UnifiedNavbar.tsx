@@ -57,8 +57,8 @@ export const UnifiedNavbar: React.FC = () => {
     {
       id: 'employee',
       title: language === 'ru' ? 'Сотрудник / Куратор' : 'Curator / Lawyer',
-      badge: '👨‍💼 Алексей С.',
-      subtitle: language === 'ru' ? 'Юр. аудит 42 параметра, упаковка, отбор' : 'Legal audit & matching',
+      badge: '👨‍💼 Staff',
+      subtitle: language === 'ru' ? 'Правовой аудит (5 разделов), упаковка, отбор' : 'Legal audit (5 sections) & matching',
       icon: '👨‍💼',
       targetPath: '/admin/dashboard',
     },

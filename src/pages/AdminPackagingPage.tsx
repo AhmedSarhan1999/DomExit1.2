@@ -80,6 +80,8 @@ export const AdminPackagingPage: React.FC = () => {
   const [debtToDev, setDebtToDev] = useState<number>(0);
   const [todayDevPrice, setTodayDevPrice] = useState<number>(0);
   const [developerConsentFeeRub, setDeveloperConsentFeeRub] = useState<number>(0);
+  const [developerConsentPolicy, setDeveloperConsentPolicy] = useState<'included_in_platform_fee' | 'paid_by_buyer'>('included_in_platform_fee');
+  const [escrowBank, setEscrowBank] = useState<string>('Сбербанк');
   const [contractTemplateRequirement, setContractTemplateRequirement] = useState<'developer_template' | 'domexit_template'>('developer_template');
   const [isNegotiable, setIsNegotiable] = useState<boolean>(false);
   const [sellerBanks, setSellerBanks] = useState<string[]>(DEFAULT_SETTLEMENT_BANKS);
@@ -90,9 +92,9 @@ export const AdminPackagingPage: React.FC = () => {
   const [coverImageUrl, setCoverImageUrl] = useState<string>('');
 
   const isEmployee = user?.activeRole === 'employee';
-  const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
+  const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
   const operatorName =
-    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор)' : 'Ahmed Abdallah (Владелец / CEO)');
+    user?.name || (isEmployee ? 'Куратор DomExit' : 'Ahmed Abdallah (Владелец / CEO)');
 
   const hydrateLotState = (data: Lot) => {
     setLot(data);
@@ -145,6 +147,8 @@ export const AdminPackagingPage: React.FC = () => {
     setDebtToDev(data.remainingInstallmentDebt || 0);
     setTodayDevPrice(data.todayDeveloperPrice || 0);
     setDeveloperConsentFeeRub(data.developerConsentFeeRub || 0);
+    setDeveloperConsentPolicy(data.developerConsentPolicy || 'included_in_platform_fee');
+    setEscrowBank(data.escrowBank || 'Сбербанк');
     setContractTemplateRequirement(data.contractTemplateRequirement || 'developer_template');
     setIsNegotiable(Boolean(data.isNegotiable || (data as any).is_negotiable));
     const banks = (data as any).seller_banks || data.sellerBanks;
@@ -367,6 +371,8 @@ export const AdminPackagingPage: React.FC = () => {
       todayDeveloperPrice: todayDevPrice,
       serviceCommissionRub: buyerFee,
       developerConsentFeeRub,
+      developerConsentPolicy,
+      escrowBank,
       contractTemplateRequirement,
       isNegotiable,
       is_negotiable: isNegotiable,
@@ -1086,49 +1092,112 @@ export const AdminPackagingPage: React.FC = () => {
                       </div>
                       {/* Curator Administrative Packaging Fields */}
                       <div className="pt-3 border-t border-emerald-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-slate-800 mb-1 font-bold">
-                            5. Плата застройщика за согласование уступки / перевод долга (₽):
-                          </label>
-                          <input
-                            type="number"
-                            step="5000"
-                            value={developerConsentFeeRub}
-                            onChange={(e) => setDeveloperConsentFeeRub(Number(e.target.value))}
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500"
-                          />
-                          <span className="text-[10px] text-slate-500 mt-1 block">
-                            Покрывается покупателем в рамках агентского сопровождения 2.5% (расчет через аккредитив).
-                          </span>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-slate-800 mb-1 font-bold">
+                              5. Плата застройщика за согласование уступки / перевод долга (₽):
+                            </label>
+                            <input
+                              type="number"
+                              step="5000"
+                              value={developerConsentFeeRub}
+                              onChange={(e) => setDeveloperConsentFeeRub(Number(e.target.value))}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-mono font-bold focus:border-emerald-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-800 mb-1 font-bold text-xs">
+                              Политика покрытия сбора застройщика:
+                            </label>
+                            <select
+                              value={developerConsentPolicy}
+                              onChange={(e) => setDeveloperConsentPolicy(e.target.value as any)}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold text-xs focus:border-emerald-500"
+                            >
+                              <option value="included_in_platform_fee">Включено в сбор платформы 2.5% (0 ₽ для покупателя)</option>
+                              <option value="paid_by_buyer">Оплачивается покупателем по тарифу застройщика</option>
+                            </select>
+                            <span className="text-[10px] text-slate-500 mt-1 block">
+                              {developerConsentPolicy === 'included_in_platform_fee'
+                                ? 'Для покупателя сбор равен 0 ₽ (DomExit компенсирует его из своей комиссии 2.5%).'
+                                : 'Покупатель оплачивает тариф застройщика напрямую сверх комиссии платформы.'}
+                            </span>
+                          </div>
                         </div>
 
-                        <div>
-                          <label className="block text-slate-800 mb-1 font-bold">
-                            6. Требование к договору уступки:
-                          </label>
-                          <select
-                            value={contractTemplateRequirement}
-                            onChange={(e) => setContractTemplateRequirement(e.target.value as any)}
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:border-emerald-500"
-                          >
-                            <option value="developer_template">Типовой шаблон застройщика (Обязательное условие ДДУ)</option>
-                            <option value="domexit_template">Типовой шаблон юристов DomExit</option>
-                          </select>
-                          <span className="text-[10px] text-slate-500 mt-1 block">
-                            Юридический отдел готовит проект договора по регламенту застройщика.
-                          </span>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-slate-800 mb-1 font-bold">
+                              6. Требование к договору уступки:
+                            </label>
+                            <select
+                              value={contractTemplateRequirement}
+                              onChange={(e) => setContractTemplateRequirement(e.target.value as any)}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold focus:border-emerald-500"
+                            >
+                              <option value="developer_template">Типовой шаблон застройщика (Обязательное условие ДДУ)</option>
+                              <option value="domexit_template">Типовой шаблон юристов DomExit</option>
+                            </select>
+                            <span className="text-[10px] text-slate-500 mt-1 block">
+                              Юридический отдел готовит проект договора по регламенту застройщика.
+                            </span>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-800 mb-1 font-bold text-xs">
+                              7. Банк эскроу-счета / расчетов:
+                            </label>
+                            <select
+                              value={escrowBank}
+                              onChange={(e) => setEscrowBank(e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold text-xs focus:border-emerald-500"
+                            >
+                              <option value="Сбербанк">ПАО Сбербанк</option>
+                              <option value="ВТБ">Банк ВТБ (ПАО)</option>
+                              <option value="Альфа-Банк">АО «Альфа-Банк»</option>
+                              <option value="Банк ДОМ.РФ">АО «Банк ДОМ.РФ»</option>
+                              <option value="Газпромбанк">Банк ГПБ (АО)</option>
+                              <option value="Промсвязьбанк">ПАО «Промсвязьбанк»</option>
+                              <option value="Совкомбанк">ПАО «Совкомбанк»</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-emerald-200 text-xs text-slate-600">
-                        <span>
-                          Комиссия покупателя (2.5% по факту сделки):{' '}
-                          <strong className="text-slate-900">{formatRubles(buyerFee)}</strong>
-                        </span>
-                        <span className="text-emerald-700 font-bold">
-                          Комиссия с продавца: 0 ₽
-                        </span>
-                      </div>
+                      {/* Internal Net Margin & Warning */}
+                      {(() => {
+                        const netPlatformMargin = developerConsentPolicy === 'included_in_platform_fee'
+                          ? buyerFee - developerConsentFeeRub
+                          : buyerFee;
+                        const isHighFeeWarning = developerConsentPolicy === 'included_in_platform_fee' && (developerConsentFeeRub > buyerFee * 0.5 || netPlatformMargin < 0);
+
+                        return (
+                          <div className="pt-2 border-t border-emerald-200 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                              <span>
+                                Комиссия покупателя (2.5% по факту сделки):{' '}
+                                <strong className="text-slate-900">{formatRubles(buyerFee)}</strong>
+                              </span>
+                              <span className="text-emerald-700 font-bold">
+                                Чистая маржа платформы:{' '}
+                                <strong className={netPlatformMargin < 0 ? 'text-rose-600 font-mono font-black' : 'text-emerald-800 font-mono font-black'}>
+                                  {formatRubles(netPlatformMargin)}
+                                </strong>
+                              </span>
+                            </div>
+
+                            {isHighFeeWarning && (
+                              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center space-x-2">
+                                <span>⚠️</span>
+                                <span>
+                                  Внимание: Регламентный сбор застройщика ({formatRubles(developerConsentFeeRub)}) превышает 50% сбора платформы ({formatRubles(buyerFee)}){netPlatformMargin < 0 ? ' и делает маржу сделки отрицательной!' : '!'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Commercial Conditions: Negotiation & Settlement Banks */}

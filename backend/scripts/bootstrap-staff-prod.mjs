@@ -240,7 +240,7 @@ async function run() {
     ...empItem,
     id: { S: employeeId },
     email: { S: employeeEmail },
-    name: empItem.name || { S: 'Алексей Смирнов (Ведущий куратор)' },
+    name: empItem.name || { S: 'Куратор DomExit' },
     clientCode: empItem.clientCode || { S: 'DEX-000002' },
     role: { S: 'employee' },
     activeRole: { S: 'employee' },
@@ -282,7 +282,7 @@ async function run() {
       TableName: 'employees',
       Item: {
         id: { S: 'emp-1' },
-        name: { S: 'Алексей Смирнов' },
+        name: { S: 'Куратор DomExit' },
         email: { S: employeeEmail },
         role: { S: 'Ведущий куратор отдела выходов' },
         phone: { S: '+7 (921) 888-11-22' },

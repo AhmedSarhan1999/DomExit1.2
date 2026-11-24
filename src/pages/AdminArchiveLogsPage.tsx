@@ -54,7 +54,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
       const allLogs = await AuditLogsRepository.getAllLogs();
 
       if (isEmployee) {
-        const empId = user?.assignedEmployeeId || 'emp-1';
+        const empId = user?.assignedEmployeeId || user?.id || '';
         const [assignedLots, assignedDeals] = await Promise.all([
           LotsRepository.getByAssignedEmployee(empId),
           DealsRepository.getByEmployee(empId),

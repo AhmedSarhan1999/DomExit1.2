@@ -415,7 +415,7 @@ export const ClientTrackerPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               {[
                 { num: 1, title: '1. Оценка ДДУ', sub: '100% возврат' },
-                { num: 2, title: '2. Правовой аудит', sub: '42 параметра' },
+                { num: 2, title: '2. Правовой аудит', sub: '5 разделов 214-ФЗ' },
                 { num: 3, title: '3. Упаковка лота', sub: 'Публикация в реестре' },
                 { num: 4, title: '4. Подбор покупателя', sub: `${offers.length} офферов` },
                 { num: 5, title: '5. Аккредитив и ЕГРН', sub: 'Выплата кэша' },

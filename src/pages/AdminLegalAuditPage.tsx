@@ -49,6 +49,8 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [editStatus, setEditStatus] = useState<'clean' | 'attention' | 'critical'>('clean');
   const [editNotes, setEditNotes] = useState<string>('');
   const [editProofName, setEditProofName] = useState<string>('');
+  const [editProofUrl, setEditProofUrl] = useState<string>('');
+  const [editProofKey, setEditProofKey] = useState<string>('');
 
   // Modals State
   const [isRequestDocsModalOpen, setIsRequestDocsModalOpen] = useState(false);
@@ -121,6 +123,8 @@ export const AdminLegalAuditPage: React.FC = () => {
     setEditStatus(cp.status);
     setEditNotes(cp.notes);
     setEditProofName(cp.proofDocName || '');
+    setEditProofUrl(cp.proofDocUrl || '');
+    setEditProofKey(cp.proofDocKey || '');
   };
 
   const handleUploadProofFile = async () => {
@@ -139,6 +143,8 @@ export const AdminLegalAuditPage: React.FC = () => {
           clientCode: 'DEX-LEGAL',
         });
         setEditProofName(meta.name);
+        setEditProofUrl(meta.url || '');
+        setEditProofKey(meta.key || meta.objectKey || '');
         setNotice(`✓ Документ «${meta.name}» успешно загружен в хранилище!`);
         setTimeout(() => setNotice(null), 4000);
       }
@@ -179,30 +185,6 @@ export const AdminLegalAuditPage: React.FC = () => {
     setTimeout(() => setNotice(null), 5000);
   };
 
-  const handleApplyStandardVerdict = async () => {
-    if (!lot) return;
-    const verifiedAxes: LegalAuditAxis[] = axes.map((ax) => ({
-      ...ax,
-      evaluated: true,
-      checkedAt: new Date().toISOString(),
-      checkedBy: curatorName,
-    }));
-    setAxes(verifiedAxes);
-    lot.legalAuditAxes = verifiedAxes;
-    lot.approvalStatus = 'approved';
-    lot.isVerified = true;
-    lot.curatorOperationsLog = lot.curatorOperationsLog || [];
-    lot.curatorOperationsLog.unshift({
-      timestamp: new Date().toISOString(),
-      curatorName,
-      action: 'Стандартный вердикт чистой сделки',
-      notes: 'Все разделы проверены и зафиксированы с реалистичными статусами рынка.',
-    });
-    await LotsRepository.update(lot);
-    setNotice('✓ Стандартный вердикт применен и сохранен в базе!');
-    setTimeout(() => setNotice(null), 5000);
-  };
-
   const handleSaveInspectorVerdict = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inspectingCheckpoint || !lot) return;
@@ -214,6 +196,8 @@ export const AdminLegalAuditPage: React.FC = () => {
           status: editStatus,
           notes: editNotes,
           proofDocName: editProofName,
+          proofDocUrl: editProofUrl,
+          proofDocKey: editProofKey,
           evaluated: true,
           verifiedAt: new Date().toISOString(),
           verifiedBy: curatorName,
@@ -252,26 +236,6 @@ export const AdminLegalAuditPage: React.FC = () => {
     lot.legalPassport.antiBankruptcyIndex = 100;
     await LotsRepository.update(lot);
     setNotice(`✓ Контрольная точка «${checkpointId}» подтверждена (10/10).`);
-    setTimeout(() => setNotice(null), 4000);
-  };
-
-  const handleManualVerifyAll = async () => {
-    if (!lot) return;
-    const verified = checkpoints.map((c) => ({
-      ...c,
-      score: 10,
-      status: 'clean' as const,
-      evaluated: true,
-      proofDocName: c.proofDocName || `Акт_ручной_проверки_${c.shortLabel.replace(/[\s/]/g, '_')}.pdf`,
-      verifiedAt: new Date().toISOString(),
-      verifiedBy: curatorName,
-      notes: c.notes || 'Проверено вручную: соответствие законодательству РФ подтверждено.',
-    }));
-    setCheckpoints(verified);
-    lot.legalAuditCheckpoints = verified;
-    lot.legalPassport.antiBankruptcyIndex = 100;
-    await LotsRepository.update(lot);
-    setNotice('✓ Все 4 контрольные зоны подтверждены вручную (100%)!');
     setTimeout(() => setNotice(null), 4000);
   };
 
@@ -410,7 +374,6 @@ export const AdminLegalAuditPage: React.FC = () => {
                 onAxisStatusChange={handleAxisStatusChange}
                 onAxisNotesChange={handleAxisNotesChange}
                 onSaveAxis={handleSaveAxis}
-                onApplyStandardVerdict={handleApplyStandardVerdict}
                 onUpdateSecondaryChecklist={handleUpdateSecondaryChecklist}
               />
 
@@ -420,7 +383,6 @@ export const AdminLegalAuditPage: React.FC = () => {
                 weightedIndex={weightedIndex}
                 onOpenInspector={handleOpenInspector}
                 onManualVerifyCheckpoint={handleManualVerifyCheckpoint}
-                onManualVerifyAll={handleManualVerifyAll}
                 onDownloadProtocol={handleDownloadProtocol}
               />
 
@@ -432,6 +394,7 @@ export const AdminLegalAuditPage: React.FC = () => {
 
               {/* 6. Decision Bar */}
               <LegalDecisionBar
+                lot={lot}
                 curatorName={curatorName}
                 onOpenRequestDocsModal={() => setIsRequestDocsModalOpen(true)}
                 onOpenRejectModal={() => setIsRejectModalOpen(true)}
@@ -453,6 +416,7 @@ export const AdminLegalAuditPage: React.FC = () => {
         editNotes={editNotes}
         setEditNotes={setEditNotes}
         editProofName={editProofName}
+        editProofUrl={editProofUrl}
         isUploadingProof={isUploadingProof}
         onUploadProofFile={handleUploadProofFile}
         onCloseInspector={() => setInspectingCheckpoint(null)}

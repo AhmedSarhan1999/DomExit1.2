@@ -16,7 +16,7 @@ interface LegalCheckpointsMatrixProps {
   weightedIndex: number;
   onOpenInspector: (cp: LegalAuditCheckpoint) => void;
   onManualVerifyCheckpoint: (checkpointId: string) => void;
-  onManualVerifyAll: () => void;
+  onManualVerifyAll?: () => void;
   onDownloadProtocol: (registryType: 'EFRSB' | 'FSSP') => void;
 }
 
@@ -62,14 +62,6 @@ export const LegalCheckpointsMatrix: React.FC<LegalCheckpointsMatrixProps> = ({
           >
             <Download className="w-3.5 h-3.5" />
             <span>Протокол ФССП</span>
-          </button>
-          <button
-            type="button"
-            onClick={onManualVerifyAll}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
-          >
-            <Check className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Подтвердить все 4 зоны (100%)</span>
           </button>
         </div>
       </div>
@@ -120,11 +112,23 @@ export const LegalCheckpointsMatrix: React.FC<LegalCheckpointsMatrixProps> = ({
                 </p>
 
                 {/* Proof doc badge */}
-                <div className="flex items-center space-x-2 pt-1">
-                  <FileCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span className="text-[11px] font-mono text-slate-600 truncate">
-                    {cp.proofDocName ? `Скан: ${cp.proofDocName}` : 'Скан не прикреплен'}
-                  </span>
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center space-x-2 truncate">
+                    <FileCheck className={`w-3.5 h-3.5 shrink-0 ${cp.proofDocName ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span className="text-[11px] font-mono text-slate-600 truncate">
+                      {cp.proofDocName ? `Скан: ${cp.proofDocName}` : 'Скан не прикреплен'}
+                    </span>
+                  </div>
+                  {cp.proofDocUrl && (
+                    <a
+                      href={cp.proofDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center space-x-1 transition-colors shrink-0"
+                    >
+                      <span>Открыть скан ↗</span>
+                    </a>
+                  )}
                 </div>
               </div>
 

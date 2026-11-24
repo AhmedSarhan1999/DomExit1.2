@@ -35,7 +35,8 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
     month: 'long',
     year: 'numeric',
   });
-  const curatorName = curator?.name || lot.curator?.name || 'Юридическая служба DomExit';
+  const curatorName =
+    lot.legalReviewedByName || curator?.name || lot.curator?.name || 'Юридический департамент DomExit';
   const curatorRole = curator?.role || 'Ведущий юрист по сделкам переуступки';
 
   const axes = resolveLotLegalAxes(lot);
@@ -126,7 +127,14 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
                 <span className="text-xs font-bold text-emerald-950 block">Эскроу-счет подтвержден</span>
-                <span className="text-[10px] text-emerald-700">ПАО {lot.escrowBank} (эскроу-агент)</span>
+                <span className="text-[10px] text-emerald-700">
+                  {lot.escrowBank
+                    ? lot.escrowBank.includes('ПАО')
+                      ? lot.escrowBank
+                      : `ПАО ${lot.escrowBank}`
+                    : 'Банк эскроу'}{' '}
+                  (эскроу-агент)
+                </span>
               </div>
             </div>
           </div>

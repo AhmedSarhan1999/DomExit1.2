@@ -67,11 +67,11 @@ export const AdminPipelinePage: React.FC = () => {
 
   const isEmployee = user?.activeRole === 'employee';
 
-  const currentEmployeeId = user?.assignedEmployeeId || 'emp-1';
+  const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
 
   const operatorName =
 
-    user?.name || (isEmployee ? 'Алексей Смирнов (Куратор)' : 'Ahmed Abdallah (Владелец / CEO)');
+    user?.name || (isEmployee ? 'Куратор DomExit' : 'Ahmed Abdallah (Владелец / CEO)');
 
 
 
@@ -165,10 +165,10 @@ export const AdminPipelinePage: React.FC = () => {
 
       const stageNumMap: Record<DealTrack['stage'], number> = {
         initial_audit: 1,
-        document_check: 2,
-        packaging: 3,
-        buyer_matching: 4,
-        closing_escrow: 5,
+        document_check: 1,
+        packaging: 2,
+        buyer_matching: 3,
+        closing_escrow: 4,
         completed: 5,
       };
       try {
@@ -259,54 +259,33 @@ export const AdminPipelinePage: React.FC = () => {
   }[] = [
 
     {
-
       stage: 'initial_audit',
-
-      title: '1. Первичный аудит ДДУ',
-
-      next: 'document_check',
-
-      nextTitle: 'В документы →',
-
-    },
-
-    {
-
-      stage: 'document_check',
-
-      title: '2. Проверка документов',
-
+      title: '1. Юридический аудит ДДУ',
       next: 'packaging',
-
       nextTitle: 'В упаковку →',
-
     },
-
     {
-
       stage: 'packaging',
-
-      title: '3. Упаковка и публикация',
-
+      title: '2. Упаковка и ценообразование',
       next: 'buyer_matching',
-
-      nextTitle: 'В подбор →',
-
+      nextTitle: 'В подбор / дроп →',
     },
-
     {
-
       stage: 'buyer_matching',
-
-      title: '4. Подбор покупателя',
-
+      title: '3. Тактовый подбор (Матчмейкер)',
       next: 'closing_escrow',
-
-      nextTitle: 'На эскроу →',
-
+      nextTitle: 'На эскроу / СБР →',
     },
-
-    { stage: 'closing_escrow', title: '5. Сделка и выплата (Эскроу)' },
+    {
+      stage: 'closing_escrow',
+      title: '4. Депонирование и сделка (СБР)',
+      next: 'completed',
+      nextTitle: 'Завершить сделку →',
+    },
+    {
+      stage: 'completed',
+      title: '5. Сделка закрыта (Росреестр)',
+    },
 
   ];
 
@@ -563,8 +542,7 @@ export const AdminPipelinePage: React.FC = () => {
                 (d) =>
 
                   d.stage === col.stage ||
-
-                  (col.stage === 'closing_escrow' && d.stage === 'completed')
+                  (col.stage === 'initial_audit' && (d.stage as any) === 'document_check')
 
               );
 
