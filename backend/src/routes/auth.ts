@@ -41,6 +41,22 @@ export function normalizeRussianPhone(raw: string | undefined | null): string | 
   return raw.trim();
 }
 
+export function normalizeE164Phone(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return undefined;
+  let normalized = digits;
+  if (normalized.startsWith('8') && normalized.length === 11) {
+    normalized = '7' + normalized.slice(1);
+  } else if (normalized.length === 10) {
+    normalized = '7' + normalized;
+  }
+  if (normalized.length >= 11) {
+    return `+${normalized}`;
+  }
+  return undefined;
+}
+
 export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<YcHttpResponse> {
   const method = event.httpMethod.toUpperCase();
   const cfg = getConfig();
@@ -111,17 +127,24 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     const passwordHash = await hashPassword(password);
     const now = new Date().toISOString();
+    const phoneNormalized = normalizeE164Phone(body?.phone);
 
     let userToSave: UserProfile;
     if (existingList.length > 0) {
       // User existed (e.g. from OAuth) without password: safe merge without duplicate record
       const existing = existingList[0];
+      const providers = new Set(existing.authProviders || []);
+      providers.add('password');
+      if (existing.yandexId || existing.authProvider === 'yandex') providers.add('yandex');
       userToSave = {
         ...existing,
         email,
         name: name || existing.name,
         phone: phone || existing.phone,
+        phoneNormalized: phoneNormalized || existing.phoneNormalized,
         passwordHash,
+        authProviders: Array.from(providers) as Array<'password' | 'yandex' | 'phone'>,
+        tokenVersion: (existing.tokenVersion ?? 1) + 1,
         authProvider: existing.authProvider || 'local',
       };
     } else {
@@ -131,11 +154,14 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         email,
         name,
         phone,
+        phoneNormalized,
         role: assignedRole,
         activeRole: assignedRole,
         roles: clientRoles,
         registeredAt: now,
         authProvider: 'local',
+        authProviders: ['password'],
+        tokenVersion: 1,
         favorites: [],
         passwordHash,
       };
@@ -170,6 +196,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     await ydb.putItem('users', userToSave);
 
+    const tokenVersion = userToSave.tokenVersion ?? 1;
     const sessionToken = createJwt(
       {
         userId: userToSave.id,
@@ -177,11 +204,17 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         role: userToSave.role,
         activeRole: userToSave.activeRole,
         roles: userToSave.roles,
+        tv: tokenVersion,
       },
       cfg.JWT_SIGNING_SECRET
     );
 
-    const cleanUser: UserProfile = { ...userToSave };
+    const cleanUser: UserProfile = {
+      ...userToSave,
+      hasPassword: true,
+      authProviders: userToSave.authProviders || ['password'],
+      tokenVersion,
+    };
     delete cleanUser.passwordHash;
 
     return json(
@@ -219,6 +252,14 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     const matchingUsers = await ydb.findByField<UserProfile>('users', 'email', email);
+    // If user account was created via OAuth (Yandex) without a local password
+    if (matchingUsers.length > 0 && !matchingUsers.some((u) => Boolean(u.passwordHash))) {
+      return json(event, 400, {
+        error: 'Для этого аккаунта вход настроен через Яндекс ID. Войдите через Яндекс ID и задайте пароль в профиле, либо воспользуйтесь восстановлением пароля.',
+        code: 'oauth_only_account',
+      });
+    }
+
     // Prioritize record containing passwordHash if multiple duplicates exist
     const user = matchingUsers.find((u) => Boolean(u.passwordHash)) || matchingUsers[0];
 
@@ -235,6 +276,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     resetFailedLogin(rateKey);
 
+    const tokenVersion = user.tokenVersion ?? 1;
     const sessionToken = createJwt(
       {
         userId: user.id,
@@ -242,11 +284,17 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         role: user.role,
         activeRole: user.activeRole || user.role,
         roles: user.roles || [user.role],
+        tv: tokenVersion,
       },
       cfg.JWT_SIGNING_SECRET
     );
 
-    const cleanUser: UserProfile = { ...user };
+    const cleanUser: UserProfile = {
+      ...user,
+      hasPassword: true,
+      authProviders: user.authProviders || ['password'],
+      tokenVersion,
+    };
     delete cleanUser.passwordHash;
 
     return json(
@@ -255,6 +303,177 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       { success: true, user: cleanUser },
       { cookies: [createSessionCookie(sessionToken)] }
     );
+  }
+
+  // POST /api/auth/set-password
+  if (subPath === '/set-password' && method === 'POST') {
+    const user = await getAuthenticatedUser(event);
+    if (!user) {
+      return json(event, 401, { error: 'Не авторизован' });
+    }
+
+    const body = parseBody<{
+      newPassword?: string;
+      confirmPassword?: string;
+    }>(event);
+
+    const newPassword = body?.newPassword?.trim();
+    const confirmPassword = body?.confirmPassword?.trim();
+
+    if (!newPassword || newPassword.length < 8) {
+      return json(event, 400, { error: 'Новый пароль должен содержать не менее 8 символов' });
+    }
+    if (!/[A-Za-zА-Яа-я]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return json(event, 400, { error: 'Пароль должен содержать как буквы, так и цифры' });
+    }
+    if (newPassword !== confirmPassword) {
+      return json(event, 400, { error: 'Новый пароль и подтверждение пароля не совпадают' });
+    }
+
+    const dbUser = await ydb.getItem<UserProfile>('users', user.id);
+    if (!dbUser) {
+      return json(event, 404, { error: 'Пользователь не найден' });
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    dbUser.passwordHash = passwordHash;
+    const currentProviders = new Set(dbUser.authProviders || []);
+    currentProviders.add('password');
+    if (dbUser.yandexId || dbUser.authProvider === 'yandex') {
+      currentProviders.add('yandex');
+    }
+    dbUser.authProviders = Array.from(currentProviders) as Array<'password' | 'yandex' | 'phone'>;
+    const nextTokenVersion = (dbUser.tokenVersion ?? 1) + 1;
+    dbUser.tokenVersion = nextTokenVersion;
+    dbUser.updatedAt = new Date().toISOString();
+
+    await ydb.putItem('users', dbUser);
+
+    const sessionToken = createJwt(
+      {
+        userId: dbUser.id,
+        email: dbUser.email,
+        role: dbUser.role,
+        activeRole: dbUser.activeRole || dbUser.role,
+        roles: dbUser.roles || [dbUser.role],
+        tv: nextTokenVersion,
+      },
+      cfg.JWT_SIGNING_SECRET
+    );
+
+    const cleanUser: UserProfile = {
+      ...dbUser,
+      hasPassword: true,
+      authProviders: dbUser.authProviders,
+      tokenVersion: nextTokenVersion,
+    };
+    delete cleanUser.passwordHash;
+
+    return json(
+      event,
+      200,
+      { success: true, user: cleanUser, message: 'Пароль успешно установлен' },
+      { cookies: [createSessionCookie(sessionToken)] }
+    );
+  }
+
+  // POST /api/auth/change-password
+  if (subPath === '/change-password' && method === 'POST') {
+    const user = await getAuthenticatedUser(event);
+    if (!user) {
+      return json(event, 401, { error: 'Не авторизован' });
+    }
+
+    const body = parseBody<{
+      currentPassword?: string;
+      newPassword?: string;
+      confirmPassword?: string;
+    }>(event);
+
+    const currentPassword = body?.currentPassword;
+    const newPassword = body?.newPassword?.trim();
+    const confirmPassword = body?.confirmPassword?.trim();
+
+    const dbUser = await ydb.getItem<UserProfile>('users', user.id);
+    if (!dbUser) {
+      return json(event, 404, { error: 'Пользователь не найден' });
+    }
+
+    // If user already has a password, verify current password
+    if (dbUser.passwordHash) {
+      if (!currentPassword) {
+        return json(event, 400, { error: 'Введите текущий пароль' });
+      }
+      const isValid = await verifyPassword(currentPassword, dbUser.passwordHash);
+      if (!isValid) {
+        return json(event, 400, { error: 'Неверный текущий пароль' });
+      }
+    }
+
+    if (!newPassword || newPassword.length < 8) {
+      return json(event, 400, { error: 'Новый пароль должен содержать не менее 8 символов' });
+    }
+    if (!/[A-Za-zА-Яа-я]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return json(event, 400, { error: 'Пароль должен содержать как буквы, так и цифры' });
+    }
+    if (newPassword !== confirmPassword) {
+      return json(event, 400, { error: 'Новый пароль и подтверждение пароля не совпадают' });
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    dbUser.passwordHash = passwordHash;
+    const currentProviders = new Set(dbUser.authProviders || []);
+    currentProviders.add('password');
+    if (dbUser.yandexId || dbUser.authProvider === 'yandex') {
+      currentProviders.add('yandex');
+    }
+    dbUser.authProviders = Array.from(currentProviders) as Array<'password' | 'yandex' | 'phone'>;
+    const nextTokenVersion = (dbUser.tokenVersion ?? 1) + 1;
+    dbUser.tokenVersion = nextTokenVersion;
+    dbUser.updatedAt = new Date().toISOString();
+
+    await ydb.putItem('users', dbUser);
+
+    const sessionToken = createJwt(
+      {
+        userId: dbUser.id,
+        email: dbUser.email,
+        role: dbUser.role,
+        activeRole: dbUser.activeRole || dbUser.role,
+        roles: dbUser.roles || [dbUser.role],
+        tv: nextTokenVersion,
+      },
+      cfg.JWT_SIGNING_SECRET
+    );
+
+    const cleanUser: UserProfile = {
+      ...dbUser,
+      hasPassword: true,
+      authProviders: dbUser.authProviders,
+      tokenVersion: nextTokenVersion,
+    };
+    delete cleanUser.passwordHash;
+
+    return json(
+      event,
+      200,
+      { success: true, user: cleanUser, message: 'Пароль успешно обновлен' },
+      { cookies: [createSessionCookie(sessionToken)] }
+    );
+  }
+
+  // POST /api/auth/dismiss-password-setup
+  if (subPath === '/dismiss-password-setup' && method === 'POST') {
+    const user = await getAuthenticatedUser(event);
+    if (!user) {
+      return json(event, 401, { error: 'Не авторизован' });
+    }
+    const dbUser = await ydb.getItem<UserProfile>('users', user.id);
+    if (dbUser) {
+      dbUser.passwordSetupDismissedAt = new Date().toISOString();
+      await ydb.putItem('users', dbUser);
+    }
+    return json(event, 200, { success: true });
   }
 
   // POST /api/auth/logout
@@ -473,6 +692,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     const newPasswordHash = await hashPassword(newPassword);
     user.passwordHash = newPasswordHash;
+    user.tokenVersion = (user.tokenVersion ?? 1) + 1;
     (user as any).updatedAt = new Date().toISOString();
     await ydb.putItem('users', user);
 
@@ -535,7 +755,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     }
 
     // Strict boundary: Only allow safe fields for profile update
-    const allowedKeys = ['name', 'phone', 'inn', 'favorites', 'photoURL', 'telegram', 'telegramUsername'];
+    const allowedKeys = ['name', 'phone', 'phoneNormalized', 'inn', 'favorites', 'photoURL', 'telegram', 'telegramUsername'];
     const updates: Record<string, any> = {};
 
     for (const key of allowedKeys) {
@@ -547,6 +767,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     // Auto-normalize Russian phone if provided
     if (body.phone !== undefined) {
       updates.phone = normalizeRussianPhone(String(body.phone)) || '';
+      updates.phoneNormalized = normalizeE164Phone(String(body.phone)) || '';
     }
 
     // Auto-sanitize and harmonize Telegram account (@username and username)
@@ -631,6 +852,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         role: existing.role,
         activeRole: targetRole,
         roles: existing.roles,
+        tv: existing.tokenVersion ?? 1,
       },
       cfg.JWT_SIGNING_SECRET
     );
@@ -722,6 +944,10 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       return json(event, 400, { error: 'В профиле Yandex отсутствует адрес электронной почты' });
     }
 
+    const rawYandexPhone = yandexProfile.default_phone?.number || yandexProfile.phone;
+    const yandexPhone = normalizeRussianPhone(rawYandexPhone);
+    const yandexPhoneNormalized = normalizeE164Phone(rawYandexPhone);
+
     // Check if user already exists
     const existingList = await ydb.findByField<UserProfile>('users', 'email', yandexEmail);
     // Prioritize user with passwordHash if multiple duplicate records exist
@@ -740,19 +966,28 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       }
       user.yandexId = yandexProfile.id;
       if (!user.photoURL && yandexAvatar) user.photoURL = yandexAvatar;
+      if (!user.phone && yandexPhone) user.phone = yandexPhone;
+      if (!user.phoneNormalized && yandexPhoneNormalized) user.phoneNormalized = yandexPhoneNormalized;
+      const providers = new Set(user.authProviders || []);
+      providers.add('yandex');
+      if (user.passwordHash) providers.add('password');
+      user.authProviders = Array.from(providers) as Array<'password' | 'yandex' | 'phone'>;
+      user.tokenVersion = user.tokenVersion ?? 1;
       // Do NOT erase passwordHash!
       await ydb.putItem('users', user);
     } else {
-      // New user
+      // New user: unified client by default
       const assignedRole: UserRole = isMasterOwnerEmail ? 'owner' : 'buyer';
       const assignedRoles: UserRole[] = isMasterOwnerEmail
         ? ['owner', 'employee', 'seller', 'buyer']
-        : ['buyer'];
+        : ['buyer', 'seller'];
 
       user = {
         id: `usr-yx-${crypto.randomUUID().substring(0, 10)}`,
         email: yandexEmail,
         name: yandexName,
+        phone: yandexPhone,
+        phoneNormalized: yandexPhoneNormalized,
         role: assignedRole,
         activeRole: assignedRole,
         roles: assignedRoles,
@@ -761,6 +996,8 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         favorites: [],
         registeredAt: new Date().toISOString(),
         authProvider: 'yandex',
+        authProviders: ['yandex'],
+        tokenVersion: 1,
       };
       await ydb.putItem('users', user);
     }
@@ -800,12 +1037,18 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         role: user.role,
         activeRole: user.activeRole || user.role,
         roles: user.roles,
+        tv: user.tokenVersion ?? 1,
       },
       cfg.JWT_SIGNING_SECRET
     );
 
-    const redirectPath =
-      user.role === 'owner' || user.role === 'employee' ? '/admin/dashboard' : '/portal';
+    const isStaff = user.role === 'owner' || user.role === 'employee';
+    const hasNoPassword = !user.passwordHash;
+    const redirectPath = isStaff
+      ? '/admin/dashboard'
+      : hasNoPassword
+      ? '/portal?setup_password=1'
+      : '/portal';
     const finalUrl = `${cfg.FRONTEND_URL || cfg.PUBLIC_BASE_URL}${redirectPath}`;
 
     return redirect(

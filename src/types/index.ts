@@ -577,6 +577,7 @@ export interface UserProfile {
   maxProfile?: string;
   bankName?: string;
   photoURL?: string;
+  yandexId?: string;
   roles: Array<'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner'>;
   role?: string;
   activeRole?: string;
@@ -595,6 +596,12 @@ export interface UserProfile {
     selectedPackage: 'flipping' | 'turnkey' | 'syndicate';
     updatedAt: string;
   };
+  authProviders?: Array<'password' | 'yandex' | 'phone'>;
+  hasPassword?: boolean;
+  passwordSetupDismissedAt?: string;
+  phoneNormalized?: string;
+  phoneVerified?: boolean;
+  tokenVersion?: number;
 }
 
 export interface KPIStats {

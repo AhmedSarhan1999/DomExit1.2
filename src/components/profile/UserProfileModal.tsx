@@ -41,7 +41,7 @@ type ProfileModalTab = 'general' | 'avatar' | 'security' | 'roles';
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const { user, updateUserProfile, updateUserPassword, logout } = useAuth();
+  const { user, updateUserProfile, updateUserPassword, setPassword, logout } = useAuth();
   const { language } = useLanguage();
 
   const handleLogout = async () => {
@@ -281,10 +281,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
     setIsChangingPass(true);
     try {
-      if (updateUserPassword) {
-        await updateUserPassword(currentPassword, newPassword);
+      if (currentUser.hasPassword === false) {
+        if (setPassword) {
+          await setPassword(newPassword);
+        } else if (updateUserPassword) {
+          await updateUserPassword('', newPassword);
+        }
+        setSuccessMessage('Пароль успешно создан! Теперь доступен вход по Email.');
+      } else {
+        if (updateUserPassword) {
+          await updateUserPassword(currentPassword, newPassword);
+        }
+        setSuccessMessage('Пароль учетной записи успешно изменен!');
       }
-      setSuccessMessage('Пароль учетной записи успешно изменен!');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -292,7 +301,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         setSuccessMessage(null);
       }, 4000);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Ошибка смены пароля');
+      setErrorMessage(err?.message || 'Ошибка обновления пароля');
     } finally {
       setIsChangingPass(false);
     }
@@ -603,38 +612,80 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           {/* TAB 3: Security & Password */}
           {activeTab === 'security' && (
             <form onSubmit={handleChangePassword} className="space-y-4">
-              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
-                <span className="font-bold flex items-center space-x-1.5">
-                  <Lock className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Требования к безопасности пароля</span>
+              {/* Connected Auth Providers Badges */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Подключенные способы входа
                 </span>
-                <p className="text-[11px] text-slate-600">
-                  Минимум 8 символов, обязательное сочетание букв латиницы или кириллицы и арабских цифр.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Текущий пароль
-                </label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type={showCurrentPass ? 'text' : 'password'}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Введите текущий пароль"
-                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPass(!showCurrentPass)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {currentUser.authProviders?.includes('yandex') || currentUser.yandexId ? (
+                    <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-red-600" />
+                      <span>Яндекс ID</span>
+                    </span>
+                  ) : null}
+                  {currentUser.hasPassword !== false ? (
+                    <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Email + пароль</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-200/70 text-slate-600 border border-slate-300 font-medium text-[11px]">
+                      <span>Email + пароль (не задан)</span>
+                    </span>
+                  )}
+                  <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 border border-slate-200 text-[11px]">
+                    <span>Телефон (скоро)</span>
+                  </span>
                 </div>
               </div>
+
+              {currentUser.hasPassword === false ? (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
+                  <span className="font-bold flex items-center space-x-1.5 text-emerald-800">
+                    <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Создание пароля для входа по Email</span>
+                  </span>
+                  <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    Вы вошли через Яндекс ID. Задайте постоянный пароль, чтобы иметь возможность входить также по электронной почте.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                  <span className="font-bold flex items-center space-x-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Требования к безопасности пароля</span>
+                  </span>
+                  <p className="text-[11px] text-slate-600">
+                    Минимум 8 символов, обязательное сочетание букв латиницы или кириллицы и арабских цифр.
+                  </p>
+                </div>
+              )}
+
+              {currentUser.hasPassword !== false && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Текущий пароль
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type={showCurrentPass ? 'text' : 'password'}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Введите текущий пароль"
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPass(!showCurrentPass)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -686,10 +737,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 <button
                   type="submit"
                   disabled={isChangingPass || !newPassword}
-                  className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-md"
+                  className={`w-full py-3 rounded-xl ${
+                    currentUser.hasPassword === false
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-slate-900 hover:bg-slate-800'
+                  } disabled:opacity-50 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-md`}
                 >
                   <KeyRound className="w-4 h-4" />
-                  <span>{isChangingPass ? 'Обновление...' : 'Обновить пароль учетной записи'}</span>
+                  <span>
+                    {isChangingPass
+                      ? 'Сохранение...'
+                      : currentUser.hasPassword === false
+                      ? 'Задать пароль для входа по Email'
+                      : 'Обновить пароль учетной записи'}
+                  </span>
                 </button>
               </div>
             </form>

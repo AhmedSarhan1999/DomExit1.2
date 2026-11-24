@@ -64,6 +64,12 @@ export interface UserProfile {
   authProvider?: string;
   passwordHash?: string;
   yandexId?: string;
+  authProviders?: Array<'password' | 'yandex' | 'phone'>;
+  hasPassword?: boolean;
+  passwordSetupDismissedAt?: string;
+  phoneNormalized?: string;
+  phoneVerified?: boolean;
+  tokenVersion?: number;
 }
 
 export interface AuthSessionPayload {
@@ -72,6 +78,7 @@ export interface AuthSessionPayload {
   role: UserRole;
   activeRole: UserRole;
   roles: UserRole[];
+  tv?: number;
   iat?: number;
   exp?: number;
 }

@@ -476,10 +476,40 @@ export async function handleData(
     // 4. Public collections
     if (PUBLIC_COLLECTIONS.has(collection)) {
       if (id) {
-        const item = await ydb.getItem(collection, id);
+        let item = await ydb.getItem(collection, id);
+        if (!item && collection === 'lots') {
+          // Fallback: search by lotCode or id case-insensitively
+          const allLots = await ydb.scanAll('lots');
+          const target = id.trim().toUpperCase();
+          item = (allLots || []).find(
+            (l: any) =>
+              (l.lotCode && String(l.lotCode).trim().toUpperCase() === target) ||
+              (l.id && String(l.id).trim().toUpperCase() === target)
+          );
+        }
         if (!item) return json(event, 404, { error: 'Запись не найдена' });
 
         if (collection === 'lots') {
+          const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
+          if (!isStaff) {
+            const allowedStatuses = new Set([
+              'active',
+              'available',
+              'reserved',
+              'in_deal',
+              'deal_closing',
+              'sold',
+            ]);
+            const isApproved =
+              item.isApproved === true ||
+              item.isPublished === true ||
+              item.approvalStatus === 'approved';
+            const isAllowedStatus = allowedStatuses.has(item.status);
+            const isSeller = authUser?.id && item.sellerId === authUser.id;
+            if ((!isApproved || !isAllowedStatus) && !isSeller) {
+              return json(event, 404, { error: 'Объект не найден или снят с публикации' });
+            }
+          }
           return json(event, 200, { item: sanitizeLotForPublic(item, authUser) });
         }
         return json(event, 200, { item });

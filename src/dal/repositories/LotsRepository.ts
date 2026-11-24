@@ -145,10 +145,24 @@ export class LotsRepository {
 
   static async getByCode(lotCode: string): Promise<Lot | null> {
     if (!lotCode) return null;
-    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
     const clean = lotCode.trim().toUpperCase();
+    try {
+      const direct = await DatabaseGateway.getById<Lot>(COLLECTION, clean);
+      if (
+        direct &&
+        ((direct.lotCode && direct.lotCode.toUpperCase() === clean) ||
+          (direct.id && direct.id.toUpperCase() === clean))
+      ) {
+        return direct;
+      }
+    } catch {
+      // Fallback to getAll
+    }
+    const list = await DatabaseGateway.getAll<Lot>(COLLECTION, []);
     const found = list.find(
-      (l) => l.lotCode.toUpperCase() === clean || l.id.toUpperCase() === clean
+      (l) =>
+        (l.lotCode && l.lotCode.toUpperCase() === clean) ||
+        (l.id && l.id.toUpperCase() === clean)
     );
     return found || null;
   }
@@ -809,8 +823,12 @@ export class LotsRepository {
     if (typeof lot.favoritesCount !== 'number') {
       lot.favoritesCount = 12 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
     }
-    await DatabaseGateway.save<Lot>(COLLECTION, lot);
-    this.invalidateLotCache(lot.lotCode);
+    try {
+      await DatabaseGateway.save<Lot>(COLLECTION, lot);
+      this.invalidateLotCache(lot.lotCode);
+    } catch {
+      // In case of non-staff/unauthenticated user, saving view counts is restricted by API policy, so ignore error
+    }
     return lot;
   }
 
@@ -822,8 +840,12 @@ export class LotsRepository {
         ? lot.favoritesCount
         : 12 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
     lot.favoritesCount = Math.max(0, baseFavs + delta);
-    await DatabaseGateway.save<Lot>(COLLECTION, lot);
-    this.invalidateLotCache(lot.lotCode);
+    try {
+      await DatabaseGateway.save<Lot>(COLLECTION, lot);
+      this.invalidateLotCache(lot.lotCode);
+    } catch {
+      // Ignore if unauthenticated or non-staff
+    }
     return lot;
   }
 }

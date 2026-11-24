@@ -20,8 +20,10 @@ import { FileManager } from '../utils/fileManager';
 // Modals
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { UserProfileModal } from '../components/profile/UserProfileModal';
+import { SetPasswordModal } from '../components/auth/SetPasswordModal';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { TelegramConnectCard } from '../components/telegram/TelegramConnectCard';
+import { KeyRound, X } from 'lucide-react';
 
 // Subcomponents in src/components/portal/
 import { PortalProfileHeader, PortalTab } from '../components/portal/PortalProfileHeader';
@@ -102,7 +104,21 @@ export const ClientPortalPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<PortalTab>(resolveDefaultTab);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isSetPasswordModalOpen, setIsSetPasswordModalOpen] = useState(false);
+  const [isPasswordBannerDismissed, setIsPasswordBannerDismissed] = useState(() => {
+    return Boolean(sessionStorage.getItem('domexit_dismiss_pwd_banner'));
+  });
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // Auto-trigger setup password modal if redirected from OAuth with ?setup_password=1
+  useEffect(() => {
+    if (searchParams.get('setup_password') === '1' && user && user.hasPassword === false) {
+      setIsSetPasswordModalOpen(true);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('setup_password');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, user]);
 
   // Sync URL ?tab= changes
   useEffect(() => {
@@ -528,6 +544,44 @@ export const ClientPortalPage: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+        {user?.hasPassword === false && !isPasswordBannerDismissed && (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start sm:items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                <KeyRound className="w-5 h-5 text-amber-700" />
+              </div>
+              <div className="space-y-0.5">
+                <h4 className="text-xs font-bold text-slate-900">
+                  Вход настроен через Яндекс ID
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  Задайте пароль, чтобы иметь возможность входить в DomExit не только через Яндекс ID, но и по адресу Email.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={() => setIsSetPasswordModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                Задать пароль
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPasswordBannerDismissed(true);
+                  sessionStorage.setItem('domexit_dismiss_pwd_banner', '1');
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 transition-colors cursor-pointer"
+                title="Скрыть"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         <TelegramConnectCard compact={true} className="shadow-2xs" />
 
         {actionNotice && (
@@ -749,6 +803,15 @@ export const ClientPortalPage: React.FC = () => {
       <UserProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      <SetPasswordModal
+        isOpen={isSetPasswordModalOpen}
+        onClose={() => setIsSetPasswordModalOpen(false)}
+        onSuccess={() => {
+          setIsSetPasswordModalOpen(false);
+          setActionNotice('Пароль успешно создан! Теперь доступен вход по Email.');
+        }}
       />
 
       <CuratorChatWidget

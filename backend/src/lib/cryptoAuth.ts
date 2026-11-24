@@ -158,8 +158,27 @@ export async function getAuthenticatedUser(event: YcHttpEvent): Promise<UserProf
     const user = await ydb.getItem<UserProfile>('users', payload.userId);
     if (!user) return null;
 
-    // Never expose passwordHash
-    const cleanUser: UserProfile = { ...user };
+    // Verify token version for session invalidation (defaults to 1 if unset)
+    const expectedTokenVersion = user.tokenVersion ?? 1;
+    if (payload.tv !== undefined && payload.tv !== expectedTokenVersion) {
+      return null;
+    }
+
+    // Never expose passwordHash; compute secure provider and password status
+    const hasPassword = Boolean(user.passwordHash && user.passwordHash.length > 0);
+    const authProviders: Array<'password' | 'yandex' | 'phone'> =
+      user.authProviders && user.authProviders.length > 0
+        ? user.authProviders
+        : hasPassword
+        ? ['password']
+        : ['yandex'];
+
+    const cleanUser: UserProfile = {
+      ...user,
+      hasPassword,
+      authProviders,
+      tokenVersion: expectedTokenVersion,
+    };
     delete cleanUser.passwordHash;
     return cleanUser;
   } catch (err: any) {

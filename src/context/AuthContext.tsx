@@ -49,6 +49,7 @@ interface AuthContextType {
     data: Partial<Pick<UserProfile, 'name' | 'phone' | 'telegram' | 'photoURL' | 'inn'>>
   ) => Promise<UserProfile>;
   updateUserPassword: (currentPass: string, newPass: string) => Promise<void>;
+  setPassword?: (newPass: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -348,7 +349,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUserPassword = async (currentPass: string, newPass: string): Promise<void> => {
-    // Handled in backend or security modal
+    if (!user) throw new Error('Пользователь не авторизован');
+    if (user.hasPassword === false) {
+      await apiClient.post('/api/auth/set-password', {
+        newPassword: newPass,
+        confirmPassword: newPass,
+      });
+    } else {
+      await apiClient.post('/api/auth/change-password', {
+        currentPassword: currentPass,
+        newPassword: newPass,
+        confirmPassword: newPass,
+      });
+    }
+    await refreshUserProfile();
+  };
+
+  const setPassword = async (newPass: string): Promise<void> => {
+    await apiClient.post('/api/auth/set-password', {
+      newPassword: newPass,
+      confirmPassword: newPass,
+    });
+    await refreshUserProfile();
   };
 
   return (
@@ -375,6 +397,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshUserProfile,
         updateUserProfile,
         updateUserPassword,
+        setPassword,
       }}
     >
       {children}

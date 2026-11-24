@@ -104,47 +104,68 @@ export const LotDetailsPage: React.FC = () => {
         setLoading(true);
         setActiveImageIndex(0);
       }
-      let data: Lot | null = null;
-      if (shouldIncrementViews && !alreadyViewed) {
-        data = await LotsRepository.incrementViews(code);
-        try {
-          const updated = [...viewedLots, code];
-          localStorage.setItem(viewedKey, JSON.stringify(updated));
-        } catch {
-          // ignore localStorage quota error
+      try {
+        let data: Lot | null = null;
+        if (shouldIncrementViews && !alreadyViewed) {
+          try {
+            data = await LotsRepository.incrementViews(code);
+            const updated = [...viewedLots, code];
+            localStorage.setItem(viewedKey, JSON.stringify(updated));
+          } catch (e) {
+            console.warn('[LotDetailsPage] Failed to increment views, falling back to getByCode:', e);
+            data = await LotsRepository.getByCode(code);
+          }
+        } else {
+          data = await LotsRepository.getByCode(code);
         }
-      } else {
-        data = await LotsRepository.getByCode(code);
-      }
-      setLot(data);
+        setLot(data);
 
-      if (data) {
-        const [similar, districtMatches, yieldCfg, financingList] = await Promise.all([
-          LotsRepository.getSimilarInDistrict(data, 3),
-          LotsRepository.getAll({ city: data.city, district: data.district, status: 'all' }),
-          MarketSettingsRepository.getDistrictYieldConfig(data.district),
-          DevelopersRepository.resolvePropertyFinancing(data),
-        ]);
-        setSimilarLots(similar);
-        setSameDistrictCount(districtMatches.length);
-        setDistrictYield(yieldCfg);
-        setIsDevAccredited(financingList.length > 0);
+        if (data) {
+          try {
+            const results = await Promise.allSettled([
+              LotsRepository.getSimilarInDistrict(data, 3),
+              LotsRepository.getAll({ city: data.city, district: data.district, status: 'all' }),
+              MarketSettingsRepository.getDistrictYieldConfig(data.district),
+              DevelopersRepository.resolvePropertyFinancing(data),
+            ]);
 
-        if (data.assignedEmployeeId) {
-          const emp = await EmployeesRepository.getById(data.assignedEmployeeId);
-          if (emp) setCuratorEmployee(emp);
-        } else if (data.curator?.name) {
-          const allEmps = await EmployeesRepository.getAll();
-          const match = allEmps.find(
-            (e) =>
-              e.name.toLowerCase().includes(data.curator.name.toLowerCase()) ||
-              data.curator.name.toLowerCase().includes(e.name.toLowerCase())
-          );
-          if (match) setCuratorEmployee(match);
+            const similar = results[0].status === 'fulfilled' ? results[0].value : [];
+            const districtMatches = results[1].status === 'fulfilled' ? results[1].value : [];
+            const yieldCfg = results[2].status === 'fulfilled' ? results[2].value : null;
+            const financingList = results[3].status === 'fulfilled' ? results[3].value : [];
+
+            setSimilarLots(similar);
+            setSameDistrictCount(districtMatches.length);
+            setDistrictYield(yieldCfg);
+            setIsDevAccredited(financingList.length > 0);
+          } catch (secondaryErr) {
+            console.warn('[LotDetailsPage] Secondary data fetch error:', secondaryErr);
+          }
+
+          try {
+            if (data.assignedEmployeeId) {
+              const emp = await EmployeesRepository.getById(data.assignedEmployeeId);
+              if (emp) setCuratorEmployee(emp);
+            } else if (data.curator?.name) {
+              const allEmps = await EmployeesRepository.getAll();
+              const match = allEmps.find(
+                (e) =>
+                  e.name.toLowerCase().includes(data.curator.name.toLowerCase()) ||
+                  data.curator.name.toLowerCase().includes(e.name.toLowerCase())
+              );
+              if (match) setCuratorEmployee(match);
+            }
+          } catch (empErr) {
+            console.warn('[LotDetailsPage] Curator fetch error (staff-only):', empErr);
+          }
         }
-      }
-      if (shouldIncrementViews) {
-        setLoading(false);
+      } catch (err) {
+        console.error('[LotDetailsPage] Critical fetchLot error:', err);
+        setLot(null);
+      } finally {
+        if (shouldIncrementViews) {
+          setLoading(false);
+        }
       }
     }
 
@@ -190,20 +211,31 @@ export const LotDetailsPage: React.FC = () => {
         <div className="bg-white rounded-3xl border border-slate-200 p-10 max-w-md text-center space-y-4 shadow-sm">
           <Lock className="w-10 h-10 text-amber-500 mx-auto" />
           <h2 className="text-xl font-black text-slate-900">
-            {language === 'ru' ? `Лот #${lotCode} не найден` : `Lot #${lotCode} not found`}
+            {language === 'ru' ? 'Объект не найден или снят с публикации' : 'Unit not found or unpublished'}
           </h2>
           <p className="text-xs text-slate-600">
             {language === 'ru'
-              ? 'Объект снят с публикации или перемещен в закрытый архив реестра.'
-              : 'This unit has been unpublished or archived.'}
+              ? `Лот #${lotCode} не найден в реестре или находится в закрытом статусе.`
+              : `Lot #${lotCode} is not available in the public catalog.`}
           </p>
-          <Link
-            to="/opportunities"
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>{language === 'ru' ? 'Вернуться в каталог' : 'Back to Catalog'}</span>
-          </Link>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+            <button
+              onClick={() => {
+                setLoading(true);
+                window.location.reload();
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-colors cursor-pointer"
+            >
+              {language === 'ru' ? 'Повторить попытку' : 'Try again'}
+            </button>
+            <Link
+              to="/opportunities"
+              className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>{language === 'ru' ? 'Вернуться в каталог' : 'Back to Catalog'}</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -222,13 +254,18 @@ export const LotDetailsPage: React.FC = () => {
       : []
   ).filter(Boolean);
 
-  const savingsRub = lot.todayDeveloperPrice - lot.dduContractPrice;
-  const savingsPercent =
-    lot.todayDeveloperPrice > 0 ? (savingsRub / lot.todayDeveloperPrice) * 100 : 0;
-  const dduPricePerM2 = Math.round(lot.dduContractPrice / Math.max(lot.areaM2, 1));
-  const devPricePerM2 = Math.round(lot.todayDeveloperPrice / Math.max(lot.areaM2, 1));
+  const todayDevPrice = Number(lot.todayDeveloperPrice || 0);
+  const dduPrice = Number(lot.dduContractPrice || 0);
+  const lotArea = Math.max(Number(lot.areaM2 || 1), 1);
+  const cashPaid = Number(lot.cashPaidBySeller || 0);
+  const commission = Number(lot.serviceCommissionRub || 0);
+
+  const savingsRub = todayDevPrice - dduPrice;
+  const savingsPercent = todayDevPrice > 0 ? (savingsRub / todayDevPrice) * 100 : 0;
+  const dduPricePerM2 = Math.round(dduPrice / lotArea);
+  const devPricePerM2 = Math.round(todayDevPrice / lotArea);
   const savingsPerM2 = Math.max(0, devPricePerM2 - dduPricePerM2);
-  const totalFirstPaymentDeal = lot.cashPaidBySeller + lot.serviceCommissionRub;
+  const totalFirstPaymentDeal = cashPaid + commission;
   const favorited = isFavorite(lot.lotCode);
   const lotStatus = lot.status || 'available';
 
@@ -245,14 +282,15 @@ export const LotDetailsPage: React.FC = () => {
       minute: '2-digit',
     });
   })();
+  const codeStr = String(lot.lotCode || lot.id || 'LOT');
   const viewsCount =
     typeof lot.viewsCount === 'number'
       ? lot.viewsCount
-      : 112 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 90);
+      : 112 + (codeStr.charCodeAt(codeStr.length - 1) % 90);
   const favoritesCount =
     typeof lot.favoritesCount === 'number'
       ? lot.favoritesCount
-      : 14 + (lot.lotCode.charCodeAt(lot.lotCode.length - 1) % 19);
+      : 14 + (codeStr.charCodeAt(codeStr.length - 1) % 19);
 
   // District Yield & Capital Growth Engine Formulas (Task 4)
   const monthlyRentPercent = districtYield?.monthlyRentPercentOfMarket ?? 0.65;
@@ -260,28 +298,28 @@ export const LotDetailsPage: React.FC = () => {
   const annualGrowthPercent = districtYield?.annualGrowthPercent ?? 11.5;
 
   const computedLongTermMonthlyRub = Math.round(
-    lot.todayDeveloperPrice * (monthlyRentPercent / 100)
+    todayDevPrice * (monthlyRentPercent / 100)
   );
   const computedShortTermDailyRub = Math.round(
-    lot.todayDeveloperPrice * (dailyRentPercent / 100)
+    todayDevPrice * (dailyRentPercent / 100)
   );
   // Strictly relative to actual DomExit DDU purchase price (NOT developer price):
   const computedAnnualRentalYieldPercent = Number(
-    (((computedLongTermMonthlyRub * 12) / Math.max(lot.dduContractPrice, 1)) * 100).toFixed(2)
+    (((computedLongTermMonthlyRub * 12) / Math.max(dduPrice, 1)) * 100).toFixed(2)
   );
   // Instant Equity Growth relative to DDU purchase price:
   const instantEquityGrowthPercent = Number(
     (
-      ((lot.todayDeveloperPrice - lot.dduContractPrice) / Math.max(lot.dduContractPrice, 1)) *
+      ((todayDevPrice - dduPrice) / Math.max(dduPrice, 1)) *
       100
     ).toFixed(1)
   );
   // 3-Year and 5-Year Capital Growth Forecast:
   const growthFactor = 1 + annualGrowthPercent / 100;
-  const projectedPrice3Years = Math.round(lot.todayDeveloperPrice * Math.pow(growthFactor, 3));
-  const projectedPrice5Years = Math.round(lot.todayDeveloperPrice * Math.pow(growthFactor, 5));
-  const projectedGain3Years = Math.max(0, projectedPrice3Years - lot.dduContractPrice);
-  const projectedGain5Years = Math.max(0, projectedPrice5Years - lot.dduContractPrice);
+  const projectedPrice3Years = Math.round(todayDevPrice * Math.pow(growthFactor, 3));
+  const projectedPrice5Years = Math.round(todayDevPrice * Math.pow(growthFactor, 5));
+  const projectedGain3Years = Math.max(0, projectedPrice3Years - dduPrice);
+  const projectedGain5Years = Math.max(0, projectedPrice5Years - dduPrice);
 
   const maskedFloorText = lot.ownerDossier?.hideExactFloor
     ? `${lot.ownerDossier.floorRangeDisplay} (из ${lot.totalFloors})`

@@ -504,7 +504,7 @@ export function resolveLotGeoDetails(lot: Lot): ResolvedLotGeo {
   const districtGeo = getDistrictGeo(lot.city, lot.district);
 
   // Small deterministic jitter based on lotCode so multiple lots in the same district don't overlap on the exact pixel
-  const hashNum = lot.lotCode
+  const hashNum = String(lot.lotCode || lot.id || 'LOT')
     .split('')
     .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const latOffset = ((hashNum % 19) - 9) * 0.0014;
