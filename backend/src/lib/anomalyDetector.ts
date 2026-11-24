@@ -114,6 +114,7 @@ export async function consumeQuota(params: QuotaConsumeParams): Promise<QuotaCon
 
 export interface SecurityIncidentParams {
   type: string;
+  category?: 'waf_security_event' | 'pdn_breach_152fz';
   severity: 'low' | 'medium' | 'high' | 'critical';
   actorUserId?: string;
   actorRole?: string;
@@ -122,6 +123,7 @@ export interface SecurityIncidentParams {
   collection?: string;
   summary: string;
   details?: any;
+  affectedRecordsCount?: number;
 }
 
 /**
@@ -130,6 +132,7 @@ export interface SecurityIncidentParams {
 export async function recordSecurityIncident(params: SecurityIncidentParams): Promise<void> {
   const {
     type,
+    category = 'waf_security_event',
     severity,
     actorUserId = 'anonymous',
     actorRole = 'guest',
@@ -138,11 +141,11 @@ export async function recordSecurityIncident(params: SecurityIncidentParams): Pr
     collection = '',
     summary,
     details = {},
+    affectedRecordsCount = 0,
   } = params;
 
   const now = new Date();
   const iso = now.toISOString();
-  const deadline24h = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
   const rand = crypto.randomBytes(3).toString('hex');
   const incidentId = `inc-${Date.now()}-${rand}`;
 
@@ -151,8 +154,14 @@ export async function recordSecurityIncident(params: SecurityIncidentParams): Pr
     ? crypto.createHash('sha256').update(clientIp).digest('hex').substring(0, 16)
     : 'unknown_ip';
 
-  const incidentRecord = {
+  const isPdnBreach = category === 'pdn_breach_152fz';
+  const deadline24h = isPdnBreach
+    ? new Date(now.getTime() + 24 * 3600 * 1000).toISOString()
+    : undefined;
+
+  const incidentRecord: Record<string, any> = {
     id: incidentId,
+    category,
     type,
     severity,
     status: 'open',
@@ -167,10 +176,14 @@ export async function recordSecurityIncident(params: SecurityIncidentParams): Pr
     collection,
     timestamp: iso,
     createdAt: iso,
-    deadline24h,
-    affectedRecordsCount: 1,
+    requiresRknNotification: isPdnBreach,
     reportedToRoskomnadzor: false,
+    affectedRecordsCount: isPdnBreach ? Math.max(1, affectedRecordsCount) : 0,
   };
+
+  if (isPdnBreach) {
+    incidentRecord.deadline24h = deadline24h;
+  }
 
   try {
     const ydb = getYdbClient();

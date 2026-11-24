@@ -65,9 +65,12 @@ function assert(condition, message) {
 }
 
 async function run() {
-  // 1. Authenticate as Master Owner
-  console.log('[1/7] Authenticating as Platform Owner...');
+  let createdUserId = null;
+  let createdApplicationId = null;
   let ownerHeaders;
+
+  try {
+  // 1. Authenticate as Master Owner
   let loginRes = await fetch(`${STAGING_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -188,6 +191,7 @@ async function run() {
   if (regRes.status === 201 || regRes.status === 200) {
     const regData = await regRes.json();
     const clientUser = regData.user;
+    createdUserId = clientUser.id;
     assert(clientUser.phone === '+7 (999) 888-77-66', `Phone normalized to standard: ${clientUser.phone}`);
     assert(clientUser.role === 'buyer', `User role is 'buyer': ${clientUser.role}`);
     assert(clientUser.activeRole === 'buyer', `User activeRole is 'buyer': ${clientUser.activeRole}`);
@@ -234,6 +238,7 @@ async function run() {
     }),
   });
   const applyData = await applyRes.json();
+  createdApplicationId = applyData?.item?.id || `app:U-81331:${createdUserId || 'usr-0c31a4f3-26a'}`;
   const applyOk = applyRes.status === 200 || applyRes.status === 409 || String(applyData.error || '').includes('уже подали заявку');
   assert(applyOk, `Application accepted or already present in queue: ${JSON.stringify(applyData)}`);
   console.log('  ✓ Regular client successfully applied to #U-81331 without Gold barrier.\n');
@@ -296,6 +301,27 @@ async function run() {
   console.log('================================================================');
   console.log('🎉 ALL UAT WAVE 2 VERIFICATIONS PASSED 100% ON LIVE STAGING!');
   console.log('================================================================');
+  } finally {
+    console.log('[Auto-Cleanup] Cleaning up temporary UAT test records from Staging YDB...');
+    try {
+      if (createdApplicationId && ownerHeaders) {
+        await fetch(`${STAGING_URL}/api/data/buyer_applications/${encodeURIComponent(createdApplicationId)}`, {
+          method: 'DELETE',
+          headers: ownerHeaders,
+        });
+        console.log('  ✓ Cleaned test buyer_application:', createdApplicationId);
+      }
+      if (createdUserId && ownerHeaders) {
+        await fetch(`${STAGING_URL}/api/data/users/${encodeURIComponent(createdUserId)}`, {
+          method: 'DELETE',
+          headers: ownerHeaders,
+        });
+        console.log('  ✓ Cleaned test user:', createdUserId);
+      }
+    } catch (e) {
+      console.warn('  Note during auto-cleanup:', e.message);
+    }
+  }
 }
 
 run().catch((err) => {

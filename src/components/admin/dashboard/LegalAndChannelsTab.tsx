@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Shield,
+  ShieldCheck,
   ExternalLink,
   CheckCircle2,
   Save,
@@ -25,19 +26,20 @@ import { usePublicChannelsStore } from '../../../stores/usePublicChannelsStore';
 import { usePlatformSettingsStore } from '../../../stores/usePlatformSettingsStore';
 import { SecurityIncidentsRepository } from '../../../dal/repositories/SecurityIncidentsRepository';
 import { AuditLogsRepository } from '../../../dal/repositories/AuditLogsRepository';
-import { maskSensitiveData } from '../../../utils/dataMasking';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../../../utils/asyncGuard';
 
 export interface LegalAndChannelsTabProps {
   operatorName: string;
   showToast: (msg: string) => void;
   showError: (msg: string) => void;
+  section?: 'all' | 'legal_requisites' | 'pdn_incidents';
 }
 
 export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
   operatorName,
   showToast,
   showError,
+  section = 'all',
 }) => {
   // Global Stores
   const {
@@ -82,17 +84,21 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
   const [isReportingIncident, setIsReportingIncident] = useState<boolean>(false);
   const [selectedIncidentDraft, setSelectedIncidentDraft] = useState<SecurityIncidentRecord | null>(null);
 
-  // Load incidents on mount
-  useEffect(() => {
-    SecurityIncidentsRepository.getAll()
-      .then((data) => setIncidents(data))
-      .catch((err) => console.error('Failed to load incidents:', err));
-  }, []);
+  const [activePdnTab, setActivePdnTab] = useState<'active' | 'archived'>('active');
 
-  // AI Data Masking Sandbox State
-  const [maskingInput, setMaskingInput] = useState<string>(
-    'Клиент Иванов Петр Сергеевич, паспорт 4510 987654 выдан ТП №1 ОУФМС, СНИЛС 123-456-789 00, телефон +7 (999) 123-45-67, email ivanov@mail.ru, купил квартиру в ЖК "Светлый", договор ДДУ № 44-ФЗ/2024.'
-  );
+  const fetchPdnIncidents = async () => {
+    try {
+      const data = await SecurityIncidentsRepository.getPaginated({ category: 'pdn_breach_152fz' });
+      setIncidents(data.items || []);
+    } catch (err) {
+      console.error('Failed to load incidents:', err);
+    }
+  };
+
+  // Load 152-FZ PDn breach incidents only
+  useEffect(() => {
+    fetchPdnIncidents();
+  }, []);
 
   // Handle saving company legal requisites
   const handleSaveLegalProfile = async (e: React.FormEvent) => {
@@ -173,8 +179,7 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
             companyInn: legalForm.inn,
             companyName: legalForm.shortName,
           });
-          const allInc = await SecurityIncidentsRepository.getAll();
-          setIncidents(allInc);
+          await fetchPdnIncidents();
           setShowAddIncidentModal(false);
           setNewIncidentTitle('');
           setNewIncidentDesc('');
@@ -205,9 +210,9 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
           : inc.roskomnadzorNotificationDate,
       resolvedAt: newStatus === 'resolved' ? new Date().toISOString() : inc.resolvedAt,
     };
+    setIncidents((prev) => prev.map((item) => (item.id === inc.id ? updated : item)));
     await SecurityIncidentsRepository.updateIncident(updated);
-    const allInc = await SecurityIncidentsRepository.getAll();
-    setIncidents(allInc);
+    await fetchPdnIncidents();
     showToast(
       `Статус инцидента «${inc.title}» обновлен: ${
         newStatus === 'notified_rkn'
@@ -219,10 +224,20 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
     );
   };
 
+  const showLegalAndChannels = section === 'all' || section === 'legal_requisites';
+  const showPdnIncidents = section === 'all' || section === 'pdn_incidents';
+
+  const openPdnIncidents = incidents.filter((i) => i.status !== 'resolved');
+  const resolvedPdnIncidents = incidents.filter((i) => i.status === 'resolved');
+  const displayedIncidents = activePdnTab === 'active' ? openPdnIncidents : resolvedPdnIncidents;
+
   return (
     <div className="space-y-6">
-      {/* SECTION A: COMPLIANCE & LEGAL HUB: 152-FZ / 38-FZ / ROSKOMNADZOR (15 fields) */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
+      {/* SECTION A & B: COMPLIANCE, REQUISITES & PUBLIC CHANNELS */}
+      {showLegalAndChannels && (
+        <>
+          {/* SECTION A: COMPLIANCE & LEGAL HUB: 152-FZ / 38-FZ / ROSKOMNADZOR (15 fields) */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700 font-black">
@@ -683,9 +698,12 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
           </div>
         </form>
       </div>
+        </>
+      )}
 
-      {/* SECTION C: SECURITY INCIDENTS & ROSKOMNADZOR 24H PROTOCOL */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
+      {/* SECTION C: 152-FZ OFFICIAL PDn BREACH REGISTER & PROTOCOL */}
+      {showPdnIncidents && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-700 font-black">
@@ -712,24 +730,59 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
             className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>Зафиксировать инцидент (Роскомнадзор 24ч)</span>
+            <span>Зафиксировать инцидент ПДн (24ч)</span>
+          </button>
+        </div>
+
+        {/* Sub-tabs: Active vs Archived */}
+        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+          <button
+            type="button"
+            onClick={() => setActivePdnTab('active')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activePdnTab === 'active'
+                ? 'bg-rose-50 text-rose-700 border border-rose-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Активные ({openPdnIncidents.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivePdnTab('archived')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activePdnTab === 'archived'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Архив (Решённые) ({resolvedPdnIncidents.length})
           </button>
         </div>
 
         {/* Incident Log Records */}
         <div className="space-y-3">
-          {incidents.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1">
-              <p className="text-xs font-bold text-slate-700">
-                Инцидентов утечки или неправомерной обработки персональных данных не зафиксировано.
-              </p>
-              <p className="text-[11px] text-slate-400">
-                Контур защищен по стандартам ч. 3.1 ст. 21 № 152-ФЗ с обязательной 24-часовой нотификацией в Роскомнадзор при сбое.
-              </p>
-            </div>
+          {displayedIncidents.length === 0 ? (
+            activePdnTab === 'active' ? (
+              <div className="p-6 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-center space-y-1">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-2">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-bold text-emerald-900">
+                  Нарушений и утечек ПДн не зафиксировано (0 инцидентов)
+                </p>
+                <p className="text-xs text-emerald-700">
+                  Контур защищен по стандартам ч. 3.1 ст. 21 № 152-ФЗ с обязательной 24-часовой нотификацией в Роскомнадзор при сбое.
+                </p>
+              </div>
+            ) : (
+              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                В архиве нет закрытых инцидентов ПДн.
+              </div>
+            )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {incidents.map((inc) => (
+              {displayedIncidents.map((inc) => (
                 <div
                   key={inc.id}
                   className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3"
@@ -818,47 +871,7 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
           )}
         </div>
       </div>
-
-      {/* SECTION D: AI DATA MASKING ENGINE TESTING GATEWAY */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-              <Lock className="w-4 h-4 text-emerald-600" />
-              <span>Шлюз ИИ-маскирования персональных данных (AI Data Masking / Роскомнадзор)</span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              Принудительная деперсонализация персональных данных перед передачей во внешние сервисы обработки.
-            </p>
-          </div>
-          <span className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 self-start sm:self-auto">
-            Active Guard: ON
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="block font-bold text-slate-700 mb-1">
-              Исходный текст запроса к ИИ (содержит ПДн):
-            </label>
-            <textarea
-              rows={3}
-              value={maskingInput}
-              onChange={(e) => setMaskingInput(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 font-mono text-xs focus:bg-white focus:border-indigo-500"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-700 mb-1">
-              Результат маскирования (передается в LLM):
-            </label>
-            <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 text-slate-800 font-mono text-xs min-h-[74px]">
-              {maskSensitiveData(maskingInput)}
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* 152-FZ Security Incident Registration Modal */}
       {showAddIncidentModal && (
@@ -1015,7 +1028,7 @@ export const LegalAndChannelsTab: React.FC<LegalAndChannelsTabProps> = ({
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <span className="text-[11px] text-slate-500 font-mono">
-                  Дедлайн направления: {new Date(selectedIncidentDraft.deadline24h).toLocaleString('ru-RU')}
+                  Дедлайн направления: {selectedIncidentDraft.deadline24h ? new Date(selectedIncidentDraft.deadline24h).toLocaleString('ru-RU') : '—'}
                 </span>
 
                 <div className="flex items-center space-x-2">

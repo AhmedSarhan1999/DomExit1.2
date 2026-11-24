@@ -118,6 +118,7 @@ export interface PaginationParams {
   cursor?: string | null;
   fields?: 'card' | 'full';
   status?: string;
+  category?: string;
   role?: string;
   lotCode?: string;
   city?: string;
@@ -143,6 +144,7 @@ export const apiClient = {
     if (params.cursor) query.set('cursor', params.cursor);
     if (params.fields) query.set('fields', params.fields);
     if (params.status) query.set('status', params.status);
+    if (params.category) query.set('category', params.category);
     if (params.role) query.set('role', params.role);
     if (params.lotCode) query.set('lotCode', params.lotCode);
     if (params.city) query.set('city', params.city);

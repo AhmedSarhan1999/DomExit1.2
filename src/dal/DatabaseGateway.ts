@@ -3,6 +3,7 @@ import { backendApiAdapterInstance } from './adapters/BackendApiAdapter';
 import { resolveCollectionName } from './config/collectionResolver';
 import { swrCache } from './cache/SWRCache';
 import { requestDeduplicator } from './cache/requestDeduplicator';
+import { PaginationParams, PaginatedResult } from '../services/apiClient';
 
 /**
  * Central Enterprise Data Access Layer Gateway (DAL)
@@ -79,6 +80,14 @@ class DatabaseGatewayController {
   ): Promise<T[]> {
     const resolvedName = resolveCollectionName(collectionName);
     return this.activeAdapter.queryEntities(resolvedName, predicate, seedFallback);
+  }
+
+  getPaginated<T extends { id: string }>(
+    collectionName: string,
+    params: PaginationParams = {}
+  ): Promise<PaginatedResult<T>> {
+    const resolvedName = resolveCollectionName(collectionName);
+    return this.activeAdapter.getPaginated<T>(resolvedName, params);
   }
 
   async remove(collectionName: string, id: string): Promise<boolean> {

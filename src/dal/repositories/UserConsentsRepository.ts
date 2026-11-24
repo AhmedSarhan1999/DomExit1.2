@@ -1,6 +1,7 @@
 import { UserConsentRecord } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LegalRepository } from './LegalRepository';
+import { PaginatedResult } from '../../services/apiClient';
 
 const COLLECTION = 'user_consents';
 
@@ -84,5 +85,16 @@ export class UserConsentsRepository {
 
   static async getAll(): Promise<UserConsentRecord[]> {
     return DatabaseGateway.getAll<UserConsentRecord>(COLLECTION, []);
+  }
+
+  static async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<PaginatedResult<UserConsentRecord>> {
+    return DatabaseGateway.getPaginated<UserConsentRecord>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
   }
 }

@@ -1,5 +1,6 @@
 import { PartnerEntry } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { PaginatedResult } from '../../services/apiClient';
 import { UsersRepository } from './UsersRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
 
@@ -23,6 +24,18 @@ export class PartnersRepository {
         new Date(b.timestamp || '2026-10-01').getTime() -
         new Date(a.timestamp || '2026-10-01').getTime()
     );
+  }
+
+  static async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  } = {}): Promise<PaginatedResult<PartnerEntry>> {
+    return DatabaseGateway.getPaginated<PartnerEntry>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
   }
 
   static async getById(partnerId: string): Promise<PartnerEntry | null> {

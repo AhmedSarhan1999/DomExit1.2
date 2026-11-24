@@ -1,5 +1,6 @@
 import { Lot, RussianCityCode, SellerExitRequest } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { PaginatedResult } from '../../services/apiClient';
 import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
@@ -76,6 +77,18 @@ export class SellerRequestsRepository {
     return [...list].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
+  }
+
+  static async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  } = {}): Promise<PaginatedResult<SellerExitRequest>> {
+    return DatabaseGateway.getPaginated<SellerExitRequest>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
   }
 
   static async getByUser(uid: string, clientCode?: string): Promise<SellerExitRequest[]> {

@@ -888,19 +888,32 @@ export interface UserConsentRecord {
   };
 }
 
+export type IncidentCategory = 'waf_security_event' | 'pdn_breach_152fz';
+
 export interface SecurityIncidentRecord {
   id: string;
+  category?: IncidentCategory;
+  type?: string;
   timestamp: string;
+  createdAt?: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   title: string;
+  summary?: string;
   description: string;
-  affectedRecordsCount: number;
+  affectedRecordsCount?: number;
+  requiresRknNotification?: boolean;
   reportedToRoskomnadzor: boolean;
   roskomnadzorDraft?: string;
   roskomnadzorNotificationDate?: string;
   resolvedAt?: string;
-  deadline24h: string;
-  status: 'investigating' | 'notified_rkn' | 'contained' | 'resolved';
+  deadline24h?: string;
+  status: 'open' | 'investigating' | 'notified_rkn' | 'contained' | 'resolved';
+  actorUserId?: string;
+  actorRole?: string;
+  ipHash?: string;
+  endpoint?: string;
+  collection?: string;
+  details?: any;
 }
 
 export interface CookieConsentPreferences {

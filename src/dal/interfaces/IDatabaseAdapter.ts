@@ -1,3 +1,5 @@
+import { PaginationParams, PaginatedResult } from '../../services/apiClient';
+
 /**
  * Standard Database Adapter Contract
  * Used by DatabaseGateway for data operations.
@@ -26,6 +28,11 @@ export interface IDatabaseAdapter {
     predicate: (item: T) => boolean,
     seedFallback?: T[]
   ): Promise<T[]>;
+
+  getPaginated<T extends { id: string }>(
+    collectionName: string,
+    params?: PaginationParams
+  ): Promise<PaginatedResult<T>>;
 
   removeEntity(
     collectionName: string,

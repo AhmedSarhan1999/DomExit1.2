@@ -1,11 +1,24 @@
-import { SecurityIncidentRecord } from '../../types';
+import { SecurityIncidentRecord, IncidentCategory } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { PaginatedResult } from '../../services/apiClient';
 
 const COLLECTION = 'security_incidents';
 
 export class SecurityIncidentsRepository {
   static async getAll(): Promise<SecurityIncidentRecord[]> {
     return DatabaseGateway.getAll<SecurityIncidentRecord>(COLLECTION, []);
+  }
+
+  static async getPaginated(params: {
+    category?: IncidentCategory;
+    status?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<PaginatedResult<SecurityIncidentRecord>> {
+    return DatabaseGateway.getPaginated<SecurityIncidentRecord>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
   }
 
   static async reportIncident(params: {
@@ -41,12 +54,14 @@ ${params.description}
 
     const incident: SecurityIncidentRecord = {
       id: `incident-${Date.now()}`,
+      category: 'pdn_breach_152fz',
       timestamp: now.toISOString(),
       deadline24h: deadline.toISOString(),
       severity: params.severity,
       title: params.title,
       description: params.description,
       affectedRecordsCount: params.affectedRecordsCount,
+      requiresRknNotification: true,
       reportedToRoskomnadzor: false,
       roskomnadzorDraft: draft,
       status: 'investigating',

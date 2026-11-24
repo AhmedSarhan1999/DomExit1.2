@@ -45,30 +45,34 @@ export async function handleAdmin(
       });
     }
 
-    // 1b. Check S3 Buckets
+    // 1b. Check S3 Buckets using ListObjectsV2Command (safe across all Yandex Cloud IAM roles)
     let publicBucketOk = false;
     let privateBucketOk = false;
     try {
-      await s3.send(new HeadBucketCommand({ Bucket: cfg.S3_PUBLIC_BUCKET }));
+      await s3.send(new ListObjectsV2Command({ Bucket: cfg.S3_PUBLIC_BUCKET, MaxKeys: 1 }));
       publicBucketOk = true;
-    } catch {
+    } catch (e: any) {
+      logger.warn('System health check: public S3 check failed', { meta: { error: e.message } });
       publicBucketOk = false;
     }
 
     try {
-      await s3.send(new HeadBucketCommand({ Bucket: cfg.S3_PRIVATE_BUCKET }));
+      await s3.send(new ListObjectsV2Command({ Bucket: cfg.S3_PRIVATE_BUCKET, MaxKeys: 1 }));
       privateBucketOk = true;
-    } catch {
+    } catch (e: any) {
+      logger.warn('System health check: private S3 check failed', { meta: { error: e.message } });
       privateBucketOk = false;
     }
 
     // 1c. Backups health
+    const isStagingEnv = cfg.APP_ENV === 'staging';
     let backupsInfo = {
       latestDailyKey: null as string | null,
       latestDailyAt: null as string | null,
       latestDailySizeBytes: 0,
       ageHours: null as number | null,
       isHealthy: false,
+      mode: isStagingEnv ? 'manual_staging' : 'automated_daily',
       totalDailyBackups: 0,
       totalPreCutoverBackups: 0,
     };
@@ -90,8 +94,11 @@ export async function handleAdmin(
         if (latest.lastModified) {
           const ageHours = (Date.now() - new Date(latest.lastModified).getTime()) / (1000 * 60 * 60);
           backupsInfo.ageHours = Number(ageHours.toFixed(2));
-          backupsInfo.isHealthy = ageHours <= 26; // Healthy if backed up in the last 26h
+          // Staging uses manual snapshot mode; Production enforces strict daily 26h threshold
+          backupsInfo.isHealthy = isStagingEnv ? true : ageHours <= 26;
         }
+      } else {
+        backupsInfo.isHealthy = isStagingEnv;
       }
     } catch (bErr: any) {
       logger.warn('System health check: backup list error', {

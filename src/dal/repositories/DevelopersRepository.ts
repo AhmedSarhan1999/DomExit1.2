@@ -10,6 +10,7 @@ import {
 import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { PaginatedResult } from '../../services/apiClient';
 
 const DEVELOPERS_COLLECTION = 'developers';
 const ACCREDITATION_REQUESTS_COLLECTION = 'developer_accreditation_requests';
@@ -384,6 +385,18 @@ export function deduplicateDevelopers(rawList: AccreditedDeveloper[]): Accredite
 }
 
 class DevelopersRepositoryController {
+  async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  } = {}): Promise<PaginatedResult<AccreditedDeveloper>> {
+    return DatabaseGateway.getPaginated<AccreditedDeveloper>(DEVELOPERS_COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
+  }
+
   async getAllDevelopers(): Promise<AccreditedDeveloper[]> {
     const raw = await DatabaseGateway.getAll<AccreditedDeveloper>(
       DEVELOPERS_COLLECTION,

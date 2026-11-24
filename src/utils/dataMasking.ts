@@ -1,6 +1,6 @@
 /**
  * Federal Law 152-FZ Compliant Data Masking Layer
- * Masks Personal Identifiable Information (PII) before external AI analysis or telemetry.
+ * Masks Personal Identifiable Information (PII) for secure UI rendering and audit logging.
  */
 
 export function maskRussianPhone(phone: string): string {
@@ -37,18 +37,3 @@ export function maskContractNumber(contractNum: string): string {
   if (contractNum.length <= 4) return 'ДДУ-****';
   return `ДДУ-***-${contractNum.slice(-4)}`;
 }
-
-export function maskPromptText(text: string): string {
-  if (!text) return '';
-  // Mask phone numbers
-  let sanitized = text.replace(/(\+7|8)[\s(-]*(\d{3})[\s)-]*(\d{3})[\s-]*(\d{2})[\s-]*(\d{2})/g, '+7 ($2) ***-**-$5');
-  // Mask emails
-  sanitized = sanitized.replace(/([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '***@***.ru');
-  // Mask passport series & numbers (4 digits + 6 digits)
-  sanitized = sanitized.replace(/\b\d{4}\s+\d{6}\b/g, '**** ******');
-  // Mask SNILS (11 digits)
-  sanitized = sanitized.replace(/\b\d{3}-\d{3}-\d{3}\s+\d{2}\b/g, '***-***-*** **');
-  return sanitized;
-}
-
-export const maskSensitiveData = maskPromptText;

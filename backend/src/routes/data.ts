@@ -154,6 +154,7 @@ function applyPaginationAndFilters(
   const page = Math.max(1, parseInt(q['page'] || '1', 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(q['limit'] || '25', 10) || 25));
   const status = q['status']?.trim()?.toLowerCase();
+  const category = q['category']?.trim()?.toLowerCase();
   const role = q['role']?.trim()?.toLowerCase();
   const lotCode = q['lotCode']?.trim()?.toLowerCase();
   const city = (q['city'] || q['region'])?.trim()?.toLowerCase();
@@ -162,6 +163,9 @@ function applyPaginationAndFilters(
 
   let filtered = items;
 
+  if (category) {
+    filtered = filtered.filter((item) => String(item.category || '').toLowerCase() === category);
+  }
   if (status) {
     filtered = filtered.filter((item) => String(item.status || '').toLowerCase() === status);
   }
@@ -909,6 +913,11 @@ export async function handleData(
 
   // --- POST Create or PUT Update ---
   if (method === 'POST' || method === 'PUT') {
+    // Unauthenticated PUT requests should be rejected immediately before privilege tampering checks
+    if (method === 'PUT' && !authUser) {
+      return json(event, 401, { error: 'Требуется авторизация для изменения данных' });
+    }
+
     if (collection === 'pep_signatures') {
       return json(event, 403, {
         error: 'Прямая модификация pep_signatures запрещена. Используйте /api/pep/verify-and-sign',
@@ -965,6 +974,7 @@ export async function handleData(
             : 'low';
 
         await recordSecurityIncident({
+          category: 'waf_security_event',
           type: valResult.incidentType,
           severity: sev,
           actorUserId: authUser?.id,

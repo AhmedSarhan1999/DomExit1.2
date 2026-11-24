@@ -48,7 +48,7 @@ import {
   AccreditedDeveloper,
   DocumentMetadata,
 } from '../types';
-import { CheckCircle2, Crown, Briefcase, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Crown, Briefcase, AlertCircle, Server, Shield, Scale } from 'lucide-react';
 
 export const AdminDashboardPage: React.FC = () => {
   const { user, switchRole } = useAuth();
@@ -80,6 +80,7 @@ export const AdminDashboardPage: React.FC = () => {
 
   // Navigation Tabs State
   const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>('overview');
+  const [activeSystemSubTab, setActiveSystemSubTab] = useState<'infra' | 'security' | 'legal'>('infra');
 
   // Curator dialogs & Chat modal State
   const [curatorDialogs, setCuratorDialogs] = useState<
@@ -372,29 +373,89 @@ export const AdminDashboardPage: React.FC = () => {
               {/* TAB 5: Система, Telegram и CMS (26 актов) */}
               {activeOwnerTab === 'system_cms' && (
                 <div className="space-y-6 animate-fade-in">
-                  {/* Executive Cloud & Security Radar Card */}
-                  <AdminGovernanceCard showToast={showToast} />
+                  {/* Sub-tab Navigation Bar */}
+                  <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSystemSubTab('infra')}
+                      className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        activeSystemSubTab === 'infra'
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                      }`}
+                    >
+                      <Server className="w-4 h-4 text-sky-600" />
+                      <span>5.1 Инфраструктура и Бэкап</span>
+                    </button>
 
-                  {/* Telegram OS Connect Card */}
-                  <TelegramConnectCard />
+                    <button
+                      type="button"
+                      onClick={() => setActiveSystemSubTab('security')}
+                      className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        activeSystemSubTab === 'security'
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                      }`}
+                    >
+                      <Shield className="w-4 h-4 text-rose-600" />
+                      <span>5.2 Кибербезопасность и 152-ФЗ</span>
+                    </button>
 
-                  {/* Company Profile, Channels & Security settings */}
-                  <LegalAndChannelsTab
-                    operatorName={operatorName}
-                    showToast={showToast}
-                    showError={showError}
-                  />
+                    <button
+                      type="button"
+                      onClick={() => setActiveSystemSubTab('legal')}
+                      className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        activeSystemSubTab === 'legal'
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                      }`}
+                    >
+                      <Scale className="w-4 h-4 text-indigo-600" />
+                      <span>5.3 Правовой CMS и Реквизиты</span>
+                    </button>
+                  </div>
 
-                  {/* Full Legal CMS Manager (26 Acts & Registries) */}
-                  <Suspense
-                    fallback={
-                      <div className="p-8 text-center text-slate-500 font-bold bg-white rounded-3xl border border-slate-200">
-                        Загрузка Правового CMS (26 актов)...
-                      </div>
-                    }
-                  >
-                    <LegalCmsManager />
-                  </Suspense>
+                  {/* Sub-tab 5.1: Инфраструктура и Бэкап */}
+                  {activeSystemSubTab === 'infra' && (
+                    <div className="space-y-6">
+                      <AdminGovernanceCard viewSection="infra_backups" showToast={showToast} />
+                      <TelegramConnectCard />
+                    </div>
+                  )}
+
+                  {/* Sub-tab 5.2: Кибербезопасность и 152-ФЗ */}
+                  {activeSystemSubTab === 'security' && (
+                    <div className="space-y-6">
+                      <AdminGovernanceCard viewSection="security_waf" showToast={showToast} />
+                      <LegalAndChannelsTab
+                        section="pdn_incidents"
+                        operatorName={operatorName}
+                        showToast={showToast}
+                        showError={showError}
+                      />
+                    </div>
+                  )}
+
+                  {/* Sub-tab 5.3: Правовой CMS и Реквизиты */}
+                  {activeSystemSubTab === 'legal' && (
+                    <div className="space-y-6">
+                      <LegalAndChannelsTab
+                        section="legal_requisites"
+                        operatorName={operatorName}
+                        showToast={showToast}
+                        showError={showError}
+                      />
+                      <Suspense
+                        fallback={
+                          <div className="p-8 text-center text-slate-500 font-bold bg-white rounded-3xl border border-slate-200">
+                            Загрузка Правового CMS (26 актов)...
+                          </div>
+                        }
+                      >
+                        <LegalCmsManager />
+                      </Suspense>
+                    </div>
+                  )}
                 </div>
               )}
             </>

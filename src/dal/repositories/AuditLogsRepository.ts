@@ -1,5 +1,6 @@
 import { AuditLogEntry } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { PaginatedResult } from '../../services/apiClient';
 
 const COLLECTION = 'audit_logs';
 
@@ -96,6 +97,19 @@ const initialLogs: AuditLogEntry[] = [
 ];
 
 export class AuditLogsRepository {
+  static async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    actionType?: string;
+    lotCode?: string;
+  } = {}): Promise<PaginatedResult<AuditLogEntry>> {
+    return DatabaseGateway.getPaginated<AuditLogEntry>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
+  }
+
   static async getAllLogs(filter?: {
     operatorName?: string;
     lotCode?: string;

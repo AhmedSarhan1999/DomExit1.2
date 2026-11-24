@@ -1,5 +1,6 @@
 import { DealTrack } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { PaginatedResult } from '../../services/apiClient';
 import { LotsRepository } from './LotsRepository';
 import { CandidatesRepository } from './CandidatesRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
@@ -9,6 +10,18 @@ const COLLECTION = 'deals';
 export class DealsRepository {
   static async getAll(): Promise<DealTrack[]> {
     return DatabaseGateway.getAll<DealTrack>(COLLECTION, []);
+  }
+
+  static async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  } = {}): Promise<PaginatedResult<DealTrack>> {
+    return DatabaseGateway.getPaginated<DealTrack>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
   }
 
   static async getById(dealId: string): Promise<DealTrack | null> {

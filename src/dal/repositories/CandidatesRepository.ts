@@ -3,6 +3,7 @@ import { DatabaseGateway } from '../DatabaseGateway';
 import { LotsRepository } from './LotsRepository';
 import { DealsRepository } from './DealsRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
+import { PaginatedResult } from '../../services/apiClient';
 
 const COLLECTION = 'buyer_applications';
 const LEGACY_COLLECTION = 'candidates';
@@ -48,6 +49,18 @@ export class CandidatesRepository {
         new Date(b.timestamp || b.requestedTimestamp).getTime() -
         new Date(a.timestamp || a.requestedTimestamp).getTime()
     );
+  }
+
+  static async getPaginated(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  } = {}): Promise<PaginatedResult<BuyerCandidate>> {
+    return DatabaseGateway.getPaginated<BuyerCandidate>(COLLECTION, {
+      ...params,
+      limit: params.limit || 25,
+    });
   }
 
   static async getByLotCode(lotCode: string): Promise<BuyerCandidate[]> {
