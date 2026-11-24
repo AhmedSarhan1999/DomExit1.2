@@ -1,10 +1,4 @@
-interface CacheEntry<T = any> {
-  data: T;
-  expiresAt: number;
-}
-
-const DEFAULT_TTL_MS = 15000; // 15 seconds
-const MAX_ENTRIES = 32;
+import { appCache, InMemoryLruCache } from './cache.js';
 
 export const CACHEABLE_COLLECTIONS = new Set([
   'lots',
@@ -17,57 +11,34 @@ export const CACHEABLE_COLLECTIONS = new Set([
   'platform_settings',
 ]);
 
-class MemoryCache {
-  private store: Map<string, CacheEntry> = new Map();
-
+/**
+ * Backward compatibility facade for memoryCache, delegating to the unified appCache.
+ */
+class MemoryCacheFacade {
   get<T = any>(key: string): T | null {
-    const entry = this.store.get(key);
-    if (!entry) return null;
-
-    if (Date.now() > entry.expiresAt) {
-      this.store.delete(key);
-      return null;
-    }
-
-    return entry.data as T;
+    return appCache.get<T>(key);
   }
 
-  set<T = any>(key: string, data: T, ttlMs = DEFAULT_TTL_MS): void {
-    if (this.store.size >= MAX_ENTRIES) {
-      // Evict oldest or expired keys
-      const now = Date.now();
-      for (const [k, v] of this.store.entries()) {
-        if (now > v.expiresAt) {
-          this.store.delete(k);
-        }
-      }
-      if (this.store.size >= MAX_ENTRIES) {
-        const firstKey = this.store.keys().next().value;
-        if (firstKey) this.store.delete(firstKey);
-      }
-    }
-
-    this.store.set(key, {
-      data,
-      expiresAt: Date.now() + ttlMs,
-    });
+  set<T = any>(key: string, data: T, ttlMs?: number): void {
+    appCache.set(key, data, ttlMs);
   }
 
   invalidate(collection: string): void {
-    for (const key of this.store.keys()) {
-      if (key === collection || key.startsWith(`${collection}:`)) {
-        this.store.delete(key);
-      }
-    }
+    appCache.invalidatePrefix(collection);
+  }
+
+  invalidatePrefix(prefix: string): void {
+    appCache.invalidatePrefix(prefix);
   }
 
   invalidateAll(): void {
-    this.store.clear();
+    appCache.clear();
   }
 
   size(): number {
-    return this.store.size;
+    return appCache.size();
   }
 }
 
-export const memoryCache = new MemoryCache();
+export const memoryCache = new MemoryCacheFacade();
+export { appCache, InMemoryLruCache };

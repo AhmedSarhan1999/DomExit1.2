@@ -1,11 +1,13 @@
 import crypto from 'node:crypto';
 import { UserProfile, YcHttpEvent, YcHttpResponse } from '../types.js';
-import { json, parseBody, getClientIp } from '../lib/http.js';
+import { json, notModified, normalizeHeaders, parseBody, getClientIp } from '../lib/http.js';
 import { getYdbClient } from '../lib/ydbClient.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
 import { deleteS3ObjectsByPrefix } from '../lib/s3Client.js';
 import { memoryCache, CACHEABLE_COLLECTIONS } from '../lib/memoryCache.js';
+import { appCache, generateETag } from '../lib/cache.js';
+import { checkRateLimit } from '../lib/rateLimit.js';
 import { recordJournalEvent } from '../lib/journal.js';
 import { telegramNotifier } from '../lib/telegramNotifier.js';
 import { validateCollectionPayload } from '../lib/validationAndGuards.js';
@@ -75,14 +77,84 @@ export function sanitizeLotForPublic(lot: Record<string, any>, authUser: UserPro
   return sanitized;
 }
 
+export function projectLotForCard(lot: Record<string, any>): Record<string, any> {
+  const photos = Array.isArray(lot.curatorApprovedImages) && lot.curatorApprovedImages.length > 0
+    ? lot.curatorApprovedImages.slice(0, 4)
+    : Array.isArray(lot.photos)
+    ? lot.photos.slice(0, 4)
+    : [];
+
+  return {
+    id: lot.id,
+    lotCode: lot.lotCode || lot.code || lot.id,
+    code: lot.code || lot.lotCode || lot.id,
+    title: lot.title,
+    description: lot.description ? String(lot.description).slice(0, 200) : '',
+    propertyType: lot.propertyType,
+    rooms: lot.rooms,
+    floor: lot.floor,
+    floorsTotal: lot.floorsTotal,
+    area: lot.area,
+    livingArea: lot.livingArea,
+    kitchenArea: lot.kitchenArea,
+    price: lot.price ?? lot.currentPrice ?? 0,
+    currentPrice: lot.currentPrice ?? lot.price ?? 0,
+    oldPrice: lot.oldPrice,
+    discount: lot.discount ?? lot.discountPercent ?? 0,
+    discountPercent: lot.discountPercent ?? lot.discount ?? 0,
+    discountRub: lot.discountRub,
+    city: lot.city,
+    region: lot.region,
+    district: lot.district,
+    address: lot.address,
+    complexName: lot.complexName || lot.housingComplex,
+    housingComplex: lot.housingComplex || lot.complexName,
+    developer: lot.developer,
+    developerName: lot.developerName || lot.developer,
+    developerInn: lot.developerInn,
+    deadline: lot.deadline,
+    completionYear: lot.completionYear,
+    completionQuarter: lot.completionQuarter,
+    renovation: lot.renovation,
+    curatorApprovedImages: photos,
+    photos,
+    tags: lot.tags,
+    badges: lot.badges,
+    status: lot.status,
+    approvalStatus: lot.approvalStatus,
+    isApproved: lot.isApproved,
+    isPublished: lot.isPublished,
+    publishedAt: lot.publishedAt,
+    createdAt: lot.createdAt,
+    updatedAt: lot.updatedAt,
+    assignedEmployeeId: lot.assignedEmployeeId,
+  };
+}
+
+export function encodeCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset })).toString('base64url');
+}
+
+export function decodeCursor(cursor?: string): number {
+  if (!cursor) return 0;
+  try {
+    const raw = Buffer.from(cursor, 'base64url').toString('utf-8');
+    const parsed = JSON.parse(raw);
+    return Math.max(0, parseInt(parsed.offset, 10) || 0);
+  } catch {
+    return 0;
+  }
+}
+
 function applyPaginationAndFilters(
   items: any[],
   query: Record<string, string> | undefined
 ): { items: any[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean } {
   const q = query || {};
   const page = Math.max(1, parseInt(q['page'] || '1', 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(q['limit'] || '24', 10) || 24));
+  const limit = Math.min(100, Math.max(1, parseInt(q['limit'] || '25', 10) || 25));
   const status = q['status']?.trim()?.toLowerCase();
+  const role = q['role']?.trim()?.toLowerCase();
   const lotCode = q['lotCode']?.trim()?.toLowerCase();
   const city = (q['city'] || q['region'])?.trim()?.toLowerCase();
   const search = q['search']?.trim()?.toLowerCase();
@@ -92,6 +164,13 @@ function applyPaginationAndFilters(
 
   if (status) {
     filtered = filtered.filter((item) => String(item.status || '').toLowerCase() === status);
+  }
+  if (role) {
+    filtered = filtered.filter((item) => {
+      const itemRole = String(item.role || '').toLowerCase();
+      const roles = Array.isArray(item.roles) ? item.roles.map((r: any) => String(r).toLowerCase()) : [];
+      return itemRole === role || roles.includes(role);
+    });
   }
   if (lotCode) {
     filtered = filtered.filter(
@@ -120,6 +199,14 @@ function applyPaginationAndFilters(
         item.district,
         item.description,
         item.lotCode,
+        item.name,
+        item.email,
+        item.phone,
+        item.clientCode,
+        item.inn,
+        item.developerInn,
+        item.clientInn,
+        item.id,
       ]
         .filter(Boolean)
         .join(' ')
@@ -220,6 +307,8 @@ export async function handleData(
 
     // Invalidate lots cache
     memoryCache.invalidate('lots');
+    appCache.invalidatePrefix('lots');
+    appCache.invalidatePrefix('lot:');
 
     // Record immutable journal cascade event
     await recordJournalEvent({
@@ -475,6 +564,10 @@ export async function handleData(
 
     // 4. Public collections
     if (PUBLIC_COLLECTIONS.has(collection)) {
+      const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
+      const isFresh = event.queryStringParameters?.fresh === '1';
+      const ifNoneMatch = normalizeHeaders(event.headers, event.multiValueHeaders)['if-none-match'];
+
       if (id) {
         let item = await ydb.getItem(collection, id);
         if (!item && collection === 'lots') {
@@ -490,7 +583,6 @@ export async function handleData(
         if (!item) return json(event, 404, { error: 'Запись не найдена' });
 
         if (collection === 'lots') {
-          const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
           if (!isStaff) {
             const allowedStatuses = new Set([
               'active',
@@ -509,16 +601,37 @@ export async function handleData(
             if ((!isApproved || !isAllowedStatus) && !isSeller) {
               return json(event, 404, { error: 'Объект не найден или снят с публикации' });
             }
+
+            // Public LRU cache for individual lot details (60s TTL)
+            const cacheKey = `lot:public:${id}`;
+            const cached = appCache.getWithMeta(cacheKey);
+            const cacheHeaders = {
+              'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
+              'ETag': cached?.etag || generateETag(item),
+              'X-Cache': cached ? 'HIT' : 'MISS',
+            };
+
+            if (cached && ifNoneMatch && ifNoneMatch === cached.etag) {
+              return notModified(event, cacheHeaders);
+            }
+
+            const sanitizedItem = sanitizeLotForPublic(item, authUser);
+            if (!cached) {
+              appCache.set(cacheKey, sanitizedItem, 60000, cacheHeaders.ETag);
+            }
+
+            return json(event, 200, { item: cached ? cached.data : sanitizedItem }, {
+              extraHeaders: cacheHeaders,
+            });
           }
-          return json(event, 200, { item: sanitizeLotForPublic(item, authUser) });
+          return json(event, 200, { item: sanitizeLotForPublic(item, authUser) }, {
+            extraHeaders: { 'Cache-Control': 'private, no-store' },
+          });
         }
         return json(event, 200, { item });
       }
 
       // Safe Warm Cache: use cache only for public queries without ?fresh=1, bypassed for staff
-      const isStaff = authUser?.role === 'owner' || authUser?.role === 'employee';
-      const isFresh = event.queryStringParameters?.fresh === '1';
-
       let all: any[] | null = null;
       if (!isStaff && !isFresh && CACHEABLE_COLLECTIONS.has(collection)) {
         all = memoryCache.get(collection);
@@ -532,8 +645,46 @@ export async function handleData(
       }
 
       if (collection === 'lots') {
-        let filtered = all;
+        const cursor = event.queryStringParameters?.cursor;
+        const pageStr = event.queryStringParameters?.page;
+        const limit = Math.min(50, Math.max(1, parseInt(event.queryStringParameters?.limit || '12', 10) || 12));
+        const fields = event.queryStringParameters?.fields; // 'card' or 'full'
 
+        // Check if query is default Page 1 catalog query (unauthenticated/visitor, default params)
+        const isDefaultPage1 =
+          !isStaff &&
+          !isFresh &&
+          (!cursor || cursor === '0') &&
+          (!pageStr || pageStr === '1') &&
+          !event.queryStringParameters?.search &&
+          !event.queryStringParameters?.city &&
+          !event.queryStringParameters?.region &&
+          !event.queryStringParameters?.district &&
+          !event.queryStringParameters?.status &&
+          !event.queryStringParameters?.developer &&
+          !event.queryStringParameters?.rooms &&
+          !event.queryStringParameters?.priceMin &&
+          !event.queryStringParameters?.priceMax &&
+          (!event.queryStringParameters?.sort || event.queryStringParameters?.sort === 'newest');
+
+        const cacheKey = `lots:catalog:p1:${fields || 'card'}:${limit}`;
+
+        if (isDefaultPage1) {
+          const cached = appCache.getWithMeta(cacheKey);
+          if (cached) {
+            const cacheHeaders = {
+              'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
+              'ETag': cached.etag || '',
+              'X-Cache': 'HIT',
+            };
+            if (ifNoneMatch && ifNoneMatch === cached.etag) {
+              return notModified(event, cacheHeaders);
+            }
+            return json(event, 200, cached.data, { extraHeaders: cacheHeaders });
+          }
+        }
+
+        let filtered = all;
         if (!isStaff) {
           const allowedStatuses = new Set([
             'active',
@@ -553,10 +704,198 @@ export async function handleData(
         // Apply 152-ФЗ Privacy Barrier AFTER cache retrieval
         const sanitized = filtered.map((lot: any) => sanitizeLotForPublic(lot, authUser));
 
-        if (isPaginated) {
-          return json(event, 200, applyPaginationAndFilters(sanitized, event.queryStringParameters));
+        // Apply filters & sort
+        const q = event.queryStringParameters || {};
+        let matching = sanitized;
+        const statusFilter = q['status']?.trim()?.toLowerCase();
+        const lotCodeFilter = q['lotCode']?.trim()?.toLowerCase();
+        const locationFilter = (q['city'] || q['region'] || q['district'])?.trim()?.toLowerCase();
+        const developerFilter = q['developer']?.trim()?.toLowerCase();
+        const roomsFilter = q['rooms']?.trim()?.toLowerCase();
+        const priceMin = q['priceMin'] ? Number(q['priceMin']) : undefined;
+        const priceMax = q['priceMax'] ? Number(q['priceMax']) : undefined;
+        const searchFilter = q['search']?.trim()?.toLowerCase();
+        const sortFilter = q['sort']?.trim()?.toLowerCase();
+
+        if (statusFilter) {
+          matching = matching.filter((l: any) => String(l.status || '').toLowerCase() === statusFilter);
         }
-        return json(event, 200, { items: sanitized });
+        if (lotCodeFilter) {
+          matching = matching.filter(
+            (l: any) =>
+              String(l.lotCode || '').toLowerCase() === lotCodeFilter ||
+              String(l.code || '').toLowerCase() === lotCodeFilter ||
+              String(l.id || '').toLowerCase() === lotCodeFilter
+          );
+        }
+        if (locationFilter) {
+          matching = matching.filter(
+            (l: any) =>
+              String(l.city || '').toLowerCase().includes(locationFilter) ||
+              String(l.region || '').toLowerCase().includes(locationFilter) ||
+              String(l.district || '').toLowerCase().includes(locationFilter) ||
+              String(l.address || '').toLowerCase().includes(locationFilter)
+          );
+        }
+        if (developerFilter) {
+          matching = matching.filter(
+            (l: any) =>
+              String(l.developer || '').toLowerCase().includes(developerFilter) ||
+              String(l.developerName || '').toLowerCase().includes(developerFilter) ||
+              String(l.developerInn || '').includes(developerFilter)
+          );
+        }
+        if (roomsFilter) {
+          matching = matching.filter((l: any) => {
+            if (roomsFilter === 'studio') return String(l.rooms || '').toLowerCase().includes('ст') || l.rooms === 0 || l.rooms === '0';
+            return String(l.rooms) === roomsFilter;
+          });
+        }
+        if (priceMin !== undefined && !isNaN(priceMin)) {
+          matching = matching.filter((l: any) => (l.price ?? l.currentPrice ?? 0) >= priceMin);
+        }
+        if (priceMax !== undefined && !isNaN(priceMax)) {
+          matching = matching.filter((l: any) => (l.price ?? l.currentPrice ?? 0) <= priceMax);
+        }
+        if (searchFilter) {
+          matching = matching.filter((l: any) => {
+            const str = [
+              l.title,
+              l.complexName,
+              l.housingComplex,
+              l.developerName,
+              l.city,
+              l.address,
+              l.district,
+              l.description,
+              l.lotCode,
+              l.code,
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            return str.includes(searchFilter);
+          });
+        }
+
+        // Sorting
+        if (sortFilter) {
+          matching = [...matching].sort((a: any, b: any) => {
+            if (sortFilter === 'price_asc') {
+              return (Number(a.price ?? a.currentPrice ?? 0)) - (Number(b.price ?? b.currentPrice ?? 0));
+            }
+            if (sortFilter === 'price_desc') {
+              return (Number(b.price ?? b.currentPrice ?? 0)) - (Number(a.price ?? a.currentPrice ?? 0));
+            }
+            if (sortFilter === 'discount_desc') {
+              const da = Number(a.discount ?? a.discountPercent ?? a.discountRub ?? 0);
+              const db = Number(b.discount ?? b.discountPercent ?? b.discountRub ?? 0);
+              return db - da;
+            }
+            if (sortFilter === 'newest') {
+              const ta = a.createdAt || a.publishedAt || a.updatedAt ? new Date(a.createdAt || a.publishedAt || a.updatedAt).getTime() : 0;
+              const tb = b.createdAt || b.publishedAt || b.updatedAt ? new Date(b.createdAt || b.publishedAt || b.updatedAt).getTime() : 0;
+              return tb - ta;
+            }
+            return 0;
+          });
+        }
+
+        const totalMatching = matching.length;
+        const stats = {
+          totalCount: totalMatching,
+          activeCount: matching.filter((l: any) => l.status === 'active' || l.status === 'available').length,
+        };
+
+        let offset = 0;
+        if (cursor !== undefined) {
+          offset = decodeCursor(cursor);
+        } else if (pageStr) {
+          const pageNum = Math.max(1, parseInt(pageStr, 10) || 1);
+          offset = (pageNum - 1) * limit;
+        }
+
+        const sliced = matching.slice(offset, offset + limit);
+        const finalItems = fields === 'card' ? sliced.map(projectLotForCard) : sliced;
+        const hasMore = offset + limit < totalMatching;
+        const nextCursor = hasMore ? encodeCursor(offset + limit) : null;
+
+        let responsePayload: any;
+        if (cursor !== undefined || (isPaginated && fields === 'card')) {
+          responsePayload = {
+            items: finalItems,
+            nextCursor,
+            hasMore,
+            totalMatching,
+            stats,
+          };
+        } else if (pageStr) {
+          const pageNum = Math.max(1, parseInt(pageStr, 10) || 1);
+          responsePayload = {
+            items: finalItems,
+            total: totalMatching,
+            page: pageNum,
+            limit,
+            totalPages: Math.ceil(totalMatching / limit) || 1,
+            hasMore,
+          };
+        } else if (isPaginated) {
+          responsePayload = {
+            items: finalItems,
+            nextCursor,
+            hasMore,
+            totalMatching,
+            total: totalMatching,
+            page: 1,
+            limit,
+            totalPages: Math.ceil(totalMatching / limit) || 1,
+            stats,
+          };
+        } else {
+          // Backward compatible safety cap (max 100)
+          responsePayload = {
+            items: sanitized.slice(0, 100),
+          };
+        }
+
+        const etag = generateETag(responsePayload);
+        const cacheControl = isStaff ? 'private, no-store' : 'public, max-age=30, stale-while-revalidate=60';
+        const headers: Record<string, string> = {
+          'Cache-Control': cacheControl,
+          'ETag': etag,
+          'X-Cache': isDefaultPage1 ? 'MISS' : 'BYPASS',
+        };
+
+        if (isDefaultPage1) {
+          appCache.set(cacheKey, responsePayload, 60000, etag);
+        }
+
+        if (!isStaff && ifNoneMatch && ifNoneMatch === etag) {
+          return notModified(event, headers);
+        }
+
+        return json(event, 200, responsePayload, { extraHeaders: headers });
+      }
+
+      if (collection === 'developers') {
+        const etag = generateETag(all);
+        const cacheControl = isStaff ? 'private, no-store' : 'public, max-age=60, stale-while-revalidate=120';
+        const headers: Record<string, string> = {
+          'Cache-Control': cacheControl,
+          'ETag': etag,
+          'X-Cache': 'MISS',
+        };
+
+        if (!isStaff && ifNoneMatch && ifNoneMatch === etag) {
+          return notModified(event, headers);
+        }
+
+        if (!isStaff) {
+          appCache.set('developers:all', all, 300000, etag);
+        }
+
+        const resp = isPaginated ? applyPaginationAndFilters(all, event.queryStringParameters) : { items: all };
+        return json(event, 200, resp, { extraHeaders: headers });
       }
 
       if (isPaginated) {
@@ -582,6 +921,24 @@ export async function handleData(
     }
 
     const clientIp = getClientIp(event);
+
+    // Rate Limiting on public submission endpoints (15 submissions / 15 min per IP)
+    if (
+      method === 'POST' &&
+      (collection === 'seller_requests' ||
+        collection === 'investor_applications' ||
+        collection === 'partner_preliminary_requests' ||
+        collection === 'partner_applications')
+    ) {
+      const rateCheck = checkRateLimit(event, {
+        scope: `submit_${collection}`,
+        limit: 15,
+        windowSec: 900,
+        customMessageRu: 'Превышен лимит создания заявок. Пожалуйста, подождите 15 минут.',
+      });
+      if (!rateCheck.allowed) return rateCheck.response!;
+    }
+
     const isOwner = authUser?.role === 'owner';
     const isStaff = isOwner || authUser?.role === 'employee';
     const isStaging = cfg.APP_ENV === 'staging';
@@ -810,6 +1167,10 @@ export async function handleData(
 
     // Invalidate cache for this collection
     memoryCache.invalidate(collection);
+    appCache.invalidatePrefix(collection);
+    if (collection === 'lots') {
+      appCache.invalidatePrefix('lot:');
+    }
 
     // 1. Owner-only collections write
     if (OWNER_ONLY_COLLECTIONS.has(collection)) {
@@ -1185,6 +1546,10 @@ export async function handleData(
 
     // Invalidate cache
     memoryCache.invalidate(collection);
+    appCache.invalidatePrefix(collection);
+    if (collection === 'lots') {
+      appCache.invalidatePrefix('lot:');
+    }
 
     // Record immutable journal event for deletes on sensitive collections
     await recordJournalEvent({

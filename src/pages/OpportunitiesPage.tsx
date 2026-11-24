@@ -31,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
   PlusCircle,
+  Loader2,
 } from 'lucide-react';
 
 export const OpportunitiesPage: React.FC = () => {
@@ -57,10 +58,12 @@ export const OpportunitiesPage: React.FC = () => {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState<boolean>(false);
   const [isQuickMatchOpen, setIsQuickMatchOpen] = useState<boolean>(false);
 
-  // Dynamic Adaptive Pagination State
-  const [pageSize, setPageSize] = useState<12 | 24 | 48>(12);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [loadedExtraPages, setLoadedExtraPages] = useState<number>(0);
+  // Dynamic Adaptive Cursor Pagination State
+  const [pageSize, setPageSize] = useState<number>(12);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [totalMatching, setTotalMatching] = useState<number>(0);
 
   // Active drawer filter state
   const [appliedFilters, setAppliedFilters] = useState<any>({});
@@ -93,28 +96,70 @@ export const OpportunitiesPage: React.FC = () => {
     district = selectedDistrict
   ) => {
     setLoading(true);
-
-    // Fetch full live registry for accurate KPI & status counters
-    const baseline = await LotsRepository.getAll({ status: 'all' });
-    setAllRegistryLots(baseline);
+    setNextCursor(null);
 
     const filterObj: any = {
       ...customFilter,
       searchQuery: search,
-      status,
+      status: status !== 'all' ? status : undefined,
       city: city !== 'all' ? city : customFilter.city,
       district: district !== 'all' ? district : customFilter.district,
+      limit: pageSize,
+      cursor: null,
+      fields: 'card',
     };
 
     if (quick === 'urgent') filterObj.urgentOnly = true;
     if (quick === 'ready2026') filterObj.readyYear = 2026;
     if (quick === 'under3m') filterObj.maxCash = 3000000;
 
-    const data = await LotsRepository.getAll(filterObj);
-    setLots(data);
-    setCurrentPage(1);
-    setLoadedExtraPages(0);
-    setLoading(false);
+    try {
+      const [baseline, paginated] = await Promise.all([
+        LotsRepository.getAll({ status: 'all' }),
+        LotsRepository.getPaginated(filterObj),
+      ]);
+      setAllRegistryLots(baseline);
+      setLots(paginated.items);
+      setNextCursor(paginated.nextCursor);
+      setHasMore(paginated.hasMore);
+      setTotalMatching(paginated.totalMatching);
+    } catch (err) {
+      console.error('[OpportunitiesPage] Failed to load lots:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (!nextCursor || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+
+    const filterObj: any = {
+      ...appliedFilters,
+      searchQuery: searchQuery,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
+      city: selectedCity !== 'all' ? selectedCity : appliedFilters.city,
+      district: selectedDistrict !== 'all' ? selectedDistrict : appliedFilters.district,
+      limit: pageSize,
+      cursor: nextCursor,
+      fields: 'card',
+    };
+
+    if (activeQuickFilter === 'urgent') filterObj.urgentOnly = true;
+    if (activeQuickFilter === 'ready2026') filterObj.readyYear = 2026;
+    if (activeQuickFilter === 'under3m') filterObj.maxCash = 3000000;
+
+    try {
+      const paginated = await LotsRepository.getPaginated(filterObj);
+      setLots((prev) => [...prev, ...paginated.items]);
+      setNextCursor(paginated.nextCursor);
+      setHasMore(paginated.hasMore);
+      setTotalMatching(paginated.totalMatching);
+    } catch (err) {
+      console.error('[OpportunitiesPage] Failed to load more lots:', err);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   useEffect(() => {
@@ -226,14 +271,6 @@ export const OpportunitiesPage: React.FC = () => {
       maxSavingsPct,
     };
   }, [allRegistryLots]);
-
-  // Dynamic Adaptive Pagination Calculations
-  const totalPages = Math.max(1, Math.ceil(lots.length / pageSize));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIdx = (safeCurrentPage - 1) * pageSize;
-  const endIdx = Math.min(lots.length, startIdx + pageSize * (1 + loadedExtraPages));
-  const paginatedLots = lots.slice(startIdx, endIdx);
-  const canLoadMore = endIdx < lots.length;
 
   const availableDistricts = selectedCity !== 'all' ? getDistrictsForRegion(selectedCity) : [];
 
@@ -582,8 +619,6 @@ export const OpportunitiesPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setPageSize(sz);
-                      setCurrentPage(1);
-                      setLoadedExtraPages(0);
                     }}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
                       pageSize === sz
@@ -719,81 +754,38 @@ export const OpportunitiesPage: React.FC = () => {
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 py-4">
-              {paginatedLots.map((lot) => (
+              {lots.map((lot) => (
                 <LotCard key={lot.id} lot={lot} />
               ))}
             </div>
 
-            {/* 4. Dynamic Adaptive Pagination + Load More */}
+            {/* 4. Enterprise Cursor Pagination + Load More */}
             <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-xs text-slate-500 font-medium">
                 {language === 'ru'
-                  ? `Показано ${startIdx + 1}–${endIdx} из ${lots.length} верифицированных лотов`
-                  : `Showing ${startIdx + 1}–${endIdx} of ${lots.length} verified lots`}
+                  ? `Показано ${lots.length} из ${totalMatching || lots.length} верифицированных лотов`
+                  : `Showing ${lots.length} of ${totalMatching || lots.length} verified lots`}
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-2">
-                {canLoadMore && (
+                {hasMore && (
                   <button
                     type="button"
-                    onClick={() => setLoadedExtraPages((prev) => prev + 1)}
-                    className="px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center space-x-1.5 transition-colors mr-2"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center space-x-2 transition-all shadow-xs cursor-pointer disabled:opacity-50"
                   >
-                    <PlusCircle className="w-3.5 h-3.5" />
+                    {loadingMore ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    ) : (
+                      <PlusCircle className="w-4 h-4 text-white" />
+                    )}
                     <span>
                       {language === 'ru'
-                        ? `Загрузить еще (${Math.min(pageSize, lots.length - endIdx)})`
-                        : `Load More (${Math.min(pageSize, lots.length - endIdx)})`}
+                        ? `Показать ещё (${Math.min(pageSize, Math.max(0, (totalMatching || 0) - lots.length)) || pageSize})`
+                        : `Show more (${Math.min(pageSize, Math.max(0, (totalMatching || 0) - lots.length)) || pageSize})`}
                     </span>
                   </button>
-                )}
-
-                {totalPages > 1 && (
-                  <div className="inline-flex items-center space-x-1.5">
-                    <button
-                      type="button"
-                      disabled={safeCurrentPage <= 1}
-                      onClick={() => {
-                        setCurrentPage((p) => Math.max(1, p - 1));
-                        setLoadedExtraPages(0);
-                      }}
-                      className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none"
-                      aria-label="Previous Page"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-
-                    {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => {
-                          setCurrentPage(pageNum);
-                          setLoadedExtraPages(0);
-                        }}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
-                          safeCurrentPage === pageNum
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-
-                    <button
-                      type="button"
-                      disabled={safeCurrentPage >= totalPages}
-                      onClick={() => {
-                        setCurrentPage((p) => Math.min(totalPages, p + 1));
-                        setLoadedExtraPages(0);
-                      }}
-                      className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none"
-                      aria-label="Next Page"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
                 )}
               </div>
 
@@ -805,10 +797,8 @@ export const OpportunitiesPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setPageSize(sz);
-                      setCurrentPage(1);
-                      setLoadedExtraPages(0);
                     }}
-                    className={`px-2 py-1 rounded-lg font-bold ${
+                    className={`px-2 py-1 rounded-lg font-bold cursor-pointer ${
                       pageSize === sz
                         ? 'bg-slate-900 text-white'
                         : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'

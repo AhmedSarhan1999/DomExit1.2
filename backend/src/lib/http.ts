@@ -56,6 +56,7 @@ export function getClientIp(event: YcHttpEvent): string {
   const norm = normalizeHeaders(event.headers, event.multiValueHeaders);
   return (
     norm['x-forwarded-for']?.split(',')[0]?.trim() ||
+    norm['x-real-ip']?.trim() ||
     event.requestContext?.identity?.sourceIp ||
     '127.0.0.1'
   );
@@ -72,7 +73,9 @@ export function resolveCorsHeaders(
 
   const cors: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, If-None-Match',
+    'Access-Control-Expose-Headers':
+      'ETag, X-Cache, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After',
   };
 
   const isDomExit = origin === 'https://domexit.ru' || origin === 'https://www.domexit.ru';
@@ -140,6 +143,23 @@ export function json(
   }
 
   return res;
+}
+
+export function notModified(
+  event: YcHttpEvent,
+  extraHeaders?: Record<string, string>,
+  publicBaseUrl?: string
+): YcHttpResponse {
+  const cors = resolveCorsHeaders(event, publicBaseUrl);
+  return {
+    statusCode: 304,
+    headers: {
+      ...MANDATORY_SECURITY_HEADERS,
+      ...cors,
+      ...(extraHeaders || {}),
+    },
+    body: '',
+  };
 }
 
 export function redirect(

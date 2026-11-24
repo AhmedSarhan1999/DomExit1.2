@@ -25,6 +25,7 @@ import {
 import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
 import { sendEmail, renderPasswordResetEmail, maskEmail } from '../lib/emailService.js';
 import { logger } from '../lib/logger.js';
+import { checkRateLimit } from '../lib/rateLimit.js';
 
 export function normalizeRussianPhone(raw: string | undefined | null): string | undefined {
   if (!raw) return undefined;
@@ -64,12 +65,20 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
   // POST /api/auth/register
   if (subPath === '/register' && method === 'POST') {
+    const rateCheck = checkRateLimit(event, {
+      scope: 'auth_register',
+      limit: 10,
+      windowSec: 900,
+      customMessageRu: 'Превышен лимит регистраций с вашего IP-адреса. Пожалуйста, подождите 15 минут.',
+    });
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     const clientIp = getClientIp(event);
     const regQuota = await consumeQuota({
       scope: 'auth_register_ip',
       actorKey: clientIp || 'unknown_ip',
-      limit: 5,
-      windowSec: 3600,
+      limit: 10,
+      windowSec: 900,
     });
     if (!regQuota.allowed) {
       await recordSecurityIncident({
@@ -227,17 +236,31 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
   // POST /api/auth/login
   if (subPath === '/login' && method === 'POST') {
+    const rateCheck = checkRateLimit(event, {
+      scope: 'auth_login',
+      limit: 10,
+      windowSec: 900,
+      customMessageRu: 'Слишком много попыток входа. Пожалуйста, подождите 15 минут.',
+    });
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     const clientIp = getClientIp(event);
     const body = parseBody<{ email?: string; password?: string }>(event);
     const email = body?.email?.trim().toLowerCase();
     const password = body?.password;
 
     if (!email || !password) {
-      return json(event, 400, { error: 'Укажите email и пароль' });
+      return json(event, 400, { error: 'Укажите email и пароль' }, { extraHeaders: rateCheck.headers });
     }
 
     const rateKey = `${clientIp}:${email}`;
-    if (!checkLoginRateLimit(rateKey)) {
+    const accountCheck = checkRateLimit(event, {
+      scope: `auth_account_${email}`,
+      limit: 5,
+      windowSec: 300,
+      customMessageRu: 'Слишком много неудачных попыток входа. Пожалуйста, подождите 5 минут.',
+    });
+    if (!accountCheck.allowed) {
       await recordSecurityIncident({
         type: 'auth_bruteforce_or_probe',
         severity: 'high',
@@ -246,9 +269,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         summary: `Блокировка перебора паролей для аккаунта: ${email}`,
         details: { email, clientIp },
       });
-      return json(event, 429, {
-        error: 'Слишком много неудачных попыток входа. Пожалуйста, подождите 5 минут.',
-      });
+      return accountCheck.response!;
     }
 
     const matchingUsers = await ydb.findByField<UserProfile>('users', 'email', email);
@@ -265,13 +286,13 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
     if (!user || !user.passwordHash) {
       recordFailedLogin(rateKey);
-      return json(event, 401, { error: 'Неверный адрес эл. почты или пароль' });
+      return json(event, 401, { error: 'Неверный адрес эл. почты или пароль' }, { extraHeaders: rateCheck.headers });
     }
 
     const isValid = await verifyPassword(password, user.passwordHash);
     if (!isValid) {
       recordFailedLogin(rateKey);
-      return json(event, 401, { error: 'Неверный адрес эл. почты или пароль' });
+      return json(event, 401, { error: 'Неверный адрес эл. почты или пароль' }, { extraHeaders: rateCheck.headers });
     }
 
     resetFailedLogin(rateKey);
@@ -307,6 +328,14 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
   // POST /api/auth/set-password
   if (subPath === '/set-password' && method === 'POST') {
+    const rateCheck = checkRateLimit(event, {
+      scope: 'auth_set_password',
+      limit: 5,
+      windowSec: 900,
+      customMessageRu: 'Превышен лимит запросов на установку пароля. Попробуйте через 15 минут.',
+    });
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     const user = await getAuthenticatedUser(event);
     if (!user) {
       return json(event, 401, { error: 'Не авторизован' });
@@ -379,6 +408,14 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
 
   // POST /api/auth/change-password
   if (subPath === '/change-password' && method === 'POST') {
+    const rateCheck = checkRateLimit(event, {
+      scope: 'auth_change_password',
+      limit: 5,
+      windowSec: 900,
+      customMessageRu: 'Превышен лимит запросов на смену пароля. Попробуйте через 15 минут.',
+    });
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     const user = await getAuthenticatedUser(event);
     if (!user) {
       return json(event, 401, { error: 'Не авторизован' });

@@ -150,14 +150,18 @@ async function deploy() {
   for (const file of files) {
     const ext = path.extname(file.relPath).toLowerCase();
     const contentType = MIME_MAP[ext] || 'application/octet-stream';
-    const isIndex = file.relPath === 'index.html';
+    const isNoCache =
+      file.relPath === 'index.html' ||
+      file.relPath.startsWith('yandex_') ||
+      file.relPath === 'robots.txt' ||
+      file.relPath === 'sitemap.xml';
     const isAsset = file.relPath.startsWith('assets/');
 
-    const cacheControl = isIndex
-      ? 'public, max-age=0, must-revalidate'
+    const cacheControl = isNoCache
+      ? 'no-cache, no-store, must-revalidate'
       : isAsset
       ? 'public, max-age=31536000, immutable'
-      : 'public, max-age=3600';
+      : 'public, max-age=86400';
 
     const fileBuffer = fs.readFileSync(file.fullPath);
     totalBytes += fileBuffer.length;

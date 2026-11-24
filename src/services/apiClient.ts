@@ -99,19 +99,34 @@ async function request<T = any>(endpoint: string, options: RequestOptions = {}):
 
 export interface PaginatedResult<T> {
   items: T[];
-  total: number;
-  page: number;
+  total?: number;
+  totalMatching?: number;
+  page?: number;
   limit: number;
-  totalPages: number;
+  totalPages?: number;
   hasMore: boolean;
+  nextCursor?: string | null;
+  stats?: {
+    totalCount: number;
+    activeCount: number;
+  };
 }
 
 export interface PaginationParams {
   page?: number;
   limit?: number;
+  cursor?: string | null;
+  fields?: 'card' | 'full';
   status?: string;
+  role?: string;
   lotCode?: string;
   city?: string;
+  region?: string;
+  district?: string;
+  developer?: string;
+  rooms?: string;
+  priceMin?: number;
+  priceMax?: number;
   search?: string;
   sort?: 'newest' | 'price_asc' | 'price_desc' | 'discount_desc' | string;
   fresh?: boolean;
@@ -123,11 +138,20 @@ export const apiClient = {
 
   getPaginated: <T = any>(collection: string, params: PaginationParams = {}, options?: RequestOptions) => {
     const query = new URLSearchParams({ paginated: '1' });
-    if (params.page) query.set('page', String(params.page));
-    if (params.limit) query.set('limit', String(params.limit));
+    if (params.page !== undefined) query.set('page', String(params.page));
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    if (params.cursor) query.set('cursor', params.cursor);
+    if (params.fields) query.set('fields', params.fields);
     if (params.status) query.set('status', params.status);
+    if (params.role) query.set('role', params.role);
     if (params.lotCode) query.set('lotCode', params.lotCode);
     if (params.city) query.set('city', params.city);
+    if (params.region) query.set('region', params.region);
+    if (params.district) query.set('district', params.district);
+    if (params.developer) query.set('developer', params.developer);
+    if (params.rooms) query.set('rooms', params.rooms);
+    if (params.priceMin !== undefined) query.set('priceMin', String(params.priceMin));
+    if (params.priceMax !== undefined) query.set('priceMax', String(params.priceMax));
     if (params.search) query.set('search', params.search);
     if (params.sort) query.set('sort', params.sort);
     if (params.fresh) query.set('fresh', '1');

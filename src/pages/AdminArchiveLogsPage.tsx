@@ -9,6 +9,7 @@ import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { FileManager } from '../utils/fileManager';
 import { AuditLogEntry } from '../types';
+import { PaginationControls } from '../components/admin/PaginationControls';
 import {
   FileText,
   Search,
@@ -40,6 +41,8 @@ export const AdminArchiveLogsPage: React.FC = () => {
   const [selectedActionType, setSelectedActionType] = useState<string>('all');
   const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
 
   useEffect(() => {
     const urlQuery = searchParams.get('q') || '';
@@ -76,6 +79,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
+    setCurrentPage(1);
     if (value.trim()) {
       setSearchParams({ q: value }, { replace: true });
     } else {
@@ -105,6 +109,10 @@ export const AdminArchiveLogsPage: React.FC = () => {
 
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedLogs = filteredLogs.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const formatTimestamp = (iso: string) => {
     try {
@@ -255,8 +263,11 @@ export const AdminArchiveLogsPage: React.FC = () => {
               {/* Operator Filter */}
               <select
                 value={selectedOperator}
-                onChange={(e) => setSelectedOperator(e.target.value)}
-                className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:bg-white"
+                onChange={(e) => {
+                  setSelectedOperator(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:bg-white cursor-pointer"
               >
                 <option value="all">Все сотрудники и операторы</option>
                 {Array.from(new Set(logs.map((l) => l.operatorName))).map((op) => (
@@ -269,8 +280,11 @@ export const AdminArchiveLogsPage: React.FC = () => {
               {/* Action Type Filter */}
               <select
                 value={selectedActionType}
-                onChange={(e) => setSelectedActionType(e.target.value)}
-                className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:bg-white"
+                onChange={(e) => {
+                  setSelectedActionType(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:bg-white cursor-pointer"
               >
                 <option value="all">Все типы решений</option>
                 <option value="seller_request_submitted">Заявки продавцов (новые)</option>
@@ -350,7 +364,7 @@ export const AdminArchiveLogsPage: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredLogs.map((log) => (
+                    paginatedLogs.map((log) => (
                       <tr
                         key={log.id}
                         onClick={() => setSelectedLog(log)}
@@ -441,6 +455,20 @@ export const AdminArchiveLogsPage: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            <div className="border-t border-slate-100 px-4 py-2 bg-slate-50/50">
+              <PaginationControls
+                currentPage={safePage}
+                totalPages={totalPages}
+                totalItems={filteredLogs.length}
+                pageSize={pageSize}
+                onPageChange={(p) => setCurrentPage(p)}
+                onPageSizeChange={(sz) => {
+                  setPageSize(sz);
+                  setCurrentPage(1);
+                }}
+              />
             </div>
           </div>
         </div>

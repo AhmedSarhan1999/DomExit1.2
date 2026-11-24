@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { Briefcase, UserPlus, Edit, X, Loader2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Briefcase, UserPlus, Edit, X, Loader2, Search } from 'lucide-react';
 import { UserProfile, Employee, Lot } from '../../../types';
 import { EmployeesRepository } from '../../../dal/repositories/EmployeesRepository';
 import { UsersRepository } from '../../../dal/repositories/UsersRepository';
 import { AuditLogsRepository } from '../../../dal/repositories/AuditLogsRepository';
 import { withAsyncTimeout, ASYNC_NETWORK_TIMEOUT_MESSAGE } from '../../../utils/asyncGuard';
 import { formatRussianPhoneInput } from '../../../utils/validators';
+import { PaginationControls } from '../PaginationControls';
 
 export interface UsersRbacTabProps {
   usersList: UserProfile[];
@@ -38,6 +39,35 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
 }) => {
   const [staffTab, setStaffTab] = useState<'users' | 'employees'>('users');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+
+  // Users pagination and filtering state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [userSearch, setUserSearch] = useState<string>('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+
+  const filteredUsers = useMemo(() => {
+    return usersList.filter((u) => {
+      if (roleFilter !== 'all') {
+        const r = (u.activeRole || u.role || 'buyer').toLowerCase();
+        if (roleFilter === 'partner') {
+          if (!u.isPartnerApproved && r !== 'partner' && !u.roles?.includes('partner')) return false;
+        } else if (r !== roleFilter) {
+          return false;
+        }
+      }
+      if (userSearch.trim()) {
+        const q = userSearch.trim().toLowerCase();
+        const str = `${u.name || ''} ${u.email || ''} ${u.clientCode || ''} ${u.phone || ''}`.toLowerCase();
+        if (!str.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [usersList, roleFilter, userSearch]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // Add Employee Modal State
   const [showAddEmpModal, setShowAddEmpModal] = useState<boolean>(false);
@@ -293,8 +323,56 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
         </div>
 
         {staffTab === 'users' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
+          <div className="space-y-3">
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={(e) => {
+                    setUserSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Поиск по имени, email, коду клиента или телефону..."
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:border-indigo-500"
+                />
+                {userSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserSearch('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2 shrink-0">
+                <span className="text-xs text-slate-500 hidden sm:inline">Роль:</span>
+                <select
+                  value={roleFilter}
+                  onChange={(e) => {
+                    setRoleFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="all">Все роли ({usersList.length})</option>
+                  <option value="owner">👑 Владельцы (owner)</option>
+                  <option value="employee">👨‍💼 Кураторы (employee)</option>
+                  <option value="partner">🤝 Партнеры (partner)</option>
+                  <option value="buyer">👤 Клиенты (buyer)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-3">Пользователь</th>
@@ -306,7 +384,14 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {usersList.map((u) => {
+                {paginatedUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                      Пользователи по заданным критериям не найдены.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedUsers.map((u) => {
                   const isMasterOwner =
                     u.email?.toLowerCase() === 'amaas9499@gmail.com' ||
                     u.email?.toLowerCase() === 'ceo@domexit.ru';
@@ -384,11 +469,26 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>
-        )}
+
+          <div className="border-t border-slate-100 px-2 py-1">
+            <PaginationControls
+              currentPage={safePage}
+              totalPages={totalPages}
+              totalItems={filteredUsers.length}
+              pageSize={pageSize}
+              onPageChange={(p) => setCurrentPage(p)}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
         {staffTab === 'employees' && (
           <div className="overflow-x-auto">

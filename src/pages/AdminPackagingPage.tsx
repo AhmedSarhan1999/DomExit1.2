@@ -35,6 +35,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
+import { compressImageToWebP } from '../utils/imageCompressor';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -282,11 +283,13 @@ export const AdminPackagingPage: React.FC = () => {
         setNotificationMsg('Загрузка фото в Yandex S3...');
         const newAddedUrls: string[] = [];
         for (let i = 0; i < files.length; i++) {
-          const file = files[i];
+          const rawFile = files[i];
+          const compressed = await compressImageToWebP(rawFile, { maxWidth: 1600, quality: 0.82 });
+          const fileToUpload = compressed.file;
           const savedDoc = await StorageService.uploadDocument({
-            file,
+            file: fileToUpload,
             category: 'additional',
-            categoryLabelRu: `HD-фото упаковки: ${file.name}`,
+            categoryLabelRu: `HD-фото упаковки: ${fileToUpload.name}`,
             entityType: 'lot',
             entityId: lot.lotCode,
             uploadedByUid: user?.id || 'curator-packaging',

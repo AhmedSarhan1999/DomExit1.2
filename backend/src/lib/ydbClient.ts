@@ -208,10 +208,90 @@ export class YdbClient {
     return items;
   }
 
-  async findByField<T = any>(tableName: string, field: string, value: any): Promise<T[]> {
-    // Scan with simple in-memory filter or filter expression
-    const all = await this.scanAll<T>(tableName, 500);
-    return all.filter((item: any) => item[field] === value);
+  async scanPage<T = any>(
+    tableName: string,
+    options: {
+      limit?: number;
+      exclusiveStartKey?: any;
+      filterExpression?: string;
+      expressionAttributeNames?: Record<string, string>;
+      expressionAttributeValues?: Record<string, any>;
+    } = {}
+  ): Promise<{ items: T[]; lastEvaluatedKey?: any }> {
+    const limit = options.limit || 50;
+    const payload: Record<string, any> = {
+      TableName: tableName,
+      Limit: limit,
+    };
+    if (options.exclusiveStartKey) {
+      payload.ExclusiveStartKey = options.exclusiveStartKey;
+    }
+    if (options.filterExpression) {
+      payload.FilterExpression = options.filterExpression;
+    }
+    if (options.expressionAttributeNames) {
+      payload.ExpressionAttributeNames = options.expressionAttributeNames;
+    }
+    if (options.expressionAttributeValues) {
+      payload.ExpressionAttributeValues = options.expressionAttributeValues;
+    }
+
+    const res = await this.callApi('DynamoDB_20120810.Scan', payload);
+    const items: T[] = [];
+    if (res?.Items && Array.isArray(res.Items)) {
+      for (const rawItem of res.Items) {
+        const obj: Record<string, any> = {};
+        for (const [k, v] of Object.entries(rawItem)) {
+          obj[k] = fromDynamo(v);
+        }
+        items.push(obj as T);
+      }
+    }
+
+    return {
+      items,
+      lastEvaluatedKey: res?.LastEvaluatedKey,
+    };
+  }
+
+  async findByField<T = any>(tableName: string, field: string, value: any, limit = 100): Promise<T[]> {
+    try {
+      const items: T[] = [];
+      let lastEvaluatedKey: any = undefined;
+
+      do {
+        const payload: Record<string, any> = {
+          TableName: tableName,
+          Limit: Math.min(limit - items.length, 50),
+          FilterExpression: '#f = :v',
+          ExpressionAttributeNames: { '#f': field },
+          ExpressionAttributeValues: { ':v': toDynamo(value) },
+        };
+        if (lastEvaluatedKey) {
+          payload.ExclusiveStartKey = lastEvaluatedKey;
+        }
+
+        const res = await this.callApi('DynamoDB_20120810.Scan', payload);
+
+        if (res?.Items && Array.isArray(res.Items)) {
+          for (const rawItem of res.Items) {
+            const obj: Record<string, any> = {};
+            for (const [k, v] of Object.entries(rawItem)) {
+              obj[k] = fromDynamo(v);
+            }
+            items.push(obj as T);
+          }
+        }
+
+        lastEvaluatedKey = res?.LastEvaluatedKey;
+      } while (lastEvaluatedKey && items.length < limit);
+
+      return items;
+    } catch (err: any) {
+      console.warn(`[YdbClient.findByField] FilterExpression scan failed for ${tableName}.${field}:`, err.message);
+      const all = await this.scanAll<T>(tableName, 500);
+      return all.filter((item: any) => item[field] === value);
+    }
   }
 
   async batchDelete(tableName: string, ids: string[]): Promise<void> {
