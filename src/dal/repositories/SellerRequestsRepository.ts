@@ -125,7 +125,8 @@ export class SellerRequestsRepository {
     requestIdOrLotCode: string,
     employeeId: string,
     employeeName: string,
-    operatorName: string = 'Виктор Сергеевич (Владелец / CEO)'
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)',
+    curatorProfile?: Partial<{ name: string; role: string; phone: string; telegram: string; photoUrl?: string; whatsapp?: string; bio?: string }>
   ): Promise<SellerExitRequest | null> {
     const req = await this.getByLotCode(requestIdOrLotCode);
     const targetLotCode = req ? req.lotCode : requestIdOrLotCode;
@@ -134,16 +135,20 @@ export class SellerRequestsRepository {
       req.status = 'approved_assigned';
       req.assignedEmployeeId = employeeId;
       req.assignedEmployeeName = employeeName;
+      (req as any).assignedCuratorId = employeeId;
+      (req as any).assignedCuratorName = employeeName;
       req.rejectionReason = undefined;
       await DatabaseGateway.save<SellerExitRequest>(COLLECTION, req);
     }
 
-    await LotsRepository.assignToEmployee(targetLotCode, employeeId, employeeName, operatorName);
+    await LotsRepository.assignToEmployee(targetLotCode, employeeId, employeeName, operatorName, curatorProfile);
 
     const deal = await DealsRepository.getById(targetLotCode);
     if (deal) {
       deal.assignedEmployeeId = employeeId;
       deal.curatorName = employeeName;
+      (deal as any).assignedCuratorId = employeeId;
+      (deal as any).assignedCuratorName = employeeName;
       if (deal.stage === 'initial_audit') {
         deal.stage = 'document_check';
       }

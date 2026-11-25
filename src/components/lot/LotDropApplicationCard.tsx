@@ -39,6 +39,14 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userTier, setUserTier] = useState<BuyBoxTier>('silver');
   const [hasExistingApp, setHasExistingApp] = useState<boolean>(false);
+  const [activeSlotsCount, setActiveSlotsCount] = useState<number>(0);
+
+  const isSelfSeller = Boolean(
+    user &&
+      (lot.sellerUserId === user.id ||
+        (lot as any).sellerId === user.id ||
+        (user.email && (lot as any).sellerEmail && String((lot as any).sellerEmail).trim().toLowerCase() === String(user.email).trim().toLowerCase()))
+  );
 
   // Time remaining string calculation
   const [remainingText, setRemainingText] = useState<string>('');
@@ -68,29 +76,33 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
     return () => clearInterval(timer);
   }, [targetDeadline]);
 
-  // Load user buyBox tier & check existing app
+  // Load user buyBox tier & check existing app strictly matching lotCode
   useEffect(() => {
+    setHasExistingApp(false);
+    setAppliedApp(null);
     if (!user) return;
     const fetchUserStatus = async () => {
       try {
-        const [bbRes, appsRes] = await Promise.all([
+        const [bbRes, myAppsRes] = await Promise.all([
           apiClient.matching.getMyBuyBox().catch(() => null),
-          apiClient
-            .get<any>(`/api/data/buyer_applications?lotCode=${encodeURIComponent(lot.lotCode)}&limit=100`)
-            .catch(() => ({ items: [] })),
+          apiClient.matching.getMyApplications().catch(() => null),
         ]);
 
-        if (bbRes && bbRes.ok && bbRes.tier) {
-          setUserTier(bbRes.tier);
+        const resolvedTier = bbRes?.buyBox?.tier || bbRes?.tier || myAppsRes?.tier || (user.buyerTier as BuyBoxTier);
+        if (resolvedTier) {
+          setUserTier(resolvedTier);
         }
 
-        const appList: any[] = appsRes?.items || (Array.isArray(appsRes) ? appsRes : []);
-        const validApp = appList.find(
-          (a: any) => a.userId === user.id && a.queueStatus !== 'withdrawn'
-        );
-        if (validApp) {
-          setHasExistingApp(true);
-          setAppliedApp(validApp);
+        if (myAppsRes?.ok) {
+          setActiveSlotsCount(myAppsRes.activeCount || 0);
+          const targetCode = String(lot.lotCode || '').trim().toUpperCase();
+          const validApp = (myAppsRes.activeApplications || []).find(
+            (a: any) => String(a.lotCode || '').trim().toUpperCase() === targetCode
+          );
+          if (validApp) {
+            setHasExistingApp(true);
+            setAppliedApp(validApp);
+          }
         }
       } catch (err) {
         console.warn('[LotDropApplicationCard] Failed to fetch user status:', err);
@@ -192,8 +204,18 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
         </div>
       </div>
 
-      {/* Existing Application Banner */}
-      {hasExistingApp && appliedApp ? (
+      {/* Self-Owner Guard OR Existing Application Banner */}
+      {isSelfSeller ? (
+        <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1.5 text-indigo-950">
+          <div className="flex items-center space-x-2 text-indigo-900 font-bold text-xs">
+            <ShieldCheck className="w-4 h-4 shrink-0 text-indigo-600" />
+            <span>Это ваш объект (вы продавец)</span>
+          </div>
+          <p className="text-[11px] text-indigo-700 leading-relaxed">
+            Подача заявки на покупку собственного объекта недоступна. Управляйте продажей и документами в разделе «Я продавец» личного кабинета.
+          </p>
+        </div>
+      ) : hasExistingApp && appliedApp ? (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-2 text-emerald-950">
           <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
@@ -201,7 +223,23 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
           </div>
           <p className="text-xs text-slate-700">
             Ваш Closing Score: <strong>{appliedApp.closingScore || 100}/105</strong>. Статус в очереди:{' '}
-            <strong className="text-amber-800">{appliedApp.queueStatus || 'На рассмотрении'}</strong>.
+            <strong className="text-amber-800">
+              {appliedApp.queueStatus === 'standby_in_other_deal'
+                ? `В листе ожидания (активная сделка по #${appliedApp.activeDealLotCode || 'другому лоту'})`
+                : appliedApp.queueStatus === 'priority_1'
+                ? 'Выбраны победителем (№1)'
+                : appliedApp.queueStatus || 'На рассмотрении'}
+            </strong>.
+          </p>
+        </div>
+      ) : activeSlotsCount >= 3 ? (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5 text-amber-950">
+          <div className="flex items-center space-x-2 text-amber-900 font-bold text-xs">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+            <span>Достигнут лимит активных заявок (3 из 3)</span>
+          </div>
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            Одновременно можно участвовать не более чем в 3 сделках/очередях. Вы можете отозвать одну из открытых заявок в личном кабинете, чтобы подать на этот объект.
           </p>
         </div>
       ) : isCapped ? (

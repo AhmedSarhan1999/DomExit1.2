@@ -776,6 +776,21 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       }
     }
 
+    // Auto-sync unified Buy-Box tier & reliabilityScore into user response
+    try {
+      const { getUnifiedBuyBox } = await import('../lib/buyBoxSync.js');
+      const bb = await getUnifiedBuyBox(ydb, user.id);
+      if (bb) {
+        (user as any).buyerTier = bb.tier;
+        (user as any).reliabilityScore = bb.reliabilityScore ?? 100;
+      } else {
+        (user as any).buyerTier = (user as any).buyerTier || 'silver';
+        (user as any).reliabilityScore = (user as any).reliabilityScore ?? 100;
+      }
+    } catch {
+      // Non-fatal
+    }
+
     return json(event, 200, { user });
   }
 

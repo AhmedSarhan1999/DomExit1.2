@@ -1125,6 +1125,17 @@ export const LotDetailsPage: React.FC = () => {
                 )}
 
                 {lotStatus === 'available' && (!lot.dropConfig || lot.dropConfig.mode !== 'staged_drop') && (
+                  user && (lot.sellerUserId === user.id || (lot as any).sellerId === user.id || (user.email && (lot as any).sellerEmail?.toLowerCase() === user.email.toLowerCase())) ? (
+                    <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-950 space-y-1">
+                      <div className="flex items-center space-x-2 font-bold text-xs">
+                        <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Это ваш объект (вы продавец)</span>
+                      </div>
+                      <p className="text-[11px] text-indigo-700">
+                        Подача заявки на собственный лот недоступна.
+                      </p>
+                    </div>
+                  ) : (
                   <>
                     <button
                       type="button"
@@ -1150,6 +1161,7 @@ export const LotDetailsPage: React.FC = () => {
                       <span>Подписать NDA и запросить просмотр (ПЭП 63-ФЗ)</span>
                     </button>
                   </>
+                  )
                 )}
 
                 {lotStatus === 'processing' && (

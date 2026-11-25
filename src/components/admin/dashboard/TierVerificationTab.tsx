@@ -292,7 +292,7 @@ export const TierVerificationTab: React.FC<TierVerificationTabProps> = ({
                         <div className="font-bold text-slate-900">{req.userName || 'Инвестор'}</div>
                         <div className="text-[11px] text-slate-500 font-mono">{req.userEmail}</div>
                         <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          ID: {req.userId?.slice(-6) || 'usr'} • Ранг: {req.currentTier.toUpperCase()}
+                          ID: {req.userId?.slice(-6) || 'usr'} • Ранг: {isApproved ? 'GOLD' : req.currentTier.toUpperCase()}
                         </div>
                       </td>
 

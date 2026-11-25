@@ -533,7 +533,16 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {employees.map((emp) => (
                   <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-3 font-bold text-slate-900">{emp.name}</td>
+                    <td className="py-3 px-3 font-bold text-slate-900">
+                      <div className="flex items-center space-x-2">
+                        <span>{emp.name}</span>
+                        {((emp as any).isOwner || emp.id.startsWith('usr-')) && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                            👑 Владелец
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-3 px-3 font-mono text-slate-600">{emp.email}</td>
                     <td className="py-3 px-3 text-slate-800">{emp.role}</td>
                     <td className="py-3 px-3">
@@ -543,7 +552,7 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-3 text-center font-bold font-mono text-indigo-700">
-                      {lots.filter((l) => l.assignedEmployeeId === emp.id).length}
+                      {lots.filter((l) => l.assignedEmployeeId === emp.id || (l as any).assignedCuratorId === emp.id).length}
                     </td>
                     <td className="py-3 px-3">
                       <span
@@ -557,7 +566,10 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <div className="flex items-center justify-end space-x-1.5">
+                      {(emp as any).isOwner || emp.id.startsWith('usr-') ? (
+                        <span className="text-[11px] text-slate-400 font-semibold">Профиль владельца</span>
+                      ) : (
+                        <div className="flex items-center justify-end space-x-1.5">
                         <button
                           type="button"
                           onClick={() => {
@@ -600,6 +612,7 @@ export const UsersRbacTab: React.FC<UsersRbacTabProps> = ({
                           Удалить
                         </button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 ))}

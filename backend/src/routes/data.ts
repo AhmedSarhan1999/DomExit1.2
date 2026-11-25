@@ -463,6 +463,100 @@ export async function handleData(
 
   // --- GET Collection or Document ---
   if (method === 'GET') {
+    // 0. Unified Assignable Curators List (Owner + real Employees from users & employees tables)
+    if (collection === 'curators') {
+      if (!authUser) {
+        return json(event, 401, { error: 'Требуется авторизация' });
+      }
+      const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
+      if (!isStaff) {
+        return json(event, 403, { error: 'Доступ разрешен только сотрудникам платформы' });
+      }
+
+      const [allUsers, allEmployees] = await Promise.all([
+        ydb.scanAll<any>('users', 300),
+        ydb.scanAll<any>('employees', 200),
+      ]);
+
+      const empById = new Map<string, any>();
+      const empByEmail = new Map<string, any>();
+      for (const emp of allEmployees || []) {
+        const email = (emp.email || '').toLowerCase().trim();
+        if (email.includes('test')) continue;
+        if (emp.id) empById.set(emp.id, emp);
+        if (email) empByEmail.set(email, emp);
+      }
+
+      const curatorMap = new Map<string, any>();
+
+      // First add Owner & Employee accounts from users (prioritizing Owner at the top)
+      const staffUsers = (allUsers || []).filter((u: any) => {
+        const email = (u.email || '').toLowerCase().trim();
+        if (email.includes('test')) return false;
+        const r = String(u.role || '').toLowerCase();
+        const ar = String(u.activeRole || '').toLowerCase();
+        const rolesArr: string[] = Array.isArray(u.roles) ? u.roles.map((x: string) => String(x).toLowerCase()) : [];
+        return r === 'owner' || r === 'employee' || ar === 'owner' || ar === 'employee' || rolesArr.includes('owner') || rolesArr.includes('employee');
+      });
+
+      // Sort owners first, then employees
+      staffUsers.sort((a: any, b: any) => {
+        const aIsOwner = a.role === 'owner' || a.activeRole === 'owner' ? 0 : 1;
+        const bIsOwner = b.role === 'owner' || b.activeRole === 'owner' ? 0 : 1;
+        return aIsOwner - bIsOwner;
+      });
+
+      for (const u of staffUsers) {
+        const email = (u.email || '').toLowerCase().trim();
+        const linkedEmp = (u.assignedEmployeeId && empById.get(u.assignedEmployeeId)) || (email ? empByEmail.get(email) : null);
+        const isUserOwner = u.role === 'owner' || u.activeRole === 'owner';
+        const curatorId = linkedEmp?.id || u.assignedEmployeeId || u.id;
+        const dedupKey = email || curatorId;
+        if (curatorMap.has(dedupKey)) continue;
+
+        const baseName =
+          isUserOwner && String(u.name || '').includes('Ahmed Abdallah')
+            ? 'Ahmed Abdallah (Владелец / CEO)'
+            : isUserOwner
+            ? `${u.name || 'Владелец'} (Владелец / CEO)`
+            : linkedEmp?.name || u.name || 'Куратор DomExit';
+
+        curatorMap.set(dedupKey, {
+          id: curatorId,
+          userId: u.id,
+          name: baseName,
+          email: u.email,
+          role: isUserOwner ? 'Владелец / CEO' : linkedEmp?.role || 'Куратор сделок',
+          phone: linkedEmp?.phone || u.phone || '+7 (812) 409-00-00',
+          telegram: linkedEmp?.telegram || u.telegram || '@domexit_official',
+          whatsapp: linkedEmp?.whatsapp || u.phone || '',
+          maxProfile: linkedEmp?.maxProfile || '',
+          photoUrl: linkedEmp?.photoUrl || u.photoURL || '',
+          bio: linkedEmp?.bio || '',
+          status: linkedEmp?.status || 'active',
+          isOwner: isUserOwner,
+          permissions: linkedEmp?.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'],
+        });
+      }
+
+      // Include any standalone active employees from employees table not already merged by email/id
+      for (const emp of allEmployees || []) {
+        const email = (emp.email || '').toLowerCase().trim();
+        if (email.includes('test')) continue;
+        const alreadyMerged =
+          (email && curatorMap.has(email)) ||
+          Array.from(curatorMap.values()).some((c: any) => c.id === emp.id);
+        if (!alreadyMerged) {
+          curatorMap.set(email || emp.id, {
+            ...emp,
+            isOwner: false,
+          });
+        }
+      }
+
+      return json(event, 200, { items: Array.from(curatorMap.values()) });
+    }
+
     // 1. Owner-only collections
     if (OWNER_ONLY_COLLECTIONS.has(collection)) {
       if (!authUser || authUser.role !== 'owner') {

@@ -86,16 +86,21 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
   };
 
   const handleSelectPriority = async () => {
-    if (queue.length === 0) {
-      onShowWarning?.('В очереди нет активных заявок для выбора приоритета');
+    const eligible = queue.filter((a) => a.queueStatus !== 'standby_in_other_deal');
+    if (eligible.length === 0) {
+      onShowWarning?.(
+        queue.length === 0
+          ? 'В очереди нет активных заявок для выбора приоритета'
+          : 'Все кандидаты в очереди сейчас заняты в других активных сделках (лист ожидания).'
+      );
       return;
     }
 
     setActionLoading(true);
     try {
-      const p1 = queue[0]?.id;
-      const r2 = queue[1]?.id;
-      const r3 = queue[2]?.id;
+      const p1 = eligible[0]?.id;
+      const r2 = eligible[1]?.id;
+      const r3 = eligible[2]?.id;
 
       const res = await apiClient.matching.selectLotPriority(lot.lotCode, {
         priority1AppId: p1,
@@ -334,7 +339,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               <span>Передать очередь №2</span>
             </button>
 
-            {queue.some((a) => a.queueStatus === 'priority_1') && (
+            {queue.some((a) => a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal') && (
               <button
                 type="button"
                 disabled={actionLoading}
@@ -377,6 +382,8 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
               <tbody className="divide-y divide-slate-100 font-sans">
                 {queue.map((app, idx) => {
                   const isP1 = app.queueStatus === 'priority_1';
+                  const isInDeal = app.queueStatus === 'in_deal';
+                  const isStandby = app.queueStatus === 'standby_in_other_deal';
                   const isR2 = app.queueStatus === 'reserve_2';
                   const isR3 = app.queueStatus === 'reserve_3';
 
@@ -384,7 +391,7 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
                     <tr
                       key={app.id || idx}
                       className={`hover:bg-slate-50 transition-colors ${
-                        isP1 ? 'bg-amber-50/40 font-semibold' : ''
+                        isP1 || isInDeal ? 'bg-amber-50/40 font-semibold' : isStandby ? 'bg-slate-50/80 opacity-80' : ''
                       }`}
                     >
                       <td className="py-3 px-3 font-mono font-bold text-slate-900">
@@ -393,9 +400,13 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
 
                       <td className="py-3 px-3">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                            isP1
+                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                            isInDeal
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              : isP1
                               ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : isStandby
+                              ? 'bg-amber-50 text-amber-800 border-amber-300'
                               : isR2
                               ? 'bg-slate-200 text-slate-800 border-slate-300'
                               : isR3
@@ -403,7 +414,17 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
                               : 'bg-slate-50 text-slate-500 border-slate-200'
                           }`}
                         >
-                          {isP1 ? '👑 Приоритет №1' : isR2 ? '🥈 Резерв №2' : isR3 ? '🥉 Резерв №3' : 'В очереди'}
+                          {isInDeal
+                            ? '🤝 В активной сделке'
+                            : isP1
+                            ? '👑 Приоритет №1'
+                            : isStandby
+                            ? `⏳ В активной сделке (#${app.activeDealLotCode || '—'}) — лист ожидания`
+                            : isR2
+                            ? '🥈 Резерв №2'
+                            : isR3
+                            ? '🥉 Резерв №3'
+                            : 'В очереди'}
                         </span>
                       </td>
 

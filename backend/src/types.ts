@@ -133,6 +133,7 @@ export interface BuyerBuyBox {
   tierNote?: string;
   reliabilityScore: number;
   noShowCount: number;
+  withdrawalCount?: number;
   completedViewingsCount: number;
   createdAt: string;
   updatedAt: string;
@@ -141,12 +142,18 @@ export interface BuyerBuyBox {
 export type QueueStatus =
   | 'pending_review'
   | 'priority_1'
+  | 'in_deal'
   | 'reserve_2'
   | 'reserve_3'
   | 'waitlist'
+  | 'standby_in_other_deal'
   | 'deposit_paid'
   | 'expired'
   | 'withdrawn'
+  | 'withdrawn_from_queue'
+  | 'withdrawn_from_deal'
+  | 'completed'
+  | 'lot_closed'
   | 'rejected';
 
 export type PriceAcceptance = 'full_price' | 'above_asking' | 'discount_requested';
@@ -167,6 +174,9 @@ export interface BuyerApplication {
   scoreBreakdown?: Record<string, number>;
   queuePosition?: number;
   queueStatus?: QueueStatus;
+  activeDealLotCode?: string;
+  withdrawnAt?: string;
+  withdrawalReason?: string;
   priceAcceptance?: PriceAcceptance;
   offeredPriceRub?: number;
   readiness24h?: boolean;

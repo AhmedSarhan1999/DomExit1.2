@@ -81,16 +81,19 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
       const [bbRes, matchesRes, appsRes, tierReqsRes] = await Promise.allSettled([
         apiClient.matching.getMyBuyBox(),
         apiClient.matching.getMyMatches({ limit: 10 }),
-        apiClient.get<any>('/api/data/buyer_applications?limit=100'),
+        apiClient.matching.getMyApplications(),
         apiClient.tierVerification.getMyRequests(),
       ]);
+
+      let resolvedTier: BuyBoxTier = (user?.buyerTier as BuyBoxTier) || 'silver';
 
       if (bbRes.status === 'fulfilled' && bbRes.value.ok) {
         if (bbRes.value.buyBox) {
           setBuyBox(bbRes.value.buyBox);
+          if (bbRes.value.buyBox.tier) resolvedTier = bbRes.value.buyBox.tier;
         }
         if (bbRes.value.tier) {
-          setTier(bbRes.value.tier);
+          resolvedTier = bbRes.value.tier;
         }
       }
 
@@ -98,17 +101,20 @@ export const BuyerBuyBoxTab: React.FC<BuyerBuyBoxTabProps> = ({ user }) => {
         setMatches(matchesRes.value.matches || []);
         setTotalMatches(matchesRes.value.totalMatches || 0);
         if (matchesRes.value.buyBoxTier) {
-          setTier(matchesRes.value.buyBoxTier);
+          resolvedTier = matchesRes.value.buyBoxTier;
+        } else if (matchesRes.value.tier) {
+          resolvedTier = matchesRes.value.tier;
         }
       }
 
-      if (appsRes.status === 'fulfilled') {
-        const items = appsRes.value?.items || (Array.isArray(appsRes.value) ? appsRes.value : []);
-        const activeApps = (items || []).filter(
-          (a: any) => a.userId === user?.id && a.queueStatus !== 'withdrawn'
-        );
-        setApplications(activeApps);
+      if (appsRes.status === 'fulfilled' && appsRes.value.ok) {
+        setApplications(appsRes.value.activeApplications || []);
+        if (appsRes.value.tier) {
+          resolvedTier = appsRes.value.tier;
+        }
       }
+
+      setTier(resolvedTier);
 
       if (tierReqsRes.status === 'fulfilled' && tierReqsRes.value.ok) {
         setCurrentTierRequest(tierReqsRes.value.currentRequest || null);

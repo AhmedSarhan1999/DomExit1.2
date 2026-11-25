@@ -255,25 +255,34 @@ export class LotsRepository {
     lotCode: string,
     employeeId: string,
     employeeName: string,
-    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)'
+    operatorName: string = 'Ahmed Abdallah (Владелец / CEO)',
+    curatorProfile?: Partial<{ name: string; role: string; phone: string; telegram: string; photoUrl?: string; whatsapp?: string; bio?: string }>
   ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
     lot.assignedEmployeeId = employeeId;
     lot.assignedEmployeeName = employeeName;
-    lot.approvalStatus = 'approved_for_packaging';
-    lot.status = 'draft';
-    lot.isPublished = false;
-    lot.currentStage = 2;
+    (lot as any).assignedCuratorId = employeeId;
+    (lot as any).assignedCuratorName = employeeName;
+
+    // Preserve already-published Stage 3/4 status when reassigning curator on a live lot
+    if (!lot.isPublished && lot.approvalStatus === 'pending_owner_approval') {
+      lot.approvalStatus = 'approved_for_packaging';
+      lot.status = 'draft';
+      lot.isPublished = false;
+      lot.currentStage = 2;
+    } else if (!lot.approvalStatus || lot.approvalStatus === 'pending_owner_approval') {
+      lot.approvalStatus = 'approved_for_packaging';
+    }
 
     try {
-      const emp = await EmployeesRepository.getById(employeeId);
-      if (emp) {
+      const emp = curatorProfile?.name ? curatorProfile : await EmployeesRepository.getById(employeeId);
+      if (emp && emp.name) {
         lot.curator = {
           name: emp.name,
-          role: emp.role,
-          phone: emp.phone,
-          telegram: emp.telegram,
+          role: emp.role || 'Куратор сделок',
+          phone: emp.phone || '+7 (812) 409-00-00',
+          telegram: emp.telegram || '@domexit_official',
           photoUrl: emp.photoUrl,
           whatsapp: emp.whatsapp,
           bio: emp.bio,

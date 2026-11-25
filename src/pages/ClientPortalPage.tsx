@@ -39,6 +39,7 @@ import { PreliminaryRequestModal } from '../components/portal/PreliminaryRequest
 import {
   DealTrack,
   BuyerCandidate,
+  BuyerApplication,
   Lot,
   PartnerEntry,
   PartnerPreliminaryRequest,
@@ -136,6 +137,10 @@ export const ClientPortalPage: React.FC = () => {
 
   // Buyer & General State
   const [userBids, setUserBids] = useState<BuyerCandidate[]>([]);
+  const [buyerApps, setBuyerApps] = useState<BuyerApplication[]>([]);
+  const [archivedBuyerApps, setArchivedBuyerApps] = useState<BuyerApplication[]>([]);
+  const [buyerReliabilityScore, setBuyerReliabilityScore] = useState<number>(100);
+  const [buyerTier, setBuyerTier] = useState<string>('silver');
   const [allLots, setAllLots] = useState<Lot[]>([]);
   const [allDeals, setAllDeals] = useState<DealTrack[]>([]);
   const [favoriteLots, setFavoriteLots] = useState<Lot[]>([]);
@@ -259,6 +264,19 @@ export const ClientPortalPage: React.FC = () => {
     setPartnerAppRecord(myPartnerEntry);
     setUserBids(myBids);
 
+    // Fetch 3-Slot Buyer Applications + Tier & SLA
+    try {
+      const appsRes = await apiClient.matching.getMyApplications();
+      if (appsRes && appsRes.ok) {
+        setBuyerApps(appsRes.activeApplications || []);
+        setArchivedBuyerApps(appsRes.archivedApplications || []);
+        setBuyerReliabilityScore(appsRes.reliabilityScore ?? 100);
+        if (appsRes.tier) setBuyerTier(appsRes.tier);
+      }
+    } catch {
+      // Non-fatal if offline
+    }
+
     // Fetch PEP Digital Signatures 63-FZ
     try {
       const sigsRes = await apiClient.pep.getMySignatures();
@@ -327,9 +345,28 @@ export const ClientPortalPage: React.FC = () => {
       const docs = await StorageService.getDocumentsByEntity('lot', activeCode);
       setSellerVaultDocs(docs);
 
-      if (activeLotObj?.assignedEmployeeId) {
-        const emp = allEmps.find((e) => e.id === activeLotObj.assignedEmployeeId);
-        setCurator(emp || null);
+      if (activeLotObj?.assignedEmployeeId || (activeLotObj as any)?.assignedCuratorId) {
+        const targetId = activeLotObj?.assignedEmployeeId || (activeLotObj as any)?.assignedCuratorId;
+        const emp = allEmps.find((e) => e.id === targetId);
+        if (emp) {
+          setCurator(emp);
+        } else if (activeLotObj?.curator?.name || activeLotObj?.assignedEmployeeName) {
+          setCurator({
+            id: targetId || 'curator',
+            name: activeLotObj.curator?.name || activeLotObj.assignedEmployeeName || 'Куратор DomExit',
+            role: activeLotObj.curator?.role || 'Персональный куратор',
+            phone: activeLotObj.curator?.phone || '+7 (812) 409-00-00',
+            telegram: activeLotObj.curator?.telegram || '@domexit_official',
+            email: '',
+            status: 'active',
+            activeLotsCount: 0,
+            closedDealsCount: 0,
+            avgSpeedDays: 0,
+            permissions: ['legal_audit', 'packaging', 'matchmaker', 'closing'],
+          });
+        } else {
+          setCurator(null);
+        }
       } else {
         setCurator(null);
       }
@@ -534,7 +571,7 @@ export const ClientPortalPage: React.FC = () => {
         displayInitial={displayInitial}
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
-        buyerBidsCount={userBids.length}
+        buyerBidsCount={buyerApps.length || userBids.length}
         sellerLotsCount={sellerLots.length}
         favoritesCount={favoriteLots.length}
         isPartnerApproved={isPartnerEligible}
@@ -621,9 +658,14 @@ export const ClientPortalPage: React.FC = () => {
         {activeTab === 'buyer' && (
           <BuyerDealsTab
             userBids={userBids}
+            activeApplications={buyerApps}
+            archivedApplications={archivedBuyerApps}
+            reliabilityScore={buyerReliabilityScore}
+            buyerTier={buyerTier}
             allLots={allLots}
             allDeals={allDeals}
             user={user}
+            onRefreshData={loadData}
             onDownloadBidProof={handleDownloadBidProof}
             onOpenCuratorChat={(lotCode, dealId) => {
               setActiveChatLotCode(lotCode);

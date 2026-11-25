@@ -13,6 +13,7 @@ import { getYdbClient } from '../lib/ydbClient.js';
 import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
 import { memoryCache } from '../lib/memoryCache.js';
+import { getUnifiedBuyBox, syncBuyBoxAndUser } from '../lib/buyBoxSync.js';
 import { recordJournalEvent } from '../lib/journal.js';
 import { callTelegramApi, escapeHtml } from '../lib/telegramClient.js';
 import { findTelegramBindingByUser } from '../lib/telegramWorkflow.js';
@@ -353,8 +354,8 @@ export async function handleTierVerification(
       await ydb.putItem('tier_verification_requests', req);
 
       if (body.decision === 'approved') {
-        // Upgrade Buy-Box to Gold
-        const existingBb = await ydb.getItem<BuyerBuyBox>('buy_boxes', `bb:${req.userId}`);
+        // Upgrade unified Buy-Box and User record to Gold
+        const existingBb = await getUnifiedBuyBox(ydb, req.userId);
         const updatedBb: BuyerBuyBox = existingBb || {
           id: `bb:${req.userId}`,
           userId: req.userId,
@@ -387,8 +388,7 @@ export async function handleTierVerification(
         }
         updatedBb.updatedAt = now;
 
-        await ydb.putItem('buy_boxes', updatedBb);
-        memoryCache.invalidate('demand_radar_summary');
+        await syncBuyBoxAndUser(ydb, req.userId, updatedBb);
 
         // Audit log entry
         await ydb.putItem('audit_logs', {

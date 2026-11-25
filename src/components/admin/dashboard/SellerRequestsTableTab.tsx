@@ -86,15 +86,18 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
   };
 
   const handleApproveAndAssignLot = async (lot: Lot, specificEmpId?: string) => {
-    const empId = specificEmpId || selectedEmployees[lot.id] || lot.assignedEmployeeId;
+    const empId = specificEmpId || selectedEmployees[lot.id] || lot.assignedEmployeeId || (lot as any).assignedCuratorId;
     if (!empId) {
       showError('Выберите штатного куратора для закрепления объекта перед одобрением.');
       return;
     }
     const emp = employees.find((e) => e.id === empId);
-    if (!emp) return;
+    if (!emp) {
+      showError('Выбранный куратор не найден в актуальном штате. Обновите список.');
+      return;
+    }
 
-    await SellerRequestsRepository.approveAndAssign(lot.lotCode, emp.id, emp.name, operatorName);
+    await SellerRequestsRepository.approveAndAssign(lot.lotCode, emp.id, emp.name, operatorName, emp);
     showToast(`Заявка #${lot.lotCode} одобрена и закреплена за куратором: ${emp.name}`);
     setModalLot(null);
     await loadAllData();
@@ -372,14 +375,14 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
                     </td>
                     <td className="py-3 px-3">
                       <select
-                        value={selectedEmployees[lot.id] || lot.assignedEmployeeId || ''}
+                        value={selectedEmployees[lot.id] || lot.assignedEmployeeId || (lot as any).assignedCuratorId || ''}
                         onChange={(e) => onSelectEmployeeForLot(lot.id, e.target.value)}
-                        className="px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[190px]"
+                        className="px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[210px]"
                       >
                         <option value="">Не назначен</option>
                         {employees.map((emp) => (
                           <option key={emp.id} value={emp.id}>
-                            {emp.name} ({emp.role.slice(0, 15)})
+                            {emp.name} ({(emp.role || 'Куратор').slice(0, 18)})
                           </option>
                         ))}
                       </select>
@@ -982,7 +985,7 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
                         </label>
                         <select
                           value={
-                            selectedEmployees[modalLot.id] || modalLot.assignedEmployeeId || ''
+                            selectedEmployees[modalLot.id] || modalLot.assignedEmployeeId || (modalLot as any).assignedCuratorId || ''
                           }
                           onChange={(e) => onSelectEmployeeForLot(modalLot.id, e.target.value)}
                           className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs bg-white text-slate-900 font-semibold"
@@ -990,7 +993,7 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
                           <option value="">Выберите куратора...</option>
                           {employees.map((emp) => (
                             <option key={emp.id} value={emp.id}>
-                              {emp.name} — {emp.role}
+                              {emp.name} — {emp.role || 'Куратор'}
                             </option>
                           ))}
                         </select>

@@ -147,7 +147,7 @@ export const AdminDashboardPage: React.FC = () => {
         AnalyticsRepository.getKPIs(),
         LotsRepository.getAll({ includePendingApproval: true }),
         SellerRequestsRepository.getAll(),
-        EmployeesRepository.getAll(),
+        EmployeesRepository.getAssignableCurators(),
         CandidatesRepository.getAll(),
         PartnersRepository.getAll(),
         MarketSettingsRepository.getSettings(),

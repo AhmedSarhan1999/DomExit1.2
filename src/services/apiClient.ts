@@ -366,14 +366,45 @@ export const apiClient = {
   // Hybrid Queue & Buy-Box Matching System (Phase 6)
   matching: {
     getMyBuyBox: () =>
-      request<{ ok: boolean; buyBox: BuyerBuyBox | null; tier: BuyBoxTier }>('/api/matching/my-buy-box', {
-        method: 'GET',
-      }),
+      request<{ ok: boolean; buyBox: BuyerBuyBox | null; tier: BuyBoxTier; reliabilityScore?: number }>(
+        '/api/matching/my-buy-box',
+        { method: 'GET' }
+      ),
 
     saveMyBuyBox: (data: Partial<BuyerBuyBox>) =>
-      request<{ ok: boolean; buyBox: BuyerBuyBox; tier: BuyBoxTier }>('/api/matching/my-buy-box', {
+      request<{ ok: boolean; buyBox: BuyerBuyBox; tier: BuyBoxTier; reliabilityScore?: number }>(
+        '/api/matching/my-buy-box',
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
+
+    getMyApplications: () =>
+      request<{
+        ok: boolean;
+        activeApplications: BuyerApplication[];
+        archivedApplications: BuyerApplication[];
+        activeCount: number;
+        maxSlots: number;
+        hasActiveDeal: boolean;
+        activeDealLotCode: string | null;
+        tier: BuyBoxTier;
+        reliabilityScore: number;
+      }>('/api/matching/my-applications', { method: 'GET' }),
+
+    withdrawApplication: (appId: string, reason?: string) =>
+      request<{
+        ok: boolean;
+        application: BuyerApplication;
+        wasWinner: boolean;
+        penaltyApplied: number;
+        reliabilityScore: number | null;
+        unfrozenCount: number;
+        message: string;
+      }>(`/api/matching/applications/${encodeURIComponent(appId)}/withdraw`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ reason }),
       }),
 
     getMyMatches: (options?: { limit?: number }) => {
@@ -381,6 +412,8 @@ export const apiClient = {
       return request<{
         ok: boolean;
         buyBoxTier: BuyBoxTier;
+        tier?: BuyBoxTier;
+        reliabilityScore?: number;
         totalMatches: number;
         matches: Array<{
           lot: any;

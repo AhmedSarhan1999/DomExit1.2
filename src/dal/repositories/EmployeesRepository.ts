@@ -1,5 +1,6 @@
 import { Employee } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
+import { apiClient } from '../../services/apiClient';
 
 const COLLECTION = 'employees';
 
@@ -10,13 +11,36 @@ export class EmployeesRepository {
     const raw = await DatabaseGateway.getAll<Employee>(COLLECTION, PROD_SYSTEM_EMPLOYEES);
     return raw.filter((e) => {
       const email = (e.email || '').toLowerCase().trim();
-      return !email.includes('test') && e.id !== 'emp-1';
+      return !email.includes('test');
     });
+  }
+
+  static async getAssignableCurators(): Promise<Employee[]> {
+    try {
+      const res = await apiClient.get<{ items: Employee[] }>('/api/data/curators');
+      if (res && Array.isArray(res.items) && res.items.length > 0) {
+        const seen = new Set<string>();
+        return res.items.filter((e) => {
+          const email = (e.email || '').toLowerCase().trim();
+          if (email.includes('test')) return false;
+          const key = (e.id || email).toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+    } catch {
+      // Fallback to employees table when unauthenticated or offline
+    }
+    return this.getAll();
   }
 
   static async getById(employeeId: string): Promise<Employee | null> {
     const all = await this.getAll();
-    return all.find((e) => e.id === employeeId) || null;
+    const direct = all.find((e) => e.id === employeeId);
+    if (direct) return direct;
+    const curators = await this.getAssignableCurators();
+    return curators.find((e) => e.id === employeeId) || null;
   }
 
   static async getByEmail(email: string): Promise<Employee | null> {
