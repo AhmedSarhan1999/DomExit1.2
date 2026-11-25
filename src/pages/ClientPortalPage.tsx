@@ -818,6 +818,8 @@ export const ClientPortalPage: React.FC = () => {
           onClose={() => setIsSellerVaultOpen(false)}
           entityType="lot"
           entityId={activeSellerLot.lotCode}
+          secondaryEntityType="deal"
+          secondaryEntityId={activeSellerDeal?.dealId}
           entityTitle={`${activeSellerLot.complexName} (#${activeSellerLot.lotCode})`}
           uploadedByUid={user?.id || 'usr-seller-001'}
           clientCode={user?.clientCode || 'DEX-784105'}
@@ -834,6 +836,10 @@ export const ClientPortalPage: React.FC = () => {
         onClose={() => setIsBuyerVaultOpen(false)}
         entityType="lot"
         entityId={buyerVaultLotCode}
+        secondaryEntityType="deal"
+        secondaryEntityId={
+          allDeals.find((d) => String(d.lotCode || '').toUpperCase() === String(buyerVaultLotCode || '').toUpperCase())?.dealId
+        }
         entityTitle={`Документы по сделке (#${buyerVaultLotCode})`}
         uploadedByUid={user?.id || 'usr-buyer-001'}
         clientCode={user?.clientCode || 'DEX-000000'}

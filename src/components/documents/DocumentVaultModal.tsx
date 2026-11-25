@@ -25,6 +25,8 @@ interface DocumentVaultModalProps {
   onClose: () => void;
   entityType: DocumentMetadata['entityType'];
   entityId: string;
+  secondaryEntityType?: DocumentMetadata['entityType'];
+  secondaryEntityId?: string;
   entityTitle?: string;
   uploadedByUid: string;
   clientCode: string;
@@ -46,6 +48,8 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
   onClose,
   entityType,
   entityId,
+  secondaryEntityType,
+  secondaryEntityId,
   entityTitle,
   uploadedByUid,
   clientCode,
@@ -57,6 +61,8 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
 }) => {
   const { language } = useLanguage();
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
+  const [secondaryDocuments, setSecondaryDocuments] = useState<DocumentMetadata[]>([]);
+  const [vaultScope, setVaultScope] = useState<'primary' | 'secondary'>('primary');
   const [loading, setLoading] = useState<boolean>(false);
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [additionalDocTitle, setAdditionalDocTitle] = useState<string>('');
@@ -80,8 +86,14 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
     if (!entityId) return;
     setLoading(true);
     try {
-      const list = await StorageService.getDocumentsByEntity(entityType, entityId);
+      const [list, secList] = await Promise.all([
+        StorageService.getDocumentsByEntity(entityType, entityId),
+        secondaryEntityId && secondaryEntityType
+          ? StorageService.getDocumentsByEntity(secondaryEntityType, secondaryEntityId)
+          : Promise.resolve([] as DocumentMetadata[]),
+      ]);
       setDocuments(list);
+      setSecondaryDocuments(secList);
       onDocumentsChanged?.(list);
     } finally {
       setLoading(false);
@@ -90,12 +102,13 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setVaultScope('primary');
       loadVaultDocuments();
       setPreviewDoc(null);
       setPreviewUrl(null);
       setPreviewTextContent(null);
     }
-  }, [isOpen, entityType, entityId]);
+  }, [isOpen, entityType, entityId, secondaryEntityType, secondaryEntityId]);
 
   if (!isOpen) return null;
 
@@ -244,6 +257,80 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 bg-slate-50">
+          {/* Dual-Scope Tabs (Lot DDU vs Deal Closing/Bank Docs) */}
+          {secondaryEntityId && secondaryEntityType && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-1.5 flex flex-wrap gap-1.5 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setVaultScope('primary')}
+                className={`flex-1 min-w-[200px] px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  vaultScope === 'primary'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Документы по объекту (ДДУ) • {documents.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setVaultScope('secondary')}
+                className={`flex-1 min-w-[200px] px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  vaultScope === 'secondary'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Документы закрытия и банка (СБР / ЕГРН) • {secondaryDocuments.length}
+              </button>
+            </div>
+          )}
+
+          {vaultScope === 'secondary' && secondaryEntityId && (
+            <div className="space-y-3">
+              {secondaryDocuments.length === 0 ? (
+                <div className="p-8 rounded-2xl bg-white border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                  Банковские и закрывающие документы (СБР / аккредитив / выписка ЕГРН) появятся здесь по мере прохождения этапа 5 в комнате закрытия сделки.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {secondaryDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-4 bg-white border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 shadow-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-slate-900 truncate">{doc.name}</div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {doc.categoryLabelRu || doc.category} • {formatBytes(doc.sizeBytes)}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handlePreview(doc)}
+                          className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                          title="Предпросмотр"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => StorageService.downloadDocument(doc)}
+                          className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer"
+                          title="Скачать"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {vaultScope === 'primary' && (
+          <>
           {/* Vault Progress Summary for Seller Mode */}
           {mode === 'seller' && (
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -603,6 +690,8 @@ export const DocumentVaultModal: React.FC<DocumentVaultModalProps> = ({
               </div>
             )}
           </div>
+          </>
+          )}
 
           {/* Curator Rejection Reason Inline Box */}
           {rejectingDocId && (

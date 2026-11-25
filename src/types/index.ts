@@ -124,13 +124,21 @@ export interface Lot {
   escrowBank: 'Sberbank' | 'VTB' | 'AlfaBank' | string;
   tags: string[];
   status?: 'available' | 'processing' | 'in_deal' | 'closed' | 'draft' | 'hidden' | 'blocked'; // Status in Catalog
-  currentStage?: number; // Current deal stage 1-5
-  approvalStatus?: 'approved' | 'approved_for_packaging' | 'pending_legal_audit' | 'pending_owner_approval' | 'rejected';
+  currentStage?: number; // Current deal stage 0-5 (0 = pending curator assignment)
+  approvalStatus?:
+    | 'approved'
+    | 'approved_for_packaging'
+    | 'pending_legal_audit'
+    | 'pending_owner_approval'
+    | 'pending_curator_assignment'
+    | 'rejected';
   rejectionReason?: string;
   blockedReason?: string;
   moderationReason?: string;
   assignedEmployeeId?: string; // ID of assigned employee
+  assignedCuratorId?: string; // Alias ID of assigned curator
   assignedEmployeeName?: string; // Name of assigned employee
+  closedAt?: string;
   sellerUserId?: string; // ID of the seller user
   sellerClientCode?: string; // DEX-XXXXXX
   sellerInn?: string;
@@ -225,7 +233,7 @@ export interface Lot {
     floorRangeDisplay: string; // 7–10 этаж
   };
 
-  curator: {
+  curator?: {
     name: string;
     role: string;
     phone: string;
@@ -1155,6 +1163,7 @@ export interface BuyerApplication {
   queueStatus?: QueueStatus;
   activeDealLotCode?: string;
   withdrawnAt?: string;
+  completedAt?: string;
   withdrawalReason?: string;
   tier?: BuyBoxTier;
   reliabilityScore?: number;

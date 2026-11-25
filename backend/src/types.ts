@@ -135,6 +135,7 @@ export interface BuyerBuyBox {
   noShowCount: number;
   withdrawalCount?: number;
   completedViewingsCount: number;
+  completedDealsCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -185,6 +186,7 @@ export interface BuyerApplication {
   depositDeadlineAt?: string;
   deadlineAlertedAt?: string;
   promotedFromReserveAt?: string;
+  completedAt?: string;
   ndaSigned?: boolean;
   source?: 'web' | 'telegram';
   createdAt: string;

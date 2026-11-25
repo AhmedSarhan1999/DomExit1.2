@@ -1665,5 +1665,227 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
   }
 
+  // =========================================================================
+  // 12. POST /api/matching/deals/:dealId/finalize (Atomic Deal Closure & Archive Sync)
+  // =========================================================================
+  const finalizeMatch = subPath.match(/^\/deals\/([^/]+)\/finalize$/);
+  if (finalizeMatch && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Завершение сделки доступно только сотрудникам DomExit' });
+    }
+
+    const dealId = decodeURIComponent(finalizeMatch[1]);
+    const body = parseBody<{ bankOfficerName?: string }>(event);
+    const nowIso = new Date().toISOString();
+    const bankOfficerName = body?.bankOfficerName || authUser.name || authUser.email || 'Куратор DomExit';
+
+    try {
+      const allDeals = await ydb.scanAll<any>('deals', 500);
+      const deal = (allDeals || []).find(
+        (d: any) => d.id === dealId || d.dealId === dealId
+      );
+      if (!deal) {
+        return json(event, 404, { error: `Сделка ${dealId} не найдена` });
+      }
+
+      const targetLotCode = String(deal.lotCode || '').trim();
+      const targetLotId = String(deal.lotId || '').trim();
+
+      // 1. Update Deal
+      deal.escrowWorkflow = deal.escrowWorkflow || {
+        step: 'deal_finalized',
+        bankName: '',
+        escrowAccountNumber: '',
+        depositedAmountRub: Math.round((deal.sellerReturnRub || 0) * 1.025),
+        signingProofPhotos: [],
+        signingProofVideos: [],
+      };
+      deal.escrowWorkflow.step = 'deal_finalized';
+      deal.escrowWorkflow.fundsReleasedAt = deal.escrowWorkflow.fundsReleasedAt || nowIso;
+      deal.escrowWorkflow.platformFeeRub = Math.round((deal.sellerReturnRub || 0) * 0.025);
+      deal.stage = 'completed';
+      deal.status = 'closed';
+      deal.closedAt = deal.closedAt || nowIso;
+      deal.daysLeft = 0;
+      deal.updatedDate = nowIso.split('T')[0];
+      if (deal.partnerRefCode) {
+        deal.partnerPayoutStatus = 'paid';
+      }
+      await ydb.putItem('deals', deal);
+      memoryCache.invalidate('deals');
+      appCache.invalidatePrefix('deals');
+
+      // 2. Update Lot
+      const allLots = await ydb.scanAll<any>('lots', 500);
+      const lot = (allLots || []).find(
+        (l: any) =>
+          (targetLotCode && String(l.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase()) ||
+          (targetLotId && String(l.id || '').trim().toUpperCase() === targetLotId.toUpperCase())
+      );
+      if (lot) {
+        lot.status = 'closed';
+        lot.currentStage = 5;
+        lot.closedAt = lot.closedAt || nowIso;
+        await ydb.putItem('lots', lot);
+        memoryCache.invalidate('lots');
+        appCache.invalidatePrefix('lots');
+      }
+
+      // 3. Update Buyer Applications + Unfreeze Standby + +5 SLA & completedDealsCount
+      const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 1000);
+      const winnerUserIds = new Set<string>();
+      if (deal.buyerId) winnerUserIds.add(String(deal.buyerId));
+
+      let closedApplicationsCount = 0;
+      let unfrozenApplicationsCount = 0;
+
+      for (const app of allApps || []) {
+        const sameLot =
+          targetLotCode && String(app.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase();
+        if (!sameLot) continue;
+
+        const isWinnerApp =
+          (deal.buyerId && String(app.userId) === String(deal.buyerId)) ||
+          app.queueStatus === 'priority_1' ||
+          app.queueStatus === 'in_deal';
+
+        if (isWinnerApp) {
+          winnerUserIds.add(String(app.userId));
+          app.queueStatus = 'completed';
+          app.status = 'completed';
+          app.completedAt = app.completedAt || nowIso;
+          app.updatedAt = nowIso;
+          await ydb.putItem('buyer_applications', app);
+          closedApplicationsCount++;
+        } else if (isActiveApplication(app)) {
+          app.queueStatus = 'lot_closed';
+          app.status = 'closed';
+          app.updatedAt = nowIso;
+          await ydb.putItem('buyer_applications', app);
+          closedApplicationsCount++;
+        }
+      }
+
+      for (const winnerUid of winnerUserIds) {
+        const bb = await getUnifiedBuyBox(ydb, winnerUid);
+        if (bb) {
+          bb.reliabilityScore = Math.min(100, (bb.reliabilityScore ?? 75) + 5);
+          bb.completedDealsCount = (bb.completedDealsCount || 0) + 1;
+          bb.updatedAt = nowIso;
+          await syncBuyBoxAndUser(ydb, winnerUid, bb);
+        }
+
+        const frozenApps = (allApps || []).filter(
+          (a) =>
+            String(a.userId) === winnerUid &&
+            a.queueStatus === 'standby_in_other_deal' &&
+            (!targetLotCode || String(a.lotCode || '').trim().toUpperCase() !== targetLotCode.toUpperCase())
+        );
+        for (const fa of frozenApps) {
+          fa.queueStatus = 'pending_review';
+          fa.activeDealLotCode = undefined;
+          if (bb) {
+            const linkedLot = (allLots || []).find(
+              (l: any) => String(l.lotCode || '').trim().toUpperCase() === String(fa.lotCode || '').trim().toUpperCase()
+            );
+            if (linkedLot) {
+              const rescored = computeClosingScore(fa, bb, linkedLot);
+              fa.closingScore = rescored.closingScore;
+              fa.scoreBreakdown = rescored.breakdown;
+            }
+          }
+          fa.updatedAt = nowIso;
+          await ydb.putItem('buyer_applications', fa);
+          unfrozenApplicationsCount++;
+        }
+      }
+
+      // 4. Update Seller Requests
+      const allRequests = await ydb.scanAll<any>('seller_requests', 500);
+      for (const reqItem of allRequests || []) {
+        const matchesReq =
+          (targetLotCode && String(reqItem.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase()) ||
+          String(reqItem.dealId || '').trim() === String(deal.dealId || deal.id);
+        if (matchesReq && reqItem.status !== 'completed') {
+          reqItem.status = 'completed';
+          await ydb.putItem('seller_requests', reqItem);
+        }
+      }
+      memoryCache.invalidate('seller_requests');
+      appCache.invalidatePrefix('seller_requests');
+
+      // 5. Audit Log + Journal
+      await ydb.putItem('audit_logs', {
+        id: `log-finalize-${deal.dealId || deal.id}-${Date.now()}`,
+        lotCode: targetLotCode,
+        dealId: deal.dealId || deal.id,
+        operatorName: bankOfficerName,
+        operatorRole: authUser.role === 'owner' ? 'owner' : 'curator',
+        actionType: 'escrow_released',
+        title: `Аккредитив раскрыт: ${(deal.sellerReturnRub || 0).toLocaleString('ru-RU')} ₽ выплачено продавцу`,
+        description: `Сделка успешно завершена. Комиссия DomExit (2.5% = ${(deal.escrowWorkflow.platformFeeRub || 0).toLocaleString('ru-RU')} ₽) перечислена.`,
+        timestamp: nowIso,
+      });
+      memoryCache.invalidate('audit_logs');
+
+      await recordJournalEvent({
+        action: 'UPDATE',
+        collection: 'deals',
+        recordId: String(deal.dealId || deal.id),
+        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        payload: {
+          stage: 'completed',
+          status: 'closed',
+          lotCode: targetLotCode,
+          closedApplicationsCount,
+          unfrozenApplicationsCount,
+        },
+      });
+
+      // 6. Telegram notifications (best effort)
+      const notifyTargets: Array<{ userId: string; text: string }> = [];
+      if (deal.sellerUserId) {
+        notifyTargets.push({
+          userId: String(deal.sellerUserId),
+          text:
+            `🎉 <b>Сделка по лоту #${escapeHtml(targetLotCode)} успешно завершена!</b>\n` +
+            `Аккредитив/СБР раскрыт, средства в размере <b>${(deal.sellerReturnRub || 0).toLocaleString('ru-RU')} ₽</b> направлены на ваш счёт.\n` +
+            `Все закрывающие документы доступны в вашем Личном кабинете (раздел «Продажа лота»).`,
+        });
+      }
+      for (const winnerUid of winnerUserIds) {
+        notifyTargets.push({
+          userId: winnerUid,
+          text:
+            `🏆 <b>Поздравляем с покупкой лота #${escapeHtml(targetLotCode)}!</b>\n` +
+            `Сделка официально закрыта, право собственности перешло к вам. Вам начислено <b>+5 баллов SLA</b>, а квота заявок (3 слота) освобождена.\n` +
+            `Документы закрытия доступны в Личном кабинете («Архив завершённых сделок»).`,
+        });
+      }
+
+      for (const nt of notifyTargets) {
+        const binding = await findTelegramBindingByUser(nt.userId).catch(() => null);
+        if (binding?.chatId) {
+          await callTelegramApi('sendMessage', {
+            chat_id: binding.chatId,
+            text: nt.text,
+            parse_mode: 'HTML',
+          }).catch(() => {});
+        }
+      }
+
+      return json(event, 200, {
+        ok: true,
+        deal,
+        lot,
+        closedApplicationsCount,
+        unfrozenApplicationsCount,
+      });
+    } catch (err: any) {
+      logger.error('Error finalizing deal atomically', { meta: { error: err.message, dealId } });
+      return json(event, 500, { error: 'Не удалось атомарно завершить сделку', details: err.message });
+    }
+  }
+
   return json(event, 404, { error: `Endpoint /api/matching${subPath} не найден` });
 }

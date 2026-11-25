@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
 import { compressImageToWebP } from '../utils/imageCompressor';
+import { Stage0CuratorBanner } from '../components/admin/Stage0CuratorBanner';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -414,8 +415,14 @@ export const AdminPackagingPage: React.FC = () => {
     setTimeout(() => setNotificationMsg(null), 4000);
   };
 
+  const hasAssignedCurator = Boolean(lot?.assignedEmployeeId || lot?.assignedCuratorId);
+
   const handlePublishOpenCatalog = async () => {
     if (!lot) return;
+    if (!hasAssignedCurator) {
+      setNotificationMsg('Этап 0: Сначала назначьте персонального куратора перед публикацией лота.');
+      return;
+    }
     const updatedLot = buildUpdatedLotData();
     const result = await LotsRepository.publishToOpenCatalog(
       lot.lotCode,
@@ -577,14 +584,36 @@ export const AdminPackagingPage: React.FC = () => {
                   </button>
                   <button
                     type="button"
+                    disabled={!hasAssignedCurator}
                     onClick={handlePublishOpenCatalog}
-                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center space-x-1.5"
+                    className={`px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center space-x-1.5 ${
+                      hasAssignedCurator
+                        ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
+                        : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                    }`}
+                    title={
+                      hasAssignedCurator
+                        ? 'Опубликовать в открытом каталоге'
+                        : 'Сначала назначьте персонального куратора на Этапе 0'
+                    }
                   >
                     <Globe className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Опубликовать в открытом каталоге</span>
                   </button>
                 </div>
               </div>
+
+              <Stage0CuratorBanner
+                lot={lot}
+                operatorName={operatorName}
+                onAssigned={(updated) => {
+                  setLot(updated);
+                  setNotificationMsg(
+                    `Куратор ${updated.assignedEmployeeName || ''} закреплён за лотом #${updated.lotCode}.`
+                  );
+                  setTimeout(() => setNotificationMsg(null), 5000);
+                }}
+              />
 
               {/* Admin Moderation & Governance Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-900 text-white rounded-2xl shadow-sm">

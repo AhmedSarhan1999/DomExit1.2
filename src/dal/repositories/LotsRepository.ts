@@ -265,14 +265,21 @@ export class LotsRepository {
     (lot as any).assignedCuratorId = employeeId;
     (lot as any).assignedCuratorName = employeeName;
 
-    // Preserve already-published Stage 3/4 status or approved Stage 2 status when reassigning curator
-    if (!lot.isPublished && !lot.isVerified && lot.approvalStatus === 'pending_owner_approval') {
+    // Preserve already-published Stage 3/4 status or approved Stage 2 status when reassigning curator.
+    // When moving from Stage 0 (pending_curator_assignment / pending_owner_approval), advance to Stage 1 (pending_legal_audit).
+    const isUnassignedStage0 =
+      !lot.approvalStatus ||
+      lot.approvalStatus === 'pending_curator_assignment' ||
+      lot.approvalStatus === 'pending_owner_approval';
+
+    if (!lot.isPublished && !lot.isVerified && isUnassignedStage0) {
       lot.approvalStatus = 'pending_legal_audit';
       lot.status = 'draft';
       lot.isPublished = false;
       lot.currentStage = 1;
-    } else if (!lot.approvalStatus || lot.approvalStatus === 'pending_owner_approval') {
+    } else if (isUnassignedStage0) {
       lot.approvalStatus = lot.isVerified ? 'approved_for_packaging' : 'pending_legal_audit';
+      lot.currentStage = lot.isVerified ? Math.max(lot.currentStage || 2, 2) : Math.max(lot.currentStage || 1, 1);
     }
 
     try {

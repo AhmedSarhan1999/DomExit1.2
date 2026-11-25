@@ -148,10 +148,11 @@ export const LotDetailsPage: React.FC = () => {
               if (emp) setCuratorEmployee(emp);
             } else if (data.curator?.name) {
               const allEmps = await EmployeesRepository.getAll();
+              const curatorNameStr = data.curator.name.toLowerCase();
               const match = allEmps.find(
                 (e) =>
-                  e.name.toLowerCase().includes(data.curator.name.toLowerCase()) ||
-                  data.curator.name.toLowerCase().includes(e.name.toLowerCase())
+                  e.name.toLowerCase().includes(curatorNameStr) ||
+                  curatorNameStr.includes(e.name.toLowerCase())
               );
               if (match) setCuratorEmployee(match);
             }
@@ -1188,12 +1189,24 @@ export const LotDetailsPage: React.FC = () => {
                   </div>
                 )}
 
-                {lotStatus === 'closed' && (
+                {lotStatus === 'in_deal' && (!lot.dropConfig || lot.dropConfig.mode !== 'staged_drop') && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-950 space-y-1.5">
+                    <div className="font-bold flex items-center space-x-1.5">
+                      <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Объект в активной сделке (Этап {lot.currentStage || 4}/5)</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800">
+                      Приоритетный покупатель выбран и оформляет сделку с куратором. Новые заявки временно приостановлены.
+                    </p>
+                  </div>
+                )}
+
+                {lotStatus === 'closed' && (!lot.dropConfig || lot.dropConfig.mode !== 'staged_drop') && (
                   <div className="space-y-2">
                     <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-800">
                       <p className="font-bold flex items-center space-x-1.5">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Сделка успешно завершена</span>
+                        <span>Сделка по объекту завершена</span>
                       </p>
                       <p className="text-[11px] text-slate-600 mt-1">
                         Права требования зарегистрированы в Росреестре.
@@ -1205,73 +1218,74 @@ export const LotDetailsPage: React.FC = () => {
             </div>
 
             {/* Personal Curator Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
-              <div className="flex items-center space-x-3.5">
-                {curatorEmployee?.photoUrl || lot.curator.photoUrl ? (
-                  <img
-                    src={curatorEmployee?.photoUrl || lot.curator.photoUrl}
-                    alt={curatorEmployee?.name || lot.curator.name}
-                    className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-sm shadow-xs shrink-0">
-                    {(curatorEmployee?.name || lot.curator.name).slice(0, 2).toUpperCase()}
+            {(curatorEmployee || lot.curator) ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
+                <div className="flex items-center space-x-3.5">
+                  {curatorEmployee?.photoUrl || lot.curator?.photoUrl ? (
+                    <img
+                      src={curatorEmployee?.photoUrl || lot.curator?.photoUrl}
+                      alt={curatorEmployee?.name || lot.curator?.name || 'Куратор DomExit'}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-sm shadow-xs shrink-0">
+                      {(curatorEmployee?.name || lot.curator?.name || 'DX').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      {language === 'ru' ? 'Персональный куратор лота' : 'Personal Lot Curator'}
+                    </span>
+                    <span className="font-bold text-sm text-slate-900 block truncate">
+                      {curatorEmployee?.name || lot.curator?.name || 'Куратор DomExit'}
+                    </span>
+                    <span className="text-[11px] text-emerald-700 font-semibold block truncate">
+                      {curatorEmployee?.role || lot.curator?.role || 'Персональное сопровождение сделки'}
+                    </span>
                   </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    {language === 'ru' ? 'Персональный куратор лота' : 'Personal Lot Curator'}
-                  </span>
-                  <span className="font-bold text-sm text-slate-900 block truncate">
-                    {curatorEmployee?.name || lot.curator.name}
-                  </span>
-                  <span className="text-[11px] text-emerald-700 font-semibold block truncate">
-                    {curatorEmployee?.role || lot.curator.role}
-                  </span>
                 </div>
-              </div>
 
-              {(curatorEmployee?.bio || lot.curator.bio) && (
-                <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  {curatorEmployee?.bio || lot.curator.bio}
-                </p>
-              )}
-
-              <div className="flex items-center gap-2 pt-1">
-                <a
-                  href={
-                    (curatorEmployee?.telegram || lot.curator.telegram || '').startsWith('http')
-                      ? curatorEmployee?.telegram || lot.curator.telegram
-                      : curatorEmployee?.telegram || lot.curator.telegram
-                      ? `https://t.me/${(curatorEmployee?.telegram || lot.curator.telegram).replace('@', '')}`
-                      : channels.telegramChannelUrl || 'https://t.me/domexit_official'
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs text-center flex items-center justify-center space-x-1.5"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Telegram</span>
-                </a>
-
-                {(curatorEmployee?.phone || lot.curator.phone) && (
-                  <a
-                    href={`tel:${(curatorEmployee?.phone || lot.curator.phone).replace(/[^\d+]/g, '')}`}
-                    className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors flex items-center justify-center space-x-1"
-                    title={curatorEmployee?.phone || lot.curator.phone}
-                  >
-                    <Phone className="w-3.5 h-3.5 text-slate-600" />
-                    <span className="hidden sm:inline">{language === 'ru' ? 'Звонок' : 'Call'}</span>
-                  </a>
+                {(curatorEmployee?.bio || lot.curator?.bio) && (
+                  <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    {curatorEmployee?.bio || lot.curator?.bio}
+                  </p>
                 )}
 
-                {(curatorEmployee?.maxProfile || lot.curator.maxProfile || curatorEmployee?.whatsapp || lot.curator.whatsapp) && (() => {
-                  const maxVal =
-                    curatorEmployee?.maxProfile ||
-                    lot.curator.maxProfile ||
-                    curatorEmployee?.whatsapp ||
-                    lot.curator.whatsapp ||
-                    '';
+                <div className="flex items-center gap-2 pt-1">
+                  <a
+                    href={
+                      (curatorEmployee?.telegram || lot.curator?.telegram || '').startsWith('http')
+                        ? curatorEmployee?.telegram || lot.curator?.telegram
+                        : curatorEmployee?.telegram || lot.curator?.telegram
+                        ? `https://t.me/${(curatorEmployee?.telegram || lot.curator?.telegram || '').replace('@', '')}`
+                        : channels.telegramChannelUrl || 'https://t.me/domexit_official'
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs text-center flex items-center justify-center space-x-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Telegram</span>
+                  </a>
+
+                  {(curatorEmployee?.phone || lot.curator?.phone) && (
+                    <a
+                      href={`tel:${(curatorEmployee?.phone || lot.curator?.phone || '').replace(/[^\d+]/g, '')}`}
+                      className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors flex items-center justify-center space-x-1"
+                      title={curatorEmployee?.phone || lot.curator?.phone}
+                    >
+                      <Phone className="w-3.5 h-3.5 text-slate-600" />
+                      <span className="hidden sm:inline">{language === 'ru' ? 'Звонок' : 'Call'}</span>
+                    </a>
+                  )}
+
+                  {(curatorEmployee?.maxProfile || lot.curator?.maxProfile || curatorEmployee?.whatsapp || lot.curator?.whatsapp) && (() => {
+                    const maxVal =
+                      curatorEmployee?.maxProfile ||
+                      lot.curator?.maxProfile ||
+                      curatorEmployee?.whatsapp ||
+                      lot.curator?.whatsapp ||
+                      '';
                   const maxHref =
                     maxVal.startsWith('http') || maxVal.startsWith('max://')
                       ? maxVal
@@ -1303,6 +1317,11 @@ export const LotDetailsPage: React.FC = () => {
                 <span>Чат с куратором онлайн</span>
               </button>
             </div>
+            ) : (
+              <div className="bg-amber-50/70 rounded-2xl border border-amber-200 p-4 shadow-xs text-xs text-amber-900 font-semibold">
+                Этап 0: Ожидает назначения персонального куратора DomExit
+              </div>
+            )}
 
           </div>
 
@@ -1419,11 +1438,11 @@ export const LotDetailsPage: React.FC = () => {
         lotCode={lot.lotCode}
         lotTitle={lot.complexName}
         curatorId={curatorEmployee?.id || lot.assignedEmployeeId}
-        curatorName={curatorEmployee?.name || lot.curator.name}
-        curatorRole={curatorEmployee?.role || lot.curator.role}
-        curatorPhone={curatorEmployee?.phone || lot.curator.phone}
-        curatorTelegram={curatorEmployee?.telegram || lot.curator.telegram}
-        curatorMax={curatorEmployee?.maxProfile || lot.curator.maxProfile}
+        curatorName={curatorEmployee?.name || lot.curator?.name || 'Куратор DomExit'}
+        curatorRole={curatorEmployee?.role || lot.curator?.role || 'Персональное сопровождение сделки'}
+        curatorPhone={curatorEmployee?.phone || lot.curator?.phone || ''}
+        curatorTelegram={curatorEmployee?.telegram || lot.curator?.telegram || ''}
+        curatorMax={curatorEmployee?.maxProfile || lot.curator?.maxProfile}
       />
 
       {/* Success Notification Toast */}
@@ -1434,7 +1453,7 @@ export const LotDetailsPage: React.FC = () => {
             <span>Заявка зарегистрирована в реестре!</span>
           </div>
           <p className="text-xs text-slate-600">
-            Персональный куратор {curatorEmployee?.name || lot.curator.name} получил вашу заявку в системе матчмейкинга. Статус отражен в вашем Личном кабинете.
+            Персональный куратор {curatorEmployee?.name || lot.curator?.name || 'DomExit'} получил вашу заявку в системе матчмейкинга. Статус отражен в вашем Личном кабинете.
           </p>
           <div className="flex items-center space-x-3 pt-1">
             <Link

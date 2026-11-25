@@ -947,6 +947,8 @@ export const AdminClosingPage: React.FC = () => {
           onClose={() => setIsVaultOpen(false)}
           entityType="deal"
           entityId={deal.dealId}
+          secondaryEntityType="lot"
+          secondaryEntityId={deal.lotCode}
           entityTitle={`Сейф банковского закрытия ${deal.dealId} (#${deal.lotCode})`}
           uploadedByUid={user?.id || 'closing-curator'}
           clientCode={user?.clientCode || 'DEX-STAFF'}

@@ -315,7 +315,11 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
             <tbody className="divide-y divide-slate-100">
               {lots.map((lot) => {
                 const region = getRegionByCode(lot.city);
-                const isPendingOwner = lot.approvalStatus === 'pending_owner_approval';
+                const hasCurator = Boolean(lot.assignedEmployeeId || (lot as any).assignedCuratorId);
+                const isPendingOwner =
+                  lot.approvalStatus === 'pending_owner_approval' ||
+                  lot.approvalStatus === 'pending_curator_assignment' ||
+                  !hasCurator;
                 const isDocsReq = lot.additionalDocsRequested?.status === 'pending';
                 const isRejected = lot.approvalStatus === 'rejected';
 
@@ -362,6 +366,10 @@ export const SellerRequestsTableTab: React.FC<SellerRequestsTableTabProps> = ({
                       ) : isDocsReq ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
                           Запрошены док-ты
+                        </span>
+                      ) : !hasCurator ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          Этап 0: Без куратора
                         </span>
                       ) : isPendingOwner ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">

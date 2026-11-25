@@ -187,17 +187,27 @@ export async function handleStorage(
 
       const ydb = getYdbClient();
       const lot = await ydb.getItem('lots', lotCode);
-      const isSeller = lot && lot.sellerId === authUser.id;
+      const isSeller =
+        lot && (lot.sellerUserId === authUser.id || lot.sellerId === authUser.id);
 
       if (!isSeller) {
-        const deals = await ydb.scanAll('deals', 200);
-        const userDeal = deals.find(
+        const [deals, apps] = await Promise.all([
+          ydb.scanAll<any>('deals', 300),
+          ydb.scanAll<any>('buyer_applications', 500),
+        ]);
+        const userDeal = (deals || []).find(
           (d: any) =>
             (d.lotCode === lotCode || d.lotId === lotCode) &&
-            (d.buyerId === authUser.id || d.sellerId === authUser.id)
+            (d.buyerId === authUser.id || d.sellerId === authUser.id || d.sellerUserId === authUser.id)
+        );
+        const isWinningBuyer = (apps || []).some(
+          (a: any) =>
+            String(a.lotCode || '').toUpperCase() === String(lotCode).toUpperCase() &&
+            String(a.userId) === String(authUser.id) &&
+            ['priority_1', 'in_deal', 'completed'].includes(String(a.queueStatus || ''))
         );
 
-        if (!userDeal) {
+        if (!userDeal && !isWinningBuyer) {
           const clientIp = getClientIp(event);
           await recordSecurityIncident({
             type: 'auth_bruteforce_or_probe',

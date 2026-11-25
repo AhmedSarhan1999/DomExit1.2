@@ -24,6 +24,7 @@ import { LegalMemoGenerator } from '../components/admin/legal-audit/LegalMemoGen
 import { LegalOperationsLog } from '../components/admin/legal-audit/LegalOperationsLog';
 import { LegalDecisionBar } from '../components/admin/legal-audit/LegalDecisionBar';
 import { InlineSellerDocumentsPanel } from '../components/admin/legal-audit/InlineSellerDocumentsPanel';
+import { Stage0CuratorBanner } from '../components/admin/Stage0CuratorBanner';
 import { computeLegalVerificationProgress } from '../components/admin/legal-audit/legalAuditGate';
 import {
   RequestDocsModal,
@@ -350,8 +351,15 @@ export const AdminLegalAuditPage: React.FC = () => {
     showToast('✓ Чек-лист рисков вторичного рынка обновлён.');
   };
 
+  const hasAssignedCurator = Boolean(lot?.assignedEmployeeId || lot?.assignedCuratorId);
+
   const handleApproveLegal = async () => {
-    if (!lot || !progress.canApprove) {
+    if (!lot) return;
+    if (!hasAssignedCurator) {
+      setErrorMsg('Этап 0: Сначала назначьте персонального куратора (можно назначить себя).');
+      return;
+    }
+    if (!progress.canApprove) {
       setErrorMsg('Завершите все обязательные проверки документов, госреестров и разделов перед выдачей штампа.');
       return;
     }
@@ -458,6 +466,15 @@ export const AdminLegalAuditPage: React.FC = () => {
                 sellerInn={sellerInn}
                 progress={progress}
                 onSelectLotCode={(code) => navigate(`/admin/legal-audit/${code}`)}
+              />
+
+              <Stage0CuratorBanner
+                lot={lot}
+                operatorName={curatorName}
+                onAssigned={(updated) => {
+                  setLot(updated);
+                  showToast(`✓ Куратор ${updated.assignedEmployeeName || ''} закреплён. Лот переведён на Этап 1.`);
+                }}
               />
 
               {/* 3-Tab Sequential Navigation Bar */}
@@ -658,7 +675,7 @@ export const AdminLegalAuditPage: React.FC = () => {
               <LegalDecisionBar
                 lot={lot}
                 curatorName={curatorName}
-                canApprove={progress.canApprove}
+                canApprove={hasAssignedCurator && progress.canApprove}
                 isApproving={isApproving}
                 missingItems={progress.missingItems}
                 onSwitchTab={setActiveTab}

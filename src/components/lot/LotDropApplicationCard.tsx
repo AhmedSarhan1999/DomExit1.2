@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Clock,
   Sparkles,
@@ -10,6 +11,7 @@ import {
   Flame,
   Users,
   Check,
+  Award,
 } from 'lucide-react';
 import { apiClient } from '../../services/apiClient';
 import { Lot, PriceAcceptance, BuyBoxTier } from '../../types';
@@ -96,12 +98,20 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
         if (myAppsRes?.ok) {
           setActiveSlotsCount(myAppsRes.activeCount || 0);
           const targetCode = String(lot.lotCode || '').trim().toUpperCase();
-          const validApp = (myAppsRes.activeApplications || []).find(
+          const activeMatch = (myAppsRes.activeApplications || []).find(
             (a: any) => String(a.lotCode || '').trim().toUpperCase() === targetCode
           );
-          if (validApp) {
-            setHasExistingApp(true);
-            setAppliedApp(validApp);
+          const archivedMatch = (myAppsRes.archivedApplications || []).find(
+            (a: any) => String(a.lotCode || '').trim().toUpperCase() === targetCode
+          );
+          const matchedApp = activeMatch || archivedMatch;
+          if (matchedApp) {
+            const qStatus = String(matchedApp.queueStatus || '');
+            const isVoluntaryWithdrawn =
+              (qStatus === 'withdrawn_from_queue' || qStatus === 'withdrawn') &&
+              lot.status === 'available';
+            setAppliedApp(matchedApp);
+            setHasExistingApp(!isVoluntaryWithdrawn);
           }
         }
       } catch (err) {
@@ -120,6 +130,30 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
   const isExpired = dropConfig.waveStatus === 'expired_closed';
 
   const isGoldRestricted = isGoldWave && userTier !== 'gold';
+
+  const appQueueStatus = String(appliedApp?.queueStatus || '');
+  const isCompletedWinner =
+    Boolean(hasExistingApp && appliedApp && (appQueueStatus === 'completed' || appliedApp.status === 'completed'));
+  const isActiveWinner =
+    Boolean(hasExistingApp && appliedApp && (appQueueStatus === 'priority_1' || appQueueStatus === 'in_deal'));
+
+  const RU_QUEUE_STATUS_MAP: Record<string, string> = {
+    pending_review: 'На рассмотрении куратора',
+    priority_1: 'Вы выбраны победителем (Приоритет №1)',
+    in_deal: 'Вы в активной сделке по объекту',
+    reserve_2: 'Резерв №2 (в очереди отбора)',
+    reserve_3: 'Резерв №3 (в очереди отбора)',
+    waitlist: 'Лист ожидания',
+    standby_in_other_deal: `В листе ожидания (активная сделка по #${appliedApp?.activeDealLotCode || 'другому лоту'})`,
+    deposit_paid: 'Задаток подтверждён',
+    completed: 'Сделка успешно завершена (Вы — владелец)',
+    lot_closed: 'Объект продан другому покупателю (сделка закрыта)',
+    rejected: 'Заявка отклонена',
+    expired: 'Истекло время ожидания',
+    withdrawn_from_deal: 'Вы отказались от сделки',
+    withdrawn_from_queue: 'Заявка отозвана вами',
+    withdrawn: 'Заявка отозвана вами',
+  };
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,7 +200,15 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>
-              {isGoldWave
+              {isCompletedWinner
+                ? '🏆 СДЕЛКА ЗАВЕРШЕНА'
+                : isActiveWinner
+                ? '👑 ВЫ — ПОБЕДИТЕЛЬ ОТБОРА'
+                : lot.status === 'closed'
+                ? '✓ ЛОТ ПРОДАН'
+                : lot.status === 'in_deal'
+                ? '🔒 ОБЪЕКТ В СДЕЛКЕ'
+                : isGoldWave
                 ? '🥇 РАННИЙ ДОСТУП: ВОЛНА GOLD'
                 : dropConfig.waveStatus === 'silver_wave'
                 ? '🥈 ОТКРЫТЫЙ РАУНД: SILVER'
@@ -178,7 +220,7 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
         </div>
 
         {/* Live Countdown */}
-        {!isCapped && !isExpired && remainingText && (
+        {!isCompletedWinner && !isActiveWinner && lot.status === 'available' && !isCapped && !isExpired && remainingText && (
           <div className="flex items-center space-x-1.5 text-xs font-mono font-bold text-amber-700">
             <Clock className="w-3.5 h-3.5" />
             <span>{remainingText}</span>
@@ -204,9 +246,9 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
         </div>
       </div>
 
-      {/* Self-Owner Guard OR Existing Application Banner */}
+      {/* Self-Owner Guard OR Personalized 8-Scenario Status */}
       {isSelfSeller ? (
-        <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1.5 text-indigo-950">
+        <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-2 text-indigo-950">
           <div className="flex items-center space-x-2 text-indigo-900 font-bold text-xs">
             <ShieldCheck className="w-4 h-4 shrink-0 text-indigo-600" />
             <span>Это ваш объект (вы продавец)</span>
@@ -214,22 +256,86 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
           <p className="text-[11px] text-indigo-700 leading-relaxed">
             Подача заявки на покупку собственного объекта недоступна. Управляйте продажей и документами в разделе «Я продавец» личного кабинета.
           </p>
+          <Link
+            to="/portal?tab=seller"
+            className="inline-flex items-center space-x-1 text-xs font-black text-indigo-700 hover:underline"
+          >
+            <span>Перейти в кабинет продавца</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      ) : isCompletedWinner ? (
+        <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 space-y-2 text-emerald-950">
+          <div className="flex items-center space-x-2 text-emerald-900 font-black text-xs">
+            <Award className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>🎉 Поздравляем! Вы приобрели этот объект (Сделка завершена)</span>
+          </div>
+          <p className="text-xs text-emerald-900 leading-relaxed">
+            Сделка по лоту #{lot.lotCode} закрыта, права зарегистрированы. Документы закрытия и выписка доступны в вашем кабинете.
+          </p>
+          <Link
+            to="/portal?tab=buyer"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+          >
+            <span>Открыть документы сделки в кабинете</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      ) : isActiveWinner ? (
+        <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 space-y-2 text-emerald-950">
+          <div className="flex items-center space-x-2 text-emerald-900 font-black text-xs">
+            <Award className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>👑 Вы выбраны победителем по этому объекту</span>
+          </div>
+          <p className="text-xs text-slate-700 leading-relaxed">
+            Вы зафиксированы как <strong>Приоритет №1</strong> (Closing Score: <strong>{appliedApp?.closingScore || 100}/105</strong>). Персональный куратор сопровождает банковское закрытие и эскроу/СБР.
+          </p>
+          <Link
+            to="/portal?tab=buyer"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+          >
+            <span>Перейти в активную сделку в кабинете</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
       ) : hasExistingApp && appliedApp ? (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-2 text-emerald-950">
           <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-            <span>Ваша заявка принята в тактовый дроп!</span>
+            <span>Ваша заявка по лоту #{lot.lotCode}</span>
           </div>
           <p className="text-xs text-slate-700">
             Ваш Closing Score: <strong>{appliedApp.closingScore || 100}/105</strong>. Статус в очереди:{' '}
             <strong className="text-amber-800">
-              {appliedApp.queueStatus === 'standby_in_other_deal'
-                ? `В листе ожидания (активная сделка по #${appliedApp.activeDealLotCode || 'другому лоту'})`
-                : appliedApp.queueStatus === 'priority_1'
-                ? 'Выбраны победителем (№1)'
-                : appliedApp.queueStatus || 'На рассмотрении'}
+              {RU_QUEUE_STATUS_MAP[appQueueStatus] || 'На рассмотрении куратора'}
             </strong>.
+          </p>
+          <Link
+            to="/portal?tab=buyer"
+            className="inline-flex items-center space-x-1 text-xs font-black text-emerald-800 hover:underline"
+          >
+            <span>Управлять заявкой в кабинете</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      ) : lot.status === 'closed' ? (
+        <div className="p-4 bg-slate-100 border border-slate-200 rounded-2xl text-xs text-slate-800 space-y-1">
+          <div className="font-bold flex items-center space-x-1.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>✓ Сделка по объекту завершена</span>
+          </div>
+          <p className="text-[11px] text-slate-600">
+            Объект продан, права требования зарегистрированы в Росреестре.
+          </p>
+        </div>
+      ) : lot.status === 'in_deal' ? (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-950 space-y-1">
+          <div className="font-bold flex items-center space-x-1.5">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>🔒 Объект в активной сделке</span>
+          </div>
+          <p className="text-[11px] text-amber-800">
+            Приоритетный покупатель выбран и оформляет сделку с куратором. Новые заявки временно приостановлены.
           </p>
         </div>
       ) : activeSlotsCount >= 3 ? (

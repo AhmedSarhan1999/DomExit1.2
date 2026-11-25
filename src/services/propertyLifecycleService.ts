@@ -210,8 +210,8 @@ export class PropertyLifecycleService {
       escrowBank: 'Сбербанк',
       tags: lotTags,
       status: 'draft',
-      currentStage: 1,
-      approvalStatus: 'pending_owner_approval',
+      currentStage: 0,
+      approvalStatus: 'pending_curator_assignment',
       sellerUserId: payload.uid,
       sellerClientCode: payload.clientCode,
       sellerInn: payload.sellerInn,
@@ -242,12 +242,7 @@ export class PropertyLifecycleService {
         hideExactFloor: true,
         floorRangeDisplay: `${minFloor}–${maxFloor} этаж`,
       },
-      curator: {
-        name: 'Дежурный комплаенс-офис DomExit',
-        role: 'Первичный правовой аудит 214-ФЗ',
-        phone: '+7 (812) 409-32-00',
-        telegram: '@domexit_legal',
-      },
+      curator: undefined,
     };
 
     const request: SellerExitRequest = {

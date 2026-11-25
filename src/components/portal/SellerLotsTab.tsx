@@ -198,22 +198,22 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
                 </span>
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    activeSellerLot.approvalStatus === 'pending_owner_approval'
+                    activeSellerLot.approvalStatus === 'pending_curator_assignment' ||
+                    activeSellerLot.approvalStatus === 'pending_owner_approval' ||
+                    !(activeSellerLot.assignedEmployeeId || (activeSellerLot as any).assignedCuratorId)
                       ? 'bg-amber-100 text-amber-900'
                       : activeSellerLot.approvalStatus === 'rejected'
                       ? 'bg-rose-100 text-rose-800'
                       : 'bg-emerald-100 text-emerald-800'
                   }`}
                 >
-                  {activeSellerLot.approvalStatus === 'pending_owner_approval'
+                  {!(activeSellerLot.assignedEmployeeId || (activeSellerLot as any).assignedCuratorId)
+                    ? 'Этап 0: Ожидает назначения персонального куратора'
+                    : activeSellerLot.approvalStatus === 'pending_owner_approval'
                     ? 'Ожидает одобрения Владельцем платформы'
                     : activeSellerLot.approvalStatus === 'rejected'
                     ? 'Отклонен'
-                    : (activeSellerLot.assignedEmployeeId || (activeSellerLot as any).assignedCuratorId)
-                    ? 'Одобрен и закреплен за куратором'
-                    : activeSellerLot.isVerified
-                    ? 'Проверен (ожидает назначения куратора)'
-                    : 'Одобрен (ожидает назначения куратора)'}
+                    : 'Одобрен и закреплен за куратором'}
                 </span>
                 {(activeSellerLot.approvalStatus === 'pending_owner_approval' || activeSellerLot.status === 'draft') && (
                   <button
@@ -353,10 +353,12 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
                   Ответственный сотрудник DomExit:
                 </span>
                 <span className="font-bold text-slate-900 text-sm">
-                  {activeSellerLot.assignedEmployeeName ||
-                    activeSellerLot.curator?.name ||
-                    curator?.name ||
-                    'Комплаенс-деск DomExit'}
+                  {(activeSellerLot.assignedEmployeeId || (activeSellerLot as any).assignedCuratorId)
+                    ? activeSellerLot.assignedEmployeeName ||
+                      activeSellerLot.curator?.name ||
+                      curator?.name ||
+                      'Персональный куратор DomExit'
+                    : 'Этап 0: Ожидает назначения персонального куратора'}
                 </span>
                 <span className="text-emerald-700 font-semibold block text-[11px]">
                   {activeSellerLot.curator?.role || curator?.role || 'Ведущий юрист'}
@@ -489,6 +491,56 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Completed / Closed Seller Archive */}
+      {sellerLots.some((l) => l.status === 'closed') && (
+        <div className="bg-white rounded-3xl p-6 border border-emerald-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-black text-slate-900 flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>
+                Архив завершённых продаж ({sellerLots.filter((l) => l.status === 'closed').length})
+              </span>
+            </h4>
+          </div>
+          <div className="space-y-3">
+            {sellerLots
+              .filter((l) => l.status === 'closed')
+              .map((closedLot) => (
+                <div
+                  key={closedLot.id}
+                  className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                >
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono font-bold text-emerald-800">#{closedLot.lotCode}</span>
+                      <span className="font-black text-slate-900">{closedLot.complexName}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                        ✓ Сделка закрыта
+                      </span>
+                    </div>
+                    <p className="text-slate-600">
+                      Выплата продавцу: <strong>{formatRubles(closedLot.cashPaidBySeller)}</strong>
+                      {closedLot.closedAt ? ` • Закрыта: ${new Date(closedLot.closedAt).toLocaleDateString('ru-RU')}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectSellerLotCode(closedLot.lotCode);
+                        onOpenSellerVault();
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs cursor-pointer"
+                    >
+                      Документы закрытия →
+                    </button>
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
       )}

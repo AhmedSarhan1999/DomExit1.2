@@ -566,6 +566,18 @@ export const apiClient = {
         body: JSON.stringify(options || {}),
       }),
 
+    finalizeDeal: (dealId: string, bankOfficerName?: string) =>
+      request<{
+        ok: boolean;
+        deal: any;
+        lot?: any;
+        closedApplicationsCount: number;
+        unfrozenApplicationsCount: number;
+      }>(`/api/matching/deals/${encodeURIComponent(dealId)}/finalize`, {
+        method: 'POST',
+        body: JSON.stringify({ bankOfficerName }),
+      }),
+
     getDemandRadar: (params?: { city?: string; maxBudget?: number; dealTrack?: string }) => {
       const sp = new URLSearchParams();
       if (params?.city) sp.set('city', params.city);

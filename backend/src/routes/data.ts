@@ -1671,7 +1671,23 @@ export async function handleData(
           itemToSave.isVerified === true ||
           itemToSave.approvalStatus === 'approved_for_packaging' ||
           itemToSave.approvalStatus === 'approved' ||
-          (itemToSave.currentStage !== undefined && Number(itemToSave.currentStage) >= 2);
+          (itemToSave.currentStage !== undefined && Number(itemToSave.currentStage) >= 2) ||
+          itemToSave.isPublished === true;
+
+        const hasAssignedCurator = Boolean(
+          itemToSave.assignedEmployeeId ||
+            itemToSave.assignedCuratorId ||
+            existingLotRecord?.assignedEmployeeId ||
+            existingLotRecord?.assignedCuratorId
+        );
+
+        // Stage 0 Mandatory Curator Assignment Gate
+        if (method === 'PUT' && !wasAlreadyVerified && !hasAssignedCurator && attemptsLegalVerificationOrStage2) {
+          return json(event, 400, {
+            error: 'Сначала назначьте персонального куратора (можно назначить себя) на этапе 0.',
+            code: 'CURATOR_ASSIGNMENT_REQUIRED',
+          });
+        }
 
         // Strict Verification Gate for unverified lots advancing to Stage 2+ or isVerified=true
         if (method === 'PUT' && !wasAlreadyVerified && attemptsLegalVerificationOrStage2) {

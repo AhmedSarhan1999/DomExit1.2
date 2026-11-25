@@ -1,6 +1,6 @@
 import { DealTrack } from '../../types';
 import { DatabaseGateway } from '../DatabaseGateway';
-import { PaginatedResult } from '../../services/apiClient';
+import { apiClient, PaginatedResult } from '../../services/apiClient';
 import { LotsRepository } from './LotsRepository';
 import { CandidatesRepository } from './CandidatesRepository';
 import { AuditLogsRepository } from './AuditLogsRepository';
@@ -209,6 +209,16 @@ export class DealsRepository {
   }
 
   static async releaseEscrowFunds(dealId: string, bankOfficerName: string): Promise<DealTrack | null> {
+    try {
+      const res = await apiClient.matching.finalizeDeal(dealId, bankOfficerName);
+      if (res?.ok && res.deal) {
+        LotsRepository.invalidateLotCache(res.deal.lotCode);
+        return res.deal as DealTrack;
+      }
+    } catch (err) {
+      console.warn('[DealsRepository] Atomic finalizeDeal failed, falling back to local sequence:', err);
+    }
+
     const deal = await this.getById(dealId);
     if (!deal) return null;
 

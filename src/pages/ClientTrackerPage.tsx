@@ -8,6 +8,7 @@ import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { CandidatesRepository } from '../dal/repositories/CandidatesRepository';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { StorageService } from '../dal/StorageService';
+import { apiClient } from '../services/apiClient';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
@@ -105,22 +106,61 @@ export const ClientTrackerPage: React.FC = () => {
     setDeal(loadedDeal);
 
     const lotCode = loadedDeal.lotCode;
-    const [loadedLot, lotOffers, vaultDocs, emps] = await Promise.all([
+    const [loadedLot, lotOffers, queueRes, vaultDocs, emps] = await Promise.all([
       LotsRepository.getByCode(lotCode),
       CandidatesRepository.getByLotCode(lotCode),
+      apiClient.matching.getLotQueue(lotCode).catch(() => null),
       StorageService.getDocumentsByEntity('lot', lotCode),
-      EmployeesRepository.getAll(),
+      EmployeesRepository.getAssignableCurators(),
     ]);
 
+    const mergedOffers: BuyerCandidate[] =
+      queueRes?.ok && Array.isArray(queueRes.queue) && queueRes.queue.length > 0
+        ? queueRes.queue.map((app: any) => ({
+            id: app.id,
+            lotCode: app.lotCode || lotCode,
+            code: app.userClientCode || app.userId,
+            name: app.userName || app.userEmail || 'Покупатель',
+            location: app.city || 'СПб',
+            fundingType: 'cash',
+            readinessTimeline: '48 ч',
+            availableLiquidity: app.offeredPriceRub || loadedLot?.cashPaidBySeller || 0,
+            amountRub: app.offeredPriceRub || loadedLot?.cashPaidBySeller || 0,
+            requestedTimestamp: app.createdAt || new Date().toISOString(),
+            status: (
+              app.queueStatus === 'priority_1' || app.queueStatus === 'in_deal' || app.queueStatus === 'completed'
+                ? 'priority_reserved'
+                : app.queueStatus === 'rejected'
+                ? 'declined'
+                : 'pending'
+            ) as BuyerCandidate['status'],
+            timestamp: app.createdAt || new Date().toISOString(),
+            matchScore: app.closingScore || app.matchScore || 90,
+          }))
+        : lotOffers;
+
     setLot(loadedLot);
-    setOffers(lotOffers);
+    setOffers(mergedOffers);
     setDocs(vaultDocs);
 
-    if (loadedLot?.assignedEmployeeId) {
-      const assigned = emps.find((e: any) => e.id === loadedLot.assignedEmployeeId);
-      setCurator(assigned || emps[0] || null);
-    } else if (emps.length > 0) {
-      setCurator(emps[0]);
+    const assignedId = loadedLot?.assignedEmployeeId || loadedLot?.assignedCuratorId;
+    if (assignedId) {
+      const assigned = emps.find((e: any) => e.id === assignedId);
+      setCurator(
+        assigned ||
+          (loadedLot?.curator
+            ? ({
+                id: assignedId,
+                name: loadedLot.curator.name,
+                role: loadedLot.curator.role,
+                phone: loadedLot.curator.phone,
+                telegram: loadedLot.curator.telegram,
+                photoUrl: loadedLot.curator.photoUrl,
+              } as Employee)
+            : null)
+      );
+    } else {
+      setCurator(null);
     }
     setLoading(false);
   };
