@@ -5,7 +5,12 @@ import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminHeader } from '../components/layout/AdminHeader';
 import { EmployeesRepository } from '../dal/repositories/EmployeesRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
+import { StorageService } from '../dal/StorageService';
+import { optimizeAvatarToWebP } from '../utils/imageOptimizer';
+import { UserAvatar } from '../components/shared/UserAvatar';
+import { TelegramConnectCard } from '../components/telegram/TelegramConnectCard';
 import { formatRussianPhoneInput, isValidRussianPhone } from '../utils/validators';
 import { Employee } from '../types';
 import {
@@ -26,16 +31,26 @@ export const AdminCuratorProfilePage: React.FC = () => {
   const { language } = useLanguage();
   const { user, updateUserProfile, updateUserPassword } = useAuth();
 
-  const [employee, setEmployee] = useState<Employee | null>(null);
-  const [name, setName] = useState<string>(user?.name || 'Куратор DomExit');
-  const [role, setRole] = useState<string>('Куратор сопровождения сделок DomExit');
-  const [phone, setPhone] = useState<string>(user?.phone || '+7 (812) 409-00-00');
-  const [telegram, setTelegram] = useState<string>(user?.telegram || '@domexit_official');
-  const [maxProfile, setMaxProfile] = useState<string>(user?.phone || '+7 (812) 409-00-00');
-  const [photoUrl, setPhotoUrl] = useState<string>('');
-  const [bio, setBio] = useState<string>(
-    'Сопровождение сделок по переуступкам прав по 214-ФЗ и аккредитивным расчетам без скрытых рисков.'
+  const isOwner = Boolean(
+    user && (user.role === 'owner' || user.activeRole === 'owner' || user.roles?.includes('owner'))
   );
+
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [name, setName] = useState<string>(user?.name || (isOwner ? 'Владелец платформы' : 'Куратор DomExit'));
+  const [role, setRole] = useState<string>(
+    isOwner ? 'Владелец / CEO платформы DomExit' : 'Куратор сопровождения сделок DomExit'
+  );
+  const [phone, setPhone] = useState<string>(user?.phone ? formatRussianPhoneInput(user.phone) : '');
+  const [telegram, setTelegram] = useState<string>(user?.telegram || '');
+  const [maxProfile, setMaxProfile] = useState<string>('');
+  const [photoUrl, setPhotoUrl] = useState<string>(user?.photoURL || '');
+  const [bio, setBio] = useState<string>('');
+  const [liveStats, setLiveStats] = useState<{ active: number; closed: number; avgDays: string }>({
+    active: 0,
+    closed: 0,
+    avgDays: '—',
+  });
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -54,83 +69,129 @@ export const AdminCuratorProfilePage: React.FC = () => {
   useEffect(() => {
     async function load() {
       const empId = user?.assignedEmployeeId || user?.id || '';
-      if (empId) {
-        const emp = await EmployeesRepository.getById(empId);
-        if (emp) {
-          setEmployee(emp);
-          setName(emp.name);
-          setRole(emp.role);
-          setPhone(formatRussianPhoneInput(emp.phone));
-          setTelegram(emp.telegram);
-          setMaxProfile(emp.maxProfile || emp.whatsapp || emp.phone);
-          if (emp.photoUrl) setPhotoUrl(emp.photoUrl);
-          if (emp.bio) setBio(emp.bio);
+      const myIds = new Set([user?.id, user?.assignedEmployeeId].filter(Boolean).map(String));
+
+      const [emp, allLots, allDeals] = await Promise.all([
+        empId ? EmployeesRepository.getById(empId).catch(() => null) : Promise.resolve(null),
+        LotsRepository.getAll({ includePendingApproval: true }).catch(() => []),
+        DealsRepository.getAll().catch(() => []),
+      ]);
+
+      if (emp) {
+        setEmployee(emp);
+        setName(emp.name || user?.name || '');
+        setRole(emp.role || (isOwner ? 'Владелец / CEO' : 'Куратор сделок'));
+        setPhone(emp.phone ? formatRussianPhoneInput(emp.phone) : user?.phone ? formatRussianPhoneInput(user.phone) : '');
+        setTelegram(emp.telegram || user?.telegram || '');
+        setMaxProfile(emp.maxProfile || '');
+        setPhotoUrl(emp.photoUrl || user?.photoURL || '');
+        setBio(emp.bio || '');
+      } else if (user) {
+        setName(user.name || '');
+        setRole(isOwner ? 'Владелец / CEO платформы DomExit' : 'Куратор сопровождения сделок');
+        setPhone(user.phone ? formatRussianPhoneInput(user.phone) : '');
+        setTelegram(user.telegram || '');
+        setPhotoUrl(user.photoURL || '');
+      }
+
+      // Compute real live metrics from assigned lots & deals (0 if none)
+      const myLots = (allLots || []).filter((l) =>
+        myIds.has(String(l.assignedEmployeeId || (l as any).assignedCuratorId || ''))
+      );
+      const myDeals = (allDeals || []).filter(
+        (d) =>
+          myIds.has(String(d.assignedEmployeeId || '')) ||
+          myLots.some((l) => l.lotCode === d.lotCode)
+      );
+      const closedDeals = myDeals.filter((d) => d.status === 'closed' || d.stage === 'completed');
+      const activeLots = myLots.filter((l) => l.status !== 'closed');
+      let avgDaysLabel = '—';
+      if (closedDeals.length > 0) {
+        const durations = closedDeals
+          .map((d) => {
+            if (!d.createdDate || !d.closedAt) return 0;
+            return Math.max(
+              1,
+              Math.round((new Date(d.closedAt).getTime() - new Date(d.createdDate).getTime()) / 86400000)
+            );
+          })
+          .filter((x) => x > 0);
+        if (durations.length > 0) {
+          avgDaysLabel = `${(durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1)} дн.`;
         }
       }
+      setLiveStats({
+        active: activeLots.length,
+        closed: closedDeals.length,
+        avgDays: avgDaysLabel,
+      });
     }
-    load();
-  }, [user]);
+    if (user?.id) load();
+  }, [user?.id, user?.assignedEmployeeId, isOwner]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
 
-    if (!isValidRussianPhone(phone)) {
+    if (phone.trim() && !isValidRussianPhone(phone)) {
       setValidationError('Прямой телефон должен соответствовать стандарту +7 (XXX) XXX-XX-XX.');
       return;
     }
 
     setIsSaving(true);
+    try {
+      const empId = employee?.id || user?.assignedEmployeeId || user?.id || `emp-${Date.now()}`;
+      const cleanTg = telegram.trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@+/, '');
+      const formattedTg = cleanTg ? `@${cleanTg}` : '';
+      const updated: Employee = {
+        id: empId,
+        name: name.trim(),
+        email: employee?.email || user?.email || '',
+        role: role.trim(),
+        phone: phone.trim(),
+        telegram: formattedTg,
+        maxProfile: maxProfile.trim(),
+        whatsapp: maxProfile.trim(),
+        photoUrl,
+        bio: bio.trim(),
+        activeLotsCount: liveStats.active,
+        closedDealsCount: liveStats.closed,
+        avgSpeedDays: employee?.avgSpeedDays || 0,
+        status: employee?.status || 'active',
+        permissions: employee?.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'],
+      };
 
-    const empId = employee?.id || user?.assignedEmployeeId || user?.id || `emp-${Date.now()}`;
-    const updated: Employee = {
-      id: empId,
-      name: name.trim(),
-      email: employee?.email || user?.email || 'curator@domexit.ru',
-      role: role.trim(),
-      phone,
-      telegram: telegram.startsWith('@') ? telegram.trim() : `@${telegram.trim()}`,
-      maxProfile: maxProfile.trim(),
-      whatsapp: maxProfile.trim(),
-      photoUrl,
-      bio: bio.trim(),
-      activeLotsCount: employee?.activeLotsCount || 3,
-      closedDealsCount: employee?.closedDealsCount || 24,
-      avgSpeedDays: employee?.avgSpeedDays || 7.5,
-      status: employee?.status || 'active',
-      permissions: employee?.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'],
-    };
+      await EmployeesRepository.update(updated);
+      await LotsRepository.updateCuratorProfileForAssignedLots(updated);
 
-    await EmployeesRepository.update(updated);
+      if (updateUserProfile) {
+        await updateUserProfile({
+          name: updated.name,
+          phone: updated.phone,
+          telegram: updated.telegram,
+          photoURL: updated.photoUrl,
+        });
+      }
 
-    // Synchronously update all lots currently assigned to this curator
-    await LotsRepository.updateCuratorProfileForAssignedLots(updated);
-
-    // Synchronously update user in AuthContext / UsersRepository
-    if (updateUserProfile) {
-      await updateUserProfile({
-        name: updated.name,
-        phone: updated.phone,
-        telegram: updated.telegram,
-        photoURL: updated.photoUrl,
+      await AuditLogsRepository.addLog({
+        operatorId: empId,
+        operatorName: updated.name,
+        operatorRole: isOwner ? 'owner' : 'curator',
+        actionType: 'employee_created_modified',
+        title: `Профиль куратора ${updated.name} обновлен`,
+        description:
+          'Обновлены контакты (Телефон, Telegram, MAX), фото в S3 и карточка на закрепленных лотах.',
       });
+
+      setNotificationMsg(
+        'Ваш профиль успешно сохранён в облаке и синхронизирован с карточками лотов!'
+      );
+      setTimeout(() => setNotificationMsg(null), 4000);
+    } catch (err: any) {
+      setValidationError(err?.message || 'Не удалось сохранить профиль');
+    } finally {
+      setIsSaving(false);
     }
-
-    await AuditLogsRepository.addLog({
-      operatorId: empId,
-      operatorName: updated.name,
-      operatorRole: 'curator',
-      actionType: 'employee_created_modified',
-      title: `Профиль куратора ${updated.name} обновлен`,
-      description:
-        'Обновлены контакты (Телефон, Telegram, профиль MAX), фотография и юридическое портфолио на закрепленных лотах.',
-    });
-
-    setIsSaving(false);
-    setNotificationMsg(
-      'Ваш профиль куратора успешно сохранен и автоматически синхронизирован со всеми вашими лотами!'
-    );
-    setTimeout(() => setNotificationMsg(null), 4000);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -170,16 +231,30 @@ export const AdminCuratorProfilePage: React.FC = () => {
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setPhotoUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setValidationError(null);
+    setIsUploadingPhoto(true);
+    try {
+      const optimized = await optimizeAvatarToWebP(file, 400, 0.85);
+      const { publicUrl } = await StorageService.uploadPhoto({
+        file: optimized,
+        fileName: optimized.name,
+        lotCode: user?.id || 'curator',
+        contentType: optimized.type || 'image/webp',
+        purpose: 'avatar',
+      });
+      setPhotoUrl(publicUrl);
+      if (updateUserProfile) {
+        await updateUserProfile({ photoURL: publicUrl });
+      }
+      setNotificationMsg('Фотография профиля загружена в облако S3!');
+      setTimeout(() => setNotificationMsg(null), 3500);
+    } catch (err: any) {
+      setValidationError(err?.message || 'Ошибка загрузки фотографии в облако S3');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -244,21 +319,27 @@ export const AdminCuratorProfilePage: React.FC = () => {
               {/* Photo Upload & Preview */}
               <div className="flex items-center space-x-5 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
                 <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-200 border-2 border-emerald-500 shrink-0">
-                  <img src={photoUrl} alt="Фото куратора" className="w-full h-full object-cover" />
+                  <UserAvatar
+                    src={photoUrl}
+                    name={name}
+                    className="w-full h-full object-cover"
+                    initialsClassName="w-full h-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xl"
+                  />
                 </div>
                 <div className="space-y-1.5 flex-1 min-w-0">
                   <span className="text-xs font-bold text-slate-800 block">
                     Профессиональная фотография
                   </span>
                   <p className="text-[11px] text-slate-500">
-                    Отображается покупателям и продавцам при ведении сделки в каталоге
+                    Загружается в S3 (WebP) и отображается покупателям и продавцам
                   </p>
                   <label className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs cursor-pointer">
                     <Upload className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Загрузить фото</span>
+                    <span>{isUploadingPhoto ? 'Загрузка в S3...' : 'Загрузить фото'}</span>
                     <input
                       type="file"
                       className="hidden"
+                      disabled={isUploadingPhoto}
                       accept="image/*"
                       onChange={handlePhotoUpload}
                     />
@@ -488,7 +569,12 @@ export const AdminCuratorProfilePage: React.FC = () => {
                 <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-4 shadow-lg">
                   <div className="flex items-center space-x-3.5">
                     <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-700 border-2 border-emerald-400 shrink-0">
-                      <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
+                      <UserAvatar
+                        src={photoUrl}
+                        name={name}
+                        className="w-full h-full object-cover"
+                        initialsClassName="w-full h-full bg-emerald-600 text-white font-black flex items-center justify-center text-base"
+                      />
                     </div>
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
@@ -503,62 +589,78 @@ export const AdminCuratorProfilePage: React.FC = () => {
                     {bio}
                   </p>
 
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <a
-                      href={`https://t.me/${telegram.replace('@', '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 px-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
-                    >
-                      <Send className="w-3 h-3" />
-                      <span>Telegram</span>
-                    </a>
-                    <a
-                      href={`tel:${phone.replace(/[^\d+]/g, '')}`}
-                      className="py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
-                    >
-                      <Phone className="w-3 h-3" />
-                      <span>Позвонить</span>
-                    </a>
-                    <a
-                      href={
-                        maxProfile.startsWith('http') || maxProfile.startsWith('max://')
-                          ? maxProfile
-                          : `https://max.ru/${maxProfile.replace(/[^\d]/g, '')}`
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
-                      title="Открыть профиль в приложении MAX"
-                    >
-                      <span className="w-3.5 h-3.5 rounded bg-white text-indigo-700 text-[8px] font-black flex items-center justify-center">
-                        M
-                      </span>
-                      <span>MAX</span>
-                    </a>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {telegram.trim() && (
+                      <a
+                        href={`https://t.me/${telegram.replace(/^@+/, '').trim()}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
+                      >
+                        <Send className="w-3 h-3" />
+                        <span>Telegram</span>
+                      </a>
+                    )}
+                    {phone.trim() && (
+                      <a
+                        href={`tel:${phone.replace(/[^\d+]/g, '')}`}
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
+                      >
+                        <Phone className="w-3 h-3" />
+                        <span>Позвонить</span>
+                      </a>
+                    )}
+                    {maxProfile.trim() && (
+                      <a
+                        href={
+                          maxProfile.startsWith('http') || maxProfile.startsWith('max://')
+                            ? maxProfile
+                            : `https://max.ru/${maxProfile.replace(/^@+/, '').trim()}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] flex items-center justify-center space-x-1 transition-colors shadow-sm"
+                        title="Открыть профиль в приложении MAX"
+                      >
+                        <span className="w-3.5 h-3.5 rounded bg-white text-indigo-700 text-[8px] font-black flex items-center justify-center">
+                          M
+                        </span>
+                        <span>MAX</span>
+                      </a>
+                    )}
                   </div>
                 </div>
 
-                {/* Curator Metrics */}
+                {/* Live Curator Metrics (0/real data, no mocks) */}
                 <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 text-[10px] block">В работе:</span>
                     <strong className="text-sm font-bold text-slate-900">
-                      {employee?.activeLotsCount || 3} лота
+                      {liveStats.active} лот(ов)
                     </strong>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 text-[10px] block">Закрыто:</span>
                     <strong className="text-sm font-bold text-emerald-700">
-                      {employee?.closedDealsCount || 24} сделки
+                      {liveStats.closed} сдел.
                     </strong>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 text-[10px] block">Ср. срок:</span>
                     <strong className="text-sm font-bold text-slate-900">
-                      {employee?.avgSpeedDays || 7.5} дн.
+                      {liveStats.avgDays}
                     </strong>
                   </div>
+                </div>
+
+                {/* Telegram OS Binding */}
+                <div className="pt-2 space-y-2 border-t border-slate-100">
+                  <div className="text-[11px] text-slate-600">
+                    {isOwner
+                      ? 'Роль Владелец: вы получаете общеплатформенные уведомления (новые заявки продавцов, Gold-верификация, B2B партнёры, эскалации SLA и инциденты безопасности).'
+                      : 'Роль Куратор: вы получаете мгновенные уведомления строго по закреплённым за вами объектам и сделкам (сообщения клиентов, ПЭП, задачи).'}
+                  </div>
+                  <TelegramConnectCard />
                 </div>
               </div>
             </div>

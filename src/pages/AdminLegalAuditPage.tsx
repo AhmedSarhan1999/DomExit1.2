@@ -307,6 +307,7 @@ export const AdminLegalAuditPage: React.FC = () => {
     lot.legalPassport.antiBankruptcyIndex = updatedProgress.weightedIndex;
     lot.legalPassport.passedChecksCount = updatedProgress.evaluatedAxesCount;
     await LotsRepository.update(lot);
+    setLot({ ...lot });
 
     showToast(
       `✓ Раздел «${targetAxis.shortLabel}» зафиксирован: ${HONEST_STATUS_CONFIG[targetAxis.status].labelRu} (Индекс: ${updatedProgress.weightedIndex}%)`
@@ -342,6 +343,7 @@ export const AdminLegalAuditPage: React.FC = () => {
     lot.legalAuditCheckpoints = updatedProgress.derivedCheckpoints;
     lot.legalPassport.antiBankruptcyIndex = updatedProgress.weightedIndex;
     await LotsRepository.update(lot);
+    setLot({ ...lot });
   };
 
   const handleUpdateSecondaryChecklist = async (checklist: SecondaryRiskChecklist) => {

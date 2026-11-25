@@ -59,13 +59,15 @@ export async function handleStorage(
 
     const body = parseBody<{
       scope?: 'photo' | 'document';
+      purpose?: 'avatar' | 'lot_photo' | 'document';
       lotCode?: string;
       fileName?: string;
       contentType?: string;
       fileSize?: number;
     }>(event);
 
-    const scope = body?.scope;
+    const purpose = body?.purpose;
+    const scope = body?.scope || (purpose === 'avatar' ? 'photo' : undefined);
     const lotCode = body?.lotCode?.trim() || 'general';
     const fileName = body?.fileName?.trim();
     const contentType = body?.contentType?.trim().toLowerCase();
@@ -91,7 +93,10 @@ export async function handleStorage(
         return json(event, 400, { error: 'Размер фото превышает 15 МБ' });
       }
 
-      const key = `photos/${lotCode}/${uuid}-${safeName}`;
+      const key =
+        purpose === 'avatar'
+          ? `avatars/${authUser.id}/${uuid}-${safeName || 'avatar.webp'}`
+          : `photos/${lotCode}/${uuid}-${safeName || 'photo.webp'}`;
       const uploadUrl = await createPresignedUploadUrl({
         bucket: cfg.S3_PUBLIC_BUCKET,
         key,

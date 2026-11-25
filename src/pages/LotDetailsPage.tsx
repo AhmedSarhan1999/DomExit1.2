@@ -19,6 +19,13 @@ import { PublicLegalReportModal } from '../components/lot/PublicLegalReportModal
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { LotDetailsSkeleton } from '../components/common/Skeletons';
 import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
+import { UserAvatar } from '../components/shared/UserAvatar';
+import {
+  getCleanCuratorPhone,
+  getCuratorPhoneHref,
+  getCuratorTelegramHref,
+  getCuratorMaxHref,
+} from '../utils/curatorContacts';
 import { PepSignatureModal } from '../components/legal/PepSignatureModal';
 import { LotDropApplicationCard } from '../components/lot/LotDropApplicationCard';
 import {
@@ -143,13 +150,13 @@ export const LotDetailsPage: React.FC = () => {
           }
 
           try {
+            const curators = await EmployeesRepository.getAssignableCurators();
             if (data.assignedEmployeeId) {
-              const emp = await EmployeesRepository.getById(data.assignedEmployeeId);
+              const emp = curators.find((e) => e.id === data.assignedEmployeeId) || (await EmployeesRepository.getById(data.assignedEmployeeId));
               if (emp) setCuratorEmployee(emp);
             } else if (data.curator?.name) {
-              const allEmps = await EmployeesRepository.getAll();
               const curatorNameStr = data.curator.name.toLowerCase();
-              const match = allEmps.find(
+              const match = curators.find(
                 (e) =>
                   e.name.toLowerCase().includes(curatorNameStr) ||
                   curatorNameStr.includes(e.name.toLowerCase())
@@ -157,7 +164,7 @@ export const LotDetailsPage: React.FC = () => {
               if (match) setCuratorEmployee(match);
             }
           } catch (empErr) {
-            console.warn('[LotDetailsPage] Curator fetch error (staff-only):', empErr);
+            console.warn('[LotDetailsPage] Curator fetch error:', empErr);
           }
         }
       } catch (err) {
@@ -1218,48 +1225,55 @@ export const LotDetailsPage: React.FC = () => {
             </div>
 
             {/* Personal Curator Card */}
-            {(curatorEmployee || lot.curator) ? (
+            {(curatorEmployee || lot.curator) ? (() => {
+              const curatorDisplayName = curatorEmployee?.name || lot.curator?.name || 'Куратор DomExit';
+              const curatorDisplayRole =
+                curatorEmployee?.role || lot.curator?.role || 'Персональное сопровождение сделки';
+              const curatorDisplayPhoto = curatorEmployee?.photoUrl || lot.curator?.photoUrl || '';
+              const curatorDisplayBio = curatorEmployee?.bio || lot.curator?.bio || '';
+              const cleanPhone = getCleanCuratorPhone(curatorEmployee?.phone || lot.curator?.phone);
+              const phoneHref = getCuratorPhoneHref(cleanPhone);
+              const telegramHref = getCuratorTelegramHref(
+                curatorEmployee?.telegram || lot.curator?.telegram,
+                channels.telegramBotUrl,
+                channels.telegramChannelUrl
+              );
+              const maxHref = getCuratorMaxHref(
+                curatorEmployee?.maxProfile || lot.curator?.maxProfile,
+                curatorEmployee?.whatsapp || lot.curator?.whatsapp
+              );
+
+              return (
               <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
                 <div className="flex items-center space-x-3.5">
-                  {curatorEmployee?.photoUrl || lot.curator?.photoUrl ? (
-                    <img
-                      src={curatorEmployee?.photoUrl || lot.curator?.photoUrl}
-                      alt={curatorEmployee?.name || lot.curator?.name || 'Куратор DomExit'}
-                      className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-sm shadow-xs shrink-0">
-                      {(curatorEmployee?.name || lot.curator?.name || 'DX').slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar
+                    src={curatorDisplayPhoto}
+                    name={curatorDisplayName}
+                    size="lg"
+                    className="border-2 border-emerald-500 shadow-xs shrink-0"
+                  />
                   <div className="min-w-0 flex-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                       {language === 'ru' ? 'Персональный куратор лота' : 'Personal Lot Curator'}
                     </span>
                     <span className="font-bold text-sm text-slate-900 block truncate">
-                      {curatorEmployee?.name || lot.curator?.name || 'Куратор DomExit'}
+                      {curatorDisplayName}
                     </span>
                     <span className="text-[11px] text-emerald-700 font-semibold block truncate">
-                      {curatorEmployee?.role || lot.curator?.role || 'Персональное сопровождение сделки'}
+                      {curatorDisplayRole}
                     </span>
                   </div>
                 </div>
 
-                {(curatorEmployee?.bio || lot.curator?.bio) && (
+                {curatorDisplayBio && (
                   <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    {curatorEmployee?.bio || lot.curator?.bio}
+                    {curatorDisplayBio}
                   </p>
                 )}
 
                 <div className="flex items-center gap-2 pt-1">
                   <a
-                    href={
-                      (curatorEmployee?.telegram || lot.curator?.telegram || '').startsWith('http')
-                        ? curatorEmployee?.telegram || lot.curator?.telegram
-                        : curatorEmployee?.telegram || lot.curator?.telegram
-                        ? `https://t.me/${(curatorEmployee?.telegram || lot.curator?.telegram || '').replace('@', '')}`
-                        : channels.telegramChannelUrl || 'https://t.me/domexit_official'
-                    }
+                    href={telegramHref}
                     target="_blank"
                     rel="noreferrer"
                     className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs text-center flex items-center justify-center space-x-1.5"
@@ -1268,29 +1282,18 @@ export const LotDetailsPage: React.FC = () => {
                     <span>Telegram</span>
                   </a>
 
-                  {(curatorEmployee?.phone || lot.curator?.phone) && (
+                  {phoneHref && (
                     <a
-                      href={`tel:${(curatorEmployee?.phone || lot.curator?.phone || '').replace(/[^\d+]/g, '')}`}
+                      href={phoneHref}
                       className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors flex items-center justify-center space-x-1"
-                      title={curatorEmployee?.phone || lot.curator?.phone}
+                      title={cleanPhone}
                     >
                       <Phone className="w-3.5 h-3.5 text-slate-600" />
                       <span className="hidden sm:inline">{language === 'ru' ? 'Звонок' : 'Call'}</span>
                     </a>
                   )}
 
-                  {(curatorEmployee?.maxProfile || lot.curator?.maxProfile || curatorEmployee?.whatsapp || lot.curator?.whatsapp) && (() => {
-                    const maxVal =
-                      curatorEmployee?.maxProfile ||
-                      lot.curator?.maxProfile ||
-                      curatorEmployee?.whatsapp ||
-                      lot.curator?.whatsapp ||
-                      '';
-                  const maxHref =
-                    maxVal.startsWith('http') || maxVal.startsWith('max://')
-                      ? maxVal
-                      : `https://max.ru/${maxVal.replace(/[^\d]/g, '')}`;
-                  return (
+                  {maxHref && (
                     <a
                       href={maxHref}
                       target="_blank"
@@ -1303,9 +1306,8 @@ export const LotDetailsPage: React.FC = () => {
                       </span>
                       <span>MAX</span>
                     </a>
-                  );
-                })()}
-              </div>
+                  )}
+                </div>
 
               {/* Curator Direct Chat Button */}
               <button
@@ -1317,7 +1319,8 @@ export const LotDetailsPage: React.FC = () => {
                 <span>Чат с куратором онлайн</span>
               </button>
             </div>
-            ) : (
+              );
+            })() : (
               <div className="bg-amber-50/70 rounded-2xl border border-amber-200 p-4 shadow-xs text-xs text-amber-900 font-semibold">
                 Этап 0: Ожидает назначения персонального куратора DomExit
               </div>

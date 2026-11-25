@@ -167,6 +167,7 @@ export const SellersPage: React.FC = () => {
   const [vaultDocs, setVaultDocs] = useState<DocumentMetadata[]>([]);
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [photoNeedsAuth, setPhotoNeedsAuth] = useState<boolean>(false);
   const [consents, setConsents] = useState<ConsentState>({
     pdProcessing: false,
     termsAgreed: false,
@@ -397,23 +398,42 @@ export const SellersPage: React.FC = () => {
     const files = e.target.files;
     if (files && files[0]) {
       const file = files[0];
+      setStep3Error(null);
+      setPhotoNeedsAuth(false);
+
+      if (!user) {
+        try {
+          sessionStorage.setItem(
+            'domexit_seller_draft',
+            JSON.stringify({ draftLotCode, complexName, developerName, dduCode, sellerName, sellerPhone, sellerInn, currentStep: 3 })
+          );
+        } catch {}
+        setPhotoNeedsAuth(true);
+        setStep3Error('Войдите в аккаунт для защищённой загрузки фото и документов.');
+        openAuthModal('Войдите в аккаунт для защищённой загрузки фото и документов');
+        return;
+      }
+
       setIsUploadingPhoto(true);
       try {
         const optimized = await optimizeImageFile(file);
         const { publicUrl } = await StorageService.uploadPhoto({
           file: optimized,
-          fileName: file.name,
+          fileName: optimized.name,
           lotCode: draftLotCode,
           contentType: optimized.type || 'image/webp',
+          purpose: 'lot_photo',
         });
         setUploadedPhotos((prev) => [...prev, publicUrl]);
       } catch (err: any) {
         console.error('[SellersPage] Failed to upload photo to S3:', err);
-        alert(
-          language === 'ru'
-            ? 'Сбой загрузки фото в облако S3. Пожалуйста, повторите попытку.'
-            : 'Failed to upload photo to S3. Please try again.'
-        );
+        const status = err?.status || err?.statusCode;
+        if (status === 401 || String(err?.message || '').includes('авторизац')) {
+          setPhotoNeedsAuth(true);
+          setStep3Error('Войдите в аккаунт для защищённой загрузки фото и документов.');
+        } else {
+          setStep3Error(err?.message || 'Сбой загрузки фото в облако S3. Проверьте формат файла и повторите попытку.');
+        }
       } finally {
         setIsUploadingPhoto(false);
       }
@@ -835,7 +855,22 @@ export const SellersPage: React.FC = () => {
 
           {/* STEP 3: Production-Ready Cloud Document Vault */}
           {currentStep === 3 && (
-            <SellerStepDocuments
+            <>
+              {photoNeedsAuth && !user && (
+                <div className="mb-4 p-4 rounded-2xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950">
+                  <span className="font-bold">
+                    Войдите в аккаунт для защищённой загрузки фото и документов (введённые данные сохранены).
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openAuthModal('Войдите в аккаунт для защищённой загрузки фото и документов')}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black shrink-0 cursor-pointer"
+                  >
+                    Войти и продолжить
+                  </button>
+                </div>
+              )}
+              <SellerStepDocuments
               dealTrack={dealTrack}
               draftLotCode={draftLotCode}
               step3Error={step3Error}
@@ -852,6 +887,7 @@ export const SellersPage: React.FC = () => {
               onBackToStep2={() => setCurrentStep(2)}
               onSubmitFinal={handleSubmitFinal}
             />
+            </>
           )}
 
           {/* STEP 4: Live Confirmation */}

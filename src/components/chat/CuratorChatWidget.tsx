@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { CuratorChatRepository } from '../../dal/repositories/CuratorChatRepository';
+import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
+import { getCuratorPhoneHref, getCuratorTelegramHref } from '../../utils/curatorContacts';
 import { CuratorMessage } from '../../types';
 import {
   Send,
@@ -42,7 +44,7 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
   curatorName = 'Юридический куратор DomExit',
   curatorRole = 'Персональный куратор сделки',
   curatorPhone,
-  curatorTelegram = 'domexit_official',
+  curatorTelegram,
   curatorMax,
   isOpen,
   onClose,
@@ -51,6 +53,7 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
 }) => {
   const { user, openAuthModal } = useAuth();
   const { language } = useLanguage();
+  const { channels } = usePublicChannelsStore();
 
   const [messages, setMessages] = useState<CuratorMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -176,30 +179,24 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
         </div>
 
         <div className="flex items-center space-x-2 shrink-0">
-          {curatorPhone && (
+          {getCuratorPhoneHref(curatorPhone) && (
             <a
-              href={`tel:${curatorPhone.replace(/[^\d+]/g, '')}`}
+              href={getCuratorPhoneHref(curatorPhone)}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
               title={`Позвонить: ${curatorPhone}`}
             >
               <Phone className="w-4 h-4" />
             </a>
           )}
-          {curatorTelegram && (
-            <a
-              href={
-                curatorTelegram.startsWith('http')
-                  ? curatorTelegram
-                  : `https://t.me/${curatorTelegram.replace('@', '')}`
-              }
-              target="_blank"
-              rel="noreferrer"
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-sky-300 transition-colors"
-              title="Открыть Telegram"
-            >
-              <MessageSquare className="w-4 h-4" />
-            </a>
-          )}
+          <a
+            href={getCuratorTelegramHref(curatorTelegram, channels.telegramBotUrl, channels.telegramChannelUrl)}
+            target="_blank"
+            rel="noreferrer"
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-sky-300 transition-colors"
+            title="Открыть Telegram"
+          >
+            <MessageSquare className="w-4 h-4" />
+          </a>
           {!embedded && (
             <button
               type="button"

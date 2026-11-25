@@ -288,10 +288,11 @@ export class LotsRepository {
         lot.curator = {
           name: emp.name,
           role: emp.role || 'Куратор сделок',
-          phone: emp.phone || '+7 (812) 409-00-00',
-          telegram: emp.telegram || '@domexit_official',
+          phone: emp.phone || '',
+          telegram: emp.telegram || '',
           photoUrl: emp.photoUrl,
           whatsapp: emp.whatsapp,
+          maxProfile: (emp as any).maxProfile,
           bio: emp.bio,
         };
       }
@@ -301,6 +302,22 @@ export class LotsRepository {
 
     await DatabaseGateway.save<Lot>(COLLECTION, lot);
     this.invalidateLotCache(lot.lotCode);
+
+    // Atomically sync assigned curator onto linked DealTrack so Pipeline shows real curator immediately
+    try {
+      const deals = await DatabaseGateway.getAll<any>('deals', []);
+      const targetCode = String(lot.lotCode || '').toUpperCase();
+      for (const d of deals || []) {
+        if (String(d.lotCode || '').toUpperCase() === targetCode || d.lotId === lot.id) {
+          d.curatorName = employeeName;
+          d.assignedEmployeeId = employeeId;
+          d.assignedEmployeeName = employeeName;
+          await DatabaseGateway.save<any>('deals', d);
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
 
     await AuditLogsRepository.addLog({
       lotCode: lot.lotCode,

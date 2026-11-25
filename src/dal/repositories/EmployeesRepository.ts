@@ -36,11 +36,17 @@ export class EmployeesRepository {
   }
 
   static async getById(employeeId: string): Promise<Employee | null> {
-    const all = await this.getAll();
-    const direct = all.find((e) => e.id === employeeId);
-    if (direct) return direct;
+    if (!employeeId) return null;
     const curators = await this.getAssignableCurators();
-    return curators.find((e) => e.id === employeeId) || null;
+    const curatorMatch = curators.find((e) => e.id === employeeId);
+    if (curatorMatch) return curatorMatch;
+
+    try {
+      const all = await this.getAll();
+      return all.find((e) => e.id === employeeId) || null;
+    } catch {
+      return null;
+    }
   }
 
   static async getByEmail(email: string): Promise<Employee | null> {
@@ -71,16 +77,16 @@ export class EmployeesRepository {
       name: employee.name || 'Специалист DomExit',
       email: employee.email || `curator${Math.floor(100 + Math.random() * 900)}@domexit.ru`,
       role: employee.role || 'Ведущий куратор отдела выходов',
-      phone: employee.phone || '+7 (812) 409-00-00',
-      telegram: employee.telegram || '@domexit_curator',
-      whatsapp: employee.whatsapp || employee.phone || '+7 (812) 409-00-00',
+      phone: employee.phone || '',
+      telegram: employee.telegram || '',
+      whatsapp: employee.whatsapp || '',
       photoUrl: employee.photoUrl || '',
       bio:
         employee.bio ||
         'Сертифицированный специалист по сделкам с уступкой прав по 214-ФЗ и аккредитивным расчетам.',
       activeLotsCount: employee.activeLotsCount || 0,
       closedDealsCount: employee.closedDealsCount || 0,
-      avgSpeedDays: employee.avgSpeedDays || 8.0,
+      avgSpeedDays: employee.avgSpeedDays || 0,
       status: employee.status || 'active',
       permissions: employee.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'],
     };

@@ -629,7 +629,7 @@ export const AdminPipelinePage: React.FC = () => {
                                     : 'bg-slate-100 text-slate-600'
                                 }`}
                               >
-                                {deal.daysLeft === 0 ? 'Закрыто' : `${deal.daysLeft} дн.`}
+                                {deal.daysLeft === 0 ? 'Закрыто' : `SLA: ${deal.daysLeft} дн.`}
                               </span>
                             </div>
                           </div>

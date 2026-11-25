@@ -16,13 +16,20 @@ import {
   Lock,
   FileSignature,
 } from 'lucide-react';
-import { BuyerCandidate, BuyerApplication, Lot, DealTrack, UserProfile } from '../../types';
+import { BuyerCandidate, BuyerApplication, Lot, DealTrack, UserProfile, Employee } from '../../types';
 import { formatRubles } from '../../utils/formatters';
 import { apiClient } from '../../services/apiClient';
+import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { PepSignatureModal } from '../legal/PepSignatureModal';
 import { CLOSING_STEPS_6, normalizeClosingStepNum } from '../../utils/closingWorkflow';
 import { DealActionItemsCard } from './DealActionItemsCard';
+import {
+  getCleanCuratorPhone,
+  getCuratorPhoneHref,
+  getCuratorTelegramHref,
+  getCuratorMaxHref,
+} from '../../utils/curatorContacts';
 
 export interface BuyerDealsTabProps {
   userBids: BuyerCandidate[];
@@ -129,6 +136,7 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [showArchive, setShowArchive] = useState<boolean>(false);
   const [pepSignatures, setPepSignatures] = useState<any[]>([]);
+  const [curatorsMap, setCuratorsMap] = useState<Record<string, Employee>>({});
   const [pepModal, setPepModal] = useState<{
     isOpen: boolean;
     documentType: 'nda_viewing_act' | 'buyer_reservation_terms';
@@ -143,6 +151,23 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
       setPepSignatures([]);
     }
   };
+
+  useEffect(() => {
+    let mounted = true;
+    EmployeesRepository.getAssignableCurators()
+      .then((list) => {
+        if (!mounted) return;
+        const map: Record<string, Employee> = {};
+        list.forEach((emp) => {
+          if (emp.id) map[emp.id] = emp;
+        });
+        setCuratorsMap(map);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (user?.id) {
@@ -311,14 +336,27 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                 PAYMENT_LABEL[app.paymentMethod || 'cash_100'] || '100% Кэш / СБР';
 
               const curatorData = matchedLot?.curator;
+              const liveCurator = matchedLot?.assignedEmployeeId
+                ? curatorsMap[matchedLot.assignedEmployeeId]
+                : undefined;
               const curatorName =
+                liveCurator?.name ||
                 app.curatorName ||
                 linkedDeal?.assignedEmployeeName ||
                 linkedDeal?.curatorName ||
                 curatorData?.name ||
                 'Персональный куратор DomExit';
-              const curatorPhone = curatorData?.phone || '';
-              const curatorTelegram = curatorData?.telegram || channels.telegramBotUrl || 'https://t.me/domexit_bot';
+              const cleanPhone = getCleanCuratorPhone(liveCurator?.phone || curatorData?.phone);
+              const curatorPhoneHref = getCuratorPhoneHref(cleanPhone);
+              const curatorTelegramHref = getCuratorTelegramHref(
+                liveCurator?.telegram || curatorData?.telegram,
+                channels.telegramBotUrl,
+                channels.telegramChannelUrl
+              );
+              const curatorMaxHref = getCuratorMaxHref(
+                liveCurator?.maxProfile || curatorData?.maxProfile,
+                liveCurator?.whatsapp || curatorData?.whatsapp
+              );
 
               const lotSigs = pepSignatures.filter(
                 (s) =>
@@ -540,21 +578,17 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                             <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
                             <span>Чат с куратором</span>
                           </button>
-                          {curatorPhone && (
+                          {curatorPhoneHref && (
                             <a
-                              href={`tel:${curatorPhone.replace(/[^\d+]/g, '')}`}
+                              href={curatorPhoneHref}
                               className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5"
                             >
                               <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>{curatorPhone}</span>
+                              <span>{cleanPhone}</span>
                             </a>
                           )}
                           <a
-                            href={
-                              curatorTelegram.startsWith('http')
-                                ? curatorTelegram
-                                : `https://t.me/${curatorTelegram.replace('@', '')}`
-                            }
+                            href={curatorTelegramHref}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5"
@@ -562,6 +596,17 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                             <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
                             <span>Telegram</span>
                           </a>
+                          {curatorMaxHref && (
+                            <a
+                              href={curatorMaxHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>MAX</span>
+                            </a>
+                          )}
                           <button
                             type="button"
                             disabled={!bothPepSigned}

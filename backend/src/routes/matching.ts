@@ -37,6 +37,7 @@ import {
 } from '../lib/buyBoxSync.js';
 import { logger } from '../lib/logger.js';
 import { runSlaSweep } from '../lib/slaSweeperService.js';
+import { isEmployeeAssignedToRecord } from '../lib/rbac.js';
 
 async function notifyStaff(text: string): Promise<void> {
   try {
@@ -481,10 +482,11 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       return json(event, 404, { error: `Объект #${lotCode} не найден` });
     }
 
-    const isAssigned =
-      lot.assignedEmployeeId === authUser.assignedEmployeeId || lot.assignedEmployeeId === authUser.id;
-    if (!isOwner && !isAssigned) {
-      return json(event, 403, { error: 'Запуск дропа разрешен только владельцу или назначенному куратору' });
+    if (!isOwner && !isEmployeeAssignedToRecord(authUser, lot)) {
+      return json(event, 403, {
+        error: 'Запуск дропа разрешен только владельцу или назначенному куратору',
+        code: 'NOT_ASSIGNED_TO_LOT',
+      });
     }
 
     const goldExclusiveHours = Math.max(0, Math.min(72, Number(body.goldExclusiveHours !== undefined ? body.goldExclusiveHours : 0)));
@@ -842,6 +844,13 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
 
     const lotCode = selectPriorityMatch[1];
+    const lotForCheck = await findLotByCode(ydb, lotCode);
+    if (!isEmployeeAssignedToRecord(authUser, lotForCheck)) {
+      return json(event, 403, {
+        error: 'Вы не назначены куратором этого объекта',
+        code: 'NOT_ASSIGNED_TO_LOT',
+      });
+    }
     const body = parseBody<{
       priority1AppId?: string;
       priority1UserId?: string;
@@ -1031,6 +1040,13 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
 
     const lotCode = promoteMatch[1];
+    const lotForCheck = await findLotByCode(ydb, lotCode);
+    if (!isEmployeeAssignedToRecord(authUser, lotForCheck)) {
+      return json(event, 403, {
+        error: 'Вы не назначены куратором этого объекта',
+        code: 'NOT_ASSIGNED_TO_LOT',
+      });
+    }
     const body = parseBody<{
       previousPriority1AppId?: string;
       reason?: 'no_show' | 'passed' | 'timeout' | 'rejected';
@@ -1690,6 +1706,19 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
       const targetLotCode = String(deal.lotCode || '').trim();
       const targetLotId = String(deal.lotId || '').trim();
+      const allLots = await ydb.scanAll<any>('lots', 500);
+      const lot = (allLots || []).find(
+        (l: any) =>
+          (targetLotCode && String(l.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase()) ||
+          (targetLotId && String(l.id || '').trim().toUpperCase() === targetLotId.toUpperCase())
+      );
+
+      if (!isEmployeeAssignedToRecord(authUser, lot || deal)) {
+        return json(event, 403, {
+          error: 'Вы не назначены куратором этой сделки',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
 
       // 1. Update Deal
       deal.escrowWorkflow = deal.escrowWorkflow || {
@@ -1716,12 +1745,6 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       appCache.invalidatePrefix('deals');
 
       // 2. Update Lot
-      const allLots = await ydb.scanAll<any>('lots', 500);
-      const lot = (allLots || []).find(
-        (l: any) =>
-          (targetLotCode && String(l.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase()) ||
-          (targetLotId && String(l.id || '').trim().toUpperCase() === targetLotId.toUpperCase())
-      );
       if (lot) {
         lot.status = 'closed';
         lot.currentStage = 5;
@@ -1912,6 +1935,10 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }
+    const taskLot = deal.lotCode ? await findLotByCode(ydb, deal.lotCode) : null;
+    if (!isEmployeeAssignedToRecord(authUser, taskLot || deal)) {
+      return json(event, 403, { error: 'Вы не назначены куратором этой сделки', code: 'NOT_ASSIGNED_TO_LOT' });
+    }
 
     const nowIso = new Date().toISOString();
     const task = {
@@ -1970,6 +1997,12 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     if (!isStaff && !isSeller && !isBuyer) {
       return json(event, 403, { error: 'Доступ к задаче запрещён' });
     }
+    if (isStaff && !isSeller && !isBuyer) {
+      const taskLot = deal.lotCode ? await findLotByCode(ydb, deal.lotCode) : null;
+      if (!isEmployeeAssignedToRecord(authUser, taskLot || deal)) {
+        return json(event, 403, { error: 'Вы не назначены куратором этой сделки', code: 'NOT_ASSIGNED_TO_LOT' });
+      }
+    }
 
     const items: any[] = Array.isArray(deal.actionItems) ? deal.actionItems : [];
     const targetTask = items.find((t) => t.id === taskId);
@@ -2017,6 +2050,10 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
+    }
+    const taskLot = deal.lotCode ? await findLotByCode(ydb, deal.lotCode) : null;
+    if (!isEmployeeAssignedToRecord(authUser, taskLot || deal)) {
+      return json(event, 403, { error: 'Вы не назначены куратором этой сделки', code: 'NOT_ASSIGNED_TO_LOT' });
     }
 
     const items: any[] = Array.isArray(deal.actionItems) ? deal.actionItems : [];

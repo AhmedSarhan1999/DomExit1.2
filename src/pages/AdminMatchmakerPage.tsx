@@ -13,6 +13,7 @@ import { apiClient } from '../services/apiClient';
 import { downloadPepCertificate } from '../utils/pepCertificate';
 import { Lot } from '../types';
 import { StagedDropQueueManager } from '../components/admin/StagedDropQueueManager';
+import { LotThumbnail } from '../components/shared/LotThumbnail';
 import {
   CheckCircle2,
   ArrowRight,
@@ -132,7 +133,14 @@ export const AdminMatchmakerPage: React.FC = () => {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
                   <div className="flex items-center space-x-3">
                     <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
-                      <img src={lot.imageUrl} alt="ЖК" className="w-full h-full object-cover" />
+                      <LotThumbnail
+                        src={lot.imageUrl}
+                        images={lot.images}
+                        photos={(lot as any).photos}
+                        approvedImages={(lot as any).curatorApprovedImages}
+                        alt={lot.complexName || 'ЖК'}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <div>
                       <div className="flex items-center space-x-2">

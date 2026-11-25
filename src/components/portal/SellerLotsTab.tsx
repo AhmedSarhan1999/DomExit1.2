@@ -31,6 +31,8 @@ import { PepSignatureModal } from '../legal/PepSignatureModal';
 import { downloadPepCertificate } from '../../utils/pepCertificate';
 import { CLOSING_STEPS_6, normalizeClosingStepNum } from '../../utils/closingWorkflow';
 import { DealActionItemsCard } from './DealActionItemsCard';
+import { UserAvatar } from '../shared/UserAvatar';
+import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 
 const STAGE_LABEL_RU: Record<DealTrack['stage'], string> = {
   initial_audit: '1. Первичный комплаенс',
@@ -82,6 +84,7 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
   onOpenCuratorChat,
 }) => {
   const { language } = useLanguage();
+  const { channels } = usePublicChannelsStore();
   const [sellerPepSig, setSellerPepSig] = useState<any | null>(null);
   const [isSellerPepOpen, setIsSellerPepOpen] = useState<boolean>(false);
 
@@ -362,87 +365,90 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
           {/* Assigned Curator Contact Card */}
           <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
             <div className="flex items-center space-x-3.5">
-              {curator?.photoUrl ? (
-                <img
-                  src={curator.photoUrl}
-                  alt={curator.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm">
-                  {(activeSellerLot.curator?.name || curator?.name || 'КД')
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </div>
-              )}
+              <UserAvatar
+                src={curator?.photoUrl || activeSellerLot.curator?.photoUrl}
+                name={curator?.name || activeSellerLot.curator?.name || 'КД'}
+                className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
+                initialsClassName="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm"
+              />
               <div>
                 <span className="text-slate-500 block text-[11px]">
                   Ответственный сотрудник DomExit:
                 </span>
                 <span className="font-bold text-slate-900 text-sm">
                   {(activeSellerLot.assignedEmployeeId || (activeSellerLot as any).assignedCuratorId)
-                    ? activeSellerLot.assignedEmployeeName ||
+                    ? curator?.name ||
+                      activeSellerLot.assignedEmployeeName ||
                       activeSellerLot.curator?.name ||
-                      curator?.name ||
                       'Персональный куратор DomExit'
                     : 'Этап 0: Ожидает назначения персонального куратора'}
                 </span>
                 <span className="text-emerald-700 font-semibold block text-[11px]">
-                  {activeSellerLot.curator?.role || curator?.role || 'Ведущий юрист'}
+                  {curator?.role || activeSellerLot.curator?.role || 'Персональный куратор'}
                 </span>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => onOpenCuratorChat(activeSellerLot.lotCode)}
-                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs cursor-pointer shadow-xs"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Чат с куратором</span>
-              </button>
-              {(activeSellerLot.curator?.phone || curator?.phone) && (
-                <a
-                  href={`tel:${(activeSellerLot.curator?.phone || curator?.phone || '').replace(/[^\d+]/g, '')}`}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs"
-                  title={activeSellerLot.curator?.phone || curator?.phone}
-                >
-                  <Phone className="w-3.5 h-3.5 text-slate-600" />
-                  <span>{language === 'ru' ? 'Звонок' : 'Call'}</span>
-                </a>
-              )}
+            {(() => {
+              const livePhone = String(curator?.phone || activeSellerLot.curator?.phone || '').trim();
+              const validPhone = livePhone && !livePhone.includes('409-00-00') ? livePhone : '';
+              const liveTg = String(curator?.telegram || activeSellerLot.curator?.telegram || '').trim();
+              const cleanTg = liveTg && !liveTg.includes('domexit_official') ? liveTg.replace(/^@+/, '') : '';
+              const tgHref = cleanTg
+                ? (cleanTg.startsWith('http') ? cleanTg : `https://t.me/${cleanTg}`)
+                : channels.telegramBotUrl || 'https://t.me/domexit_bot';
+              const liveMax = String(curator?.maxProfile || activeSellerLot.curator?.maxProfile || '').trim();
+              const validMax = liveMax && liveMax !== livePhone && (liveMax.startsWith('http') || liveMax.startsWith('max://') || !liveMax.startsWith('+')) ? liveMax : '';
 
-              <a
-                href={`https://t.me/${(
-                  activeSellerLot.curator?.telegram ||
-                  curator?.telegram ||
-                  'domexit_ru'
-                ).replace('@', '')}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs text-xs"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Telegram</span>
-              </a>
+              return (
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => onOpenCuratorChat(activeSellerLot.lotCode)}
+                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs cursor-pointer shadow-xs"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Чат с куратором</span>
+                  </button>
+                  {validPhone && (
+                    <a
+                      href={`tel:${validPhone.replace(/[^\d+]/g, '')}`}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs"
+                      title={validPhone}
+                    >
+                      <Phone className="w-3.5 h-3.5 text-slate-600" />
+                      <span>{language === 'ru' ? 'Позвонить' : 'Call'}</span>
+                    </a>
+                  )}
 
-              {(activeSellerLot.curator?.maxProfile || curator?.maxProfile || activeSellerLot.curator?.whatsapp || curator?.whatsapp) && (
-                <a
-                  href={
-                    (activeSellerLot.curator?.maxProfile || curator?.maxProfile || activeSellerLot.curator?.whatsapp || curator?.whatsapp || '').startsWith('http')
-                      ? activeSellerLot.curator?.maxProfile || curator?.maxProfile || activeSellerLot.curator?.whatsapp || curator?.whatsapp
-                      : `https://max.im/${(activeSellerLot.curator?.maxProfile || curator?.maxProfile || '').replace(/[^\w]/g, '')}`
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>MAX</span>
-                </a>
-              )}
-            </div>
+                  <a
+                    href={tgHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs text-xs"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Telegram</span>
+                  </a>
+
+                  {validMax && (
+                    <a
+                      href={
+                        validMax.startsWith('http') || validMax.startsWith('max://')
+                          ? validMax
+                          : `https://max.ru/${validMax.replace(/^@+/, '')}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors text-xs"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>MAX</span>
+                    </a>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Seller PEP 63-FZ Exclusive Consent Strip */}

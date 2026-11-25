@@ -11,24 +11,69 @@ function formatPrice(val: any): string {
   return n.toLocaleString('ru-RU');
 }
 
-async function getStaffChatIds(): Promise<string[]> {
+async function getOwnerChatIds(): Promise<string[]> {
   try {
     const ydb = getYdbClient();
     const users = await ydb.scanAll('users', 200);
-    const staff = users.filter((u: any) => u.role === 'owner' || u.role === 'employee');
+    const owners = users.filter((u: any) => u.role === 'owner' || u.activeRole === 'owner');
     const chatIds: string[] = [];
 
-    for (const member of staff) {
+    for (const member of owners) {
       const binding = await findTelegramBindingByUser(member.id);
       if (binding && binding.chatId && binding.notificationsEnabled !== false) {
         chatIds.push(String(binding.chatId));
       }
     }
-
     return [...new Set(chatIds)];
   } catch (err: any) {
-    logger.warn('Failed to retrieve staff chat IDs', { meta: { error: err.message } });
+    logger.warn('Failed to retrieve owner chat IDs', { meta: { error: err.message } });
     return [];
+  }
+}
+
+async function getAssignedStaffChatIds(
+  assignedEmployeeId?: string,
+  includeOwners = true
+): Promise<string[]> {
+  try {
+    const ydb = getYdbClient();
+    const users = await ydb.scanAll('users', 200);
+    const targetId = String(assignedEmployeeId || '').trim();
+    const recipients = users.filter((u: any) => {
+      const isOwner = u.role === 'owner' || u.activeRole === 'owner';
+      if (includeOwners && isOwner) return true;
+      if (!targetId) return false;
+      const isEmployee = u.role === 'employee' || u.activeRole === 'employee';
+      if (!isEmployee && !isOwner) return false;
+      return String(u.id) === targetId || String(u.assignedEmployeeId || '') === targetId;
+    });
+
+    const chatIds: string[] = [];
+    for (const member of recipients) {
+      const binding = await findTelegramBindingByUser(member.id);
+      if (binding && binding.chatId && binding.notificationsEnabled !== false) {
+        chatIds.push(String(binding.chatId));
+      }
+    }
+    return [...new Set(chatIds)];
+  } catch (err: any) {
+    logger.warn('Failed to retrieve assigned staff chat IDs', { meta: { error: err.message } });
+    return [];
+  }
+}
+
+async function resolveLotAssignedEmployeeId(lotCode?: string): Promise<string | undefined> {
+  if (!lotCode) return undefined;
+  try {
+    const ydb = getYdbClient();
+    const allLots = await ydb.scanAll<any>('lots', 500);
+    const clean = String(lotCode).trim().toUpperCase();
+    const lot = (allLots || []).find(
+      (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === clean
+    );
+    return lot?.assignedEmployeeId || lot?.assignedCuratorId || undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -38,7 +83,10 @@ export const telegramNotifier = {
       if (!telegramClient.isConfigured()) return;
       const cfg = getConfig();
       const code = item.lotCode || item.code || item.id || 'NEW';
-      const staffChats = await getStaffChatIds();
+      const assignedEmpId = item.assignedEmployeeId || item.assignedCuratorId;
+      const staffChats = assignedEmpId
+        ? await getAssignedStaffChatIds(assignedEmpId, true)
+        : await getOwnerChatIds();
 
       if (staffChats.length === 0) return;
 
@@ -86,7 +134,9 @@ export const telegramNotifier = {
       if (!telegramClient.isConfigured()) return;
       const cfg = getConfig();
       const code = app.lotCode || app.lotId || 'GENERAL';
-      const staffChats = await getStaffChatIds();
+      const assignedEmpId =
+        app.assignedEmployeeId || (await resolveLotAssignedEmployeeId(code));
+      const staffChats = await getAssignedStaffChatIds(assignedEmpId, !assignedEmpId);
 
       if (staffChats.length === 0) return;
 
@@ -130,7 +180,7 @@ export const telegramNotifier = {
     try {
       if (!telegramClient.isConfigured()) return;
       const cfg = getConfig();
-      const staffChats = await getStaffChatIds();
+      const staffChats = await getOwnerChatIds();
       if (staffChats.length === 0) return;
 
       const isPart = type === 'partner';
@@ -176,7 +226,9 @@ export const telegramNotifier = {
     try {
       if (!telegramClient.isConfigured()) return;
       const { lotCode, previousStage, newStage, actor } = params;
-      const staffChats = await getStaffChatIds();
+      const assignedEmpId = await resolveLotAssignedEmployeeId(lotCode);
+      const isClosingOrCritical = newStage === 'closing_escrow' || newStage === 'completed';
+      const staffChats = await getAssignedStaffChatIds(assignedEmpId, isClosingOrCritical || !assignedEmpId);
 
       const text = [
         `🔄 <b>Смена этапа лота #${escapeHtml(lotCode)}</b>`,

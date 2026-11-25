@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { UserAvatar } from '../shared/UserAvatar';
 
 export type PortalTab = 'buyer' | 'seller' | 'favorites' | 'partner' | 'consents' | 'buybox';
 
@@ -62,17 +63,12 @@ export const PortalProfileHeader: React.FC<PortalProfileHeaderProps> = ({
               className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 p-0.5 shadow-md cursor-pointer hover:opacity-90 transition-opacity"
               title="Редактировать профиль и аватар"
             >
-              {user?.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={displayName}
-                  className="w-full h-full object-cover rounded-[14px]"
-                />
-              ) : (
-                <div className="w-full h-full bg-emerald-600 rounded-[14px] flex items-center justify-center font-bold text-white text-xl">
-                  {displayInitial}
-                </div>
-              )}
+              <UserAvatar
+                src={user?.photoURL}
+                name={displayName}
+                className="w-full h-full object-cover rounded-[14px]"
+                initialsClassName="w-full h-full bg-emerald-600 rounded-[14px] flex items-center justify-center font-bold text-white text-xl"
+              />
             </div>
 
             <div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Heart, ArrowRight } from 'lucide-react';
 import { Lot } from '../../types';
 import { formatRubles } from '../../utils/formatters';
+import { LotThumbnail } from '../shared/LotThumbnail';
 
 export interface FavoritesTabProps {
   favoriteLots: Lot[];
@@ -58,7 +59,7 @@ export const FavoritesTab: React.FC<FavoritesTabProps> = ({
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition-shadow"
               >
                 <div className="relative h-44 overflow-hidden">
-                  <img
+                  <LotThumbnail
                     src={fav.imageUrl}
                     alt={fav.complexName}
                     className="w-full h-full object-cover"

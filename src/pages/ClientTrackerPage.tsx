@@ -12,6 +12,13 @@ import { apiClient } from '../services/apiClient';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { usePublicChannelsStore } from '../stores/usePublicChannelsStore';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
+import { UserAvatar } from '../components/shared/UserAvatar';
+import {
+  getCleanCuratorPhone,
+  getCuratorPhoneHref,
+  getCuratorTelegramHref,
+  getCuratorMaxHref,
+} from '../utils/curatorContacts';
 import { BuyerCandidate, DealTrack, DocumentMetadata, Employee, Lot } from '../types';
 import { securityLogger } from '../dal/telemetry/securityLogger';
 import {
@@ -365,17 +372,12 @@ export const ClientTrackerPage: React.FC = () => {
           {/* Dedicated Curator Card */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 shrink-0 w-full lg:w-auto">
             <div className="flex items-center space-x-3.5">
-              {curator?.photoUrl ? (
-                <img
-                  src={curator.photoUrl}
-                  alt={curator.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-500 to-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-sm">
-                  {(curator?.name || deal?.curatorName || 'К').slice(0, 1).toUpperCase()}
-                </div>
-              )}
+              <UserAvatar
+                src={curator?.photoUrl}
+                name={curator?.name || deal?.curatorName || 'Куратор DomExit'}
+                size="lg"
+                className="border-2 border-emerald-500 shadow-xs shrink-0"
+              />
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   {language === 'ru' ? 'Персональный куратор' : 'Dedicated Curator'}
@@ -384,59 +386,58 @@ export const ClientTrackerPage: React.FC = () => {
                   {curator?.name || deal?.curatorName || 'Назначается куратор платформы'}
                 </span>
                 <span className="text-[11px] text-emerald-700 font-semibold block">
-                  {curator?.role || 'Ведущий юрист'}
+                  {curator?.role || 'Персональное сопровождение сделки'}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-              <a
-                href={
-                  (curator?.telegram || '').startsWith('http')
-                    ? curator?.telegram
-                    : curator?.telegram
-                    ? `https://t.me/${curator.telegram.replace('@', '')}`
-                    : channels.telegramBotUrl || channels.telegramChannelUrl || 'https://t.me/domexit_ru'
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs transition-all flex-1 sm:flex-initial"
-              >
-                <Send className="w-3 h-3 text-white" />
-                <span>Telegram</span>
-              </a>
-
-              {curator?.phone && (
-                <a
-                  href={`tel:${curator.phone.replace(/[^\d+]/g, '')}`}
-                  className="p-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors"
-                  title={curator.phone}
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                </a>
-              )}
-
-              {(curator?.maxProfile || curator?.whatsapp) && (() => {
-                const maxVal = curator?.maxProfile || curator?.whatsapp || '';
-                const maxHref =
-                  maxVal.startsWith('http') || maxVal.startsWith('max://')
-                    ? maxVal
-                    : `https://max.ru/${maxVal.replace(/[^\d]/g, '')}`;
-                return (
+            {(() => {
+              const cleanPhone = getCleanCuratorPhone(curator?.phone);
+              const phoneHref = getCuratorPhoneHref(cleanPhone);
+              const telegramHref = getCuratorTelegramHref(
+                curator?.telegram,
+                channels.telegramBotUrl,
+                channels.telegramChannelUrl
+              );
+              const maxHref = getCuratorMaxHref(curator?.maxProfile, curator?.whatsapp);
+              return (
+                <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
                   <a
-                    href={maxHref}
+                    href={telegramHref}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-1.5 rounded-lg bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 transition-colors flex items-center justify-center font-bold text-[10px]"
-                    title="Профиль MAX"
+                    className="inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs transition-all flex-1 sm:flex-initial"
                   >
-                    <span className="w-4 h-4 rounded bg-indigo-600 text-white font-black flex items-center justify-center text-[9px]">
-                      M
-                    </span>
+                    <Send className="w-3 h-3 text-white" />
+                    <span>Telegram</span>
                   </a>
-                );
-              })()}
-            </div>
+
+                  {phoneHref && (
+                    <a
+                      href={phoneHref}
+                      className="p-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors"
+                      title={cleanPhone}
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+
+                  {maxHref && (
+                    <a
+                      href={maxHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 rounded-lg bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 transition-colors flex items-center justify-center font-bold text-[10px]"
+                      title="Профиль MAX"
+                    >
+                      <span className="w-4 h-4 rounded bg-indigo-600 text-white font-black flex items-center justify-center text-[9px]">
+                        M
+                      </span>
+                    </a>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -517,20 +518,24 @@ export const ClientTrackerPage: React.FC = () => {
               </div>
             )}
 
-            {deal && (
+            {deal && (() => {
+              const cleanPhone = getCleanCuratorPhone(curator?.phone);
+              const phoneHref = getCuratorPhoneHref(cleanPhone);
+              const telegramHref = getCuratorTelegramHref(
+                curator?.telegram,
+                channels.telegramBotUrl,
+                channels.telegramChannelUrl
+              );
+              const maxHref = getCuratorMaxHref(curator?.maxProfile, curator?.whatsapp);
+              return (
               <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs shadow-xs">
                 <div className="flex items-center space-x-3.5">
-                  {curator?.photoUrl ? (
-                    <img
-                      src={curator.photoUrl}
-                      alt={curator.name}
-                      className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs shrink-0"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 text-sm">
-                      {(deal.assignedEmployeeName || deal.curatorName || curator?.name || 'АС').slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar
+                    src={curator?.photoUrl}
+                    name={deal.assignedEmployeeName || deal.curatorName || curator?.name || 'Куратор DomExit'}
+                    size="lg"
+                    className="border-2 border-emerald-500 shadow-xs shrink-0"
+                  />
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
                       Ваш персональный куратор сделки
@@ -544,21 +549,17 @@ export const ClientTrackerPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {phoneHref && (
+                    <a
+                      href={phoneHref}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>{cleanPhone}</span>
+                    </a>
+                  )}
                   <a
-                    href={`tel:${curator?.phone || '+79214567890'}`}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5 transition-colors"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>{curator?.phone || '+7 (921) 456-78-90'}</span>
-                  </a>
-                  <a
-                    href={
-                      curator?.telegram
-                        ? curator.telegram.startsWith('http')
-                          ? curator.telegram
-                          : `https://t.me/${curator.telegram.replace('@', '')}`
-                        : channels.telegramBotUrl || channels.telegramChannelUrl || 'https://t.me/domexit_ru'
-                    }
+                    href={telegramHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
@@ -566,13 +567,9 @@ export const ClientTrackerPage: React.FC = () => {
                     <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
                     <span>Telegram</span>
                   </a>
-                  {(curator?.maxProfile || curator?.whatsapp) && (
+                  {maxHref && (
                     <a
-                      href={
-                        (curator.maxProfile || curator.whatsapp || '').startsWith('http')
-                          ? curator.maxProfile || curator.whatsapp
-                          : `https://max.im/${(curator.maxProfile || curator.whatsapp || '').replace(/[^\w]/g, '')}`
-                      }
+                      href={maxHref}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-colors"
@@ -591,7 +588,8 @@ export const ClientTrackerPage: React.FC = () => {
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Live Incoming Buyer Offers */}

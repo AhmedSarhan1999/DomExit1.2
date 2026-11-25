@@ -12,6 +12,7 @@ import { recordJournalEvent } from '../lib/journal.js';
 import { telegramNotifier } from '../lib/telegramNotifier.js';
 import { validateCollectionPayload } from '../lib/validationAndGuards.js';
 import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
+import { isEmployeeAssignedToRecord, getVisibleChatMessages } from '../lib/rbac.js';
 
 const PUBLIC_COLLECTIONS = new Set([
   'lots',
@@ -463,15 +464,9 @@ export async function handleData(
 
   // --- GET Collection or Document ---
   if (method === 'GET') {
-    // 0. Unified Assignable Curators List (Owner + real Employees from users & employees tables)
+    // 0. Unified Assignable & Public-Safe Curators List (Owner + real Employees from users & employees tables)
     if (collection === 'curators') {
-      if (!authUser) {
-        return json(event, 401, { error: 'Требуется авторизация' });
-      }
-      const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
-      if (!isStaff) {
-        return json(event, 403, { error: 'Доступ разрешен только сотрудникам платформы' });
-      }
+      const isStaff = Boolean(authUser && (authUser.role === 'owner' || authUser.role === 'employee'));
 
       const [allUsers, allEmployees] = await Promise.all([
         ydb.scanAll<any>('users', 300),
@@ -486,6 +481,19 @@ export async function handleData(
         if (emp.id) empById.set(emp.id, emp);
         if (email) empByEmail.set(email, emp);
       }
+
+      const sanitizeCuratorPhone = (val?: string) => {
+        const s = String(val || '').trim();
+        const digits = s.replace(/[^\d]/g, '');
+        return !s || digits === '78124090000' || digits === '79214567890' ? '' : s;
+      };
+      const sanitizeCuratorTg = (val?: string) => {
+        const s = String(val || '').trim();
+        const low = s.toLowerCase();
+        return !s || low === '@domexit_official' || low === 'domexit_official' || low === '@domexit_curator' || low === 'domexit_curator'
+          ? ''
+          : s;
+      };
 
       const curatorMap = new Map<string, any>();
 
@@ -523,19 +531,17 @@ export async function handleData(
 
         curatorMap.set(dedupKey, {
           id: curatorId,
-          userId: u.id,
+          ...(isStaff ? { userId: u.id, email: u.email, permissions: linkedEmp?.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'] } : {}),
           name: baseName,
-          email: u.email,
           role: isUserOwner ? 'Владелец / CEO' : linkedEmp?.role || 'Куратор сделок',
-          phone: linkedEmp?.phone || u.phone || '+7 (812) 409-00-00',
-          telegram: linkedEmp?.telegram || u.telegram || '@domexit_official',
-          whatsapp: linkedEmp?.whatsapp || u.phone || '',
+          phone: sanitizeCuratorPhone(linkedEmp?.phone) || sanitizeCuratorPhone(u.phone),
+          telegram: sanitizeCuratorTg(linkedEmp?.telegram) || sanitizeCuratorTg(u.telegram),
+          whatsapp: sanitizeCuratorPhone(linkedEmp?.whatsapp) || sanitizeCuratorPhone(u.phone),
           maxProfile: linkedEmp?.maxProfile || '',
           photoUrl: linkedEmp?.photoUrl || u.photoURL || '',
           bio: linkedEmp?.bio || '',
           status: linkedEmp?.status || 'active',
           isOwner: isUserOwner,
-          permissions: linkedEmp?.permissions || ['legal_audit', 'packaging', 'matchmaker', 'closing'],
         });
       }
 
@@ -548,7 +554,17 @@ export async function handleData(
           Array.from(curatorMap.values()).some((c: any) => c.id === emp.id);
         if (!alreadyMerged) {
           curatorMap.set(email || emp.id, {
-            ...emp,
+            id: emp.id,
+            name: emp.name,
+            role: emp.role,
+            phone: sanitizeCuratorPhone(emp.phone),
+            telegram: sanitizeCuratorTg(emp.telegram),
+            whatsapp: sanitizeCuratorPhone(emp.whatsapp),
+            maxProfile: emp.maxProfile || '',
+            photoUrl: emp.photoUrl || '',
+            bio: emp.bio || '',
+            status: emp.status || 'active',
+            ...(isStaff ? { email: emp.email, permissions: emp.permissions } : {}),
             isOwner: false,
           });
         }
@@ -557,9 +573,45 @@ export async function handleData(
       return json(event, 200, { items: Array.from(curatorMap.values()) });
     }
 
-    // 1. Owner-only collections
+    // 1. Owner-only & Append-Only Audit Logs collections
     if (OWNER_ONLY_COLLECTIONS.has(collection)) {
-      if (!authUser || authUser.role !== 'owner') {
+      const isOwner = authUser?.role === 'owner';
+      const isEmployee = authUser?.role === 'employee';
+      if (collection === 'audit_logs') {
+        if (!authUser || (!isOwner && !isEmployee)) {
+          return json(event, 403, { error: 'Доступ к журналу аудита разрешен только сотрудникам платформы' });
+        }
+        const allLogs = await ydb.scanAll<any>('audit_logs');
+        let visibleLogs = allLogs || [];
+        if (isEmployee) {
+          const allLots = await ydb.scanAll<any>('lots', 500);
+          const myLotCodes = new Set(
+            (allLots || [])
+              .filter((l: any) => isEmployeeAssignedToRecord(authUser, l))
+              .map((l: any) => String(l.lotCode || l.id || '').toUpperCase())
+          );
+          visibleLogs = visibleLogs.filter(
+            (log: any) =>
+              log.operatorId === authUser.id ||
+              log.performedBy === authUser.id ||
+              (log.lotCode && myLotCodes.has(String(log.lotCode).toUpperCase()))
+          );
+        }
+        const qOperatorId = event.queryStringParameters?.operatorId?.trim();
+        const qLotCode = event.queryStringParameters?.lotCode?.trim().toUpperCase();
+        if (qOperatorId) {
+          visibleLogs = visibleLogs.filter((l: any) => l.operatorId === qOperatorId || l.performedBy === qOperatorId);
+        }
+        if (qLotCode) {
+          visibleLogs = visibleLogs.filter((l: any) => String(l.lotCode || '').toUpperCase() === qLotCode);
+        }
+        if (isPaginated) {
+          return json(event, 200, applyPaginationAndFilters(visibleLogs, event.queryStringParameters));
+        }
+        return json(event, 200, { items: visibleLogs });
+      }
+
+      if (!isOwner) {
         return json(event, 401, { error: 'Доступ ограничен владельцем платформы (owner)' });
       }
 
@@ -635,63 +687,8 @@ export async function handleData(
       }
 
       if (collection === 'deal_messages' || collection === 'curator_messages') {
-        const [dealMsgs, legacyMsgs] = await Promise.all([
-          ydb.scanAll<any>('deal_messages', 500),
-          ydb.scanAll<any>('curator_messages', 300),
-        ]);
-        const byId = new Map<string, any>();
-        for (const m of [...(legacyMsgs || []), ...(dealMsgs || [])]) {
-          if (m?.id) {
-            byId.set(m.id, {
-              ...m,
-              threadChannel: m.threadChannel || (m.senderRole === 'seller' || m.role === 'seller' ? 'seller_curator' : 'buyer_curator'),
-            });
-          }
-        }
-        const merged = Array.from(byId.values());
-
-        if (isStaff) {
-          return json(event, 200, { items: merged, total: merged.length });
-        }
-
-        const [lots, deals, apps] = await Promise.all([
-          ydb.scanAll<any>('lots', 500),
-          ydb.scanAll<any>('deals', 500),
-          ydb.scanAll<any>('buyer_applications', 500),
-        ]);
-        const sellerLots = new Set<string>();
-        const buyerLots = new Set<string>();
-
-        for (const l of lots || []) {
-          const lc = String(l.lotCode || l.id || '').toUpperCase();
-          if (!lc) continue;
-          if (l.sellerUserId === authUser.id || l.sellerId === authUser.id) sellerLots.add(lc);
-          if (l.buyerUserId === authUser.id || l.buyerId === authUser.id) buyerLots.add(lc);
-        }
-        for (const d of deals || []) {
-          const lc = String(d.lotCode || d.lotId || '').toUpperCase();
-          if (!lc) continue;
-          if (d.sellerUserId === authUser.id || d.sellerId === authUser.id) sellerLots.add(lc);
-          if (d.buyerUserId === authUser.id || d.buyerId === authUser.id) buyerLots.add(lc);
-        }
-        for (const a of apps || []) {
-          const lc = String(a.lotCode || '').toUpperCase();
-          if (lc && a.userId === authUser.id) buyerLots.add(lc);
-        }
-
-        const isolated = merged.filter((m: any) => {
-          const lc = String(m.lotCode || m.lotId || '').toUpperCase();
-          const ch = m.threadChannel;
-          if (ch === 'seller_curator') {
-            return lc && sellerLots.has(lc) && m.senderRole !== 'buyer' && m.role !== 'buyer';
-          }
-          if (ch === 'buyer_curator') {
-            return (m.senderId === authUser.id || (lc && buyerLots.has(lc))) && m.senderRole !== 'seller' && m.role !== 'seller';
-          }
-          return false;
-        });
-
-        return json(event, 200, { items: isolated, total: isolated.length });
+        const items = await getVisibleChatMessages(authUser, ydb);
+        return json(event, 200, { items, total: items.length });
       }
 
       const all = await ydb.scanAll(collection);
@@ -767,72 +764,33 @@ export async function handleData(
           if (!isOwnerOfRecord && !isPartnerOfRecord) {
             return json(event, 403, { error: 'Доступ к чужой записи запрещен' });
           }
+        } else if (authUser.role === 'employee' && collection === 'deals') {
+          let assigned = isEmployeeAssignedToRecord(authUser, item);
+          if (!assigned && (item.lotCode || item.lotId)) {
+            const targetLc = String(item.lotCode || item.lotId).toUpperCase();
+            const allLots = await ydb.scanAll<any>('lots', 500);
+            const linkedLot = (allLots || []).find(
+              (l: any) => String(l.lotCode || l.id || '').toUpperCase() === targetLc
+            );
+            assigned = isEmployeeAssignedToRecord(authUser, linkedLot);
+          }
+          if (!assigned) {
+            return json(event, 403, {
+              error: 'Доступ ограничен: вы не назначены куратором этой сделки',
+              code: 'NOT_ASSIGNED_TO_LOT',
+            });
+          }
         }
         return json(event, 200, { item });
       }
 
       if (collection === 'deal_messages' || collection === 'curator_messages') {
-        const [dealMsgs, legacyMsgs] = await Promise.all([
-          ydb.scanAll<any>('deal_messages', 500),
-          ydb.scanAll<any>('curator_messages', 300),
-        ]);
-        const byId = new Map<string, any>();
-        for (const m of [...(legacyMsgs || []), ...(dealMsgs || [])]) {
-          if (m?.id) {
-            byId.set(m.id, {
-              ...m,
-              threadChannel: m.threadChannel || (m.senderRole === 'seller' || m.role === 'seller' ? 'seller_curator' : 'buyer_curator'),
-            });
-          }
-        }
-        const merged = Array.from(byId.values());
-
-        if (isStaff) {
-          return json(event, 200, { items: merged, total: merged.length });
-        }
-
-        const [lots, deals, apps] = await Promise.all([
-          ydb.scanAll<any>('lots', 500),
-          ydb.scanAll<any>('deals', 500),
-          ydb.scanAll<any>('buyer_applications', 500),
-        ]);
-        const sellerLots = new Set<string>();
-        const buyerLots = new Set<string>();
-
-        for (const l of lots || []) {
-          const lc = String(l.lotCode || l.id || '').toUpperCase();
-          if (!lc) continue;
-          if (l.sellerUserId === authUser.id || l.sellerId === authUser.id) sellerLots.add(lc);
-          if (l.buyerUserId === authUser.id || l.buyerId === authUser.id) buyerLots.add(lc);
-        }
-        for (const d of deals || []) {
-          const lc = String(d.lotCode || d.lotId || '').toUpperCase();
-          if (!lc) continue;
-          if (d.sellerUserId === authUser.id || d.sellerId === authUser.id) sellerLots.add(lc);
-          if (d.buyerUserId === authUser.id || d.buyerId === authUser.id) buyerLots.add(lc);
-        }
-        for (const a of apps || []) {
-          const lc = String(a.lotCode || '').toUpperCase();
-          if (lc && a.userId === authUser.id) buyerLots.add(lc);
-        }
-
-        const isolated = merged.filter((m: any) => {
-          const lc = String(m.lotCode || m.lotId || '').toUpperCase();
-          const ch = m.threadChannel;
-          if (ch === 'seller_curator') {
-            return lc && sellerLots.has(lc) && m.senderRole !== 'buyer' && m.role !== 'buyer';
-          }
-          if (ch === 'buyer_curator') {
-            return (m.senderId === authUser.id || (lc && buyerLots.has(lc))) && m.senderRole !== 'seller' && m.role !== 'seller';
-          }
-          return false;
-        });
-
-        return json(event, 200, { items: isolated, total: isolated.length });
+        const items = await getVisibleChatMessages(authUser, ydb);
+        return json(event, 200, { items, total: items.length });
       }
 
       const all = await ydb.scanAll(collection);
-      const visibleItems = isStaff
+      let visibleItems = isStaff
         ? all
         : all.filter((item: any) => {
             const isOwnerOfRecord =
@@ -856,6 +814,19 @@ export async function handleData(
             }
             return false;
           });
+
+      if (authUser.role === 'employee' && collection === 'deals') {
+        const allLots = await ydb.scanAll<any>('lots', 500);
+        const lotByCode = new Map<string, any>();
+        for (const l of allLots || []) {
+          const lc = String(l.lotCode || l.id || '').toUpperCase();
+          if (lc) lotByCode.set(lc, l);
+        }
+        visibleItems = visibleItems.filter((d: any) => {
+          const linkedLot = lotByCode.get(String(d.lotCode || d.lotId || '').toUpperCase());
+          return isEmployeeAssignedToRecord(authUser, d) || isEmployeeAssignedToRecord(authUser, linkedLot);
+        });
+      }
 
       if (isPaginated) {
         return json(event, 200, applyPaginationAndFilters(visibleItems, event.queryStringParameters));
@@ -1478,9 +1449,35 @@ export async function handleData(
     if (collection === 'lots') {
       appCache.invalidatePrefix('lot:');
     }
+    if (collection === 'users' || collection === 'employees') {
+      memoryCache.invalidate('curators');
+      appCache.invalidatePrefix('curators');
+    }
 
-    // 1. Owner-only collections write
+    // 1. Owner-only & Append-Only Audit Logs write
     if (OWNER_ONLY_COLLECTIONS.has(collection)) {
+      if (collection === 'audit_logs') {
+        const isStaff = authUser && (authUser.role === 'owner' || authUser.role === 'employee');
+        if (!isStaff) {
+          return json(event, 403, { error: 'Запись в журнал аудита разрешена только сотрудникам платформы' });
+        }
+        if (method !== 'POST') {
+          return json(event, 403, { error: 'Изменение записей журнала аудита запрещено (Append-Only)' });
+        }
+
+        const safeLog = {
+          ...itemToSave,
+          id: payloadToSave.id || `log-${Date.now()}-${crypto.randomUUID().slice(0, 6)}`,
+          operatorId: authUser.id,
+          performedBy: authUser.id,
+          operatorName: authUser.name || authUser.email || 'Сотрудник DomExit',
+          operatorRole: authUser.role === 'owner' ? 'owner' : 'curator',
+          timestamp: new Date().toISOString(),
+        };
+        await ydb.putItem('audit_logs', safeLog);
+        return json(event, 201, { success: true, item: safeLog });
+      }
+
       if (!authUser || authUser.role !== 'owner') {
         return json(event, 403, { error: 'Модификация разрешена только владельцу платформы' });
       }
@@ -1562,6 +1559,30 @@ export async function handleData(
       else if (!isStaff) {
         if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
         return json(event, 403, { error: 'Модификация разрешена только сотрудникам платформы' });
+      }
+
+      // Guard employees collection: employees may only update their own card (cannot edit peers or elevate permissions)
+      if (isStaff && authUser?.role === 'employee' && collection === 'employees') {
+        const targetId = String(itemToSave.id || '').trim();
+        const targetEmail = String(itemToSave.email || '').trim().toLowerCase();
+        const myEmail = String(authUser.email || '').trim().toLowerCase();
+        const isSelfCard =
+          targetId === authUser.id ||
+          (authUser.assignedEmployeeId && targetId === authUser.assignedEmployeeId) ||
+          (Boolean(targetEmail) && targetEmail === myEmail);
+
+        if (!isSelfCard) {
+          return json(event, 403, {
+            error: 'Сотрудник может редактировать только собственную карточку профиля',
+            code: 'FORBIDDEN_EMPLOYEE_EDIT',
+          });
+        }
+
+        const existingEmp = targetId ? await ydb.getItem<any>('employees', targetId) : null;
+        if (existingEmp) {
+          itemToSave.status = existingEmp.status || 'active';
+          itemToSave.permissions = existingEmp.permissions;
+        }
       }
 
       // If staff is approving a partner in partners or partner_applications:
@@ -1709,6 +1730,54 @@ export async function handleData(
             }
           } catch (mErr) {
             console.warn('[data] Non-fatal preliminary request matching in seller_requests:', mErr);
+          }
+        }
+      }
+
+      // RBAC Assignment Guard for employees modifying documents_vault or deals
+      if (authUser?.role === 'employee') {
+        if (collection === 'deals' && method === 'PUT') {
+          const existingDealRec = await ydb.getItem<any>('deals', docId).catch(() => null);
+          const targetCode = String(itemToSave.lotCode || existingDealRec?.lotCode || '').trim().toUpperCase();
+          const allLots = targetCode ? await ydb.scanAll<any>('lots', 500) : [];
+          const linkedLot = (allLots || []).find(
+            (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetCode
+          );
+          if (
+            (existingDealRec || linkedLot) &&
+            !isEmployeeAssignedToRecord(authUser, existingDealRec) &&
+            !isEmployeeAssignedToRecord(authUser, linkedLot)
+          ) {
+            return json(event, 403, {
+              error: 'Доступ ограничен: вы не назначены куратором этой сделки',
+              code: 'NOT_ASSIGNED_TO_LOT',
+            });
+          }
+        }
+        if (collection === 'documents_vault' && method === 'PUT') {
+          const existingDoc = await ydb.getItem<any>('documents_vault', docId).catch(() => null);
+          const targetEntityId = String(itemToSave.entityId || existingDoc?.entityId || '').trim().toUpperCase();
+          if (targetEntityId) {
+            const [allLots, allDeals] = await Promise.all([
+              ydb.scanAll<any>('lots', 500),
+              ydb.scanAll<any>('deals', 500),
+            ]);
+            const linkedLot = (allLots || []).find(
+              (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetEntityId
+            );
+            const linkedDeal = (allDeals || []).find(
+              (d: any) => String(d.dealId || d.id || '').trim().toUpperCase() === targetEntityId || String(d.lotCode || '').trim().toUpperCase() === targetEntityId
+            );
+            if (
+              (linkedLot || linkedDeal) &&
+              !isEmployeeAssignedToRecord(authUser, linkedLot) &&
+              !isEmployeeAssignedToRecord(authUser, linkedDeal)
+            ) {
+              return json(event, 403, {
+                error: 'Доступ ограничен: вы не назначены куратором этого объекта',
+                code: 'NOT_ASSIGNED_TO_LOT',
+              });
+            }
           }
         }
       }
@@ -1907,7 +1976,17 @@ export async function handleData(
           }
         }
 
-        const wasAlreadyVerified = Boolean(existingLotRecord?.isVerified === true);
+        // RBAC Assignment Guard for employees updating existing lots
+      if (method === 'PUT' && authUser.role === 'employee' && existingLotRecord) {
+        if (!isEmployeeAssignedToRecord(authUser, existingLotRecord)) {
+          return json(event, 403, {
+            error: 'Доступ ограничен: вы не назначены куратором этого объекта',
+            code: 'NOT_ASSIGNED_TO_LOT',
+          });
+        }
+      }
+
+      const wasAlreadyVerified = Boolean(existingLotRecord?.isVerified === true);
         const attemptsLegalVerificationOrStage2 =
           itemToSave.isVerified === true ||
           itemToSave.approvalStatus === 'approved_for_packaging' ||
@@ -2171,6 +2250,11 @@ export async function handleData(
         error: 'Удаление записей электронных подписей ПЭП строго запрещено (63-ФЗ)',
       });
     }
+    if (collection === 'audit_logs') {
+      return json(event, 403, {
+        error: 'Удаление записей журнала аудита строго запрещено (Append-Only)',
+      });
+    }
 
     if (!id) return json(event, 400, { error: 'Не указан ID для удаления' });
     if (!authUser) return json(event, 401, { error: 'Требуется авторизация' });
@@ -2178,11 +2262,21 @@ export async function handleData(
     const isOwner = authUser.role === 'owner';
     const isStaff = isOwner || authUser.role === 'employee';
 
-    // Settings, audit_logs, users require owner
-    if (OWNER_ONLY_COLLECTIONS.has(collection) || collection.includes('settings')) {
+    // Settings, audit_logs, users, employees require owner for deletion
+    if (OWNER_ONLY_COLLECTIONS.has(collection) || collection === 'employees' || collection.includes('settings')) {
       if (!isOwner) return json(event, 403, { error: 'Удаление разрешено только владельцу' });
     } else if (!isStaff) {
       return json(event, 403, { error: 'Удаление разрешено только сотрудникам платформы' });
+    }
+
+    if (!isOwner && (collection === 'lots' || collection === 'deals' || collection === 'documents_vault')) {
+      const existingToDelete = await ydb.getItem<any>(collection, id);
+      if (existingToDelete && !(await isEmployeeAssignedToRecord(authUser, existingToDelete))) {
+        return json(event, 403, {
+          error: 'У вас нет доступа к удалению чужого лота или сделки',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
     }
 
     await ydb.deleteItem(collection, id);

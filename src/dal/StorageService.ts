@@ -174,8 +174,9 @@ class YandexS3CompatibleStorageService implements IStorageService {
     fileName: string;
     lotCode: string;
     contentType?: string;
+    purpose?: 'avatar' | 'lot_photo';
   }): Promise<{ publicUrl: string; storageKey: string }> {
-    const { file, fileName, lotCode, contentType = 'image/webp' } = options;
+    const { file, fileName, lotCode, contentType = 'image/webp', purpose = 'lot_photo' } = options;
 
     const presignRes = await apiClient.post<{
       success: boolean;
@@ -185,6 +186,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
       publicUrl: string;
     }>('/api/storage/presign-upload', {
       scope: 'photo',
+      purpose,
       lotCode,
       fileName,
       contentType,
@@ -204,7 +206,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
     });
 
     if (!putRes.ok) {
-      throw new Error(`Ошибка загрузки фото в галерею (HTTP ${putRes.status})`);
+      throw new Error(`Ошибка загрузки фото в облако S3 (HTTP ${putRes.status})`);
     }
 
     return {

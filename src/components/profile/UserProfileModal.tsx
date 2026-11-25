@@ -27,6 +27,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { apiClient } from '../../services/apiClient';
 import { TelegramConnectCard } from '../telegram/TelegramConnectCard';
+import { StorageService } from '../../dal/StorageService';
+import { optimizeAvatarToWebP } from '../../utils/imageOptimizer';
+import { UserAvatar } from '../shared/UserAvatar';
 import { formatRussianPhoneInput, isValidRussianPhone, validateIndividualInn, sanitizeDigitsOnly } from '../../utils/validators';
 import { UserProfile, Employee } from '../../types';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
@@ -63,8 +66,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     clientCode: 'DEX-104662',
     name: 'Ahmed Abdallah (Владелец / CEO)',
     email: 'amaas9499@gmail.com',
-    phone: '+7 (911) 900-00-00',
-    telegram: '@domexit_official',
+    phone: '',
+    telegram: '',
     role: 'owner',
     roles: ['owner', 'employee', 'partner', 'investor', 'seller', 'buyer'],
     activeRole: 'owner',
@@ -139,8 +142,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     setPhone(formatted);
   };
 
-  // Avatar file upload handler via FileReader
-  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Avatar file upload handler via S3 WebP (zero Base64)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
+
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -149,26 +154,48 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMessage('Размер файла аватара не должен превышать 5 МБ');
+    if (file.size > 15 * 1024 * 1024) {
+      setErrorMessage('Размер файла аватара не должен превышать 15 МБ');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setPhotoURL(reader.result);
-        setCustomPhotoInput('');
-        setSuccessMessage('Аватар загружен! Нажмите «Сохранить изменения» для фиксации.');
-        setTimeout(() => setSuccessMessage(null), 4000);
+    setIsUploadingAvatar(true);
+    setErrorMessage(null);
+    try {
+      const optimized = await optimizeAvatarToWebP(file, 400, 0.85);
+      const { publicUrl } = await StorageService.uploadPhoto({
+        file: optimized,
+        fileName: optimized.name,
+        lotCode: currentUser.id || 'avatar',
+        contentType: optimized.type || 'image/webp',
+        purpose: 'avatar',
+      });
+      setPhotoURL(publicUrl);
+      setCustomPhotoInput(publicUrl);
+      if (updateUserProfile) {
+        await updateUserProfile({ photoURL: publicUrl } as any);
       }
-    };
-    reader.readAsDataURL(file);
+      setSuccessMessage('Аватар загружен в облако S3 и сохранён!');
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Ошибка загрузки аватара в облако S3');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
-  const handleRemoveAvatar = () => {
+  const handleRemoveAvatar = async () => {
     setPhotoURL('');
     setCustomPhotoInput('');
+    if (updateUserProfile) {
+      try {
+        await updateUserProfile({ photoURL: '' } as any);
+        setSuccessMessage('Аватар удалён из профиля.');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (err: any) {
+        setErrorMessage(err?.message || 'Не удалось удалить аватар');
+      }
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -213,7 +240,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           telegram: formattedTg,
           telegramUsername: cleanTg || undefined,
           inn: cleanInn || undefined,
-          photoURL: photoURL.trim() || undefined,
+          photoURL: photoURL.trim(),
         } as any);
       }
 
@@ -531,16 +558,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             <div className="space-y-6">
               <div className="flex items-center space-x-5">
                 <div className="relative w-24 h-24 rounded-3xl bg-slate-100 border-2 border-emerald-500/40 overflow-hidden shadow-inner flex items-center justify-center shrink-0">
-                  {photoURL ? (
-                    <img
-                      src={photoURL}
-                      alt={name}
-                      className="w-full h-full object-cover"
-                      onError={() => setPhotoURL('')}
-                    />
-                  ) : (
-                    <span className="text-3xl font-black text-emerald-700">{initialLetter}</span>
-                  )}
+                  <UserAvatar
+                    src={photoURL}
+                    name={name}
+                    className="w-full h-full object-cover"
+                    initialsClassName="text-3xl font-black text-emerald-700"
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -565,10 +588,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <label className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 flex flex-col items-center justify-center space-y-2 bg-slate-50 hover:bg-slate-50/50 cursor-pointer transition-colors block text-center">
                 <Upload className="w-8 h-8 text-emerald-600" />
                 <span className="text-xs font-bold text-slate-800">
-                  Нажмите для выбора файла с устройства
+                  {isUploadingAvatar ? 'Сжатие WebP и загрузка в S3...' : 'Нажмите для выбора файла с устройства'}
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  Поддерживаются форматы PNG, JPG, WebP до 5 МБ
+                  Поддерживаются PNG, JPG, WebP до 15 МБ (автоконвертация в WebP)
                 </span>
                 <input
                   type="file"

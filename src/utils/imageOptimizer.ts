@@ -3,15 +3,35 @@
  * Compresses images to WebP format with optimal dimensions before uploading to cloud storage.
  * Preserves PDFs and non-image documents untouched.
  */
+export function toSafePhotoFilename(rawName: string, ext = 'webp'): string {
+  const base = String(rawName || 'photo')
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  return `${base || 'photo'}.${ext}`;
+}
+
+export async function optimizeAvatarToWebP(
+  file: File,
+  maxSize = 400,
+  quality = 0.85
+): Promise<File> {
+  return optimizeImageFile(file, maxSize, maxSize, quality);
+}
+
 export async function optimizeImageFile(file: File, maxWidth = 1920, maxHeight = 1080, quality = 0.82): Promise<File> {
   // If not an image or is SVG, return original file
   if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
     return file;
   }
 
-  // If already a small WebP, no compression needed
+  // If already a small WebP, sanitize filename and return
   if (file.type === 'image/webp' && file.size < 500 * 1024) {
-    return file;
+    return new File([file], toSafePhotoFilename(file.name, 'webp'), {
+      type: 'image/webp',
+      lastModified: Date.now(),
+    });
   }
 
   return new Promise((resolve) => {
@@ -24,7 +44,6 @@ export async function optimizeImageFile(file: File, maxWidth = 1920, maxHeight =
         let width = img.width;
         let height = img.height;
 
-        // Calculate aspect-ratio preserved dimensions
         if (width > maxWidth || height > maxHeight) {
           const ratio = Math.min(maxWidth / width, maxHeight / height);
           width = Math.round(width * ratio);
@@ -43,17 +62,21 @@ export async function optimizeImageFile(file: File, maxWidth = 1920, maxHeight =
 
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convert to modern WebP blob
         canvas.toBlob(
           (blob) => {
-            if (!blob || blob.size >= file.size) {
-              // If compression did not reduce size, return original file
-              resolve(file);
+            const supportedOrig = ['image/webp', 'image/jpeg', 'image/png'].includes(file.type);
+            if (!blob || (supportedOrig && maxWidth > 500 && blob.size >= file.size)) {
+              const origExt = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+              resolve(
+                new File([file], toSafePhotoFilename(file.name, origExt), {
+                  type: supportedOrig ? file.type : 'image/jpeg',
+                  lastModified: Date.now(),
+                })
+              );
               return;
             }
 
-            const optimizedName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
-            const optimizedFile = new File([blob], optimizedName, {
+            const optimizedFile = new File([blob], toSafePhotoFilename(file.name, 'webp'), {
               type: 'image/webp',
               lastModified: Date.now(),
             });

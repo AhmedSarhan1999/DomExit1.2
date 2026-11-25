@@ -26,6 +26,7 @@ import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js'
 import { sendEmail, renderPasswordResetEmail, maskEmail } from '../lib/emailService.js';
 import { logger } from '../lib/logger.js';
 import { checkRateLimit } from '../lib/rateLimit.js';
+import { memoryCache, appCache } from '../lib/memoryCache.js';
 
 export function normalizeRussianPhone(raw: string | undefined | null): string | undefined {
   if (!raw) return undefined;
@@ -810,6 +811,13 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     const allowedKeys = ['name', 'phone', 'phoneNormalized', 'inn', 'favorites', 'photoURL', 'telegram', 'telegramUsername'];
     const updates: Record<string, any> = {};
 
+    if (typeof body.photoURL === 'string' && body.photoURL.trim().startsWith('data:')) {
+      return json(event, 400, {
+        error: 'Хранение Base64 в профиле запрещено. Загружайте фото аватара в облако S3.',
+        code: 'BASE64_NOT_ALLOWED',
+      });
+    }
+
     for (const key of allowedKeys) {
       if (body[key] !== undefined) {
         updates[key] = body[key];
@@ -860,6 +868,28 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     };
 
     await ydb.putItem('users', updatedUser);
+    memoryCache.invalidate('curators');
+    appCache.invalidatePrefix('curators');
+
+    // Synchronize employee card if owner/employee updates profile
+    if (updatedUser.role === 'employee' || updatedUser.role === 'owner') {
+      try {
+        const empId = updatedUser.assignedEmployeeId || updatedUser.id;
+        const existingEmp = await ydb.getItem<any>('employees', empId);
+        if (existingEmp) {
+          await ydb.putItem('employees', {
+            ...existingEmp,
+            name: updatedUser.name || existingEmp.name,
+            phone: updatedUser.phone !== undefined ? updatedUser.phone : existingEmp.phone,
+            telegram: updatedUser.telegram !== undefined ? updatedUser.telegram : existingEmp.telegram,
+            photoUrl: updatedUser.photoURL !== undefined ? updatedUser.photoURL : existingEmp.photoUrl,
+          });
+          memoryCache.invalidate('employees');
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
 
     const cleanUser: UserProfile = { ...updatedUser };
     delete cleanUser.passwordHash;

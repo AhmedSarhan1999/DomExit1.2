@@ -6,6 +6,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { resolveLotGeoDetails } from '../../data/russianGeography';
 import { ShieldCheck, Flame, ArrowRight, Heart, MapPin, TrainFront, Building2 } from 'lucide-react';
+import { LotThumbnail } from '../shared/LotThumbnail';
 
 interface LotCardProps {
   lot: Lot;
@@ -49,22 +50,12 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
       
       {/* Top Image Container */}
       <div className="relative h-56 overflow-hidden bg-slate-100 aspect-[16/9]">
-        {cardImage ? (
-          <img
-            src={cardImage}
-            alt={lot.complexName}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            loading="lazy"
-            decoding="async"
-            width="400"
-            height="224"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 p-4 text-center">
-            <Building2 className="w-8 h-8 text-slate-300 mb-1" />
-            <span className="text-xs font-semibold text-slate-500">Фотографии загружаются</span>
-          </div>
-        )}
+        <LotThumbnail
+          src={cardImage}
+          alt={lot.complexName}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          fallbackClassName="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 p-4 text-center"
+        />
 
         {/* Top Badges */}
         <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
