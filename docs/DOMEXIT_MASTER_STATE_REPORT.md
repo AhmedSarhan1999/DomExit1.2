@@ -1,7 +1,7 @@
 # التقرير المرجعي الشامل لحالة منصة DomExit (Master State Report)
 
 **تاريخ الإصدار:** 2026-11-25  
-**نطاق المراجعة:** الترقية الشاملة والمزامنة النهائية للحزم `a489f94`, `613e92d`, `a02a419` إلى `Production (https://domexit.ru)` + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main`)  
+**نطاق المراجعة:** الترقية الشاملة والمزامنة النهائية للحزم `a489f94`, `613e92d`, `a02a419`, `b6f5e0f`, `8dfcc1d` إلى `Production (https://domexit.ru)` + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main`)  
 **الحالة العامة للمنصة:** ✅ متطابقة 100% عبر جميع البيئات (`Local = Staging = Production = GitHub`).
 
 ---
@@ -12,6 +12,8 @@
 - **الفرع النشط:** `main`
 - **حالة التزامن (`Local = Staging = Production = GitHub`):** متطابق 100%.
 - **آخر الـ Commits المرجعية المرقّاة إلى الإنتاج:**
+  - `8dfcc1d` — `feat(closing-pep-comms-phase-b): fix & integrate PEP 63-FZ, 6-step S3 closing room with gates, unified 152-FZ isolated chat with Telegram relay, and interactive deal tasks`
+  - `b6f5e0f` — `feat(workflow-phase-a): enforce stage 0 curator gate, atomic deal closure & archive sync, unified lot/deal vault, and personalized lot status`
   - `a02a419` — `refactor(legal-audit-workflow): rebuild legal audit into 3 tabs with true zero-state, strict UI/API verification gate, auto-navigation to packaging, and honest seller badge`
   - `613e92d` — `fix(buyer-engine-staff): sync Gold tier & SLA, implement 3-slot buyer queue with cross-deal standby & withdrawal penalty, and include owner/employees in curator assignment`
   - `a489f94` — `docs(audit): fix legal proof signed URLs, buyerNetSavings deduction & radar sync, and export DOMEXIT_MASTER_STATE_REPORT`
@@ -28,17 +30,17 @@
 |---|---|---|
 | **النطاق / API Gateway** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net` (`d5dpccovifu701p9lvga`) | `https://domexit.ru` (`d5dsuuhvetioe2hp0q7i`) |
 | **دالة الخادم (`API`)** | `domexit-api-staging` (`d4ep633b03be8trc7d28`) | `domexit-api-prod` (`d4eouspb2d0s8dfguf1h`) |
-| **أحدث إصدار نشط (`API`)** | `d4e39a9ei8hk48lmlbfk` (`nodejs22`, `ACTIVE`) | **`d4eu369t172o7n39dkj5`** (`nodejs22`, `ACTIVE`) |
-| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4epo9c3rroai2abil0m`** (`ACTIVE`) |
+| **أحدث إصدار نشط (`API`)** | `d4en5nrpmf4hdikpdj6h` (`nodejs22`, `ACTIVE`) | **`d4ee4gqg974kjkglcc6l`** (`nodejs22`, `ACTIVE`) |
+| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4ekj7rlvt1vgkl0ijuq`** (`ACTIVE`) |
 | **تريغر SLA Cron** | غير مجدول تلقائياً | `a1sbuqn63f9cmamjeqp7` (`0/15 * * * ? *` — كل 15 دقيقة UTC) |
-| **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — الإصدار **`d4e4sl7kmnv8q0k3pocn`** (`ACTIVE`) |
+| **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — أحدث نسخة: `_backups/ydb/daily/backup-2026-11-25-1102.json.gz` (`23,794` بايت) |
 | **تريغر النسخ الاحتياطي** | غير مجدول | `a1sqlo5a1el40u9tmqdn` (`0 2 * * ? *` — يومياً 02:00 UTC) |
-| **قاعدة بيانات `YDB Document API`** | `etnkpeqnbmb1a6cocipk` | `etnckg937628mnid7tnb` |
-| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (188 ملفاً — `2.95 MB`) | `domexit-web-prod` (188 ملفاً — `2.95 MB` + `yandex_863365d0efe2c1c8.html`) |
+| **قاعدة بيانات `YDB Document API`** | `etnkpeqnbmb1a6cocipk` | `etnckg937628mnid7tnb` (15 مطوراً معتمداً بدون `dev-test`) |
+| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (197 ملفاً — `3.03 MB`) | `domexit-web-prod` (197 ملفاً — `3.03 MB` + `yandex_863365d0efe2c1c8.html`) |
 | **دلو الصور العامة (`S3 Public`)** | `domexit-public-photos-staging` | `domexit-storage-vault` |
 | **دلو الوثائق الخاصة (`S3 Private`)** | `domexit-private-docs-staging` | `domexit-private-docs-prod` |
 | **إعداد OAuth Callback** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net/api/auth/yandex/callback` | `https://domexit.ru/api/auth/yandex/callback` |
-| **حالة التزامن** | **محدّثة 100%** (`a02a419`) | **محدّثة 100%** (`a02a419` + `docs` release report) |
+| **حالة التزامن** | **محدّثة 100%** (`8dfcc1d`) | **محدّثة 100%** (`8dfcc1d` + `docs` release report) |
 
 ---
 
