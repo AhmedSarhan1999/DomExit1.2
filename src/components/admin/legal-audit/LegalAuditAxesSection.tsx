@@ -20,7 +20,6 @@ interface LegalAuditAxesSectionProps {
   onAxisStatusChange: (axisId: string, status: LegalAuditAxisStatus) => void;
   onAxisNotesChange: (axisId: string, notes: string) => void;
   onSaveAxis: (axisId: string) => void;
-  onApplyStandardVerdict?: () => void;
   onUpdateSecondaryChecklist?: (checklist: SecondaryRiskChecklist) => void;
 }
 
@@ -31,7 +30,6 @@ export const LegalAuditAxesSection: React.FC<LegalAuditAxesSectionProps> = ({
   onAxisStatusChange,
   onAxisNotesChange,
   onSaveAxis,
-  onApplyStandardVerdict,
   onUpdateSecondaryChecklist,
 }) => {
   const isSecondary = lot.dealTrack === 'secondary_dkp';

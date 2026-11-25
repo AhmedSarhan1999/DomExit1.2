@@ -260,13 +260,15 @@ export const LotDetailsPage: React.FC = () => {
   const cashPaid = Number(lot.cashPaidBySeller || 0);
   const commission = Number(lot.serviceCommissionRub || 0);
 
-  const savingsRub = todayDevPrice - dduPrice;
-  const savingsPercent = todayDevPrice > 0 ? (savingsRub / todayDevPrice) * 100 : 0;
+  const isConsentPaidByBuyer = lot.developerConsentPolicy === 'paid_by_buyer';
+  const consentFee = isConsentPaidByBuyer ? Number(lot.developerConsentFeeRub || 0) : 0;
+  const grossSavingsRub = todayDevPrice - dduPrice;
+  const buyerNetSavings = Math.max(0, grossSavingsRub - consentFee);
+  const savingsRub = buyerNetSavings;
+  const savingsPercent = todayDevPrice > 0 ? (buyerNetSavings / todayDevPrice) * 100 : 0;
   const dduPricePerM2 = Math.round(dduPrice / lotArea);
   const devPricePerM2 = Math.round(todayDevPrice / lotArea);
   const savingsPerM2 = Math.max(0, devPricePerM2 - dduPricePerM2);
-  const isConsentPaidByBuyer = lot.developerConsentPolicy === 'paid_by_buyer';
-  const consentFee = isConsentPaidByBuyer ? Number(lot.developerConsentFeeRub || 0) : 0;
   const totalFirstPaymentDeal = cashPaid + commission + consentFee;
   const favorited = isFavorite(lot.lotCode);
   const lotStatus = lot.status || 'available';

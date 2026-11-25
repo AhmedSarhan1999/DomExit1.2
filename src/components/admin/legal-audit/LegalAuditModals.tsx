@@ -13,6 +13,8 @@ interface InspectorModalProps {
   setEditNotes: (notes: string) => void;
   editProofName: string;
   editProofUrl?: string;
+  editProofKey?: string;
+  onOpenProofDoc?: (info: { proofDocKey?: string; proofDocUrl?: string; proofDocName?: string }) => void;
   isUploadingProof: boolean;
   onUploadProofFile: () => void;
   onClose: () => void;
@@ -29,6 +31,8 @@ export const InspectorModal: React.FC<InspectorModalProps> = ({
   setEditNotes,
   editProofName,
   editProofUrl,
+  editProofKey,
+  onOpenProofDoc,
   isUploadingProof,
   onUploadProofFile,
   onClose,
@@ -102,15 +106,25 @@ export const InspectorModal: React.FC<InspectorModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-slate-800">Скан подтверждения:</label>
-              {editProofUrl && (
-                <a
-                  href={editProofUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-bold text-emerald-700 hover:text-emerald-800 underline flex items-center space-x-1"
-                >
-                  <span>Открыть скан ↗</span>
-                </a>
+              {(editProofKey || editProofUrl) && (
+                onOpenProofDoc ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenProofDoc({ proofDocKey: editProofKey, proofDocUrl: editProofUrl, proofDocName: editProofName })}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-800 underline flex items-center space-x-1 cursor-pointer"
+                  >
+                    <span>Открыть скан ↗</span>
+                  </button>
+                ) : (
+                  <a
+                    href={editProofUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-800 underline flex items-center space-x-1"
+                  >
+                    <span>Открыть скан ↗</span>
+                  </a>
+                )
               )}
             </div>
             <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl flex items-center justify-between">
@@ -291,6 +305,8 @@ export interface LegalAuditModalsContainerProps {
   setEditNotes: (notes: string) => void;
   editProofName: string;
   editProofUrl?: string;
+  editProofKey?: string;
+  onOpenProofDoc?: (info: { proofDocKey?: string; proofDocUrl?: string; proofDocName?: string }) => void;
   isUploadingProof: boolean;
   onUploadProofFile: () => void;
   onCloseInspector: () => void;
@@ -320,6 +336,8 @@ export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps>
   setEditNotes,
   editProofName,
   editProofUrl,
+  editProofKey,
+  onOpenProofDoc,
   isUploadingProof,
   onUploadProofFile,
   onCloseInspector,
@@ -351,6 +369,8 @@ export const LegalAuditModalsContainer: React.FC<LegalAuditModalsContainerProps>
           setEditNotes={setEditNotes}
           editProofName={editProofName}
           editProofUrl={editProofUrl}
+          editProofKey={editProofKey}
+          onOpenProofDoc={onOpenProofDoc}
           isUploadingProof={isUploadingProof}
           onUploadProofFile={onUploadProofFile}
           onClose={onCloseInspector}

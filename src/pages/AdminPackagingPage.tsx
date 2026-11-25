@@ -214,7 +214,10 @@ export const AdminPackagingPage: React.FC = () => {
     load();
   }, [lotId, isEmployee, currentEmployeeId, user]);
 
-  const buyerNetSavings = Math.max(0, todayDevPrice - oldDduPrice);
+  const grossSavings = Math.max(0, todayDevPrice - oldDduPrice);
+  const consentBuyerDeduction =
+    developerConsentPolicy === 'paid_by_buyer' ? Number(developerConsentFeeRub || 0) : 0;
+  const buyerNetSavings = Math.max(0, grossSavings - consentBuyerDeduction);
   const buyerDiscountPercent =
     todayDevPrice > 0 ? (buyerNetSavings / todayDevPrice) * 100 : 0;
   const buyerFee = Math.round(oldDduPrice * 0.025);

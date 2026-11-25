@@ -18,6 +18,7 @@ interface LegalCheckpointsMatrixProps {
   onManualVerifyCheckpoint: (checkpointId: string) => void;
   onManualVerifyAll?: () => void;
   onDownloadProtocol: (registryType: 'EFRSB' | 'FSSP') => void;
+  onOpenProofDoc?: (info: { proofDocKey?: string; proofDocUrl?: string; proofDocName?: string }) => void;
 }
 
 export const LegalCheckpointsMatrix: React.FC<LegalCheckpointsMatrixProps> = ({
@@ -27,6 +28,7 @@ export const LegalCheckpointsMatrix: React.FC<LegalCheckpointsMatrixProps> = ({
   onManualVerifyCheckpoint,
   onManualVerifyAll,
   onDownloadProtocol,
+  onOpenProofDoc,
 }) => {
   return (
     <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
@@ -119,15 +121,25 @@ export const LegalCheckpointsMatrix: React.FC<LegalCheckpointsMatrixProps> = ({
                       {cp.proofDocName ? `Скан: ${cp.proofDocName}` : 'Скан не прикреплен'}
                     </span>
                   </div>
-                  {cp.proofDocUrl && (
-                    <a
-                      href={cp.proofDocUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center space-x-1 transition-colors shrink-0"
-                    >
-                      <span>Открыть скан ↗</span>
-                    </a>
+                  {(cp.proofDocKey || cp.proofDocUrl) && (
+                    onOpenProofDoc ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenProofDoc({ proofDocKey: cp.proofDocKey, proofDocUrl: cp.proofDocUrl, proofDocName: cp.proofDocName })}
+                        className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center space-x-1 transition-colors shrink-0 cursor-pointer"
+                      >
+                        <span>Открыть скан ↗</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={cp.proofDocUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center space-x-1 transition-colors shrink-0"
+                      >
+                        <span>Открыть скан ↗</span>
+                      </a>
+                    )
                   )}
                 </div>
               </div>

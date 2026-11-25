@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Radar,
   ExternalLink,
@@ -98,16 +98,26 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
   const [innResult, setInnResult] = useState<any | null>(null);
   const [innError, setInnError] = useState<string | null>(null);
 
-  // Local state for radar checks
-  const [checks, setChecks] = useState<Record<string, { status: 'clean' | 'attention' | 'critical'; checkedAt?: string }>>(() => {
-    const initial: Record<string, any> = {};
-    if (lot.legalRadarChecks && Array.isArray(lot.legalRadarChecks)) {
-      lot.legalRadarChecks.forEach((c: any) => {
-        initial[c.registryId] = { status: c.status, checkedAt: c.checkedAt };
+  // Local state for radar checks (resets/syncs when lot changes)
+  const buildChecksMap = (items?: LegalRadarCheckItem[]) => {
+    const initial: Record<string, { status: 'clean' | 'attention' | 'critical'; checkedAt?: string }> = {};
+    if (items && Array.isArray(items)) {
+      items.forEach((c: any) => {
+        initial[c.registryId || c.registry] = { status: c.status, checkedAt: c.checkedAt };
       });
     }
     return initial;
-  });
+  };
+
+  const [checks, setChecks] = useState<Record<string, { status: 'clean' | 'attention' | 'critical'; checkedAt?: string }>>(() =>
+    buildChecksMap(lot.legalRadarChecks)
+  );
+
+  useEffect(() => {
+    setChecks(buildChecksMap(lot.legalRadarChecks));
+    setInnResult(null);
+    setInnError(null);
+  }, [lot.lotCode]);
 
   const sellerInn = (lot.sellerInn || '').trim() || '—';
   const sellerFullName = lot.ownerDossier?.fullNameMasked || 'Правообладатель';

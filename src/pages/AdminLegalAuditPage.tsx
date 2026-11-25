@@ -6,6 +6,7 @@ import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { StorageService } from '../dal/StorageService';
+import { apiClient } from '../services/apiClient';
 import {
   Lot,
   LegalAuditCheckpoint,
@@ -127,6 +128,33 @@ export const AdminLegalAuditPage: React.FC = () => {
     setEditProofKey(cp.proofDocKey || '');
   };
 
+  const handleOpenProofDoc = async (docInfo: {
+    proofDocKey?: string;
+    proofDocUrl?: string;
+    proofDocName?: string;
+  }) => {
+    if (!lot) return;
+    if (docInfo.proofDocKey) {
+      try {
+        const res = await apiClient.get<{ success: boolean; downloadUrl: string }>(
+          `/api/storage/presign-download?key=${encodeURIComponent(docInfo.proofDocKey)}&lotCode=${encodeURIComponent(lot.lotCode)}&filename=${encodeURIComponent(docInfo.proofDocName || 'proof.pdf')}`
+        );
+        if (res?.downloadUrl) {
+          window.open(res.downloadUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      } catch (err: any) {
+        setNotice(`Ошибка получения защищенной ссылки S3: ${err?.message || 'Сбой'}`);
+        return;
+      }
+    }
+    if (docInfo.proofDocUrl) {
+      window.open(docInfo.proofDocUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setNotice('Скан подтверждения еще не загружен в защищенное хранилище S3.');
+  };
+
   const handleUploadProofFile = async () => {
     if (!lot) return;
     try {
@@ -142,10 +170,22 @@ export const AdminLegalAuditPage: React.FC = () => {
           uploadedByUid: user?.id || 'curator',
           clientCode: 'DEX-LEGAL',
         });
+        const objectKey = meta.key || meta.objectKey || '';
+        let signedUrl = meta.url || '';
+        if (objectKey && !signedUrl) {
+          try {
+            const dlRes = await apiClient.get<{ success: boolean; downloadUrl: string }>(
+              `/api/storage/presign-download?key=${encodeURIComponent(objectKey)}&lotCode=${encodeURIComponent(lot.lotCode)}&filename=${encodeURIComponent(meta.name)}`
+            );
+            if (dlRes?.downloadUrl) signedUrl = dlRes.downloadUrl;
+          } catch {
+            // Fresh signed URL will also be fetched on click via handleOpenProofDoc
+          }
+        }
         setEditProofName(meta.name);
-        setEditProofUrl(meta.url || '');
-        setEditProofKey(meta.key || meta.objectKey || '');
-        setNotice(`✓ Документ «${meta.name}» успешно загружен в хранилище!`);
+        setEditProofUrl(signedUrl);
+        setEditProofKey(objectKey);
+        setNotice(`✓ Документ «${meta.name}» успешно загружен в защищенное хранилище S3!`);
         setTimeout(() => setNotice(null), 4000);
       }
     } catch (err) {
@@ -223,29 +263,34 @@ export const AdminLegalAuditPage: React.FC = () => {
           score: 10,
           status: 'clean' as const,
           evaluated: true,
-          proofDocName: c.proofDocName || `Акт_ручной_проверки_${c.shortLabel.replace(/[\s/]/g, '_')}.pdf`,
+          proofDocName: c.proofDocName || '',
           verifiedAt: new Date().toISOString(),
           verifiedBy: curatorName,
-          notes: c.notes ? `${c.notes} [Проверено вручную юристом: рисков нет]` : 'Проверено вручную старшим юристом.',
+          notes: c.notes ? `${c.notes} [Проверено юристом: рисков нет]` : 'Проверено старшим юристом.',
         };
       }
       return c;
     });
+    const newIndex = Math.min(
+      100,
+      Math.max(0, Math.round(updatedCheckpoints.reduce((sum, cp) => sum + ((cp.score || 0) / 10) * cp.weightPercent, 0)))
+    );
     setCheckpoints(updatedCheckpoints);
     lot.legalAuditCheckpoints = updatedCheckpoints;
-    lot.legalPassport.antiBankruptcyIndex = 100;
+    lot.legalPassport.antiBankruptcyIndex = newIndex;
     await LotsRepository.update(lot);
-    setNotice(`✓ Контрольная точка «${checkpointId}» подтверждена (10/10).`);
+    setNotice(`✓ Контрольная точка «${checkpointId}» подтверждена (10/10). Текущий индекс: ${newIndex}%.`);
     setTimeout(() => setNotice(null), 4000);
   };
 
   const handleDownloadProtocol = (registryType: 'EFRSB' | 'FSSP') => {
     if (!lot) return;
     const timestamp = new Date().toLocaleString('ru-RU');
+    const innValue = lot.sellerInn || 'Не указан';
     const content =
       registryType === 'EFRSB'
-        ? `ПРОТОКОЛ ПРОВЕРКИ ЕФРСБ / ФЕДРЕСУРС (127-ФЗ)\nОбъект: Лот #${lot.lotCode} (${lot.complexName})\nДольщик: ${lot.ownerDossier.fullNameMasked}\nИНН: ${lot.sellerInn || '781432994102'}\nДата: ${timestamp}\nЮрист: ${curatorName}\n`
-        : `ВЫПИСКА ИЗ БАЗЫ ИСПОЛНИТЕЛЬНЫХ ПРОИЗВОДСТВ ФССП РФ\nОбъект: Лот #${lot.lotCode} (${lot.complexName})\nДольщик: ${lot.ownerDossier.fullNameMasked}\nИНН: ${lot.sellerInn || '781432994102'}\nДата: ${timestamp}\nЮрист: ${curatorName}\n`;
+        ? `ПРОТОКОЛ ПРОВЕРКИ ЕФРСБ / ФЕДРЕСУРС (127-ФЗ)\nОбъект: Лот #${lot.lotCode} (${lot.complexName})\nДольщик: ${lot.ownerDossier.fullNameMasked}\nИНН: ${innValue}\nДата: ${timestamp}\nЮрист: ${curatorName}\n`
+        : `ВЫПИСКА ИЗ БАЗЫ ИСПОЛНИТЕЛЬНЫХ ПРОИЗВОДСТВ ФССП РФ\nОбъект: Лот #${lot.lotCode} (${lot.complexName})\nДольщик: ${lot.ownerDossier.fullNameMasked}\nИНН: ${innValue}\nДата: ${timestamp}\nЮрист: ${curatorName}\n`;
 
     FileManager.downloadFile(
       `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`,
@@ -384,6 +429,7 @@ export const AdminLegalAuditPage: React.FC = () => {
                 onOpenInspector={handleOpenInspector}
                 onManualVerifyCheckpoint={handleManualVerifyCheckpoint}
                 onDownloadProtocol={handleDownloadProtocol}
+                onOpenProofDoc={handleOpenProofDoc}
               />
 
               {/* 4. Legal Memo Generator */}
@@ -417,6 +463,8 @@ export const AdminLegalAuditPage: React.FC = () => {
         setEditNotes={setEditNotes}
         editProofName={editProofName}
         editProofUrl={editProofUrl}
+        editProofKey={editProofKey}
+        onOpenProofDoc={handleOpenProofDoc}
         isUploadingProof={isUploadingProof}
         onUploadProofFile={handleUploadProofFile}
         onCloseInspector={() => setInspectingCheckpoint(null)}

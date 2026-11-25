@@ -218,9 +218,9 @@ export class PropertyLifecycleService {
       referredByPartnerCode: payload.referredByPartnerCode,
       documentIds: payload.documentIds || [],
       legalPassport: {
-        passedChecksCount: (payload.documentIds || []).length >= 4 ? 38 : 28,
-        totalChecksCount: 42,
-        antiBankruptcyIndex: 96,
+        passedChecksCount: 0,
+        totalChecksCount: 5,
+        antiBankruptcyIndex: 0,
         maternalCapitalUsed: Boolean(payload.matCapitalUsed),
         spousalConsentNotarized: true,
         fsspDebtRub: 0,
