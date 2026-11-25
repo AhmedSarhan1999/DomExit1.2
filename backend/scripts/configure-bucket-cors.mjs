@@ -32,10 +32,12 @@ const s3 = new S3Client({
   },
 });
 
-const prodGwUrl = manifest.production?.apiGatewayUrl;
+const prodGwUrl = manifest.production?.apiGatewayUrl || 'https://domexit.ru';
 const stagingGwUrl = manifest.staging?.apiGatewayUrl;
 
-const allowedOrigins = [
+const requiredOrigins = [
+  'https://domexit.ru',
+  'https://www.domexit.ru',
   prodGwUrl,
   stagingGwUrl,
   'https://domexit.netlify.app',
@@ -43,28 +45,40 @@ const allowedOrigins = [
   'http://localhost:3000',
 ].filter(Boolean);
 
-console.log('=== Configuring S3 CORS for Production Buckets ===');
-console.log('Allowed Origins:', allowedOrigins);
-
-const corsRules = [
-  {
-    AllowedHeaders: ['*'],
-    AllowedMethods: ['GET', 'PUT', 'POST', 'HEAD', 'DELETE'],
-    AllowedOrigins: allowedOrigins,
-    ExposeHeaders: ['ETag', 'Content-Length', 'Content-Type'],
-    MaxAgeSeconds: 3600,
-  },
-];
-
 const targetBuckets = [
   manifest.production.publicPhotosBucket,
   manifest.production.privateDocsBucket,
   manifest.production.webStaticBucket,
 ];
 
+console.log('=== Configuring S3 CORS for Production Buckets ===');
+
 for (const bucket of targetBuckets) {
   try {
-    console.log(`Setting CORS on bucket: ${bucket}...`);
+    let existingOrigins = [];
+    try {
+      const current = await s3.send(new GetBucketCorsCommand({ Bucket: bucket }));
+      for (const r of current?.CORSRules || []) {
+        if (Array.isArray(r.AllowedOrigins)) {
+          existingOrigins.push(...r.AllowedOrigins);
+        }
+      }
+    } catch {
+      // No existing CORS rules or bucket empty
+    }
+
+    const mergedOrigins = Array.from(new Set([...existingOrigins, ...requiredOrigins]));
+    const corsRules = [
+      {
+        AllowedHeaders: ['*'],
+        AllowedMethods: ['GET', 'PUT', 'POST', 'HEAD', 'DELETE'],
+        AllowedOrigins: mergedOrigins,
+        ExposeHeaders: ['ETag', 'Content-Length', 'Content-Type'],
+        MaxAgeSeconds: 3600,
+      },
+    ];
+
+    console.log(`Setting CORS on bucket ${bucket} with origins:`, mergedOrigins);
     await s3.send(
       new PutBucketCorsCommand({
         Bucket: bucket,
@@ -76,6 +90,7 @@ for (const bucket of targetBuckets) {
     console.log(`✓ CORS successfully set on ${bucket}`);
   } catch (err) {
     console.error(`✗ Failed to set CORS on ${bucket}:`, err.message);
+    process.exitCode = 1;
   }
 }
 

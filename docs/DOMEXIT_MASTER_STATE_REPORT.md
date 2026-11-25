@@ -1,7 +1,7 @@
 # التقرير المرجعي الشامل لحالة منصة DomExit (Master State Report)
 
 **تاريخ الإصدار:** 2026-11-25  
-**نطاق المراجعة:** الترقية الشاملة والمزامنة النهائية للحزم `a489f94`, `613e92d`, `a02a419`, `b6f5e0f`, `8dfcc1d` إلى `Production (https://domexit.ru)` + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main`)  
+**نطاق المراجعة:** الترقية الشاملة والمزامنة النهائية للحزم الست (`a489f94`, `613e92d`, `a02a419`, `b6f5e0f`, `8dfcc1d`, `c6ee3da`) إلى `Production (https://domexit.ru)` + إصلاح `CORS` لدلاء S3 الإنتاجية + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main`)  
 **الحالة العامة للمنصة:** ✅ متطابقة 100% عبر جميع البيئات (`Local = Staging = Production = GitHub`).
 
 ---
@@ -12,6 +12,8 @@
 - **الفرع النشط:** `main`
 - **حالة التزامن (`Local = Staging = Production = GitHub`):** متطابق 100%.
 - **آخر الـ Commits المرجعية المرقّاة إلى الإنتاج:**
+  - `c6ee3da` — `fix(rbac-media-comms): enable employee append-only audit logs & lot isolation, move avatars to S3, fix photo uploads & broken images, and unify staff profile & Telegram routing`
+  - `3eeba05` — `docs(release): update master state report after full production rollout (v2 workflow, PEP 63-FZ, 6-step closing & 152-FZ comms)`
   - `8dfcc1d` — `feat(closing-pep-comms-phase-b): fix & integrate PEP 63-FZ, 6-step S3 closing room with gates, unified 152-FZ isolated chat with Telegram relay, and interactive deal tasks`
   - `b6f5e0f` — `feat(workflow-phase-a): enforce stage 0 curator gate, atomic deal closure & archive sync, unified lot/deal vault, and personalized lot status`
   - `a02a419` — `refactor(legal-audit-workflow): rebuild legal audit into 3 tabs with true zero-state, strict UI/API verification gate, auto-navigation to packaging, and honest seller badge`
@@ -30,17 +32,17 @@
 |---|---|---|
 | **النطاق / API Gateway** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net` (`d5dpccovifu701p9lvga`) | `https://domexit.ru` (`d5dsuuhvetioe2hp0q7i`) |
 | **دالة الخادم (`API`)** | `domexit-api-staging` (`d4ep633b03be8trc7d28`) | `domexit-api-prod` (`d4eouspb2d0s8dfguf1h`) |
-| **أحدث إصدار نشط (`API`)** | `d4en5nrpmf4hdikpdj6h` (`nodejs22`, `ACTIVE`) | **`d4ee4gqg974kjkglcc6l`** (`nodejs22`, `ACTIVE`) |
-| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4ekj7rlvt1vgkl0ijuq`** (`ACTIVE`) |
+| **أحدث إصدار نشط (`API`)** | `d4edbvkjtfcnjg52s2i4` (`nodejs22`, `ACTIVE`) | **`d4esii1h58989qgcjtko`** (`nodejs22`, `ACTIVE`) |
+| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4e92qusbp5d1vi5mn1g`** (`ACTIVE`) |
 | **تريغر SLA Cron** | غير مجدول تلقائياً | `a1sbuqn63f9cmamjeqp7` (`0/15 * * * ? *` — كل 15 دقيقة UTC) |
-| **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — أحدث نسخة: `_backups/ydb/daily/backup-2026-11-25-1102.json.gz` (`23,794` بايت) |
+| **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — أحدث نسخة: `_backups/ydb/daily/backup-2026-11-25-1206.json.gz` (`23,825` بايت) |
 | **تريغر النسخ الاحتياطي** | غير مجدول | `a1sqlo5a1el40u9tmqdn` (`0 2 * * ? *` — يومياً 02:00 UTC) |
 | **قاعدة بيانات `YDB Document API`** | `etnkpeqnbmb1a6cocipk` | `etnckg937628mnid7tnb` (15 مطوراً معتمداً بدون `dev-test`) |
-| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (197 ملفاً — `3.03 MB`) | `domexit-web-prod` (197 ملفاً — `3.03 MB` + `yandex_863365d0efe2c1c8.html`) |
-| **دلو الصور العامة (`S3 Public`)** | `domexit-public-photos-staging` | `domexit-storage-vault` |
-| **دلو الوثائق الخاصة (`S3 Private`)** | `domexit-private-docs-staging` | `domexit-private-docs-prod` |
+| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (212 ملفاً — `3.04 MB`) | `domexit-web-prod` (212 ملفاً — `3.04 MB` + `yandex_863365d0efe2c1c8.html`) |
+| **دلو الصور العامة (`S3 Public`)** | `domexit-public-photos-staging` | `domexit-storage-vault` (CORS يشمل `https://domexit.ru` و`https://www.domexit.ru`) |
+| **دلو الوثائق الخاصة (`S3 Private`)** | `domexit-private-docs-staging` | `domexit-private-docs-prod` (CORS يشمل `https://domexit.ru` و`https://www.domexit.ru`) |
 | **إعداد OAuth Callback** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net/api/auth/yandex/callback` | `https://domexit.ru/api/auth/yandex/callback` |
-| **حالة التزامن** | **محدّثة 100%** (`8dfcc1d`) | **محدّثة 100%** (`8dfcc1d` + `docs` release report) |
+| **حالة التزامن** | **محدّثة 100%** (`c6ee3da`) | **محدّثة 100%** (`c6ee3da` + `docs` release report) |
 
 ---
 
@@ -81,13 +83,19 @@
 - **`GET /api/auth/yandex/start`**: **`302 Found`** مع `redirect_uri` خاص بـ `Staging`.
 
 #### ب) نتائج الفحص المقروء فقط (`Read-Only`) على `Production (https://domexit.ru)`
-- `GET /`, `/opportunities`, `/portal`, `/yandex_863365d0efe2c1c8.html`: **`200 OK`** (`index.html` مع `Cache-Control: no-cache, no-store, must-revalidate`).
+- `GET /`, `/opportunities`, `/portal`, `/yandex_863365d0efe2c1c8.html`: **`200 OK`** (`index.html` مع `Cache-Control: no-cache, no-store, must-revalidate` و`assets/*.js` مع `max-age=31536000, immutable`).
 - `GET /api/health`: **`200 OK`** (`{"ok":true,"env":"production","region":"ru-central1"}`).
 - `GET /api/auth/yandex/start`: **`302 Found`** نحو `redirect_uri=https%3A%2F%2Fdomexit.ru%2Fapi%2Fauth%2Fyandex%2Fcallback`.
-- `GET /api/data/lots?paginated=1&limit=12&fields=card`: **`200 OK`** (`{"items":[],"nextCursor":null,"hasMore":false,"totalMatching":0,"stats":{"totalCount":0,"activeCount":0}}`).
-- `GET /api/data/developers`: **`200 OK`** (16 مطوراً: 15 معتمداً بأرقام ИНН صحيحة + `dev-test`).
-- `POST /api/auth/login` (طلب `{}` فحص ترويسات فقط): `400` مع `X-RateLimit-Limit: 10`, `X-RateLimit-Remaining: 8`.
-- فحص حزم JS المنشورة على `domexit.ru`: خالية `0` من السلاسل الوهمية، ومسارات `/portal` و`/portal/:tab` داخل `PublicLayout`.
+- `GET /api/data/lots?paginated=1&limit=12&fields=card`: **`200 OK`** (`items`, `nextCursor`, `hasMore` سليمة).
+- `GET /api/data/developers`: **`200 OK`** (**15** مطوراً معتمداً بأرقام ИНН صحيحة دون `dev-test`).
+- `GET /api/data/curators`: **`200 OK`** خالٍ من أي أرقام أو معرفات وهمية (`409-00-00` / `@domexit_official`).
+- `POST /api/auth/login` (طلب `{}` فحص ترويسات فقط): `400` مع `X-RateLimit-Limit: 10`, `X-RateLimit-Remaining: 9`.
+- `CORS` على `domexit-storage-vault` و`domexit-private-docs-prod`: مفعّل للنطاقين `https://domexit.ru` و`https://www.domexit.ru` (`GET`, `PUT`, `HEAD`, `ExposeHeaders: ETag`).
+
+#### ج) ترقيات الحزم `b6f5e0f`, `8dfcc1d`, `c6ee3da` المفعّلة في الإنتاج
+- **بوابة `Stage 0` ونظام الـ 3 خانات + الإغلاق الذري (`b6f5e0f`):** إلزام تعيين مشرف حقيقي قبل النشر، ومزامنة إغلاق الصفقة والأرشيف في `/portal`، وعرض الحالة الشخصية للعميل على `/opportunities/:lotCode`.
+- **حزمة `ПЭП 63-ФЗ` + غرفة الإغلاق 6 خطوات + عزل `152-ФЗ` (`8dfcc1d`):** توقيع إلكتروني بسيط بـ OTP عبر Telegram، وغرفة إغلاق روسية من 6 خطوات بملفات `S3` دون Base64، وعزل تام لقناة البائع (`seller_curator`) عن المشتري (`buyer_curator`)، ومركز مهام تفاعلي.
+- **حزمة `RBAC` + `Append-Only audit_logs` + وسائط `S3` + توجيه `Telegram OS` (`c6ee3da`):** عزل الموظفين (`NOT_ASSIGNED_TO_LOT` / `FORBIDDEN_EMPLOYEE_EDIT`)، وإتاحة `POST /api/data/audit_logs` للموظف بصيغة `Append-Only`، ونقل الأفاتار إلى `S3` (`purpose: 'avatar'`) مع حظر Base64 (`BASE64_NOT_ALLOWED`)، وإصلاح الصور المكسورة بـ `<UserAvatar />` و`<LotThumbnail />`، وتوحيد ملف الموظف/المالك وتوجيه إشعارات `Telegram OS` حسب الدور.
 
 ---
 
