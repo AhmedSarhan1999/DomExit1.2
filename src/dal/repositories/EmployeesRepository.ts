@@ -10,7 +10,7 @@ export class EmployeesRepository {
     const raw = await DatabaseGateway.getAll<Employee>(COLLECTION, PROD_SYSTEM_EMPLOYEES);
     return raw.filter((e) => {
       const email = (e.email || '').toLowerCase().trim();
-      return !email.includes('test') && e.id !== 'emp-1' && e.name !== 'Алексей Смирнов';
+      return !email.includes('test') && e.id !== 'emp-1';
     });
   }
 

@@ -155,7 +155,7 @@ export const AdminClosingPage: React.FC = () => {
     const updated = await DealsRepository.confirmBankDeposit(
       deal.dealId,
       `${operatorName} (Банковский контур)`,
-      deal.escrowWorkflow?.escrowAccountNumber || 'АК-78401/2026-СБЕР',
+      deal.escrowWorkflow?.escrowAccountNumber || '',
       totalEscrowDepositRub
     );
     if (updated) {
@@ -367,7 +367,7 @@ export const AdminClosingPage: React.FC = () => {
                   </span>
 
                   <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-mono text-xs">
-                    Счет: {deal.escrowWorkflow?.escrowAccountNumber || '№ АК-78401/2026-СБЕР'}
+                    Счет: {deal.escrowWorkflow?.escrowAccountNumber || '—'}
                   </span>
                 </div>
 
@@ -836,7 +836,7 @@ export const AdminClosingPage: React.FC = () => {
                         <Video className="w-4 h-4 text-purple-600 shrink-0" />
                         <span className="truncate">
                           {proofVideos[proofVideos.length - 1] ||
-                            'Видеофиксация_сделки_Сбербанк.mp4'}
+                            'Файл не выбран'}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500">
