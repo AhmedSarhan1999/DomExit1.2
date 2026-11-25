@@ -6,6 +6,7 @@ import { getConfig } from '../lib/config.js';
 import { createPresignedUploadUrl, createPresignedDownloadUrl } from '../lib/s3Client.js';
 import { getYdbClient } from '../lib/ydbClient.js';
 import { consumeQuota, recordSecurityIncident } from '../lib/anomalyDetector.js';
+import { isEmployeeAssignedToRecord } from '../lib/rbac.js';
 
 const ALLOWED_PHOTO_TYPES = new Set(['image/webp', 'image/jpeg', 'image/png']);
 
@@ -13,6 +14,7 @@ const ALLOWED_DOCUMENT_TYPES = new Set([
   'application/pdf',
   'image/jpeg',
   'image/png',
+  'image/webp',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 
@@ -118,7 +120,7 @@ export async function handleStorage(
     // scope === 'document' (Private 100%)
     if (!ALLOWED_DOCUMENT_TYPES.has(contentType)) {
       return json(event, 400, {
-        error: 'Недопустимый формат документа (разрешены PDF, Word DOCX, JPEG, PNG)',
+        error: 'Недопустимый формат документа (разрешены PDF, JPG, PNG, WebP, DOCX)',
       });
     }
     if (fileSize && fileSize > MAX_DOC_SIZE) {
@@ -153,9 +155,26 @@ export async function handleStorage(
       return json(event, 400, { error: 'Укажите параметр key' });
     }
 
-    // Strict Authorization Check: Only owner, staff, or parties to the lot/deal can download private documents
+    // Strict Authorization Check: Only owner, assigned employee, or authorized applicant/seller/buyer can download private documents
     const isOwner = authUser.role === 'owner';
     const isStaff = isOwner || authUser.role === 'employee';
+    const ydb = getYdbClient();
+
+    if (isStaff && !isOwner && lotCode) {
+      let lotForStaff = await ydb.getItem('lots', lotCode);
+      if (!lotForStaff) {
+        const allLots = await ydb.scanAll<any>('lots', 500);
+        lotForStaff = (allLots || []).find(
+          (l: any) => String(l.lotCode || l.id || '').toUpperCase() === String(lotCode).toUpperCase()
+        );
+      }
+      if (lotForStaff && !isEmployeeAssignedToRecord(authUser, lotForStaff)) {
+        return json(event, 403, {
+          error: 'У вас нет доступа к приватным документам чужого лота',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
+    }
 
     if (!isStaff) {
       const downloadQuota = await consumeQuota({
@@ -190,29 +209,44 @@ export async function handleStorage(
         return json(event, 403, { error: 'Доступ к документу ограничен' });
       }
 
-      const ydb = getYdbClient();
       const lot = await ydb.getItem('lots', lotCode);
       const isSeller =
         lot && (lot.sellerUserId === authUser.id || lot.sellerId === authUser.id);
 
       if (!isSeller) {
-        const [deals, apps] = await Promise.all([
+        const [deals, apps, vaultDocs] = await Promise.all([
           ydb.scanAll<any>('deals', 300),
           ydb.scanAll<any>('buyer_applications', 500),
+          ydb.scanAll<any>('documents_vault', 300),
         ]);
+        const targetCode = String(lotCode).toUpperCase();
         const userDeal = (deals || []).find(
           (d: any) =>
-            (d.lotCode === lotCode || d.lotId === lotCode) &&
-            (d.buyerId === authUser.id || d.sellerId === authUser.id || d.sellerUserId === authUser.id)
+            String(d.lotCode || d.lotId || '').toUpperCase() === targetCode &&
+            (d.buyerId === authUser.id || d.buyerUserId === authUser.id || d.sellerId === authUser.id || d.sellerUserId === authUser.id)
         );
         const isWinningBuyer = (apps || []).some(
           (a: any) =>
-            String(a.lotCode || '').toUpperCase() === String(lotCode).toUpperCase() &&
+            String(a.lotCode || '').toUpperCase() === targetCode &&
             String(a.userId) === String(authUser.id) &&
             ['priority_1', 'in_deal', 'completed'].includes(String(a.queueStatus || ''))
         );
+        const isApplicantOwnProof =
+          (apps || []).some(
+            (a: any) =>
+              String(a.lotCode || '').toUpperCase() === targetCode &&
+              String(a.userId) === String(authUser.id) &&
+              Array.isArray(a.proofDocuments) &&
+              a.proofDocuments.some((pd: any) => pd?.objectKey === key)
+          ) ||
+          (vaultDocs || []).some(
+            (d: any) =>
+              String(d.entityId || '').toUpperCase() === targetCode &&
+              String(d.uploadedByUid || '') === String(authUser.id) &&
+              d.objectKey === key
+          );
 
-        if (!userDeal && !isWinningBuyer) {
+        if (!userDeal && !isWinningBuyer && !isApplicantOwnProof) {
           const clientIp = getClientIp(event);
           await recordSecurityIncident({
             type: 'auth_bruteforce_or_probe',

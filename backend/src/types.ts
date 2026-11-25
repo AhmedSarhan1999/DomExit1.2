@@ -159,6 +159,16 @@ export type QueueStatus =
 
 export type PriceAcceptance = 'full_price' | 'above_asking' | 'discount_requested';
 
+export interface ApplicationProofDocument {
+  name: string;
+  objectKey: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export type CuratorVerificationStatus = 'pending' | 'verified' | 'needs_clarification';
+
 export interface BuyerApplication {
   id: string;
   lotCode: string;
@@ -166,6 +176,9 @@ export interface BuyerApplication {
   userEmail?: string;
   userName?: string;
   userPhone?: string;
+  buyerPhone?: string;
+  buyerEmail?: string;
+  buyerTelegram?: string;
   telegramUsername?: string;
   telegramChatId?: string;
   buyBoxId?: string;
@@ -180,6 +193,20 @@ export interface BuyerApplication {
   withdrawalReason?: string;
   priceAcceptance?: PriceAcceptance;
   offeredPriceRub?: number;
+  paymentMethod?: BuyBoxPaymentMethod;
+  confirmedCashRub?: number;
+  availableLiquidityRub?: number;
+  buyerComment?: string;
+  proofDocuments?: ApplicationProofDocument[];
+  tier?: BuyBoxTier;
+  reliabilityScore?: number;
+  curatorVerificationStatus?: CuratorVerificationStatus;
+  curatorVerificationNote?: string;
+  curatorVerifiedAt?: string;
+  curatorVerifiedBy?: string;
+  rejectionReason?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
   readiness24h?: boolean;
   deposit48h?: boolean;
   viewingDeadlineAt?: string;

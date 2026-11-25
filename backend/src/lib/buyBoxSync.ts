@@ -7,6 +7,7 @@ export const ACTIVE_APPLICATION_STATUSES = new Set<string>([
   'in_deal',
   'reserve_2',
   'reserve_3',
+  'waitlist',
   'standby_in_other_deal',
 ]);
 

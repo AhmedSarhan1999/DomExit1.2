@@ -75,12 +75,165 @@ async function notifyUserTelegram(userId: string, text: string): Promise<void> {
 }
 
 async function findLotByCode(ydb: any, lotCode: string): Promise<any | null> {
-  let lot = await ydb.getItem('lots', lotCode);
+  const cleanCode = String(lotCode || '').trim();
+  let lot = await ydb.getItem('lots', cleanCode);
   if (!lot) {
     const allLots = await ydb.scanAll('lots', 500);
-    lot = allLots.find((l: any) => l.lotCode === lotCode || l.id === lotCode || l.code === lotCode);
+    lot = allLots.find(
+      (l: any) =>
+        String(l.lotCode || '').trim().toUpperCase() === cleanCode.toUpperCase() ||
+        String(l.id || '').trim().toUpperCase() === cleanCode.toUpperCase() ||
+        String(l.code || '').trim().toUpperCase() === cleanCode.toUpperCase()
+    );
   }
   return lot || null;
+}
+
+const VERIFICATION_STATUS_SET = new Set(['pending', 'verified', 'needs_clarification']);
+const WAITLIST_TARGET_SET = new Set(['reserve_2', 'reserve_3', 'waitlist', 'pending_review']);
+
+async function writeMatchingAuditLog(
+  ydb: any,
+  authUser: UserProfile,
+  params: { lotCode: string; actionType: string; title: string; description: string; metadata?: Record<string, any> }
+): Promise<void> {
+  try {
+    await ydb.putItem('audit_logs', {
+      id: `aud-${crypto.randomUUID()}`,
+      timestamp: new Date().toISOString(),
+      lotCode: params.lotCode,
+      operatorId: authUser.id,
+      performedBy: authUser.id,
+      operatorName: authUser.name || authUser.email || 'Куратор DomExit',
+      operatorRole: authUser.role === 'owner' ? 'owner' : 'curator',
+      actionType: params.actionType,
+      title: params.title,
+      description: params.description,
+      userEmail: authUser.email,
+      metadata: params.metadata || {},
+    });
+  } catch (err: any) {
+    logger.warn('Failed writing matching audit log', { meta: { error: err.message, lotCode: params.lotCode } });
+  }
+}
+
+async function syncLotDropSeats(ydb: any, lotCode: string, preloadedApps?: BuyerApplication[]): Promise<any | null> {
+  const lot = await findLotByCode(ydb, lotCode);
+  if (!lot || !lot.dropConfig) return lot;
+  const allApps: BuyerApplication[] = preloadedApps || ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[]) || [];
+  const targetCode = String(lotCode || '').trim().toUpperCase();
+  const activeCount = allApps.filter(
+    (a: BuyerApplication) => String(a.lotCode || '').trim().toUpperCase() === targetCode && isActiveApplication(a)
+  ).length;
+  const maxCap = Number(lot.dropConfig.maxApplicationsCap || 5);
+  lot.dropConfig.currentValidApplications = activeCount;
+  if (activeCount >= maxCap && lot.status === 'available') {
+    lot.dropConfig.waveStatus = 'capped_closed';
+  } else if (activeCount < maxCap && lot.dropConfig.waveStatus === 'capped_closed' && lot.status === 'available') {
+    lot.dropConfig.waveStatus = 'silver_wave';
+  }
+  lot.updatedAt = new Date().toISOString();
+  await ydb.putItem('lots', lot);
+  memoryCache.invalidate('lots');
+  appCache.invalidatePrefix('lots');
+  appCache.invalidatePrefix('lot:');
+  return lot;
+}
+
+async function syncLotAndDealAssignment(
+  ydb: any,
+  lotCode: string,
+  winner: { userId: string; userName?: string } | null
+): Promise<void> {
+  const now = new Date().toISOString();
+  const targetCode = String(lotCode || '').trim().toUpperCase();
+  const targetLot = await findLotByCode(ydb, lotCode);
+
+  if (targetLot) {
+    if (winner) {
+      targetLot.buyerUserId = winner.userId;
+      targetLot.buyerName = winner.userName || targetLot.buyerName || 'Покупатель';
+      targetLot.status = 'in_deal';
+      targetLot.currentStage = 4;
+    } else {
+      targetLot.buyerUserId = null;
+      targetLot.buyerName = null;
+      targetLot.status = 'available';
+      targetLot.currentStage = 3;
+      if (targetLot.dropConfig) {
+        const allApps = ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[]) || [];
+        const activeCount = allApps.filter(
+          (a: BuyerApplication) => String(a.lotCode || '').trim().toUpperCase() === targetCode && isActiveApplication(a)
+        ).length;
+        const maxCap = Number(targetLot.dropConfig.maxApplicationsCap || 5);
+        targetLot.dropConfig.currentValidApplications = activeCount;
+        if (targetLot.dropConfig.waveStatus === 'capped_closed' && activeCount < maxCap) {
+          targetLot.dropConfig.waveStatus = 'silver_wave';
+        }
+      }
+    }
+    targetLot.updatedAt = now;
+    await ydb.putItem('lots', targetLot);
+    memoryCache.invalidate('lots');
+    appCache.invalidatePrefix('lots');
+    appCache.invalidatePrefix('lot:');
+  }
+
+  const allDeals = ((await ydb.scanAll('deals', 300)) as any[]) || [];
+  const targetDeal = allDeals.find(
+    (d: any) =>
+      String(d.lotCode || '').trim().toUpperCase() === targetCode ||
+      (targetLot && String(d.lotId || '').trim().toUpperCase() === String(targetLot.id).trim().toUpperCase())
+  );
+  if (targetDeal) {
+    if (winner) {
+      targetDeal.buyerUserId = winner.userId;
+      targetDeal.buyerName = winner.userName || targetDeal.buyerName || 'Покупатель';
+      targetDeal.stage = 'closing_escrow';
+      targetDeal.status = 'in_deal';
+    } else {
+      targetDeal.buyerUserId = null;
+      targetDeal.buyerName = null;
+      targetDeal.stage = 'buyer_matching';
+      targetDeal.status = 'active';
+    }
+    targetDeal.updatedAt = now;
+    await ydb.putItem('deals', targetDeal);
+    memoryCache.invalidate('deals');
+    appCache.invalidatePrefix('deals');
+  }
+}
+
+async function unfreezeBuyerOtherApplications(ydb: any, userId: string, excludedAppId?: string): Promise<number> {
+  const allApps = ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[]) || [];
+  const otherWin = allApps.find(
+    (a: BuyerApplication) =>
+      a.userId === userId && a.id !== excludedAppId && (a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal')
+  );
+  if (otherWin) return 0;
+
+  const frozen = allApps.filter(
+    (a: BuyerApplication) => a.userId === userId && a.id !== excludedAppId && a.queueStatus === 'standby_in_other_deal'
+  );
+  if (frozen.length === 0) return 0;
+
+  const bb = await getUnifiedBuyBox(ydb, userId);
+  const now = new Date().toISOString();
+  for (const fa of frozen) {
+    fa.queueStatus = 'pending_review';
+    fa.activeDealLotCode = undefined;
+    if (bb) {
+      const otherLot = await findLotByCode(ydb, fa.lotCode);
+      if (otherLot) {
+        const rescored = computeClosingScore(fa, bb, otherLot);
+        fa.closingScore = rescored.closingScore;
+        fa.scoreBreakdown = rescored.breakdown;
+      }
+    }
+    fa.updatedAt = now;
+    await ydb.putItem('buyer_applications', fa);
+  }
+  return frozen.length;
 }
 
 export async function handleMatching(event: YcHttpEvent, subPath: string): Promise<YcHttpResponse> {
@@ -305,12 +458,14 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
           tier: buyBox?.tier || 'silver',
           reliabilityScore: buyBox?.reliabilityScore ?? 100,
           availableLiquidityRub:
+            app.confirmedCashRub ||
+            app.availableLiquidityRub ||
             app.offeredPriceRub ||
             buyBox?.availableLiquidityRub ||
             buyBox?.maxBudgetRub ||
             lot?.cashPaidBySeller ||
             0,
-          paymentMethod: buyBox?.paymentMethod || 'cash_100',
+          paymentMethod: app.paymentMethod || buyBox?.paymentMethod || 'cash_100',
           lotTitle: lot ? `${lot.complexName || 'ЖК'}${lot.district ? ` (${lot.district})` : ''}` : `Лот #${app.lotCode}`,
           lotDistrict: lot?.district || '',
           lotPriceRub: lot?.cashPaidBySeller || 0,
@@ -702,39 +857,116 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const body = parseBody<{
       priceAcceptance?: PriceAcceptance;
       offeredPriceRub?: number;
+      paymentMethod?: BuyBoxPaymentMethod;
+      confirmedCashRub?: number;
+      buyerComment?: string;
+      proofDocuments?: Array<{
+        name?: string;
+        objectKey?: string;
+        mimeType?: string;
+        size?: number;
+        uploadedAt?: string;
+      }>;
       readiness24h?: boolean;
       deposit48h?: boolean;
       source?: 'web' | 'telegram';
     }>(event) || {};
 
-    const matchRes = computeMatchScore(lot, buyBox);
+    const validPaymentMethods = new Set<BuyBoxPaymentMethod>([
+      'cash_100',
+      'family_mortgage_approved',
+      'standard_mortgage_approved',
+      'alternative',
+    ]);
+    const submittedPaymentMethod: BuyBoxPaymentMethod =
+      body.paymentMethod && validPaymentMethods.has(body.paymentMethod)
+        ? body.paymentMethod
+        : buyBox.paymentMethod || 'cash_100';
+
+    const resolvedConfirmedCash =
+      typeof body.confirmedCashRub === 'number' && Number.isFinite(body.confirmedCashRub) && body.confirmedCashRub > 0
+        ? Math.round(body.confirmedCashRub)
+        : Number(buyBox.availableLiquidityRub || lot.cashPaidBySeller || 0);
+
+    const sanitizedProofDocs = Array.isArray(body.proofDocuments)
+      ? body.proofDocuments
+          .slice(0, 3)
+          .filter(
+            (d) =>
+              d &&
+              typeof d.objectKey === 'string' &&
+              d.objectKey.trim().length > 0 &&
+              !d.objectKey.startsWith('data:') &&
+              !d.objectKey.startsWith('http')
+          )
+          .map((d) => ({
+            name: String(d.name || 'Документ_идентификации.pdf').trim().slice(0, 180),
+            objectKey: String(d.objectKey).trim(),
+            mimeType: String(d.mimeType || 'application/pdf').trim().slice(0, 120),
+            size: Math.max(0, Number(d.size || 0)),
+            uploadedAt: String(d.uploadedAt || now.toISOString()),
+          }))
+      : [];
+
+    const effectiveBuyBoxForScore: BuyerBuyBox = {
+      ...buyBox,
+      paymentMethod: submittedPaymentMethod,
+      availableLiquidityRub: resolvedConfirmedCash || buyBox.availableLiquidityRub,
+    };
+
+    const matchRes = computeMatchScore(lot, effectiveBuyBoxForScore);
     const closingRes = computeClosingScore(
       {
         priceAcceptance: body.priceAcceptance,
         readiness24h: body.readiness24h,
         deposit48h: body.deposit48h,
       },
-      buyBox,
+      effectiveBuyBoxForScore,
       lot
     );
+
+    const freshUserRecord = await ydb.getItem<UserProfile>('users', authUser.id).catch(() => null);
+    const resolvedTelegram =
+      (freshUserRecord as any)?.telegram ||
+      (freshUserRecord as any)?.telegramUsername ||
+      (authUser as any)?.telegram ||
+      authUser.telegramUsername ||
+      '';
+    const resolvedPhone = freshUserRecord?.phone || authUser.phone || '';
+    const resolvedEmail = freshUserRecord?.email || authUser.email || '';
 
     const appId = `app:${lotCode}:${authUser.id}`;
     const newApp: BuyerApplication = {
       id: appId,
       lotCode,
       userId: authUser.id,
-      userEmail: authUser.email,
-      userName: authUser.name,
-      userPhone: authUser.phone,
+      userEmail: resolvedEmail,
+      userName: freshUserRecord?.name || authUser.name,
+      userPhone: resolvedPhone,
+      buyerEmail: resolvedEmail,
+      buyerPhone: resolvedPhone,
+      buyerTelegram: resolvedTelegram,
+      telegramUsername: resolvedTelegram,
+      telegramChatId: (freshUserRecord as any)?.telegramChatId || (authUser as any)?.telegramChatId || undefined,
       buyBoxId: buyBox.id,
       status: 'active',
+      tier: buyBox.tier,
+      reliabilityScore: buyBox.reliabilityScore ?? 100,
+      paymentMethod: submittedPaymentMethod,
+      confirmedCashRub: resolvedConfirmedCash,
+      availableLiquidityRub: resolvedConfirmedCash,
+      buyerComment: (body.buyerComment || '').trim().slice(0, 1000) || undefined,
+      proofDocuments: sanitizedProofDocs,
+      curatorVerificationStatus: 'pending',
+      curatorVerificationNote: '',
+      rejectionReason: '',
       closingScore: closingRes.closingScore,
       matchScore: matchRes.score,
       scoreBreakdown: closingRes.breakdown,
       queueStatus: activeWinElsewhere ? 'standby_in_other_deal' : 'pending_review',
       activeDealLotCode: activeWinElsewhere ? activeWinElsewhere.lotCode : undefined,
       priceAcceptance: body.priceAcceptance || 'full_price',
-      offeredPriceRub: body.offeredPriceRub,
+      offeredPriceRub: body.offeredPriceRub || resolvedConfirmedCash || undefined,
       readiness24h: Boolean(body.readiness24h),
       deposit48h: Boolean(body.deposit48h),
       ndaSigned,
@@ -745,16 +977,12 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
     await ydb.putItem('buyer_applications', newApp);
 
-    // Update drop counter
-    if (dropConfig) {
-      dropConfig.currentValidApplications = (dropConfig.currentValidApplications || 0) + 1;
-      if (dropConfig.currentValidApplications >= dropConfig.maxApplicationsCap) {
-        dropConfig.waveStatus = 'capped_closed';
-      }
-      lot.dropConfig = dropConfig;
-      await ydb.putItem('lots', lot);
-      memoryCache.invalidate('lots');
-    }
+    // Sync active seat counter accurately on lot
+    const updatedLot = await syncLotDropSeats(
+      ydb,
+      lotCode,
+      [...(allApps || []).filter((a) => a.id !== appId), newApp]
+    );
 
     await recordJournalEvent({
       action: 'CREATE',
@@ -766,11 +994,12 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
     // Notify staff on Telegram
     const text =
-      `📥 <b>НОВАЯ ЗАЯВКА В ТАКТОВЫЙ ТАБОР: #${escapeHtml(lotCode)}</b>\n` +
-      `Покупатель: <b>${escapeHtml(authUser.name || authUser.email)}</b> (Ранг: <b>${buyBox.tier.toUpperCase()}</b>)\n` +
+      `📥 <b>НОВАЯ ЗАЯВКА В ТАКТОВЫЙ ДРОП: #${escapeHtml(lotCode)}</b>\n` +
+      `Покупатель: <b>${escapeHtml(newApp.userName || resolvedEmail)}</b> (Ранг: <b>${buyBox.tier.toUpperCase()}</b> • SLA: <b>${buyBox.reliabilityScore ?? 100}%</b>)\n` +
       `Closing Score: <b>${closingRes.closingScore}/105</b> (Match: ${matchRes.score}%)\n` +
-      `Оплата: <b>${escapeHtml(buyBox.paymentMethod)}</b>\n` +
-      `Готовность: 24ч=${body.readiness24h ? 'Да' : 'Нет'}, Депозит 48ч=${body.deposit48h ? 'Да' : 'Нет'}`;
+      `Оплата: <b>${escapeHtml(submittedPaymentMethod)}</b> • Кэш: <b>${resolvedConfirmedCash.toLocaleString('ru-RU')} ₽</b>\n` +
+      `Документов прикреплено: <b>${sanitizedProofDocs.length}</b> • Готовность: 24ч=${body.readiness24h ? 'Да' : 'Нет'}, Депозит 48ч=${body.deposit48h ? 'Да' : 'Нет'}` +
+      (newApp.buyerComment ? `\nКомментарий: <i>${escapeHtml(newApp.buyerComment.slice(0, 220))}</i>` : '');
 
     await notifyStaff(text).catch((err: any) =>
       logger.warn('Failed to notify staff about queue application', { meta: { error: err.message } })
@@ -779,7 +1008,8 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     return json(event, 200, {
       ok: true,
       application: newApp,
-      waveStatus: dropConfig?.waveStatus || 'open',
+      waveStatus: updatedLot?.dropConfig?.waveStatus || dropConfig?.waveStatus || 'open',
+      currentValidApplications: updatedLot?.dropConfig?.currentValidApplications ?? dropConfig?.currentValidApplications ?? 1,
     });
   }
 
@@ -792,41 +1022,140 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       return json(event, 403, { error: 'Доступ к управлению очередью разрешен только сотрудникам' });
     }
 
-    const lotCode = queueMatch[1];
+    const lotCode = decodeURIComponent(queueMatch[1]);
     try {
-      const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 500);
-      const lotApps = (allApps || []).filter(
-        (a) =>
-          a.lotCode === lotCode &&
-          !ARCHIVED_APPLICATION_STATUSES.has(String(a.queueStatus || ''))
-      );
-
-      const allBuyBoxes = await ydb.scanAll<BuyerBuyBox>('buy_boxes', 500);
-      const bbMap = new Map<string, BuyerBuyBox>();
-      for (const bb of allBuyBoxes || []) {
-        const existing = bbMap.get(bb.userId);
-        if (!existing || (bb.tier === 'gold' && existing.tier !== 'gold')) {
-          bbMap.set(bb.userId, bb);
-        }
+      const targetLot = await findLotByCode(ydb, lotCode);
+      if (targetLot && !isEmployeeAssignedToRecord(authUser, targetLot)) {
+        return json(event, 403, {
+          error: 'Вы не назначены куратором этого объекта',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
       }
 
-      const enriched = lotApps.map((a) => {
-        const bb = bbMap.get(a.userId);
+      const [allApps, allUsers, allTierReqs, allPepSigs] = await Promise.all([
+        ydb.scanAll<BuyerApplication>('buyer_applications', 500),
+        ydb.scanAll<UserProfile>('users', 300),
+        ydb.scanAll<any>('tier_verification_requests', 200),
+        ydb.scanAll<any>('pep_signatures', 300),
+      ]);
+
+      const upperLotCode = lotCode.toUpperCase();
+      const lotAllApps = (allApps || []).filter(
+        (a) => String(a.lotCode || '').trim().toUpperCase() === upperLotCode
+      );
+
+      // Resolve LIVE Buy-Box for every unique applicant on this lot to avoid stale SLA/Tier mismatches
+      const uniqueUserIds = Array.from(new Set(lotAllApps.map((a) => a.userId).filter(Boolean)));
+      const liveBuyBoxes = new Map<string, BuyerBuyBox | null>();
+      await Promise.all(
+        uniqueUserIds.map(async (uid) => {
+          const bb = await getUnifiedBuyBox(ydb, uid).catch(() => null);
+          liveBuyBoxes.set(uid, bb);
+        })
+      );
+
+      const userMap = new Map<string, UserProfile>();
+      for (const u of allUsers || []) {
+        if (u.id) userMap.set(u.id, u);
+      }
+
+      const appCountByUser = new Map<string, number>();
+      for (const a of allApps || []) {
+        if (a.userId) appCountByUser.set(a.userId, (appCountByUser.get(a.userId) || 0) + 1);
+      }
+
+      const enrichApp = (a: BuyerApplication) => {
+        const bb = liveBuyBoxes.get(a.userId);
+        const u = userMap.get(a.userId);
+        const approvedGoldReq = (allTierReqs || []).find(
+          (tr: any) => tr.userId === a.userId && tr.status === 'approved'
+        );
+        const userLotSigs = (allPepSigs || []).filter(
+          (s: any) =>
+            String(s.lotCode || '').toUpperCase() === upperLotCode &&
+            s.userId === a.userId &&
+            s.status === 'signed'
+        );
+        const ndaSignedLive = Boolean(a.ndaSigned || userLotSigs.some((s: any) => s.documentType === 'nda_viewing_act'));
+        const offerSignedLive = userLotSigs.some((s: any) => s.documentType === 'buyer_reservation_terms');
+
         return {
           ...a,
-          tier: bb?.tier || 'silver',
-          reliabilityScore: bb?.reliabilityScore ?? 100,
+          userName: a.userName || u?.name || 'Покупатель',
+          userEmail: a.userEmail || u?.email || '',
+          userPhone: a.userPhone || u?.phone || '',
+          buyerEmail: a.buyerEmail || a.userEmail || u?.email || '',
+          buyerPhone: a.buyerPhone || a.userPhone || u?.phone || '',
+          buyerTelegram:
+            a.buyerTelegram ||
+            a.telegramUsername ||
+            (u as any)?.telegram ||
+            (u as any)?.telegramUsername ||
+            '',
+          paymentMethod: a.paymentMethod || bb?.paymentMethod || 'cash_100',
+          confirmedCashRub: a.confirmedCashRub || a.availableLiquidityRub || a.offeredPriceRub || bb?.availableLiquidityRub || 0,
+          tier: bb?.tier || (u as any)?.buyerTier || 'silver',
+          reliabilityScore: bb?.reliabilityScore ?? (u as any)?.reliabilityScore ?? 100,
           noShowCount: bb?.noShowCount ?? 0,
+          completedViewingsCount: bb?.completedViewingsCount ?? 0,
+          buyBoxSummary: bb
+            ? {
+                maxBudgetRub: bb.maxBudgetRub,
+                availableLiquidityRub: bb.availableLiquidityRub,
+                paymentMethod: bb.paymentMethod,
+                cities: bb.cities || [],
+                preferredBanks: bb.preferredBanks || [],
+                goal: bb.goal,
+              }
+            : null,
+          totalPlatformAppsCount: appCountByUser.get(a.userId) || 1,
+          goldVerification: approvedGoldReq
+            ? {
+                requestId: approvedGoldReq.id,
+                proofType: approvedGoldReq.proofType,
+                declaredBudgetRub: approvedGoldReq.declaredBudgetRub,
+                documentName: approvedGoldReq.documentName,
+                reviewedAt: approvedGoldReq.reviewedAt,
+              }
+            : null,
+          ndaSigned: ndaSignedLive,
+          offerSigned: offerSignedLive,
         };
-      });
+      };
 
-      const ranked = rankApplications(enriched);
+      const activeApps = lotAllApps.filter((a) => !ARCHIVED_APPLICATION_STATUSES.has(String(a.queueStatus || '')));
+      const archivedApps = lotAllApps.filter((a) => ARCHIVED_APPLICATION_STATUSES.has(String(a.queueStatus || '')));
+
+      const rankedRaw = rankApplications(activeApps.map(enrichApp));
+      const statusPriority = (qs?: string) => {
+        if (qs === 'priority_1' || qs === 'in_deal') return 0;
+        if (qs === 'reserve_2') return 1;
+        if (qs === 'reserve_3') return 2;
+        if (qs === 'waitlist') return 3;
+        if (qs === 'pending_review') return 4;
+        if (qs === 'standby_in_other_deal') return 5;
+        return 6;
+      };
+      const ranked = [...rankedRaw]
+        .sort((a, b) => {
+          const pd = statusPriority(a.queueStatus) - statusPriority(b.queueStatus);
+          if (pd !== 0) return pd;
+          return (b.closingScore || 0) - (a.closingScore || 0);
+        })
+        .map((item, idx) => ({ ...item, queuePosition: idx + 1 }));
+
+      const archivedQueue = archivedApps
+        .map(enrichApp)
+        .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
 
       return json(event, 200, {
         ok: true,
         lotCode,
         totalApplications: ranked.length,
+        activeApplicationsCount: ranked.length,
+        archivedCount: archivedQueue.length,
         queue: ranked,
+        archivedQueue,
       });
     } catch (err: any) {
       logger.error('Error fetching lot queue', { meta: { error: err.message, lotCode } });
@@ -1660,6 +1989,392 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     } catch (err: any) {
       logger.error('Error withdrawing buyer application', { meta: { error: err.message, appId } });
       return json(event, 500, { error: 'Не удалось отозвать заявку' });
+    }
+  }
+
+  // =========================================================================
+  // 10c. PATCH /api/matching/applications/:id/verify (Staff: Verify Proof & Request)
+  // =========================================================================
+  const verifyAppMatch = subPath.match(/^\/applications\/([^/]+)\/verify$/);
+  if (verifyAppMatch && method === 'PATCH') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Проверка заявок разрешена только сотрудникам платформы' });
+    }
+    const appId = decodeURIComponent(verifyAppMatch[1]);
+    const body = parseBody<{
+      curatorVerificationStatus?: 'pending' | 'verified' | 'needs_clarification';
+      curatorVerificationNote?: string;
+    }>(event) || {};
+
+    const nextStatus = String(body.curatorVerificationStatus || '').trim();
+    if (!VERIFICATION_STATUS_SET.has(nextStatus)) {
+      return json(event, 400, {
+        error: 'Укажите корректный статус проверки (verified, needs_clarification или pending)',
+      });
+    }
+
+    try {
+      const app = await ydb.getItem<BuyerApplication>('buyer_applications', appId);
+      if (!app) return json(event, 404, { error: 'Заявка не найдена' });
+
+      const lotForCheck = await findLotByCode(ydb, app.lotCode);
+      if (lotForCheck && !isEmployeeAssignedToRecord(authUser, lotForCheck)) {
+        return json(event, 403, {
+          error: 'Вы не назначены куратором этого объекта',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
+
+      const now = new Date().toISOString();
+      const note = String(body.curatorVerificationNote || '').trim().slice(0, 1000);
+      app.curatorVerificationStatus = nextStatus as any;
+      app.curatorVerificationNote = note;
+      app.curatorVerifiedAt = nextStatus === 'verified' ? now : undefined;
+      app.curatorVerifiedBy = authUser.email || authUser.name || authUser.id;
+      app.updatedAt = now;
+      await ydb.putItem('buyer_applications', app);
+
+      await writeMatchingAuditLog(ydb, authUser, {
+        lotCode: app.lotCode,
+        actionType: 'buyer_application_verified',
+        title: `Проверка заявки #${app.lotCode} (${app.userName || app.userId}): ${nextStatus}`,
+        description: note || `Статус проверки изменён на «${nextStatus}»`,
+        metadata: { appId: app.id, buyerId: app.userId, verificationStatus: nextStatus },
+      });
+
+      const tgMsg =
+        nextStatus === 'verified'
+          ? `✅ <b>Заявка и документы проверены куратором</b>\nЛот: <b>#${escapeHtml(app.lotCode)}</b>\nКуратор подтвердил ваши документы и условия сделки.` +
+            (note ? `\nКомментарий: <i>${escapeHtml(note)}</i>` : '')
+          : nextStatus === 'needs_clarification'
+          ? `📝 <b>Куратор запросил уточнение по заявке #${escapeHtml(app.lotCode)}</b>\n` +
+            (note ? `Комментарий куратора: <i>${escapeHtml(note)}</i>` : 'Свяжитесь с куратором в личном кабинете.')
+          : `🔄 <b>Статус проверки заявки #${escapeHtml(app.lotCode)} обновлен на «На проверке»</b>`;
+      await notifyUserTelegram(app.userId, tgMsg);
+
+      return json(event, 200, { ok: true, application: app });
+    } catch (err: any) {
+      logger.error('Error verifying application', { meta: { error: err.message, appId } });
+      return json(event, 500, { error: 'Не удалось обновить статус проверки заявки' });
+    }
+  }
+
+  // =========================================================================
+  // 10d. POST /api/matching/applications/:id/select-winner (Staff: Individual Winner)
+  // =========================================================================
+  const selectWinnerMatch = subPath.match(/^\/applications\/([^/]+)\/select-winner$/);
+  if (selectWinnerMatch && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Выбор победителя разрешен только сотрудникам платформы' });
+    }
+    const appId = decodeURIComponent(selectWinnerMatch[1]);
+    const body = parseBody<{ replaceExistingWinner?: boolean }>(event) || {};
+
+    try {
+      const app = await ydb.getItem<BuyerApplication>('buyer_applications', appId);
+      if (!app) return json(event, 404, { error: 'Заявка не найдена' });
+
+      const lotCode = app.lotCode;
+      const lotForCheck = await findLotByCode(ydb, lotCode);
+      if (lotForCheck && !isEmployeeAssignedToRecord(authUser, lotForCheck)) {
+        return json(event, 403, {
+          error: 'Вы не назначены куратором этого объекта',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
+
+      if (ARCHIVED_APPLICATION_STATUSES.has(String(app.queueStatus || ''))) {
+        return json(event, 400, { error: 'Нельзя выбрать победителем архивную или отклонённую заявку' });
+      }
+
+      const allApps = ((await ydb.scanAll<BuyerApplication>('buyer_applications', 500)) || []);
+      const upperCode = String(lotCode).trim().toUpperCase();
+
+      const otherActiveWin = allApps.find(
+        (a) =>
+          a.userId === app.userId &&
+          String(a.lotCode || '').trim().toUpperCase() !== upperCode &&
+          (a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal')
+      );
+      if (app.queueStatus === 'standby_in_other_deal' || otherActiveWin) {
+        const conflictCode = app.activeDealLotCode || otherActiveWin?.lotCode || 'другом лоте';
+        return json(event, 400, {
+          code: 'BUYER_IN_ACTIVE_DEAL',
+          error: `Нельзя назначить победителем: покупатель уже участвует в активной сделке (#${conflictCode}).`,
+          activeDealLotCode: conflictCode,
+        });
+      }
+
+      const existingLotWinner = allApps.find(
+        (a) =>
+          a.id !== app.id &&
+          String(a.lotCode || '').trim().toUpperCase() === upperCode &&
+          (a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal')
+      );
+      if (existingLotWinner && !body.replaceExistingWinner) {
+        return json(event, 409, {
+          code: 'WINNER_ALREADY_EXISTS',
+          error: `По лоту #${lotCode} уже зафиксирован активный победитель (${existingLotWinner.userName || existingLotWinner.userId}). Сначала переведите его в резерв/отклоните или подтвердите замену.`,
+          existingWinnerAppId: existingLotWinner.id,
+        });
+      }
+
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const viewingDeadlineAt = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
+      const depositDeadlineAt = new Date(now.getTime() + 48 * 3600 * 1000).toISOString();
+
+      if (existingLotWinner && body.replaceExistingWinner) {
+        existingLotWinner.queueStatus = 'waitlist';
+        existingLotWinner.updatedAt = nowIso;
+        await ydb.putItem('buyer_applications', existingLotWinner);
+        await unfreezeBuyerOtherApplications(ydb, existingLotWinner.userId, existingLotWinner.id);
+      }
+
+      // IMPORTANT: Do NOT auto-reject remaining applicants in queue!
+      app.queueStatus = 'priority_1';
+      app.queuePosition = 1;
+      app.activeDealLotCode = undefined;
+      app.viewingDeadlineAt = viewingDeadlineAt;
+      app.depositDeadlineAt = depositDeadlineAt;
+      app.updatedAt = nowIso;
+      await ydb.putItem('buyer_applications', app);
+
+      // Freeze winning buyer's applications on OTHER lots
+      let frozenAppsCount = 0;
+      const otherAppsToFreeze = allApps.filter(
+        (a) =>
+          a.userId === app.userId &&
+          String(a.lotCode || '').trim().toUpperCase() !== upperCode &&
+          isActiveApplication(a) &&
+          a.queueStatus !== 'priority_1' &&
+          a.queueStatus !== 'in_deal'
+      );
+      for (const oa of otherAppsToFreeze) {
+        oa.queueStatus = 'standby_in_other_deal';
+        oa.activeDealLotCode = lotCode;
+        oa.updatedAt = nowIso;
+        await ydb.putItem('buyer_applications', oa);
+        frozenAppsCount++;
+      }
+
+      await syncLotAndDealAssignment(ydb, lotCode, {
+        userId: app.userId,
+        userName: app.userName,
+      });
+
+      await writeMatchingAuditLog(ydb, authUser, {
+        lotCode,
+        actionType: 'buyer_winner_selected',
+        title: `Выбран Победитель №1 по лоту #${lotCode}: ${app.userName || app.userId}`,
+        description: `Покупатель переведен в приоритет №1 (дедлайны 24ч/48ч), сделка в closing_escrow. Остальные кандидаты сохранены в очереди.`,
+        metadata: { appId: app.id, buyerId: app.userId, frozenAppsCount },
+      });
+
+      await notifyUserTelegram(
+        app.userId,
+        `👑 <b>Поздравляем! Вы выбраны Победителем №1 по лоту #${escapeHtml(lotCode)}!</b>\n` +
+          `• Срок подтверждения просмотра: <b>24 часа</b>\n` +
+          `• Срок обеспечения/депозита: <b>48 часов</b>\n` +
+          `Откройте «Личный кабинет → Я покупатель» на платформе DomExit для подписания ПЭП (63-ФЗ) и связи с куратором.`
+      );
+
+      return json(event, 200, {
+        ok: true,
+        lotCode,
+        application: app,
+        frozenAppsCount,
+        viewingDeadlineAt,
+        depositDeadlineAt,
+      });
+    } catch (err: any) {
+      logger.error('Error selecting individual winner', { meta: { error: err.message, appId } });
+      return json(event, 500, { error: 'Не удалось назначить победителя' });
+    }
+  }
+
+  // =========================================================================
+  // 10e. POST /api/matching/applications/:id/set-waitlist (Staff: Waitlist / Reserve)
+  // =========================================================================
+  const setWaitlistMatch = subPath.match(/^\/applications\/([^/]+)\/set-waitlist$/);
+  if (setWaitlistMatch && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Управление списком ожидания разрешено только сотрудникам платформы' });
+    }
+    const appId = decodeURIComponent(setWaitlistMatch[1]);
+    const body = parseBody<{
+      targetStatus?: 'reserve_2' | 'reserve_3' | 'waitlist' | 'pending_review';
+      note?: string;
+    }>(event) || {};
+
+    const targetStatus = String(body.targetStatus || 'waitlist').trim();
+    if (!WAITLIST_TARGET_SET.has(targetStatus)) {
+      return json(event, 400, {
+        error: 'Допустимые статусы: reserve_2, reserve_3, waitlist, pending_review',
+      });
+    }
+
+    try {
+      const app = await ydb.getItem<BuyerApplication>('buyer_applications', appId);
+      if (!app) return json(event, 404, { error: 'Заявка не найдена' });
+
+      const lotForCheck = await findLotByCode(ydb, app.lotCode);
+      if (lotForCheck && !isEmployeeAssignedToRecord(authUser, lotForCheck)) {
+        return json(event, 403, {
+          error: 'Вы не назначены куратором этого объекта',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
+
+      if (ARCHIVED_APPLICATION_STATUSES.has(String(app.queueStatus || ''))) {
+        return json(event, 400, { error: 'Нельзя перевести в резерв уже закрытую или отклонённую заявку' });
+      }
+      if (app.queueStatus === 'standby_in_other_deal') {
+        return json(event, 400, {
+          code: 'BUYER_IN_ACTIVE_DEAL',
+          error: 'Покупатель сейчас закреплён в другой активной сделке',
+        });
+      }
+
+      const wasWinner = app.queueStatus === 'priority_1' || app.queueStatus === 'in_deal';
+      const nowIso = new Date().toISOString();
+      app.queueStatus = targetStatus as QueueStatus;
+      if (targetStatus === 'reserve_2') app.queuePosition = 2;
+      else if (targetStatus === 'reserve_3') app.queuePosition = 3;
+      app.viewingDeadlineAt = undefined;
+      app.depositDeadlineAt = undefined;
+      if (body.note) {
+        app.curatorVerificationNote = String(body.note).trim().slice(0, 1000);
+      }
+      app.updatedAt = nowIso;
+      await ydb.putItem('buyer_applications', app);
+
+      if (wasWinner) {
+        await syncLotAndDealAssignment(ydb, app.lotCode, null);
+        await unfreezeBuyerOtherApplications(ydb, app.userId, app.id);
+      } else {
+        await syncLotDropSeats(ydb, app.lotCode);
+      }
+
+      const STATUS_LABEL_RU: Record<string, string> = {
+        reserve_2: 'Резерв №2 (приоритетный лист ожидания)',
+        reserve_3: 'Резерв №3 (приоритетный лист ожидания)',
+        waitlist: 'Лист ожидания',
+        pending_review: 'На рассмотрении куратора',
+      };
+
+      await writeMatchingAuditLog(ydb, authUser, {
+        lotCode: app.lotCode,
+        actionType: 'buyer_waitlist_updated',
+        title: `Заявка #${app.lotCode} (${app.userName || app.userId}): ${STATUS_LABEL_RU[targetStatus]}`,
+        description: body.note || `Статус в очереди изменён на «${STATUS_LABEL_RU[targetStatus]}»`,
+        metadata: { appId: app.id, buyerId: app.userId, targetStatus, wasWinner },
+      });
+
+      await notifyUserTelegram(
+        app.userId,
+        `⏳ <b>Обновление статуса в очереди: лот #${escapeHtml(app.lotCode)}</b>\n` +
+          `Ваша заявка переведена в статус: <b>${escapeHtml(STATUS_LABEL_RU[targetStatus])}</b>.\n` +
+          `Если текущая бронь по лоту освободится, куратор передаст сделку по очереди.`
+      );
+
+      return json(event, 200, { ok: true, application: app, wasWinner });
+    } catch (err: any) {
+      logger.error('Error setting waitlist status', { meta: { error: err.message, appId } });
+      return json(event, 500, { error: 'Не удалось обновить позицию в списке ожидания' });
+    }
+  }
+
+  // =========================================================================
+  // 10f. POST /api/matching/applications/:id/reject (Staff: Reject Single Applicant)
+  // =========================================================================
+  const rejectAppMatch = subPath.match(/^\/applications\/([^/]+)\/reject$/);
+  if (rejectAppMatch && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Отклонение заявок разрешено только сотрудникам платформы' });
+    }
+    const appId = decodeURIComponent(rejectAppMatch[1]);
+    const body = parseBody<{ rejectionReason?: string }>(event) || {};
+    const rejectionReason = String(body.rejectionReason || '').trim().slice(0, 500);
+
+    if (rejectionReason.length < 3) {
+      return json(event, 400, {
+        error: 'Укажите обязательную причину отклонения заявки (минимум 3 символа)',
+      });
+    }
+
+    try {
+      const app = await ydb.getItem<BuyerApplication>('buyer_applications', appId);
+      if (!app) return json(event, 404, { error: 'Заявка не найдена' });
+
+      const lotForCheck = await findLotByCode(ydb, app.lotCode);
+      if (lotForCheck && !isEmployeeAssignedToRecord(authUser, lotForCheck)) {
+        return json(event, 403, {
+          error: 'Вы не назначены куратором этого объекта',
+          code: 'NOT_ASSIGNED_TO_LOT',
+        });
+      }
+
+      if (String(app.queueStatus || '') === 'rejected') {
+        return json(event, 400, { error: 'Эта заявка уже была отклонена ранее' });
+      }
+
+      const wasWinner = app.queueStatus === 'priority_1' || app.queueStatus === 'in_deal';
+      const nowIso = new Date().toISOString();
+
+      app.queueStatus = 'rejected';
+      app.status = 'rejected';
+      app.rejectionReason = rejectionReason;
+      app.rejectedAt = nowIso;
+      app.rejectedBy = authUser.email || authUser.name || authUser.id;
+      app.viewingDeadlineAt = undefined;
+      app.depositDeadlineAt = undefined;
+      app.updatedAt = nowIso;
+      await ydb.putItem('buyer_applications', app);
+
+      let unfrozenCount = 0;
+      if (wasWinner) {
+        await syncLotAndDealAssignment(ydb, app.lotCode, null);
+        unfrozenCount = await unfreezeBuyerOtherApplications(ydb, app.userId, app.id);
+      }
+
+      // Sync active seats counter & potentially reopen capped_closed -> silver_wave
+      const updatedLot = await syncLotDropSeats(ydb, app.lotCode);
+
+      await recordJournalEvent({
+        action: 'UPDATE',
+        collection: 'buyer_applications',
+        recordId: app.id,
+        actor: { userId: authUser.id, role: authUser.role, email: authUser.email },
+        payload: { queueStatus: 'rejected', rejectionReason, wasWinner, unfrozenCount },
+      });
+
+      await writeMatchingAuditLog(ydb, authUser, {
+        lotCode: app.lotCode,
+        actionType: 'buyer_application_rejected',
+        title: `Отклонена заявка #${app.lotCode} (${app.userName || app.userId})`,
+        description: `Причина: ${rejectionReason}. Слот клиента освобожден.`,
+        metadata: { appId: app.id, buyerId: app.userId, rejectionReason, wasWinner, unfrozenCount },
+      });
+
+      await notifyUserTelegram(
+        app.userId,
+        `❌ <b>Заявка по лоту #${escapeHtml(app.lotCode)} отклонена</b>\n` +
+          `Причина: <i>${escapeHtml(rejectionReason)}</i>\n` +
+          `Ваша квота активных заявок (слот из 3) автоматически освобождена.`
+      );
+
+      return json(event, 200, {
+        ok: true,
+        application: app,
+        wasWinner,
+        unfrozenCount,
+        currentValidApplications: updatedLot?.dropConfig?.currentValidApplications ?? 0,
+        waveStatus: updatedLot?.dropConfig?.waveStatus || 'silver_wave',
+      });
+    } catch (err: any) {
+      logger.error('Error rejecting buyer application', { meta: { error: err.message, appId } });
+      return json(event, 500, { error: 'Не удалось отклонить заявку' });
     }
   }
 

@@ -48,6 +48,9 @@ export interface BuyerDealsTabProps {
 
 const PAYMENT_LABEL: Record<string, string> = {
   cash_100: '100% Кэш / СБР',
+  family_mortgage_approved: 'Семейная ипотека (одобрена)',
+  standard_mortgage_approved: 'Стандартная ипотека (одобрена)',
+  alternative: 'Альтернативная сделка',
   cash_plus_mortgage: 'Кэш + Ипотека (Семейная / Рыночная)',
   family_mortgage: 'Семейная ипотека',
   mortgage_substitution: 'Кэш + Ипотека',
@@ -66,12 +69,12 @@ const APP_STATUS_META: Record<
     className: 'bg-amber-500 text-slate-950 font-black shadow-xs',
   },
   reserve_2: {
-    label: 'Резерв №2 (Очередь отбора)',
-    className: 'bg-indigo-100 text-indigo-900 border border-indigo-200',
+    label: '⏳ В листе ожидания (Резерв №2)',
+    className: 'bg-sky-100 text-sky-900 border border-sky-200',
   },
   reserve_3: {
-    label: 'Резерв №3 (Очередь отбора)',
-    className: 'bg-slate-200 text-slate-800 border border-slate-300',
+    label: '⏳ В листе ожидания (Резерв №3)',
+    className: 'bg-sky-100 text-sky-800 border border-sky-200',
   },
   standby_in_other_deal: {
     label: 'Заморожена (вы в другой сделке)',
@@ -82,7 +85,7 @@ const APP_STATUS_META: Record<
     className: 'bg-sky-100 text-sky-900 border border-sky-200',
   },
   waitlist: {
-    label: 'Лист ожидания (Активна)',
+    label: '⏳ В листе ожидания',
     className: 'bg-sky-100 text-sky-900 border border-sky-200',
   },
   withdrawn_from_queue: {
@@ -328,12 +331,17 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
               };
               const isWinner = app.queueStatus === 'priority_1' || app.queueStatus === 'in_deal';
               const isStandby = app.queueStatus === 'standby_in_other_deal';
+              const isWaitlist =
+                app.queueStatus === 'reserve_2' ||
+                app.queueStatus === 'reserve_3' ||
+                app.queueStatus === 'waitlist';
               const isWithdrawing = withdrawingId === app.id;
 
               const liquidityAmount =
-                app.availableLiquidityRub || app.offeredPriceRub || app.lotPriceRub || 0;
+                app.confirmedCashRub || app.availableLiquidityRub || app.offeredPriceRub || app.lotPriceRub || 0;
               const paymentLabel =
                 PAYMENT_LABEL[app.paymentMethod || 'cash_100'] || '100% Кэш / СБР';
+              const proofDocs = Array.isArray(app.proofDocuments) ? app.proofDocuments : [];
 
               const curatorData = matchedLot?.curator;
               const liveCurator = matchedLot?.assignedEmployeeId
@@ -435,6 +443,88 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {isWaitlist && (
+                    <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-950 flex items-start space-x-2">
+                      <Clock className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>
+                          Вы в листе ожидания (
+                          {app.queueStatus === 'reserve_2'
+                            ? 'Резерв №2'
+                            : app.queueStatus === 'reserve_3'
+                            ? 'Резерв №3'
+                            : 'Приоритетная очередь'}
+                          ).
+                        </strong>{' '}
+                        Объект сейчас забронирован другим кандидатом. Если текущая сделка не состоится, куратор передаст лот в вашу пользу согласно очереди.
+                      </span>
+                    </div>
+                  )}
+
+                  {(app.curatorVerificationStatus === 'verified' ||
+                    app.curatorVerificationStatus === 'needs_clarification' ||
+                    app.buyerComment ||
+                    proofDocs.length > 0) && (
+                    <div className="p-3 rounded-xl bg-white border border-slate-200 text-xs space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-slate-600">
+                          Проверка и материалы заявки:
+                        </span>
+                        {app.curatorVerificationStatus === 'verified' && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                            ✓ Проверено куратором
+                          </span>
+                        )}
+                        {app.curatorVerificationStatus === 'needs_clarification' && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                            📝 Требуется уточнение куратора
+                          </span>
+                        )}
+                      </div>
+                      {app.curatorVerificationNote && (
+                        <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-950">
+                          <strong>Комментарий куратора:</strong> {app.curatorVerificationNote}
+                        </div>
+                      )}
+                      {app.buyerComment && (
+                        <div className="text-[11px] text-slate-600">
+                          <strong>Ваш комментарий:</strong> {app.buyerComment}
+                        </div>
+                      )}
+                      {proofDocs.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {proofDocs.map((doc, idx) => (
+                            <button
+                              key={`${doc.objectKey}-${idx}`}
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await apiClient.get<{ downloadUrl?: string }>(
+                                    `/api/storage/presign-download?key=${encodeURIComponent(
+                                      doc.objectKey
+                                    )}&lotCode=${encodeURIComponent(app.lotCode)}&filename=${encodeURIComponent(doc.name)}`
+                                  );
+                                  if (res?.downloadUrl) {
+                                    window.open(res.downloadUrl, '_blank', 'noopener,noreferrer');
+                                  }
+                                } catch (err: any) {
+                                  setFeedbackMsg({
+                                    type: 'err',
+                                    text: err?.message || 'Не удалось открыть документ',
+                                  });
+                                }
+                              }}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-[11px] font-bold text-indigo-700 cursor-pointer"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span className="truncate max-w-[180px]">{doc.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {isStandby && (
                     <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 flex items-start space-x-2">
@@ -771,6 +861,7 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
               {archivedApplications.map((app) => {
                 const statusKey = app.queueStatus || 'withdrawn';
                 const isCompletedWin = statusKey === 'completed' || app.status === 'completed';
+                const isRejectedArchive = statusKey === 'rejected' || app.status === 'rejected';
                 const statusMeta = APP_STATUS_META[statusKey] || {
                   label: statusKey,
                   className: 'bg-slate-100 text-slate-600',
@@ -781,6 +872,8 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                     className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
                       isCompletedWin
                         ? 'bg-emerald-50/70 border-emerald-300 shadow-xs'
+                        : isRejectedArchive
+                        ? 'bg-rose-50/60 border-rose-200'
                         : 'bg-slate-50 border-slate-200'
                     }`}
                   >
@@ -801,10 +894,15 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                       </div>
                       <p className="text-slate-500">
                         Подана: {app.createdAt ? new Date(app.createdAt).toLocaleString('ru-RU') : '—'}
-                        {(app.completedAt || app.withdrawnAt)
-                          ? ` • Завершена: ${new Date(app.completedAt || app.withdrawnAt || '').toLocaleString('ru-RU')}`
+                        {(app.completedAt || app.withdrawnAt || app.rejectedAt)
+                          ? ` • Завершена: ${new Date(app.completedAt || app.withdrawnAt || app.rejectedAt || '').toLocaleString('ru-RU')}`
                           : ''}
                       </p>
+                      {isRejectedArchive && app.rejectionReason && (
+                        <p className="text-[11px] text-rose-800 bg-white/80 border border-rose-200 rounded-lg px-2.5 py-1 inline-block">
+                          <strong>Причина отклонения:</strong> {app.rejectionReason}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 self-start sm:self-center">
                       {isCompletedWin && (

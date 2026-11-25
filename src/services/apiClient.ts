@@ -459,13 +459,28 @@ export const apiClient = {
       lotCode: string,
       params: {
         priceAcceptance: PriceAcceptance;
+        paymentMethod?: 'cash_100' | 'family_mortgage_approved' | 'standard_mortgage_approved' | 'alternative';
+        confirmedCashRub?: number;
+        buyerComment?: string;
+        proofDocuments?: Array<{
+          name: string;
+          objectKey: string;
+          mimeType: string;
+          size: number;
+          uploadedAt: string;
+        }>;
         readiness24h: boolean;
         deposit48h: boolean;
         ndaSigned?: boolean;
         offeredPriceRub?: number;
       }
     ) =>
-      request<{ ok: boolean; application: BuyerApplication; waveStatus: string }>(
+      request<{
+        ok: boolean;
+        application: BuyerApplication;
+        waveStatus: string;
+        currentValidApplications?: number;
+      }>(
         `/api/matching/lots/${encodeURIComponent(lotCode)}/apply`,
         {
           method: 'POST',
@@ -478,14 +493,91 @@ export const apiClient = {
         ok: boolean;
         lotCode: string;
         totalApplications: number;
+        activeApplicationsCount?: number;
+        archivedCount?: number;
         queue: Array<
           BuyerApplication & {
             tier: BuyBoxTier;
             reliabilityScore: number;
             noShowCount: number;
+            completedViewingsCount?: number;
+            totalPlatformAppsCount?: number;
+            offerSigned?: boolean;
+            buyBoxSummary?: {
+              maxBudgetRub?: number;
+              availableLiquidityRub?: number;
+              paymentMethod?: string;
+              cities?: string[];
+              preferredBanks?: string[];
+              goal?: string;
+            } | null;
+            goldVerification?: {
+              requestId: string;
+              proofType?: string;
+              declaredBudgetRub?: number;
+              documentName?: string;
+              reviewedAt?: string;
+            } | null;
           }
         >;
+        archivedQueue?: Array<BuyerApplication & { tier: BuyBoxTier; reliabilityScore: number }>;
       }>(`/api/matching/lots/${encodeURIComponent(lotCode)}/queue`, { method: 'GET' }),
+
+    verifyApplication: (
+      appId: string,
+      params: {
+        curatorVerificationStatus: 'pending' | 'verified' | 'needs_clarification';
+        curatorVerificationNote?: string;
+      }
+    ) =>
+      request<{ ok: boolean; application: BuyerApplication }>(
+        `/api/matching/applications/${encodeURIComponent(appId)}/verify`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(params),
+        }
+      ),
+
+    selectWinnerApplication: (appId: string, params?: { replaceExistingWinner?: boolean }) =>
+      request<{
+        ok: boolean;
+        lotCode: string;
+        application: BuyerApplication;
+        frozenAppsCount: number;
+        viewingDeadlineAt?: string;
+        depositDeadlineAt?: string;
+      }>(`/api/matching/applications/${encodeURIComponent(appId)}/select-winner`, {
+        method: 'POST',
+        body: JSON.stringify(params || {}),
+      }),
+
+    setWaitlistApplication: (
+      appId: string,
+      params: {
+        targetStatus: 'reserve_2' | 'reserve_3' | 'waitlist' | 'pending_review';
+        note?: string;
+      }
+    ) =>
+      request<{ ok: boolean; application: BuyerApplication; wasWinner: boolean }>(
+        `/api/matching/applications/${encodeURIComponent(appId)}/set-waitlist`,
+        {
+          method: 'POST',
+          body: JSON.stringify(params),
+        }
+      ),
+
+    rejectApplication: (appId: string, params: { rejectionReason: string }) =>
+      request<{
+        ok: boolean;
+        application: BuyerApplication;
+        wasWinner: boolean;
+        unfrozenCount: number;
+        currentValidApplications: number;
+        waveStatus: string;
+      }>(`/api/matching/applications/${encodeURIComponent(appId)}/reject`, {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }),
 
     selectLotPriority: (
       lotCode: string,
