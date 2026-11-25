@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AdminSidebar } from '../components/layout/AdminSidebar';
@@ -8,17 +8,14 @@ import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { StorageService } from '../dal/StorageService';
 import { apiClient } from '../services/apiClient';
 import {
+  DocumentMetadata,
   Lot,
-  LegalAuditCheckpoint,
   LegalAuditAxis,
   LegalAuditAxisStatus,
   LegalRadarCheckItem,
   SecondaryRiskChecklist,
 } from '../types';
-import { DEFAULT_LEGAL_AUDIT_AXES, HONEST_STATUS_CONFIG } from '../data/legalAuditAxes';
-import { INITIAL_CHECKPOINTS } from '../components/admin/legal-audit/legalAuditConstants';
-import { formatRubles } from '../utils/formatters';
-import { FileManager } from '../utils/fileManager';
+import { createInitialLegalAuditAxes, HONEST_STATUS_CONFIG } from '../data/legalAuditAxes';
 import { LegalRadarPanel } from '../components/admin/legal-audit/LegalRadarPanel';
 import { LegalAuditAxesSection } from '../components/admin/legal-audit/LegalAuditAxesSection';
 import { LegalCheckpointsMatrix } from '../components/admin/legal-audit/LegalCheckpointsMatrix';
@@ -26,8 +23,23 @@ import { LegalAuditHeaderCard } from '../components/admin/legal-audit/LegalAudit
 import { LegalMemoGenerator } from '../components/admin/legal-audit/LegalMemoGenerator';
 import { LegalOperationsLog } from '../components/admin/legal-audit/LegalOperationsLog';
 import { LegalDecisionBar } from '../components/admin/legal-audit/LegalDecisionBar';
-import { LegalAuditModalsContainer } from '../components/admin/legal-audit/LegalAuditModals';
-import { CheckCircle2, FileText, HardDrive } from 'lucide-react';
+import { InlineSellerDocumentsPanel } from '../components/admin/legal-audit/InlineSellerDocumentsPanel';
+import { computeLegalVerificationProgress } from '../components/admin/legal-audit/legalAuditGate';
+import {
+  RequestDocsModal,
+  RejectModal,
+} from '../components/admin/legal-audit/LegalAuditModals';
+import {
+  CheckCircle2,
+  FileSearch,
+  Scale,
+  ShieldCheck,
+  AlertCircle,
+  Radar,
+} from 'lucide-react';
+import { FileManager } from '../utils/fileManager';
+
+type LegalAuditTab = 1 | 2 | 3;
 
 export const AdminLegalAuditPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -36,22 +48,20 @@ export const AdminLegalAuditPage: React.FC = () => {
 
   const [lot, setLot] = useState<Lot | null>(null);
   const [accessibleLots, setAccessibleLots] = useState<Lot[]>([]);
+  const [activeTab, setActiveTab] = useState<LegalAuditTab>(1);
   const [notice, setNotice] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
+  const [isApproving, setIsApproving] = useState<boolean>(false);
 
-  // Axes and Checkpoints State
-  const [axes, setAxes] = useState<LegalAuditAxis[]>(DEFAULT_LEGAL_AUDIT_AXES);
-  const [checkpoints, setCheckpoints] = useState<LegalAuditCheckpoint[]>(INITIAL_CHECKPOINTS);
-  const [inspectingCheckpoint, setInspectingCheckpoint] = useState<LegalAuditCheckpoint | null>(null);
-  const [isUploadingProof, setIsUploadingProof] = useState<boolean>(false);
+  // Documents Vault State
+  const [vaultDocs, setVaultDocs] = useState<DocumentMetadata[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState<boolean>(false);
 
-  // Inspector Form State
-  const [editScore, setEditScore] = useState<number>(10);
-  const [editStatus, setEditStatus] = useState<'clean' | 'attention' | 'critical'>('clean');
-  const [editNotes, setEditNotes] = useState<string>('');
-  const [editProofName, setEditProofName] = useState<string>('');
-  const [editProofUrl, setEditProofUrl] = useState<string>('');
-  const [editProofKey, setEditProofKey] = useState<string>('');
+  // Axes & Radar State (True Zero-State Default)
+  const [axes, setAxes] = useState<LegalAuditAxis[]>(() => createInitialLegalAuditAxes());
+  const [radarChecks, setRadarChecks] = useState<LegalRadarCheckItem[]>([]);
+  const [uploadingAxisId, setUploadingAxisId] = useState<string | null>(null);
 
   // Modals State
   const [isRequestDocsModalOpen, setIsRequestDocsModalOpen] = useState(false);
@@ -68,6 +78,28 @@ export const AdminLegalAuditPage: React.FC = () => {
   const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
   const curatorName =
     user?.name || (isEmployee ? 'Куратор DomExit (Юрист)' : 'Руководство платформы DomExit');
+
+  const showToast = (msg: string) => {
+    setErrorMsg(null);
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 5000);
+  };
+
+  const loadDocumentsForLot = async (code: string) => {
+    if (!code) {
+      setVaultDocs([]);
+      return;
+    }
+    setLoadingDocs(true);
+    try {
+      const docs = await StorageService.getDocumentsByEntity('lot', code);
+      setVaultDocs(docs || []);
+    } catch {
+      setVaultDocs([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
 
   const loadLotData = async () => {
     let pool = isEmployee
@@ -98,10 +130,18 @@ export const AdminLegalAuditPage: React.FC = () => {
 
     if (found) {
       setLot(found);
-      setAxes(found.legalAuditAxes && found.legalAuditAxes.length >= 4 ? found.legalAuditAxes : DEFAULT_LEGAL_AUDIT_AXES);
-      setCheckpoints(found.legalAuditCheckpoints && found.legalAuditCheckpoints.length === 4 ? found.legalAuditCheckpoints : INITIAL_CHECKPOINTS);
+      const loadedAxes =
+        Array.isArray(found.legalAuditAxes) && found.legalAuditAxes.length === 5
+          ? found.legalAuditAxes
+          : createInitialLegalAuditAxes();
+      setAxes(loadedAxes);
+      setRadarChecks(Array.isArray(found.legalRadarChecks) ? found.legalRadarChecks : []);
+      await loadDocumentsForLot(found.lotCode);
     } else {
       setLot(null);
+      setVaultDocs([]);
+      setAxes(createInitialLegalAuditAxes());
+      setRadarChecks([]);
     }
   };
 
@@ -109,24 +149,36 @@ export const AdminLegalAuditPage: React.FC = () => {
     loadLotData();
   }, [lotId, isEmployee, currentEmployeeId]);
 
-  const weightedIndex = Math.min(
-    100,
-    Math.max(0, Math.round(checkpoints.reduce((sum, cp) => sum + ((cp.score || 0) / 10) * cp.weightPercent, 0)))
-  );
+  const progress = useMemo(() => {
+    if (!lot) {
+      return {
+        approvedMandatoryDocsCount: 0,
+        requiredMandatoryDocsTotal: 2,
+        hasApprovedDdu: false,
+        hasApprovedDevCert: false,
+        passedRequiredRadarCount: 0,
+        requiredRadarTotal: 4,
+        hasCriticalRadar: false,
+        evaluatedAxesCount: 0,
+        axesTotal: 5,
+        hasCriticalAxis: false,
+        weightedIndex: 0,
+        derivedCheckpoints: [],
+        missingItems: [],
+        canApprove: false,
+      };
+    }
+    return computeLegalVerificationProgress({
+      lot,
+      axes,
+      radarChecks,
+      documents: vaultDocs,
+    });
+  }, [lot, axes, radarChecks, vaultDocs]);
 
   const currentLotCode = lot?.lotCode || '';
   const sellerInn = lot?.sellerInn || '—';
   const sellerFullName = lot?.ownerDossier?.fullNameMasked || 'Правообладатель';
-
-  const handleOpenInspector = (cp: LegalAuditCheckpoint) => {
-    setInspectingCheckpoint(cp);
-    setEditScore(cp.score);
-    setEditStatus(cp.status);
-    setEditNotes(cp.notes);
-    setEditProofName(cp.proofDocName || '');
-    setEditProofUrl(cp.proofDocUrl || '');
-    setEditProofKey(cp.proofDocKey || '');
-  };
 
   const handleOpenProofDoc = async (docInfo: {
     proofDocKey?: string;
@@ -144,7 +196,7 @@ export const AdminLegalAuditPage: React.FC = () => {
           return;
         }
       } catch (err: any) {
-        setNotice(`Ошибка получения защищенной ссылки S3: ${err?.message || 'Сбой'}`);
+        setErrorMsg(`Ошибка получения защищённой ссылки S3: ${err?.message || 'Сбой'}`);
         return;
       }
     }
@@ -152,46 +204,55 @@ export const AdminLegalAuditPage: React.FC = () => {
       window.open(docInfo.proofDocUrl, '_blank', 'noopener,noreferrer');
       return;
     }
-    setNotice('Скан подтверждения еще не загружен в защищенное хранилище S3.');
+    setErrorMsg('Скан подтверждения ещё не загружен в защищённое хранилище S3.');
   };
 
-  const handleUploadProofFile = async () => {
+  const handleUploadAxisProof = async (axisId: string) => {
     if (!lot) return;
+    const axis = axes.find((a) => a.id === axisId);
+    if (!axis) return;
     try {
-      setIsUploadingProof(true);
+      setUploadingAxisId(axisId);
       const selected = await FileManager.selectAndReadFile('other', '.pdf,.png,.jpg,.jpeg');
       if (selected && selected.file) {
         const meta = await StorageService.uploadDocument({
           file: selected.file,
           category: 'rosreestr_extract',
-          categoryLabelRu: `Подтверждение аудита (${inspectingCheckpoint?.shortLabel || 'Реестр'}) #${lot.lotCode}`,
+          categoryLabelRu: `Подтверждение (${axis.shortLabel}) #${lot.lotCode}`,
           entityType: 'lot',
           entityId: lot.lotCode,
           uploadedByUid: user?.id || 'curator',
           clientCode: 'DEX-LEGAL',
         });
         const objectKey = meta.key || meta.objectKey || '';
-        let signedUrl = meta.url || '';
-        if (objectKey && !signedUrl) {
-          try {
-            const dlRes = await apiClient.get<{ success: boolean; downloadUrl: string }>(
-              `/api/storage/presign-download?key=${encodeURIComponent(objectKey)}&lotCode=${encodeURIComponent(lot.lotCode)}&filename=${encodeURIComponent(meta.name)}`
-            );
-            if (dlRes?.downloadUrl) signedUrl = dlRes.downloadUrl;
-          } catch {
-            // Fresh signed URL will also be fetched on click via handleOpenProofDoc
-          }
-        }
-        setEditProofName(meta.name);
-        setEditProofUrl(signedUrl);
-        setEditProofKey(objectKey);
-        setNotice(`✓ Документ «${meta.name}» успешно загружен в защищенное хранилище S3!`);
-        setTimeout(() => setNotice(null), 4000);
+        const updatedAxes = axes.map((a) =>
+          a.id === axisId
+            ? {
+                ...a,
+                proofDocName: meta.name,
+                proofDocKey: objectKey,
+                proofDocUrl: meta.url || '',
+              }
+            : a
+        );
+        setAxes(updatedAxes);
+        const updatedProgress = computeLegalVerificationProgress({
+          lot,
+          axes: updatedAxes,
+          radarChecks,
+          documents: vaultDocs,
+        });
+        lot.legalAuditAxes = updatedAxes;
+        lot.legalAuditCheckpoints = updatedProgress.derivedCheckpoints;
+        lot.legalPassport.antiBankruptcyIndex = updatedProgress.weightedIndex;
+        await LotsRepository.update(lot);
+        await loadDocumentsForLot(lot.lotCode);
+        showToast(`✓ Скан «${meta.name}» прикреплён к разделу «${axis.shortLabel}».`);
       }
-    } catch (err) {
-      console.warn('Upload aborted:', err);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Не удалось загрузить файл подтверждения');
     } finally {
-      setIsUploadingProof(false);
+      setUploadingAxisId(null);
     }
   };
 
@@ -199,7 +260,11 @@ export const AdminLegalAuditPage: React.FC = () => {
     setAxes((prev) =>
       prev.map((ax) =>
         ax.id === axisId
-          ? { ...ax, status: newStatus, checkedAt: new Date().toISOString(), checkedBy: curatorName }
+          ? {
+              ...ax,
+              status: newStatus,
+              evaluated: newStatus === 'unverified' ? false : ax.evaluated,
+            }
           : ax
       )
     );
@@ -213,74 +278,38 @@ export const AdminLegalAuditPage: React.FC = () => {
     if (!lot) return;
     const targetAxis = axes.find((a) => a.id === axisId);
     if (!targetAxis) return;
-    const updatedAxes = axes.map((a) =>
+    if (targetAxis.status === 'unverified') {
+      setErrorMsg('Выберите итоговый статус раздела перед сохранением.');
+      return;
+    }
+    if (!targetAxis.notes || targetAxis.notes.trim().length < 3) {
+      setErrorMsg('Добавьте фактическое заключение/комментарий юриста по разделу.');
+      return;
+    }
+
+    const updatedAxes: LegalAuditAxis[] = axes.map((a) =>
       a.id === axisId
         ? { ...a, checkedAt: new Date().toISOString(), checkedBy: curatorName, evaluated: true }
         : a
     );
     setAxes(updatedAxes);
+
+    const updatedProgress = computeLegalVerificationProgress({
+      lot,
+      axes: updatedAxes,
+      radarChecks,
+      documents: vaultDocs,
+    });
+
     lot.legalAuditAxes = updatedAxes;
+    lot.legalAuditCheckpoints = updatedProgress.derivedCheckpoints;
+    lot.legalPassport.antiBankruptcyIndex = updatedProgress.weightedIndex;
+    lot.legalPassport.passedChecksCount = updatedProgress.evaluatedAxesCount;
     await LotsRepository.update(lot);
-    setNotice(`✓ Раздел «${targetAxis.shortLabel}» зафиксирован: ${HONEST_STATUS_CONFIG[targetAxis.status].labelRu}`);
-    setTimeout(() => setNotice(null), 5000);
-  };
 
-  const handleSaveInspectorVerdict = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inspectingCheckpoint || !lot) return;
-    const updatedCheckpoints = checkpoints.map((c) => {
-      if (c.id === inspectingCheckpoint.id) {
-        return {
-          ...c,
-          score: editScore,
-          status: editStatus,
-          notes: editNotes,
-          proofDocName: editProofName,
-          proofDocUrl: editProofUrl,
-          proofDocKey: editProofKey,
-          evaluated: true,
-          verifiedAt: new Date().toISOString(),
-          verifiedBy: curatorName,
-        };
-      }
-      return c;
-    });
-    setCheckpoints(updatedCheckpoints);
-    setInspectingCheckpoint(null);
-    lot.legalAuditCheckpoints = updatedCheckpoints;
-    lot.legalPassport.antiBankruptcyIndex = weightedIndex;
-    await LotsRepository.update(lot);
-    setNotice(`✓ Вердикт по «${inspectingCheckpoint.shortLabel}» сохранен!`);
-    setTimeout(() => setNotice(null), 4000);
-  };
-
-  const handleManualVerifyCheckpoint = async (checkpointId: string) => {
-    if (!lot) return;
-    const updatedCheckpoints = checkpoints.map((c) => {
-      if (c.id === checkpointId) {
-        return {
-          ...c,
-          score: 10,
-          status: 'clean' as const,
-          evaluated: true,
-          proofDocName: c.proofDocName || '',
-          verifiedAt: new Date().toISOString(),
-          verifiedBy: curatorName,
-          notes: c.notes ? `${c.notes} [Проверено юристом: рисков нет]` : 'Проверено старшим юристом.',
-        };
-      }
-      return c;
-    });
-    const newIndex = Math.min(
-      100,
-      Math.max(0, Math.round(updatedCheckpoints.reduce((sum, cp) => sum + ((cp.score || 0) / 10) * cp.weightPercent, 0)))
+    showToast(
+      `✓ Раздел «${targetAxis.shortLabel}» зафиксирован: ${HONEST_STATUS_CONFIG[targetAxis.status].labelRu} (Индекс: ${updatedProgress.weightedIndex}%)`
     );
-    setCheckpoints(updatedCheckpoints);
-    lot.legalAuditCheckpoints = updatedCheckpoints;
-    lot.legalPassport.antiBankruptcyIndex = newIndex;
-    await LotsRepository.update(lot);
-    setNotice(`✓ Контрольная точка «${checkpointId}» подтверждена (10/10). Текущий индекс: ${newIndex}%.`);
-    setTimeout(() => setNotice(null), 4000);
   };
 
   const handleDownloadProtocol = (registryType: 'EFRSB' | 'FSSP') => {
@@ -296,13 +325,21 @@ export const AdminLegalAuditPage: React.FC = () => {
       `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`,
       `Протокол_${registryType}_${lot.lotCode}.txt`
     );
-    setNotice(`Протокол проверки ${registryType} успешно скачан.`);
-    setTimeout(() => setNotice(null), 3000);
+    showToast(`Протокол проверки ${registryType} сформирован и скачан.`);
   };
 
   const handleUpdateRadarChecks = async (checksList: LegalRadarCheckItem[]) => {
     if (!lot) return;
+    setRadarChecks(checksList);
+    const updatedProgress = computeLegalVerificationProgress({
+      lot,
+      axes,
+      radarChecks: checksList,
+      documents: vaultDocs,
+    });
     lot.legalRadarChecks = checksList;
+    lot.legalAuditCheckpoints = updatedProgress.derivedCheckpoints;
+    lot.legalPassport.antiBankruptcyIndex = updatedProgress.weightedIndex;
     await LotsRepository.update(lot);
   };
 
@@ -310,33 +347,56 @@ export const AdminLegalAuditPage: React.FC = () => {
     if (!lot) return;
     lot.secondaryRiskChecklist = checklist;
     await LotsRepository.update(lot);
-    setNotice('✓ Чек-лист рисков вторичного рынка обновлен!');
-    setTimeout(() => setNotice(null), 3000);
+    showToast('✓ Чек-лист рисков вторичного рынка обновлён.');
   };
 
   const handleApproveLegal = async () => {
-    if (!lot) return;
-    const verifiedAxes: LegalAuditAxis[] = axes.map((ax) => ({
-      ...ax,
-      evaluated: true,
-      checkedAt: new Date().toISOString(),
-      checkedBy: curatorName,
-    }));
-    setAxes(verifiedAxes);
-    await LotsRepository.approveLotLegal(lot.lotCode, curatorName, 100, checkpoints, verifiedAxes);
-    setNotice('✓ Юридический паспорт утвержден! Штамп «Документы проверены» выдан.');
-    loadLotData();
-    setTimeout(() => setNotice(null), 5000);
+    if (!lot || !progress.canApprove) {
+      setErrorMsg('Завершите все обязательные проверки документов, госреестров и разделов перед выдачей штампа.');
+      return;
+    }
+
+    setIsApproving(true);
+    setErrorMsg(null);
+    try {
+      const nowIso = new Date().toISOString();
+      const verifiedAxes: LegalAuditAxis[] = axes.map((ax) => ({
+        ...ax,
+        evaluated: true,
+        checkedAt: ax.checkedAt || nowIso,
+        checkedBy: ax.checkedBy || curatorName,
+      }));
+      setAxes(verifiedAxes);
+
+      await LotsRepository.approveLotLegal(
+        lot.lotCode,
+        curatorName,
+        progress.weightedIndex,
+        progress.derivedCheckpoints,
+        verifiedAxes,
+        radarChecks
+      );
+
+      showToast('✓ Штамп «Документы проверены» выдан! Переходим на этап упаковки лота...');
+      navigate(`/admin/packaging/${lot.lotCode}`);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Ошибка при утверждении правового аудита (Gate Blocked)');
+    } finally {
+      setIsApproving(false);
+    }
   };
 
   const handleRejectLegal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lot) return;
-    await LotsRepository.rejectLotLegal(lot.lotCode, rejectionReason || 'Высокий риск судебного оспаривания', curatorName);
+    await LotsRepository.rejectLotLegal(
+      lot.lotCode,
+      rejectionReason || 'Высокий риск судебного оспаривания',
+      curatorName
+    );
     setIsRejectModalOpen(false);
-    setNotice('Объект отклонен по комплаенс-рискам.');
-    loadLotData();
-    setTimeout(() => setNotice(null), 5000);
+    showToast('Объект отклонён по комплаенс-рискам.');
+    await loadLotData();
   };
 
   const handleRequestDocsSubmit = async (e: React.FormEvent) => {
@@ -344,9 +404,8 @@ export const AdminLegalAuditPage: React.FC = () => {
     if (!lot) return;
     await LotsRepository.requestAdditionalDocs(lot.lotCode, selectedDocsList, docsNotes, curatorName);
     setIsRequestDocsModalOpen(false);
-    setNotice('Запрос доп. документов отправлен продавцу!');
-    loadLotData();
-    setTimeout(() => setNotice(null), 5000);
+    showToast('Запрос дополнительных документов отправлен продавцу.');
+    await loadLotData();
   };
 
   return (
@@ -355,7 +414,7 @@ export const AdminLegalAuditPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <AdminHeader
           title={`Юридический аудит и комплаенс — Лот #${currentLotCode}`}
-          subtitle="Комплексный правовой аудит, проверка в реестрах РФ и обоснование чистоты сделки"
+          subtitle="Поэтапный правовой аудит 214-ФЗ / 127-ФЗ: Документы и Реестры → 5 Разделов → Решение и Передача в упаковку"
         />
 
         <div className="p-4 sm:p-6 space-y-6 max-w-[1500px] w-full">
@@ -371,77 +430,238 @@ export const AdminLegalAuditPage: React.FC = () => {
             </div>
           )}
 
+          {errorMsg && (
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-950 font-semibold text-xs flex items-center justify-between shadow-xs animate-fade-in">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              <button onClick={() => setErrorMsg(null)} className="text-rose-700 hover:text-rose-950 cursor-pointer">
+                ✕
+              </button>
+            </div>
+          )}
+
           {!lot ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-2">
               <p className="text-sm font-bold text-slate-800">
-                {isOwner ? 'Объект для правового аудита не найден' : 'Нет закрепленных объектов для юридического аудита'}
+                {isOwner ? 'Объект для правового аудита не найден' : 'Нет закреплённых объектов для юридического аудита'}
               </p>
             </div>
           ) : (
             <>
-              {/* Header Card */}
+              {/* Fixed Progress & Property Header Card */}
               <LegalAuditHeaderCard
                 lot={lot}
                 accessibleLots={accessibleLots}
                 sellerFullName={sellerFullName}
                 sellerInn={sellerInn}
-                axes={axes}
+                progress={progress}
                 onSelectLotCode={(code) => navigate(`/admin/legal-audit/${code}`)}
               />
 
-              {/* 1. Free Russian Legal Radar Panel */}
-              <LegalRadarPanel lot={lot} curatorName={curatorName} onUpdateChecks={handleUpdateRadarChecks} />
-
-              {/* Document Vault Bar */}
-              <div className="bg-indigo-950 text-white rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2 text-indigo-300 text-xs font-bold uppercase tracking-wider">
-                    <HardDrive className="w-4 h-4" />
-                    <span>ХРАНИЛИЩЕ ДОКУМЕНТОВ ПО ОБЪЕКТУ</span>
-                  </div>
-                  <h3 className="text-base font-bold">Оригиналы и сканы по лоту #{lot.lotCode}</h3>
-                </div>
+              {/* 3-Tab Sequential Navigation Bar */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-2 flex flex-wrap gap-2 shadow-xs">
                 <button
                   type="button"
-                  onClick={() => setIsVaultOpen(true)}
-                  className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all shrink-0 flex items-center space-x-2 cursor-pointer"
+                  onClick={() => setActiveTab(1)}
+                  className={`flex-1 min-w-[210px] px-4 py-3 rounded-xl text-xs font-black flex items-center justify-between transition-all cursor-pointer ${
+                    activeTab === 1
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Открыть и проверить документы</span>
+                  <span className="flex items-center space-x-2">
+                    <Radar className={`w-4 h-4 ${activeTab === 1 ? 'text-emerald-400' : 'text-indigo-600'}`} />
+                    <span>1. Документы и Госреестры</span>
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                      activeTab === 1 ? 'bg-white/15 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {progress.approvedMandatoryDocsCount}/{progress.requiredMandatoryDocsTotal} док •{' '}
+                    {progress.passedRequiredRadarCount}/{progress.requiredRadarTotal} рег
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(2)}
+                  className={`flex-1 min-w-[210px] px-4 py-3 rounded-xl text-xs font-black flex items-center justify-between transition-all cursor-pointer ${
+                    activeTab === 2
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="flex items-center space-x-2">
+                    <FileSearch className={`w-4 h-4 ${activeTab === 2 ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                    <span>2. Юридическая проверка (5 разделов)</span>
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                      activeTab === 2 ? 'bg-white/15 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {progress.evaluatedAxesCount} из {progress.axesTotal}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(3)}
+                  className={`flex-1 min-w-[210px] px-4 py-3 rounded-xl text-xs font-black flex items-center justify-between transition-all cursor-pointer ${
+                    activeTab === 3
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="flex items-center space-x-2">
+                    <Scale className={`w-4 h-4 ${activeTab === 3 ? 'text-emerald-400' : 'text-amber-600'}`} />
+                    <span>3. Заключение 61.2 ФЗ-127 и Решение</span>
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                      progress.canApprove
+                        ? 'bg-emerald-500 text-slate-950'
+                        : activeTab === 3
+                        ? 'bg-white/15 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {progress.canApprove ? 'Готово ✓' : `${progress.weightedIndex}%`}
+                  </span>
                 </button>
               </div>
 
-              {/* 2. Legal Audit Axes Section (Dual-Track Cession & Secondary) */}
-              <LegalAuditAxesSection
-                lot={lot}
-                axes={axes}
-                curatorName={curatorName}
-                onAxisStatusChange={handleAxisStatusChange}
-                onAxisNotesChange={handleAxisNotesChange}
-                onSaveAxis={handleSaveAxis}
-                onUpdateSecondaryChecklist={handleUpdateSecondaryChecklist}
-              />
+              {/* TAB 1: Inline Seller Documents + INN Lookup + 6 Government Registries Radar */}
+              {activeTab === 1 && (
+                <div className="space-y-6">
+                  <InlineSellerDocumentsPanel
+                    lot={lot}
+                    documents={vaultDocs}
+                    loading={loadingDocs}
+                    curatorName={curatorName}
+                    onRefreshDocuments={() => loadDocumentsForLot(lot.lotCode)}
+                    onOpenFullVault={() => setIsVaultOpen(true)}
+                    onOpenRequestDocsModal={() => setIsRequestDocsModalOpen(true)}
+                    onNotice={showToast}
+                  />
 
-              {/* 3. Checkpoints Matrix */}
-              <LegalCheckpointsMatrix
-                checkpoints={checkpoints}
-                weightedIndex={weightedIndex}
-                onOpenInspector={handleOpenInspector}
-                onManualVerifyCheckpoint={handleManualVerifyCheckpoint}
-                onDownloadProtocol={handleDownloadProtocol}
-                onOpenProofDoc={handleOpenProofDoc}
-              />
+                  <LegalRadarPanel
+                    lot={lot}
+                    curatorName={curatorName}
+                    onUpdateChecks={handleUpdateRadarChecks}
+                    onDownloadProtocol={handleDownloadProtocol}
+                  />
+                </div>
+              )}
 
-              {/* 4. Legal Memo Generator */}
-              <LegalMemoGenerator lot={lot} />
+              {/* TAB 2: 5 Legal Audit Axes + Proof Scans + Auto-Computed Index Summary */}
+              {activeTab === 2 && (
+                <div className="space-y-6">
+                  <LegalAuditAxesSection
+                    lot={lot}
+                    axes={axes}
+                    curatorName={curatorName}
+                    uploadingAxisId={uploadingAxisId}
+                    onAxisStatusChange={handleAxisStatusChange}
+                    onAxisNotesChange={handleAxisNotesChange}
+                    onSaveAxis={handleSaveAxis}
+                    onUploadAxisProof={handleUploadAxisProof}
+                    onOpenProofDoc={handleOpenProofDoc}
+                    onUpdateSecondaryChecklist={handleUpdateSecondaryChecklist}
+                  />
 
-              {/* 5. Operations Log */}
-              <LegalOperationsLog lot={lot} />
+                  <LegalCheckpointsMatrix
+                    checkpoints={progress.derivedCheckpoints}
+                    weightedIndex={progress.weightedIndex}
+                    onOpenProofDoc={handleOpenProofDoc}
+                  />
+                </div>
+              )}
 
-              {/* 6. Decision Bar */}
+              {/* TAB 3: Stamp Readiness Checklist + Legal Memo 61.2 FZ-127 + Audit Operations Log */}
+              {activeTab === 3 && (
+                <div className="space-y-6">
+                  <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xs">
+                    <div className="flex items-center space-x-2 text-indigo-700">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                      <h3 className="text-base font-black text-slate-900">
+                        Чек-лист готовности к выдаче штампа «Документы проверены»
+                      </h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <div
+                        className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                          progress.approvedMandatoryDocsCount >= progress.requiredMandatoryDocsTotal
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <span className="font-bold">Обязательные документы продавца (S3 Vault)</span>
+                        <span className="font-mono font-black">
+                          {progress.approvedMandatoryDocsCount >= progress.requiredMandatoryDocsTotal ? '✓ Готово' : '✗ Ожидает'}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                          progress.passedRequiredRadarCount >= progress.requiredRadarTotal && !progress.hasCriticalRadar
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <span className="font-bold">4 обязательных госреестра РФ (ФССП, ЕФРСБ, Суды, Дом.РФ)</span>
+                        <span className="font-mono font-black">
+                          {progress.passedRequiredRadarCount >= progress.requiredRadarTotal && !progress.hasCriticalRadar
+                            ? '✓ Проверено'
+                            : `✗ ${progress.passedRequiredRadarCount}/${progress.requiredRadarTotal}`}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                          progress.evaluatedAxesCount === progress.axesTotal && !progress.hasCriticalAxis
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <span className="font-bold">5 разделов юридической экспертизы (с комментариями)</span>
+                        <span className="font-mono font-black">
+                          {progress.evaluatedAxesCount === progress.axesTotal && !progress.hasCriticalAxis
+                            ? '✓ 5 из 5'
+                            : `✗ ${progress.evaluatedAxesCount}/${progress.axesTotal}`}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                          progress.weightedIndex >= 85
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <span className="font-bold">Индекс антибанкротной чистоты (порог ≥ 85%)</span>
+                        <span className="font-mono font-black">{progress.weightedIndex}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <LegalMemoGenerator lot={lot} />
+                  <LegalOperationsLog lot={lot} />
+                </div>
+              )}
+
+              {/* Persistent Bottom Decision & Strict Gate Bar */}
               <LegalDecisionBar
                 lot={lot}
                 curatorName={curatorName}
+                canApprove={progress.canApprove}
+                isApproving={isApproving}
+                missingItems={progress.missingItems}
+                onSwitchTab={setActiveTab}
                 onOpenRequestDocsModal={() => setIsRequestDocsModalOpen(true)}
                 onOpenRejectModal={() => setIsRejectModalOpen(true)}
                 onApproveLegal={handleApproveLegal}
@@ -451,39 +671,26 @@ export const AdminLegalAuditPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modals Container */}
-      <LegalAuditModalsContainer
-        inspectingCheckpoint={inspectingCheckpoint}
-        lot={lot}
-        editScore={editScore}
-        setEditScore={setEditScore}
-        editStatus={editStatus}
-        setEditStatus={setEditStatus}
-        editNotes={editNotes}
-        setEditNotes={setEditNotes}
-        editProofName={editProofName}
-        editProofUrl={editProofUrl}
-        editProofKey={editProofKey}
-        onOpenProofDoc={handleOpenProofDoc}
-        isUploadingProof={isUploadingProof}
-        onUploadProofFile={handleUploadProofFile}
-        onCloseInspector={() => setInspectingCheckpoint(null)}
-        onSaveInspectorVerdict={handleSaveInspectorVerdict}
-        isRequestDocsModalOpen={isRequestDocsModalOpen}
-        onCloseRequestDocs={() => setIsRequestDocsModalOpen(false)}
+      {/* Request Docs & Rejection Modals */}
+      <RequestDocsModal
+        isOpen={isRequestDocsModalOpen}
+        onClose={() => setIsRequestDocsModalOpen(false)}
         selectedDocsList={selectedDocsList}
         setSelectedDocsList={setSelectedDocsList}
         docsNotes={docsNotes}
         setDocsNotes={setDocsNotes}
-        onSubmitRequestDocs={handleRequestDocsSubmit}
-        isRejectModalOpen={isRejectModalOpen}
-        onCloseReject={() => setIsRejectModalOpen(false)}
-        rejectionReason={rejectionReason}
-        setRejectionReason={setRejectionReason}
-        onSubmitReject={handleRejectLegal}
+        onSubmit={handleRequestDocsSubmit}
       />
 
-      {/* Cloud S3 Document Vault Modal */}
+      <RejectModal
+        isOpen={isRejectModalOpen}
+        onClose={() => setIsRejectModalOpen(false)}
+        rejectionReason={rejectionReason}
+        setRejectionReason={setRejectionReason}
+        onSubmit={handleRejectLegal}
+      />
+
+      {/* Full Cloud S3 Document Vault Modal */}
       {lot && (
         <DocumentVaultModal
           isOpen={isVaultOpen}
@@ -495,6 +702,7 @@ export const AdminLegalAuditPage: React.FC = () => {
           clientCode={user?.clientCode || 'DEX-LEGAL'}
           canReview={true}
           reviewerName={curatorName}
+          onDocumentsChanged={(docs) => setVaultDocs(docs)}
         />
       )}
     </div>

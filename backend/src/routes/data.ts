@@ -1653,6 +1653,136 @@ export async function handleData(
         }
 
         // Backend State Guards for Lots:
+        let existingLotRecord: Record<string, any> | null = null;
+        if (method === 'PUT' && docId) {
+          existingLotRecord = await ydb.getItem<any>('lots', docId);
+          if (!existingLotRecord && itemToSave.lotCode) {
+            const allLotsScan = await ydb.scanAll<any>('lots', 500);
+            const targetCode = String(itemToSave.lotCode).trim().toUpperCase();
+            existingLotRecord =
+              (allLotsScan || []).find(
+                (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetCode
+              ) || null;
+          }
+        }
+
+        const wasAlreadyVerified = Boolean(existingLotRecord?.isVerified === true);
+        const attemptsLegalVerificationOrStage2 =
+          itemToSave.isVerified === true ||
+          itemToSave.approvalStatus === 'approved_for_packaging' ||
+          itemToSave.approvalStatus === 'approved' ||
+          (itemToSave.currentStage !== undefined && Number(itemToSave.currentStage) >= 2);
+
+        // Strict Verification Gate for unverified lots advancing to Stage 2+ or isVerified=true
+        if (method === 'PUT' && !wasAlreadyVerified && attemptsLegalVerificationOrStage2) {
+          const missingRequirements: string[] = [];
+          const axesArr: any[] = Array.isArray(itemToSave.legalAuditAxes)
+            ? itemToSave.legalAuditAxes
+            : [];
+          const earlyAxes = new Set([
+            'title_encumbrances',
+            'bankruptcy_debts',
+            'developer_settlement',
+          ]);
+
+          if (axesArr.length < 5) {
+            missingRequirements.push('Не заполнены все 5 разделов правовой экспертизы (legalAuditAxes)');
+          } else {
+            for (const ax of axesArr) {
+              if (ax.status === 'critical_risk') {
+                missingRequirements.push(`Критический риск в разделе «${ax.shortLabel || ax.id}»`);
+              } else if (
+                !ax.evaluated ||
+                !ax.status ||
+                ax.status === 'unverified' ||
+                !String(ax.notes || '').trim()
+              ) {
+                missingRequirements.push(
+                  `Раздел «${ax.shortLabel || ax.id}» не проверен или отсутствует комментарий`
+                );
+              } else if (earlyAxes.has(ax.id) && ax.status === 'required_at_deal') {
+                missingRequirements.push(
+                  `Раздел «${ax.shortLabel || ax.id}» должен быть проверен до сделки (недопустим статус required_at_deal)`
+                );
+              }
+            }
+          }
+
+          const radarArr: any[] = Array.isArray(itemToSave.legalRadarChecks)
+            ? itemToSave.legalRadarChecks
+            : [];
+          const radarMap = new Map<string, any>();
+          for (const rc of radarArr) {
+            const key = String(rc.registryId || rc.registry || '').trim();
+            if (key) radarMap.set(key, rc);
+          }
+          const requiredRadarIds = [
+            ['fssp', 'ФССП'],
+            ['fedresurs', 'ЕФРСБ'],
+            ['sudrf', 'ГАС Правосудие'],
+            ['nash_dom_rf', 'Наш.Дом.РФ'],
+          ] as const;
+
+          for (const [rId, label] of requiredRadarIds) {
+            const entry = radarMap.get(rId);
+            if (!entry) {
+              missingRequirements.push(`Не проверен обязательный госреестр: ${label}`);
+            } else if (entry.status === 'critical' || entry.status === 'risk') {
+              missingRequirements.push(`Обнаружен критичный риск в госреестре ${label}`);
+            } else if (!['clean', 'clear', 'attention', 'warning'].includes(String(entry.status))) {
+              missingRequirements.push(`Некорректный статус проверки в реестре ${label}`);
+            }
+          }
+          for (const rc of radarArr) {
+            if (rc.status === 'critical' || rc.status === 'risk') {
+              missingRequirements.push(
+                `Критический риск в реестре ${rc.registryId || rc.registry}`
+              );
+            }
+          }
+
+          // Verify approved mandatory seller documents in documents_vault
+          const lotCodeTarget = String(itemToSave.lotCode || itemToSave.id || docId).trim().toUpperCase();
+          const allVaultDocs = await ydb.scanAll<any>('documents_vault', 500);
+          const approvedLotDocs = (allVaultDocs || []).filter(
+            (d: any) =>
+              String(d.entityId || '').trim().toUpperCase() === lotCodeTarget &&
+              d.status === 'approved'
+          );
+
+          const isSecondaryTrack = itemToSave.dealTrack === 'secondary_dkp';
+          if (isSecondaryTrack) {
+            const hasEgrn = approvedLotDocs.some(
+              (d: any) => d.category === 'rosreestr_extract' || d.category === 'ddu_contract'
+            );
+            if (!hasEgrn) {
+              missingRequirements.push('Не одобрен скан правоустанавливающего документа / ЕГРН (rosreestr_extract)');
+            }
+          } else {
+            const hasDdu = approvedLotDocs.some((d: any) => d.category === 'ddu_contract');
+            const hasDevCert = approvedLotDocs.some((d: any) => d.category === 'developer_payment_cert');
+            if (!hasDdu) {
+              missingRequirements.push('Не одобрен скан договора ДДУ (ddu_contract) в documents_vault');
+            }
+            if (!hasDevCert) {
+              missingRequirements.push('Не одобрена справка об оплате от застройщика (developer_payment_cert) в documents_vault');
+            }
+          }
+
+          const indexVal = Number(itemToSave.legalPassport?.antiBankruptcyIndex ?? 0);
+          if (indexVal < 85) {
+            missingRequirements.push(`Индекс антибанкротной чистоты (${indexVal}%) ниже требуемого порога 85%`);
+          }
+
+          if (missingRequirements.length > 0) {
+            return json(event, 400, {
+              error: 'Правовой аудит не прошёл строгую проверку готовности. Устраните все пропуски перед выдачей штампа.',
+              code: 'LEGAL_VERIFICATION_GATE_BLOCKED',
+              missingRequirements,
+            });
+          }
+        }
+
         // Publishing or setting available or advancing to Stage 3+ strictly requires verified legal audit and complete packaging
         if (
           itemToSave.isPublished === true ||

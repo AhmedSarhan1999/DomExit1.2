@@ -265,14 +265,14 @@ export class LotsRepository {
     (lot as any).assignedCuratorId = employeeId;
     (lot as any).assignedCuratorName = employeeName;
 
-    // Preserve already-published Stage 3/4 status when reassigning curator on a live lot
-    if (!lot.isPublished && lot.approvalStatus === 'pending_owner_approval') {
-      lot.approvalStatus = 'approved_for_packaging';
+    // Preserve already-published Stage 3/4 status or approved Stage 2 status when reassigning curator
+    if (!lot.isPublished && !lot.isVerified && lot.approvalStatus === 'pending_owner_approval') {
+      lot.approvalStatus = 'pending_legal_audit';
       lot.status = 'draft';
       lot.isPublished = false;
-      lot.currentStage = 2;
+      lot.currentStage = 1;
     } else if (!lot.approvalStatus || lot.approvalStatus === 'pending_owner_approval') {
-      lot.approvalStatus = 'approved_for_packaging';
+      lot.approvalStatus = lot.isVerified ? 'approved_for_packaging' : 'pending_legal_audit';
     }
 
     try {
@@ -499,16 +499,21 @@ export class LotsRepository {
     curatorName: string,
     customAntiBankruptcyIndex?: number,
     checkpoints?: any[],
-    legalAuditAxes?: any[]
+    legalAuditAxes?: any[],
+    legalRadarChecks?: any[]
   ): Promise<Lot | null> {
     const lot = await this.getByCode(lotCode);
     if (!lot) return null;
 
+    const nowIso = new Date().toISOString();
     lot.isVerified = true;
     lot.isPublished = false;
     lot.approvalStatus = 'approved_for_packaging';
     lot.status = 'draft';
     lot.currentStage = 2;
+    lot.legalReviewedByName = curatorName;
+    (lot as any).legalVerifiedAt = nowIso;
+
     if (customAntiBankruptcyIndex !== undefined) {
       lot.legalPassport.antiBankruptcyIndex = customAntiBankruptcyIndex;
     }
@@ -517,14 +522,24 @@ export class LotsRepository {
     }
     if (legalAuditAxes) {
       lot.legalAuditAxes = legalAuditAxes;
+      lot.legalPassport.passedChecksCount = legalAuditAxes.filter(
+        (a: any) => a.evaluated && a.status !== 'unverified' && a.status !== 'critical_risk'
+      ).length;
+      lot.legalPassport.totalChecksCount = legalAuditAxes.length;
     }
+    if (legalRadarChecks) {
+      lot.legalRadarChecks = legalRadarChecks;
+    }
+    lot.legalPassport.efrsbBankruptcyStatus = 'clean';
+    lot.legalPassport.developerConsentObtained = true;
+
     if (lot.additionalDocsRequested) {
       lot.additionalDocsRequested.status = 'resolved';
     }
 
     lot.curatorOperationsLog = lot.curatorOperationsLog || [];
     lot.curatorOperationsLog.unshift({
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso,
       curatorName,
       action: 'Утвержден правовой аудит — Выдан штамп «Документы проверены»',
       notes: `Итоговый индекс юридической чистоты: ${lot.legalPassport.antiBankruptcyIndex}%. 5 ключевых разделов правового аудита соответствуют стандарту 214-ФЗ / 127-ФЗ. Лот передан на этап упаковки (Этап 2).`,

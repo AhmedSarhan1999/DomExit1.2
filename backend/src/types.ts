@@ -194,6 +194,42 @@ export interface BuyerApplication {
 export type TierVerificationProofType = 'cash_100_statement' | 'mortgage_approval';
 export type TierVerificationStatus = 'pending' | 'approved' | 'rejected';
 
+export type LegalAuditAxisStatus =
+  | 'unverified'
+  | 'verified_safe'
+  | 'required_at_deal'
+  | 'condition_found'
+  | 'critical_risk';
+
+export interface LegalAuditAxis {
+  id:
+    | 'title_encumbrances'
+    | 'bankruptcy_debts'
+    | 'developer_settlement'
+    | 'family_matkap'
+    | 'cession_escrow';
+  title: string;
+  shortLabel: string;
+  status: LegalAuditAxisStatus;
+  notes: string;
+  portalUrl?: string;
+  evaluated?: boolean;
+  checkedAt?: string;
+  checkedBy?: string;
+  proofDocName?: string;
+  proofDocKey?: string;
+  proofDocUrl?: string;
+}
+
+export interface LegalRadarCheckItem {
+  registry: string;
+  registryId?: string;
+  status: 'clear' | 'warning' | 'risk' | 'clean' | 'attention' | 'critical' | 'unchecked';
+  checkedAt: string;
+  checkedBy: string;
+  note?: string;
+}
+
 export interface TierVerificationRequest {
   id: string;
   userId: string;

@@ -8,6 +8,8 @@ import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { PartnerRequestsRepository } from '../dal/repositories/PartnerRequestsRepository';
 import { apiClient } from './apiClient';
 import { swrCache } from '../dal/cache/SWRCache';
+import { createInitialLegalAuditAxes } from '../data/legalAuditAxes';
+import { createInitialCheckpoints } from '../components/admin/legal-audit/legalAuditConstants';
 
 function maskFullName152Fz(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -217,16 +219,18 @@ export class PropertyLifecycleService {
       sellerPhone: payload.sellerPhone,
       referredByPartnerCode: payload.referredByPartnerCode,
       documentIds: payload.documentIds || [],
+      legalAuditAxes: createInitialLegalAuditAxes(),
+      legalAuditCheckpoints: createInitialCheckpoints(),
       legalPassport: {
         passedChecksCount: 0,
         totalChecksCount: 5,
         antiBankruptcyIndex: 0,
         maternalCapitalUsed: Boolean(payload.matCapitalUsed),
-        spousalConsentNotarized: true,
+        spousalConsentNotarized: false,
         fsspDebtRub: 0,
-        efrsbBankruptcyStatus: 'clean',
-        nbkiScore: 780,
-        pdnPercent: 25,
+        efrsbBankruptcyStatus: 'pending',
+        nbkiScore: 0,
+        pdnPercent: 0,
         developerConsentObtained: false,
         rosreestrEsignSpeedHours: 48,
       },
@@ -313,8 +317,8 @@ export class PropertyLifecycleService {
       daysLeft: 14,
       sellerReturnRub: payload.paidAmountRub,
       discountRub: Math.max(500000, todayDeveloperPrice - payload.contractPriceRub),
-      fsspClear: true,
-      efrsbClear: true,
+      fsspClear: false,
+      efrsbClear: false,
       matchingCandidatesCount: 0,
       clientName: maskFullName152Fz(payload.sellerName),
       curatorName: 'Ожидает назначения куратора',

@@ -84,10 +84,11 @@ export const VerifyCertificatePage: React.FC = () => {
   }
 
   const axes = resolveLotLegalAxes(lot);
-  const verifiedSafeCount = axes.filter((a) => a.status === 'verified_safe').length;
-  const curatorName = lot.assignedEmployeeName || lot.curator?.name || 'Юридический департамент DomExit';
+  const completedAxesCount = axes.filter((a) => a.evaluated || a.status !== 'unverified').length;
+  const curatorName =
+    lot.legalReviewedByName || lot.assignedEmployeeName || lot.curator?.name || 'Юридический департамент DomExit';
   const lastUpdatedFormatted = (() => {
-    const raw = lot.publishedAt || new Date().toISOString();
+    const raw = (lot as any).legalVerifiedAt || lot.publishedAt || axes[0]?.checkedAt || new Date().toISOString();
     const d = new Date(raw);
     return Number.isNaN(d.getTime())
       ? new Date().toLocaleDateString('ru-RU')
@@ -126,7 +127,7 @@ export const VerifyCertificatePage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-3 py-1 bg-emerald-500 text-slate-950 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
                 <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                <span>Проверка завершена • {verifiedSafeCount} из 5 подтверждено</span>
+                <span>Проверка завершена • {completedAxesCount} из {axes.length} подтверждено</span>
               </span>
               <span className="text-xs font-mono text-slate-500 font-bold bg-slate-100 px-2.5 py-1 rounded-full">
                 #CERT-{lot.lotCode}-2026
@@ -190,7 +191,7 @@ export const VerifyCertificatePage: React.FC = () => {
 
           <div className="grid grid-cols-1 gap-3.5">
             {axes.map((axis) => {
-              const cfg = HONEST_STATUS_CONFIG[axis.status] || HONEST_STATUS_CONFIG.verified_safe;
+              const cfg = HONEST_STATUS_CONFIG[axis.status] || HONEST_STATUS_CONFIG.unverified;
               return (
                 <div
                   key={axis.id}
@@ -205,12 +206,14 @@ export const VerifyCertificatePage: React.FC = () => {
                     >
                       {axis.status === 'verified_safe' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
                       {axis.status === 'required_at_deal' && <Clock className="w-3.5 h-3.5 text-sky-600" />}
-                      {axis.status === 'condition_found' && <AlertCircle className="w-3.5 h-3.5 text-slate-600" />}
+                      {axis.status === 'condition_found' && <AlertCircle className="w-3.5 h-3.5 text-amber-600" />}
+                      {axis.status === 'unverified' && <Clock className="w-3.5 h-3.5 text-slate-500" />}
+                      {axis.status === 'critical_risk' && <AlertCircle className="w-3.5 h-3.5 text-rose-600" />}
                       <span>{cfg.labelRu}</span>
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    {axis.notes}
+                    {axis.notes || cfg.descriptionRu}
                   </p>
                   {axis.portalUrl && (
                     <div className="pt-1.5 flex items-center text-[10px] text-slate-400">

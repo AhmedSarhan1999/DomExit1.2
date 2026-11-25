@@ -864,7 +864,7 @@ export const LotDetailsPage: React.FC = () => {
               {/* 5 Real Audit Axes Breakdown */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
                 {resolveLotLegalAxes(lot).map((axis) => {
-                  const cfg = HONEST_STATUS_CONFIG[axis.status] || HONEST_STATUS_CONFIG.verified_safe;
+                  const cfg = HONEST_STATUS_CONFIG[axis.status] || HONEST_STATUS_CONFIG.unverified;
                   return (
                     <div
                       key={axis.id}
@@ -875,7 +875,7 @@ export const LotDetailsPage: React.FC = () => {
                           {axis.title}
                         </span>
                         <p className="text-[11px] text-slate-600 leading-relaxed">
-                          {axis.notes}
+                          {axis.notes || cfg.descriptionRu}
                         </p>
                       </div>
                       <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between">
@@ -884,7 +884,9 @@ export const LotDetailsPage: React.FC = () => {
                         >
                           {axis.status === 'verified_safe' && <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />}
                           {axis.status === 'required_at_deal' && <Clock className="w-3 h-3 text-sky-600 shrink-0" />}
-                          {axis.status === 'condition_found' && <AlertCircle className="w-3 h-3 text-slate-600 shrink-0" />}
+                          {axis.status === 'condition_found' && <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />}
+                          {axis.status === 'unverified' && <Clock className="w-3 h-3 text-slate-500 shrink-0" />}
+                          {axis.status === 'critical_risk' && <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />}
                           <span>{cfg.labelRu}</span>
                         </span>
                       </div>

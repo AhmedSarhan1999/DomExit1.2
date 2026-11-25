@@ -209,7 +209,11 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
                     ? 'Ожидает одобрения Владельцем платформы'
                     : activeSellerLot.approvalStatus === 'rejected'
                     ? 'Отклонен'
-                    : 'Одобрен и закреплен за куратором'}
+                    : (activeSellerLot.assignedEmployeeId || (activeSellerLot as any).assignedCuratorId)
+                    ? 'Одобрен и закреплен за куратором'
+                    : activeSellerLot.isVerified
+                    ? 'Проверен (ожидает назначения куратора)'
+                    : 'Одобрен (ожидает назначения куратора)'}
                 </span>
                 {(activeSellerLot.approvalStatus === 'pending_owner_approval' || activeSellerLot.status === 'draft') && (
                   <button

@@ -30,26 +30,39 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
   if (!isOpen) return null;
 
   const protocolNumber = `ПРТ-214-${lot.lotCode.replace(/[^0-9A-Za-z]/g, '') || '784102'}`;
-  const verificationDate = new Date().toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const rawVerificationDate =
+    (lot as any).legalVerifiedAt || lot.publishedAt || lot.legalAuditAxes?.[0]?.checkedAt;
+  const parsedVerDate = rawVerificationDate ? new Date(rawVerificationDate) : null;
+  const verificationDate =
+    parsedVerDate && !Number.isNaN(parsedVerDate.getTime())
+      ? parsedVerDate.toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      : new Date().toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
   const curatorName =
     lot.legalReviewedByName || curator?.name || lot.curator?.name || 'Юридический департамент DomExit';
   const curatorRole = curator?.role || 'Ведущий юрист по сделкам переуступки';
 
   const axes = resolveLotLegalAxes(lot);
+  const completedAxesCount = axes.filter((a) => a.evaluated || a.status !== 'unverified').length;
 
   const renderStatusBadge = (status: LegalAuditAxisStatus) => {
-    const cfg = HONEST_STATUS_CONFIG[status] || HONEST_STATUS_CONFIG.verified_safe;
+    const cfg = HONEST_STATUS_CONFIG[status] || HONEST_STATUS_CONFIG.unverified;
     return (
       <span
         className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${cfg.badgeClass}`}
       >
         {status === 'verified_safe' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
         {status === 'required_at_deal' && <Clock className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
-        {status === 'condition_found' && <AlertCircle className="w-3.5 h-3.5 text-slate-600 shrink-0" />}
+        {status === 'condition_found' && <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+        {status === 'unverified' && <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
+        {status === 'critical_risk' && <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
         <span>{cfg.labelRu}</span>
       </span>
     );
@@ -156,7 +169,9 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             <div className="hidden sm:block text-right">
               <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-bold border border-emerald-200">
                 <Award className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Проверка завершена • 5 из 5 разделов</span>
+                <span>
+                  {completedAxesCount === axes.length ? 'Проверка завершена' : 'Аудит'} • {completedAxesCount} из {axes.length} разделов
+                </span>
               </span>
             </div>
           </div>
@@ -166,10 +181,10 @@ export const PublicLegalReportModal: React.FC<PublicLegalReportModalProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-emerald-600" />
-                <span>Правовой аудит цессии (5 разделов)</span>
+                <span>Правовой аудит цессии ({axes.length} разделов)</span>
               </h3>
               <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                Проверка завершена • 5 из 5 разделов
+                {completedAxesCount} из {axes.length} разделов
               </span>
             </div>
 

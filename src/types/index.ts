@@ -205,7 +205,7 @@ export interface Lot {
     maternalCapitalUsed: boolean; // false
     spousalConsentNotarized: boolean; // true
     fsspDebtRub: number; // 0
-    efrsbBankruptcyStatus: 'clean' | 'risk';
+    efrsbBankruptcyStatus: 'pending' | 'clean' | 'risk';
     nbkiScore: number; // 785
     pdnPercent: number; // 24%
     developerConsentObtained: boolean; // true
@@ -347,8 +347,8 @@ export interface LegalAuditCheckpoint {
   shortLabel: string;
   weightPercent: number; // efrsb: 25, fssp: 15, courts: 15, ddu_sfr: 45
   portalUrl: string;
-  score: number; // 1 to 10
-  status: 'clean' | 'attention' | 'critical';
+  score: number; // 0 to 10
+  status: 'pending' | 'clean' | 'attention' | 'critical';
   notes: string;
   proofDocUrl?: string;
   proofDocKey?: string;
@@ -358,7 +358,12 @@ export interface LegalAuditCheckpoint {
   verifiedBy?: string;
 }
 
-export type LegalAuditAxisStatus = 'verified_safe' | 'required_at_deal' | 'condition_found';
+export type LegalAuditAxisStatus =
+  | 'unverified'
+  | 'verified_safe'
+  | 'required_at_deal'
+  | 'condition_found'
+  | 'critical_risk';
 
 export interface LegalAuditAxis {
   id:
@@ -376,6 +381,9 @@ export interface LegalAuditAxis {
   evaluated?: boolean;
   checkedAt?: string;
   checkedBy?: string;
+  proofDocName?: string;
+  proofDocKey?: string;
+  proofDocUrl?: string;
 }
 
 export interface EscrowChatMessage {

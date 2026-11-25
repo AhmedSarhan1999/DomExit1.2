@@ -19,7 +19,10 @@ interface LegalRadarPanelProps {
   lot: Lot;
   curatorName: string;
   onUpdateChecks?: (checks: LegalRadarCheckItem[]) => void;
+  onDownloadProtocol?: (registryType: 'EFRSB' | 'FSSP') => void;
 }
+
+const REQUIRED_REGISTRIES = new Set(['fssp', 'fedresurs', 'sudrf', 'nash_dom_rf']);
 
 interface FastRegistry {
   id: string;
@@ -92,6 +95,7 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
   lot,
   curatorName,
   onUpdateChecks,
+  onDownloadProtocol,
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [innLoading, setInnLoading] = useState(false);
@@ -117,7 +121,7 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
     setChecks(buildChecksMap(lot.legalRadarChecks));
     setInnResult(null);
     setInnError(null);
-  }, [lot.lotCode]);
+  }, [lot.lotCode, lot.legalRadarChecks]);
 
   const sellerInn = (lot.sellerInn || '').trim() || '—';
   const sellerFullName = lot.ownerDossier?.fullNameMasked || 'Правообладатель';
@@ -231,6 +235,25 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
               <Copy className="w-3.5 h-3.5 text-slate-500" />
             )}
           </button>
+
+          {onDownloadProtocol && (
+            <>
+              <button
+                type="button"
+                onClick={() => onDownloadProtocol('EFRSB')}
+                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
+              >
+                Протокол ЕФРСБ
+              </button>
+              <button
+                type="button"
+                onClick={() => onDownloadProtocol('FSSP')}
+                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
+              >
+                Протокол ФССП
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -317,16 +340,36 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {REGISTRIES.map((reg) => {
           const checkState = checks[reg.id];
+          const isRequiredReg = REQUIRED_REGISTRIES.has(reg.id);
           return (
             <div
               key={reg.id}
-              className="p-4 rounded-2xl border border-slate-200 hover:border-indigo-300 transition-all bg-slate-50/50 flex flex-col justify-between space-y-3"
+              className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
+                checkState?.status === 'critical'
+                  ? 'bg-rose-50/70 border-rose-300'
+                  : checkState?.status === 'clean'
+                  ? 'bg-emerald-50/40 border-emerald-200'
+                  : checkState?.status === 'attention'
+                  ? 'bg-amber-50/40 border-amber-200'
+                  : 'bg-slate-50/50 border-slate-200 hover:border-indigo-300'
+              }`}
             >
               <div className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-600 uppercase">
-                    {reg.category === 'seller' ? 'Продавец' : reg.category === 'developer' ? 'Девелопер' : 'Объект'}
-                  </span>
+                  <div className="flex items-center space-x-1.5">
+                    <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-600 uppercase">
+                      {reg.category === 'seller' ? 'Продавец' : reg.category === 'developer' ? 'Девелопер' : 'Объект'}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                        isRequiredReg
+                          ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                          : 'bg-slate-100 text-slate-500 border-slate-200'
+                      }`}
+                    >
+                      {isRequiredReg ? 'Обязательный' : 'Доп. реестр'}
+                    </span>
+                  </div>
                   <a
                     href={reg.url}
                     target="_blank"
@@ -347,9 +390,23 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
               </div>
 
               {/* Status & Action */}
-              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2 text-xs">
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {checkState?.checkedAt ? 'Проверено' : 'Не проверено'}
+              <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span
+                  className={`text-[10px] font-mono font-bold ${
+                    checkState?.status === 'critical'
+                      ? 'text-rose-700'
+                      : checkState?.checkedAt
+                      ? 'text-emerald-700'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {checkState?.status === 'critical'
+                    ? 'Критический риск'
+                    : checkState?.status === 'attention'
+                    ? 'Внимание'
+                    : checkState?.checkedAt
+                    ? 'Проверено'
+                    : 'Не проверено'}
                 </span>
 
                 <div className="flex items-center space-x-1">
@@ -374,6 +431,18 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
                     }`}
                   >
                     ! Внимание
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleCheckStatus(reg.id, 'critical')}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                      checkState?.status === 'critical'
+                        ? 'bg-rose-600 text-white border-rose-600'
+                        : 'bg-white hover:bg-rose-50 text-rose-800 border-rose-200'
+                    }`}
+                    title="Обнаружены критичные риски (блокирует выдачу штампа)"
+                  >
+                    ✕ Риск
                   </button>
                 </div>
               </div>
