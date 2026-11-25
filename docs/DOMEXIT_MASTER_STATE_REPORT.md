@@ -1,8 +1,8 @@
 # التقرير المرجعي الشامل لحالة منصة DomExit (Master State Report)
 
 **تاريخ الإصدار:** 2026-11-25  
-**نطاق المراجعة:** الفحص المعماري والتشغيلي الشامل للحزمتين (1 و2) وبقية مكونات المنصة + التحقق الحي على `Staging` + الفحص المقروء فقط (`Read-Only`) على `Production`  
-**الحالة العامة للمنصة:** ✅ جاهزة تشغيلياً على `Staging`؛ بيئة `Production (domexit.ru)` تعمل بإصدار `964d9dd` وتحتاج مزامنة واجهة/سيرفر لاحقة للإصلاحات الـ 6 المكتشفة في هذه الجولة (والمنشورة بالفعل على `Staging`).
+**نطاق المراجعة:** الترقية الشاملة والمزامنة النهائية للحزم `a489f94`, `613e92d`, `a02a419` إلى `Production (https://domexit.ru)` + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main`)  
+**الحالة العامة للمنصة:** ✅ متطابقة 100% عبر جميع البيئات (`Local = Staging = Production = GitHub`).
 
 ---
 
@@ -10,9 +10,11 @@
 
 ### 1.1 حالة المستودع وGit
 - **الفرع النشط:** `main`
-- **المستودع البعيد (`origin/main` / GitHub):** متزامن حتى الـ Commit **`964d9dd`** (`refactor(legal-audit-clean-slate)`).
-- **الوضع المحلي (`HEAD`):** يحتوي على إصلاحات هذه الجولة + التقرير المرجعي الحالي (محفوظ في Commit محلي بدون `git push`).
-- **آخر الـ Commits المرجعية قبل هذه المراجعة:**
+- **حالة التزامن (`Local = Staging = Production = GitHub`):** متطابق 100%.
+- **آخر الـ Commits المرجعية المرقّاة إلى الإنتاج:**
+  - `a02a419` — `refactor(legal-audit-workflow): rebuild legal audit into 3 tabs with true zero-state, strict UI/API verification gate, auto-navigation to packaging, and honest seller badge`
+  - `613e92d` — `fix(buyer-engine-staff): sync Gold tier & SLA, implement 3-slot buyer queue with cross-deal standby & withdrawal penalty, and include owner/employees in curator assignment`
+  - `a489f94` — `docs(audit): fix legal proof signed URLs, buyerNetSavings deduction & radar sync, and export DOMEXIT_MASTER_STATE_REPORT`
   - `964d9dd` — `refactor(legal-audit-clean-slate): make legal audit fully operational with real S3 proofs and purge all mock data across platform`
   - `c6f54ad` — `fix(workflow-catalog): fix card projection & SBR calculator, enforce strict 5-stage state machine, auto-launch drop, sync winner to deal, and add developer consent fee policy`
   - `2cb3969` — `feat(tier-governance): add Gold verification workflow with private S3 proofs, admin review queue, audit logging, and SLA recovery`
@@ -26,17 +28,17 @@
 |---|---|---|
 | **النطاق / API Gateway** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net` (`d5dpccovifu701p9lvga`) | `https://domexit.ru` (`d5dsuuhvetioe2hp0q7i`) |
 | **دالة الخادم (`API`)** | `domexit-api-staging` (`d4ep633b03be8trc7d28`) | `domexit-api-prod` (`d4eouspb2d0s8dfguf1h`) |
-| **أحدث إصدار نشط (`API`)** | `d4e6vst48cak9j19nh51` (`nodejs22`, `ACTIVE`) | `d4e54n2rmn6ddc3220o9` (`nodejs22`, `ACTIVE`) |
-| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4ed8ebft7dre98tvgao`** (`ACTIVE`) |
+| **أحدث إصدار نشط (`API`)** | `d4e39a9ei8hk48lmlbfk` (`nodejs22`, `ACTIVE`) | **`d4eu369t172o7n39dkj5`** (`nodejs22`, `ACTIVE`) |
+| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4epo9c3rroai2abil0m`** (`ACTIVE`) |
 | **تريغر SLA Cron** | غير مجدول تلقائياً | `a1sbuqn63f9cmamjeqp7` (`0/15 * * * ? *` — كل 15 دقيقة UTC) |
 | **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — الإصدار **`d4e4sl7kmnv8q0k3pocn`** (`ACTIVE`) |
 | **تريغر النسخ الاحتياطي** | غير مجدول | `a1sqlo5a1el40u9tmqdn` (`0 2 * * ? *` — يومياً 02:00 UTC) |
 | **قاعدة بيانات `YDB Document API`** | `etnkpeqnbmb1a6cocipk` | `etnckg937628mnid7tnb` |
-| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (191 ملفاً — محدّث بآخر إصلاحات المراجعة) | `domexit-web-prod` (191 ملفاً — نسخة `964d9dd`) |
+| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (188 ملفاً — `2.95 MB`) | `domexit-web-prod` (188 ملفاً — `2.95 MB` + `yandex_863365d0efe2c1c8.html`) |
 | **دلو الصور العامة (`S3 Public`)** | `domexit-public-photos-staging` | `domexit-storage-vault` |
 | **دلو الوثائق الخاصة (`S3 Private`)** | `domexit-private-docs-staging` | `domexit-private-docs-prod` |
 | **إعداد OAuth Callback** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net/api/auth/yandex/callback` | `https://domexit.ru/api/auth/yandex/callback` |
-| **حالة التزامن** | **محدّثة 100%** بأحدث كود وإصلاحات هذه المراجعة | تعمل بنسخة `964d9dd` وتحتاج ترقية واجهة/ملفات لاحقة لمطابقة إصلاحات المراجعة (6 إصلاحات على الواجهة) |
+| **حالة التزامن** | **محدّثة 100%** (`a02a419`) | **محدّثة 100%** (`a02a419` + `docs` release report) |
 
 ---
 
@@ -175,7 +177,7 @@
 
 | الجدول (`YDB`) | `Staging` | `Production (Read-Only)` | الملاحظة |
 |---|---|---|---|
-| `developers` | **15** | **16** | الـ 15 مطور معتمد بأرقام ИНН صحيحة 100% (`dev-a101` استُعيد في Staging)؛ Prod يحتوي أيضاً `dev-test` القديم |
+| `developers` | **15** | **15** | الـ 15 مطور معتمد بأرقام ИНН صحيحة 100% (تم التأكد من خلو الإنتاج من `dev-test`) |
 | `legal_documents` | **26** | **26** | الوثائق القانونية المرجعية الكاملة `152-ФЗ / 38-ФЗ` |
 | `legal_settings` | **1** | **1** | إعدادات الامتثال القانوني |
 | `market_settings` / `platform_settings` | **1** / **1** | **2** / **2** | إعدادات السوق ومفاتيح المنصة |
@@ -187,7 +189,7 @@
 | `tier_verification_requests` | **0** | **0** | جدول مهيأ في كلتا البيئتين |
 
 - **صحة `YDB` و`S3` على `Staging`:** `YDB: true`, `S3 Public: true`, `S3 Private: true` (`200 OK`).
-- **آخر نسخة احتياطية للإنتاج:** `pre-cutover-2026-11-25-0540.json.gz` (24.1 KB، 58 جدولاً، 95 سجلاً) محفوظة في `s3://domexit-private-docs-prod/_backups/ydb/`.
+- **آخر نسخة احتياطية للإنتاج:** `_backups/ydb/daily/backup-2026-11-25-0848.json.gz` (23 811 بايت، 59 جدولاً، 94 سجلاً) محفوظة في `s3://domexit-private-docs-prod/_backups/ydb/daily/`.
 - **الامتثال الصفري (`Zero-Mock`):** تم التحقق بـ `grep` شامل — صفر إشارات وهمية في الكود الإنتاجي والواجهة الأمامية.
 
 ---
