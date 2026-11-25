@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 interface UserAvatarProps {
   src?: string | null;
@@ -24,8 +24,9 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   initialsClassName,
   alt,
 }) => {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const cleanSrc = String(src || '').trim();
+  const failed = Boolean(cleanSrc && failedSrc === cleanSrc);
   const sizeClass = SIZE_CLASSES[size];
   const imgClass = className
     ? /\bw-/.test(className)
@@ -37,10 +38,6 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
       ? initialsClassName
       : `${sizeClass} rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center ${initialsClassName}`
     : `${sizeClass} rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center`;
-
-  useEffect(() => {
-    setFailed(false);
-  }, [cleanSrc]);
 
   const initials =
     String(name || 'DX')
@@ -65,7 +62,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
       src={cleanSrc}
       alt={alt || name}
       className={imgClass}
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(cleanSrc)}
     />
   );
 };

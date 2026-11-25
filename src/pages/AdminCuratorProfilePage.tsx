@@ -36,14 +36,14 @@ export const AdminCuratorProfilePage: React.FC = () => {
   );
 
   const [employee, setEmployee] = useState<Employee | null>(null);
-  const [name, setName] = useState<string>(user?.name || (isOwner ? 'Владелец платформы' : 'Куратор DomExit'));
+  const [name, setName] = useState<string>(String(user?.name || (isOwner ? 'Владелец платформы' : 'Куратор DomExit')));
   const [role, setRole] = useState<string>(
     isOwner ? 'Владелец / CEO платформы DomExit' : 'Куратор сопровождения сделок DomExit'
   );
-  const [phone, setPhone] = useState<string>(user?.phone ? formatRussianPhoneInput(user.phone) : '');
-  const [telegram, setTelegram] = useState<string>(user?.telegram || '');
+  const [phone, setPhone] = useState<string>(user?.phone ? formatRussianPhoneInput(String(user.phone)) : '');
+  const [telegram, setTelegram] = useState<string>(String(user?.telegram || ''));
   const [maxProfile, setMaxProfile] = useState<string>('');
-  const [photoUrl, setPhotoUrl] = useState<string>(user?.photoURL || '');
+  const [photoUrl, setPhotoUrl] = useState<string>(String(user?.photoURL || ''));
   const [bio, setBio] = useState<string>('');
   const [liveStats, setLiveStats] = useState<{ active: number; closed: number; avgDays: string }>({
     active: 0,
@@ -79,29 +79,32 @@ export const AdminCuratorProfilePage: React.FC = () => {
 
       if (emp) {
         setEmployee(emp);
-        setName(emp.name || user?.name || '');
-        setRole(emp.role || (isOwner ? 'Владелец / CEO' : 'Куратор сделок'));
-        setPhone(emp.phone ? formatRussianPhoneInput(emp.phone) : user?.phone ? formatRussianPhoneInput(user.phone) : '');
-        setTelegram(emp.telegram || user?.telegram || '');
-        setMaxProfile(emp.maxProfile || '');
-        setPhotoUrl(emp.photoUrl || user?.photoURL || '');
-        setBio(emp.bio || '');
+        setName(String(emp.name || user?.name || ''));
+        setRole(String(emp.role || (isOwner ? 'Владелец / CEO' : 'Куратор сделок')));
+        setPhone(emp.phone ? formatRussianPhoneInput(String(emp.phone)) : user?.phone ? formatRussianPhoneInput(String(user.phone)) : '');
+        setTelegram(String(emp.telegram || user?.telegram || ''));
+        setMaxProfile(String(emp.maxProfile || ''));
+        setPhotoUrl(String(emp.photoUrl || user?.photoURL || ''));
+        setBio(String(emp.bio || ''));
       } else if (user) {
-        setName(user.name || '');
+        setName(String(user.name || ''));
         setRole(isOwner ? 'Владелец / CEO платформы DomExit' : 'Куратор сопровождения сделок');
-        setPhone(user.phone ? formatRussianPhoneInput(user.phone) : '');
-        setTelegram(user.telegram || '');
-        setPhotoUrl(user.photoURL || '');
+        setPhone(user.phone ? formatRussianPhoneInput(String(user.phone)) : '');
+        setTelegram(String(user.telegram || ''));
+        setPhotoUrl(String(user.photoURL || ''));
       }
 
+      const lotsList = Array.isArray(allLots) ? allLots : [];
+      const dealsList = Array.isArray(allDeals) ? allDeals : [];
+
       // Compute real live metrics from assigned lots & deals (0 if none)
-      const myLots = (allLots || []).filter((l) =>
-        myIds.has(String(l.assignedEmployeeId || (l as any).assignedCuratorId || ''))
+      const myLots = lotsList.filter((l) =>
+        myIds.has(String(l?.assignedEmployeeId || (l as any)?.assignedCuratorId || ''))
       );
-      const myDeals = (allDeals || []).filter(
+      const myDeals = dealsList.filter(
         (d) =>
-          myIds.has(String(d.assignedEmployeeId || '')) ||
-          myLots.some((l) => l.lotCode === d.lotCode)
+          myIds.has(String(d?.assignedEmployeeId || '')) ||
+          myLots.some((l) => l.lotCode === d?.lotCode)
       );
       const closedDeals = myDeals.filter((d) => d.status === 'closed' || d.stage === 'completed');
       const activeLots = myLots.filter((l) => l.status !== 'closed');

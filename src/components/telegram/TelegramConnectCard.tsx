@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/apiClient';
 import {
@@ -38,6 +38,11 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const onLinkCompleteRef = useRef(onLinkComplete);
+
+  useEffect(() => {
+    onLinkCompleteRef.current = onLinkComplete;
+  }, [onLinkComplete]);
 
   const fetchStatus = useCallback(async () => {
     if (authLoading) return;
@@ -52,8 +57,8 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
       setConfigured(res.configured);
       setBotUsername(res.botUsername);
       setLinked(res.linked);
-      if (res.linked && onLinkComplete) {
-        onLinkComplete();
+      if (res.linked && onLinkCompleteRef.current) {
+        onLinkCompleteRef.current();
       }
       setTelegramUsername(res.telegramUsername);
       setNotificationsEnabled(res.notificationsEnabled !== false);
@@ -62,7 +67,7 @@ export const TelegramConnectCard: React.FC<TelegramConnectCardProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [authLoading, isAuthenticated, onLinkComplete]);
+  }, [authLoading, isAuthenticated]);
 
   useEffect(() => {
     fetchStatus();

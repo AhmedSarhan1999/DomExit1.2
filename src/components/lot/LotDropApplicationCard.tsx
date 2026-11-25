@@ -49,9 +49,6 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
   onOpenAuth,
 }) => {
   const dropConfig = lot.dropConfig;
-  if (!dropConfig || dropConfig.mode !== 'staged_drop') {
-    return null;
-  }
 
   const defaultCash = Number(
     lot.cashPaidBySeller || (lot as any).priceRub || lot.dduContractPrice || 0
@@ -76,12 +73,12 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
   const [hasExistingApp, setHasExistingApp] = useState<boolean>(false);
   const [activeSlotsCount, setActiveSlotsCount] = useState<number>(0);
   const [localCurrentCount, setLocalCurrentCount] = useState<number>(
-    dropConfig.currentValidApplications || 0
+    dropConfig?.currentValidApplications || 0
   );
 
   useEffect(() => {
-    setLocalCurrentCount(dropConfig.currentValidApplications || 0);
-  }, [dropConfig.currentValidApplications, lot.lotCode]);
+    setLocalCurrentCount(dropConfig?.currentValidApplications || 0);
+  }, [dropConfig?.currentValidApplications, lot.lotCode]);
 
   const isSelfSeller = Boolean(
     user &&
@@ -96,9 +93,9 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
   const [remainingText, setRemainingText] = useState<string>('');
 
   const targetDeadline =
-    dropConfig.waveStatus === 'gold_wave'
-      ? dropConfig.goldExclusiveUntil
-      : dropConfig.closesAt;
+    dropConfig?.waveStatus === 'gold_wave'
+      ? dropConfig?.goldExclusiveUntil
+      : dropConfig?.closesAt;
 
   useEffect(() => {
     const updateCountdown = () => {
@@ -122,6 +119,7 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
 
   // Load live Buy-Box, Gold proof status, and existing lot application
   useEffect(() => {
+    if (!dropConfig || dropConfig.mode !== 'staged_drop') return;
     setHasExistingApp(false);
     setAppliedApp(null);
     setHasGoldProofApproved(false);
@@ -180,7 +178,11 @@ export const LotDropApplicationCard: React.FC<LotDropApplicationCardProps> = ({
       }
     };
     fetchUserStatus();
-  }, [user?.id, lot.lotCode]);
+  }, [dropConfig?.mode, user?.id, lot.lotCode]);
+
+  if (!dropConfig || dropConfig.mode !== 'staged_drop') {
+    return null;
+  }
 
   const maxCap = dropConfig.maxApplicationsCap || 5;
   const currentCount = localCurrentCount;

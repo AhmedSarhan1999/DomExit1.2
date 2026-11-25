@@ -45,6 +45,7 @@ import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { DatabaseInitializer } from './dal/initializer';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
+import { AppErrorBoundary } from './components/common/AppErrorBoundary';
 
 const OpportunityRedirect: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -73,8 +74,9 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <LanguageProvider>
-      <AuthProvider>
+    <AppErrorBoundary>
+      <LanguageProvider>
+        <AuthProvider>
         <BrowserRouter>
           <ScrollToTop />
           <CookieConsentBanner />
@@ -150,7 +152,8 @@ export const App: React.FC = () => {
           </Suspense>
         </BrowserRouter>
       </AuthProvider>
-    </LanguageProvider>
+      </LanguageProvider>
+    </AppErrorBoundary>
   );
 };
 

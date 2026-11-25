@@ -16,10 +16,6 @@ import {
   Trash2,
   KeyRound,
   FileCheck,
-  Building2,
-  Crown,
-  Briefcase,
-  Sparkles,
   LogOut,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -96,6 +92,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
   // Status & Feedback states
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const [isChangingPass, setIsChangingPass] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -103,13 +100,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   // Initialize data on modal open
   useEffect(() => {
     if (isOpen) {
-      setName(currentUser.name || '');
-      setPhone(currentUser.phone ? formatRussianPhoneInput(currentUser.phone) : '+7 ');
-      const rawTg = currentUser.telegram || (currentUser.telegramUsername ? `@${currentUser.telegramUsername.replace(/^@+/, '')}` : '');
+      setName(String(currentUser.name || ''));
+      setPhone(currentUser.phone ? formatRussianPhoneInput(String(currentUser.phone)) : '+7 ');
+      const tgUser = String(currentUser.telegramUsername || '').replace(/^@+/, '');
+      const rawTg = String(currentUser.telegram || (tgUser ? `@${tgUser}` : ''));
       setTelegram(rawTg);
-      setInn(currentUser.inn || '');
-      setPhotoURL(currentUser.photoURL || '');
-      setCustomPhotoInput(currentUser.photoURL || '');
+      setInn(String(currentUser.inn || ''));
+      setPhotoURL(String(currentUser.photoURL || ''));
+      setCustomPhotoInput(String(currentUser.photoURL || ''));
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -119,7 +117,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       // Auto-populate Telegram handle from live bot status if missing
       apiClient.telegram.getStatus().then((st) => {
         if (st?.telegramUsername) {
-          setTelegram((prev) => prev || `@${st.telegramUsername!.replace(/^@+/, '')}`);
+          setTelegram((prev) => prev || `@${String(st.telegramUsername).replace(/^@+/, '')}`);
         }
       }).catch(() => {});
     }
@@ -141,9 +139,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     const formatted = formatRussianPhoneInput(e.target.value);
     setPhone(formatted);
   };
-
-  // Avatar file upload handler via S3 WebP (zero Base64)
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
 
   const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -258,10 +253,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           email: currentUser.email || existingEmp?.email || 'curator@domexit.ru',
           role: existingEmp?.role || 'Ведущий куратор отдела выходов',
           phone: cleanPhone,
-          telegram: telegram.trim().startsWith('@') ? telegram.trim() : `@${telegram.trim()}`,
+          telegram: formattedTg,
           whatsapp: existingEmp?.whatsapp || cleanPhone,
           maxProfile: existingEmp?.maxProfile || cleanPhone,
-          photoUrl: photoURL.trim() || existingEmp?.photoUrl,
+          photoUrl: photoURL.trim() || existingEmp?.photoUrl || '',
           bio:
             existingEmp?.bio ||
             'Специалист по сделкам с уступкой прав и аккредитивным расчетам.',
@@ -336,7 +331,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
   const activeRoleName = currentUser.activeRole || currentUser.role || 'buyer';
   const roleDisplay = roleLabelsRu[activeRoleName] || activeRoleName;
-  const initialLetter = (currentUser.name || currentUser.email || 'U').charAt(0).toUpperCase();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fadeIn">
@@ -818,7 +812,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   Доступные роли в системе
                 </h4>
                 <div className="grid grid-cols-2 gap-2">
-                  {(currentUser.roles || [activeRoleName]).map((r) => (
+                  {(Array.isArray(currentUser.roles) && currentUser.roles.length > 0 ? currentUser.roles : [activeRoleName]).map((r) => (
                     <div
                       key={r}
                       className="p-3 rounded-xl bg-white border border-slate-200 text-xs flex items-center space-x-2"
