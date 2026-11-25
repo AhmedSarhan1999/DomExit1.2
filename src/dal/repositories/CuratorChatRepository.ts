@@ -7,7 +7,11 @@ export class CuratorChatRepository {
   /**
    * Retrieves messages for a specific lot or deal, sorted chronologically.
    */
-  static async getMessages(lotIdOrCode: string, dealId?: string): Promise<CuratorMessage[]> {
+  static async getMessages(
+    lotIdOrCode: string,
+    dealId?: string,
+    threadChannel?: 'seller_curator' | 'buyer_curator'
+  ): Promise<CuratorMessage[]> {
     const cleanLot = (lotIdOrCode || '').trim().toUpperCase();
     const cleanDeal = (dealId || '').trim().toUpperCase();
 
@@ -19,7 +23,8 @@ export class CuratorChatRepository {
         ((m.lotCode && m.lotCode.toUpperCase() === cleanLot) ||
           (m.lotId && m.lotId.toUpperCase() === cleanLot));
       const matchDeal = cleanDeal && m.dealId && m.dealId.toUpperCase() === cleanDeal;
-      return matchLot || matchDeal;
+      const matchChannel = !threadChannel || !m.threadChannel || m.threadChannel === threadChannel;
+      return (matchLot || matchDeal) && matchChannel;
     });
 
     return filtered.sort(

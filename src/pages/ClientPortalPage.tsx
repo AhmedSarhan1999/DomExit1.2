@@ -23,7 +23,8 @@ import { UserProfileModal } from '../components/profile/UserProfileModal';
 import { SetPasswordModal } from '../components/auth/SetPasswordModal';
 import { CuratorChatWidget } from '../components/chat/CuratorChatWidget';
 import { TelegramConnectCard } from '../components/telegram/TelegramConnectCard';
-import { KeyRound, X } from 'lucide-react';
+import { KeyRound, X, Download } from 'lucide-react';
+import { downloadPepCertificate, formatPepChannelRu } from '../utils/pepCertificate';
 
 // Subcomponents in src/components/portal/
 import { PortalProfileHeader, PortalTab } from '../components/portal/PortalProfileHeader';
@@ -767,30 +768,46 @@ export const ClientPortalPage: React.FC = () => {
                     <th className="py-2.5 px-3">Лот</th>
                     <th className="py-2.5 px-3">Статус подписи</th>
                     <th className="py-2.5 px-3">Хеш (SHA-256)</th>
+                    <th className="py-2.5 px-3 text-right">Сертификат</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
-                  {signatures.map((sig) => (
-                    <tr key={sig.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
-                        {new Date(sig.signedAt).toLocaleString('ru-RU')}
-                      </td>
-                      <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
-                        {sig.documentType === 'nda_viewing_act'
-                          ? 'Акт осмотра и NDA'
-                          : sig.documentType === 'seller_exclusive_consent'
-                          ? 'Согласие продавца'
-                          : 'Условия бронирования'}
-                      </td>
-                      <td className="py-2.5 px-3 font-bold text-indigo-700">#{sig.lotCode}</td>
-                      <td className="py-2.5 px-3 font-sans text-emerald-700 font-semibold">
-                        ✓ Подписано (Telegram OTP)
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-400 truncate max-w-xs" title={sig.docHashSha256}>
-                        {sig.docHashSha256?.substring(0, 16)}...
-                      </td>
-                    </tr>
-                  ))}
+                  {signatures.map((sig) => {
+                    const hashVal = sig.documentTextHashSha256 || sig.docHashSha256 || '';
+                    const channelRu = formatPepChannelRu(sig.deliveryChannel, sig.verificationMethod);
+                    return (
+                      <tr key={sig.id} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                          {new Date(sig.signedAt).toLocaleString('ru-RU')}
+                        </td>
+                        <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                          {sig.documentTitle ||
+                            (sig.documentType === 'nda_viewing_act'
+                              ? 'Акт осмотра и NDA'
+                              : sig.documentType === 'seller_exclusive_consent'
+                              ? 'Согласие продавца'
+                              : 'Условия бронирования 2.5%')}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-indigo-700">#{sig.lotCode}</td>
+                        <td className="py-2.5 px-3 font-sans text-emerald-700 font-semibold">
+                          ✓ Подписано ({channelRu})
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-400 truncate max-w-xs" title={hashVal}>
+                          {hashVal ? `${hashVal.substring(0, 16)}...` : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-sans">
+                          <button
+                            type="button"
+                            onClick={() => downloadPepCertificate(sig)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold text-[11px] cursor-pointer"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Скачать</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -867,6 +884,7 @@ export const ClientPortalPage: React.FC = () => {
         onClose={() => setIsCuratorChatOpen(false)}
         lotCode={activeChatLotCode}
         dealId={activeChatDealId}
+        threadChannel={activeTab === 'seller' ? 'seller_curator' : 'buyer_curator'}
         curatorName={curator?.name || 'Юридический куратор DomExit'}
         curatorRole={curator?.role || 'Персональный куратор сделки'}
         curatorPhone={curator?.phone}

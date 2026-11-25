@@ -31,6 +31,7 @@ interface CuratorChatWidgetProps {
   isOpen: boolean;
   onClose: () => void;
   embedded?: boolean;
+  threadChannel?: 'seller_curator' | 'buyer_curator';
 }
 
 export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
@@ -46,6 +47,7 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
   isOpen,
   onClose,
   embedded = false,
+  threadChannel,
 }) => {
   const { user, openAuthModal } = useAuth();
   const { language } = useLanguage();
@@ -60,7 +62,7 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
 
   const loadMessages = async () => {
     if (!cleanLotCode && !cleanDealId) return;
-    const msgs = await CuratorChatRepository.getMessages(cleanLotCode, cleanDealId);
+    const msgs = await CuratorChatRepository.getMessages(cleanLotCode, cleanDealId, threadChannel);
     setMessages(msgs);
 
     // Auto mark as read messages sent to current role
@@ -128,6 +130,9 @@ export const CuratorChatWidget: React.FC<CuratorChatWidgetProps> = ({
         dealId: cleanDealId || undefined,
         lotId: cleanLotCode,
         lotCode: cleanLotCode,
+        threadChannel:
+          threadChannel ||
+          (currentRole === 'seller' ? 'seller_curator' : 'buyer_curator'),
         senderId: user.id,
         senderName: senderDisplayName,
         senderRole: currentRole,

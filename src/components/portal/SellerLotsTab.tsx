@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Building2,
@@ -14,6 +14,7 @@ import {
   Send,
   FolderLock,
   Download,
+  FileSignature,
 } from 'lucide-react';
 import {
   Lot,
@@ -24,7 +25,12 @@ import {
 } from '../../types';
 import { formatRubles } from '../../utils/formatters';
 import { StorageService } from '../../dal/StorageService';
+import { apiClient } from '../../services/apiClient';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { PepSignatureModal } from '../legal/PepSignatureModal';
+import { downloadPepCertificate } from '../../utils/pepCertificate';
+import { CLOSING_STEPS_6, normalizeClosingStepNum } from '../../utils/closingWorkflow';
+import { DealActionItemsCard } from './DealActionItemsCard';
 
 const STAGE_LABEL_RU: Record<DealTrack['stage'], string> = {
   initial_audit: '1. Первичный комплаенс',
@@ -76,6 +82,27 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
   onOpenCuratorChat,
 }) => {
   const { language } = useLanguage();
+  const [sellerPepSig, setSellerPepSig] = useState<any | null>(null);
+  const [isSellerPepOpen, setIsSellerPepOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!activeSellerLot?.lotCode) {
+      setSellerPepSig(null);
+      return;
+    }
+    apiClient.pep
+      .getMySignatures(activeSellerLot.lotCode)
+      .then((res) => {
+        const list = (res as any)?.signatures || [];
+        const match = list.find(
+          (s: any) =>
+            s.documentType === 'seller_exclusive_consent' &&
+            s.status === 'signed'
+        );
+        setSellerPepSig(match || null);
+      })
+      .catch(() => setSellerPepSig(null));
+  }, [activeSellerLot?.lotCode]);
 
   const activeStageNum = activeSellerDeal ? STAGE_NUM_MAP[activeSellerDeal.stage] || 1 : 2;
 
@@ -417,6 +444,93 @@ export const SellerLotsTab: React.FC<SellerLotsTabProps> = ({
               )}
             </div>
           </div>
+
+          {/* Seller PEP 63-FZ Exclusive Consent Strip */}
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start space-x-2.5 text-xs">
+              <FileSignature className="w-4 h-4 text-indigo-700 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-black text-indigo-950">
+                  Согласие продавца на сопровождение (ПЭП 63-ФЗ)
+                </div>
+                <div className="text-[11px] text-indigo-800">
+                  {sellerPepSig
+                    ? `✓ Подписано ${new Date(sellerPepSig.signedAt).toLocaleString('ru-RU')} • SHA-256: ${(sellerPepSig.documentTextHashSha256 || '').slice(0, 12)}...`
+                    : 'Подпишите электронное согласие ПЭП (63-ФЗ) для ускорения передачи лота на сделку и СБР.'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {sellerPepSig ? (
+                <>
+                  <span className="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black text-xs">
+                    ✓ Подписано (63-ФЗ)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => downloadPepCertificate(sellerPepSig)}
+                    className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-300 font-bold text-xs flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Сертификат</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsSellerPepOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                >
+                  <FileSignature className="w-3.5 h-3.5" />
+                  <span>Согласие продавца на сопровождение (ПЭП 63-ФЗ)</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {activeSellerLot && (
+            <PepSignatureModal
+              isOpen={isSellerPepOpen}
+              onClose={() => setIsSellerPepOpen(false)}
+              documentType="seller_exclusive_consent"
+              lotCode={activeSellerLot.lotCode}
+              onSigned={(sig) => setSellerPepSig(sig)}
+            />
+          )}
+
+          <DealActionItemsCard
+            deal={activeSellerDeal}
+            assignee="seller"
+            userId={activeSellerLot.sellerUserId}
+            clientCode={activeSellerLot.sellerClientCode}
+            onOpenPep={(_docType, _code) => setIsSellerPepOpen(true)}
+          />
+
+          {activeSellerDeal?.escrowWorkflow?.step && (
+            <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200 space-y-2">
+              <div className="text-[11px] font-black uppercase tracking-wider text-emerald-900">
+                Прогресс закрытия сделки (Переуступка ДДУ 214-ФЗ):
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5 text-[10px]">
+                {CLOSING_STEPS_6.map((st) => {
+                  const currentNum = normalizeClosingStepNum(activeSellerDeal.escrowWorkflow!.step);
+                  const passed = st.num <= currentNum;
+                  return (
+                    <div
+                      key={st.id}
+                      className={`px-2 py-1.5 rounded-lg font-bold text-center border ${
+                        passed
+                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          : 'bg-white text-slate-400 border-slate-200'
+                      }`}
+                    >
+                      {st.shortTitle}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Live Document Vault */}
           <div className="space-y-3 pt-4 border-t border-slate-100">

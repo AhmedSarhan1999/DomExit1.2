@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Download,
@@ -13,10 +13,16 @@ import {
   Archive,
   XCircle,
   Award,
+  Lock,
+  FileSignature,
 } from 'lucide-react';
 import { BuyerCandidate, BuyerApplication, Lot, DealTrack, UserProfile } from '../../types';
 import { formatRubles } from '../../utils/formatters';
 import { apiClient } from '../../services/apiClient';
+import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
+import { PepSignatureModal } from '../legal/PepSignatureModal';
+import { CLOSING_STEPS_6, normalizeClosingStepNum } from '../../utils/closingWorkflow';
+import { DealActionItemsCard } from './DealActionItemsCard';
 
 export interface BuyerDealsTabProps {
   userBids: BuyerCandidate[];
@@ -116,11 +122,33 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
   onOpenCuratorChat,
   onOpenBuyerVault,
 }) => {
+  const { channels } = usePublicChannelsStore();
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [dealWithdrawTarget, setDealWithdrawTarget] = useState<BuyerApplication | null>(null);
   const [withdrawReason, setWithdrawReason] = useState<string>('');
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [showArchive, setShowArchive] = useState<boolean>(false);
+  const [pepSignatures, setPepSignatures] = useState<any[]>([]);
+  const [pepModal, setPepModal] = useState<{
+    isOpen: boolean;
+    documentType: 'nda_viewing_act' | 'buyer_reservation_terms';
+    lotCode: string;
+  }>({ isOpen: false, documentType: 'nda_viewing_act', lotCode: '' });
+
+  const loadBuyerPepSignatures = async () => {
+    try {
+      const res = await apiClient.pep.getMySignatures();
+      setPepSignatures((res as any)?.signatures || []);
+    } catch {
+      setPepSignatures([]);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      loadBuyerPepSignatures();
+    }
+  }, [user?.id, activeApplications.length]);
 
   const effectiveTier = (buyerTier || (user as any)?.buyerTier || 'silver').toLowerCase();
   const activeSlotCount = activeApplications.length;
@@ -288,9 +316,18 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                 linkedDeal?.assignedEmployeeName ||
                 linkedDeal?.curatorName ||
                 curatorData?.name ||
-                'Куратор DomExit';
-              const curatorPhone = curatorData?.phone || '+7 (812) 409-00-00';
-              const curatorTelegram = curatorData?.telegram || '@domexit_official';
+                'Персональный куратор DomExit';
+              const curatorPhone = curatorData?.phone || '';
+              const curatorTelegram = curatorData?.telegram || channels.telegramBotUrl || 'https://t.me/domexit_bot';
+
+              const lotSigs = pepSignatures.filter(
+                (s) =>
+                  String(s.lotCode || '').toUpperCase() === String(app.lotCode || '').toUpperCase() &&
+                  s.status === 'signed'
+              );
+              const ndaSigned = lotSigs.some((s) => s.documentType === 'nda_viewing_act');
+              const offerSigned = lotSigs.some((s) => s.documentType === 'buyer_reservation_terms');
+              const bothPepSigned = ndaSigned && offerSigned;
 
               return (
                 <div
@@ -387,28 +424,73 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                         </Link>
                       </div>
 
+                      {/* Mandatory PEP 63-FZ Step before unlocking private Seller Vault */}
+                      <div className="p-3.5 rounded-xl bg-white border border-emerald-300 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 flex items-center space-x-1.5">
+                            <FileSignature className="w-4 h-4 text-indigo-600" />
+                            <span>Обязательное подписание ПЭП (63-ФЗ) перед открытием документов продавца:</span>
+                          </span>
+                          {bothPepSigned && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                              ✓ Доступ к документам открыт
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPepModal({
+                                isOpen: true,
+                                documentType: 'nda_viewing_act',
+                                lotCode: app.lotCode,
+                              })
+                            }
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center space-x-1.5 cursor-pointer transition-colors ${
+                              ndaSigned
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                            }`}
+                          >
+                            {ndaSigned ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileSignature className="w-3.5 h-3.5" />}
+                            <span>{ndaSigned ? '✓ NDA подписано (63-ФЗ)' : '1. Подписать NDA (ПЭП 63-ФЗ)'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPepModal({
+                                isOpen: true,
+                                documentType: 'buyer_reservation_terms',
+                                lotCode: app.lotCode,
+                              })
+                            }
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center space-x-1.5 cursor-pointer transition-colors ${
+                              offerSigned
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                            }`}
+                          >
+                            {offerSigned ? <CheckCircle2 className="w-3.5 h-3.5" /> : <FileSignature className="w-3.5 h-3.5" />}
+                            <span>
+                              {offerSigned
+                                ? '✓ Оферта 2.5% подписана (63-ФЗ)'
+                                : '2. Подписать оферту бронирования 2.5% (ПЭП 63-ФЗ)'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
                       {linkedDeal?.escrowWorkflow?.step && (
                         <div className="bg-white/90 border border-emerald-200 rounded-xl p-3 space-y-2">
                           <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
                             Статус банковского закрытия сделки ({linkedDeal.escrowWorkflow.bankName || 'Эскроу / СБР'}):
                           </div>
-                          <div className="grid grid-cols-5 gap-1.5 text-[10px]">
-                            {[
-                              { id: 'curator_review', label: '1. Куратор' },
-                              { id: 'escrow_opened', label: '2. Счёт СБР' },
-                              { id: 'funds_deposited', label: '3. Депозит' },
-                              { id: 'rosreestr_submitted', label: '4. Росреестр' },
-                              { id: 'deal_finalized', label: '5. Выплата' },
-                            ].map((st, idx) => {
-                              const order = [
-                                'curator_review',
-                                'escrow_opened',
-                                'funds_deposited',
-                                'rosreestr_submitted',
-                                'deal_finalized',
-                              ];
-                              const currentIdx = order.indexOf(linkedDeal.escrowWorkflow!.step);
-                              const passed = idx <= currentIdx;
+                          <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5 text-[10px]">
+                            {CLOSING_STEPS_6.map((st) => {
+                              const currentNum = normalizeClosingStepNum(linkedDeal.escrowWorkflow!.step);
+                              const passed = st.num <= currentNum;
                               return (
                                 <div
                                   key={st.id}
@@ -418,13 +500,29 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                                       : 'bg-slate-50 text-slate-400 border-slate-200'
                                   }`}
                                 >
-                                  {st.label}
+                                  {st.shortTitle}
                                 </div>
                               );
                             })}
                           </div>
                         </div>
                       )}
+
+                      <DealActionItemsCard
+                        deal={linkedDeal}
+                        assignee="buyer"
+                        userId={user?.id}
+                        clientCode={user?.clientCode}
+                        onTaskUpdated={onRefreshData}
+                        onOpenPep={(docType, code) =>
+                          setPepModal({
+                            isOpen: true,
+                            documentType:
+                              docType === 'nda_viewing_act' ? 'nda_viewing_act' : 'buyer_reservation_terms',
+                            lotCode: code,
+                          })
+                        }
+                      />
 
                       <div className="pt-2.5 border-t border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-emerald-100">
                         <div>
@@ -442,13 +540,15 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                             <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
                             <span>Чат с куратором</span>
                           </button>
-                          <a
-                            href={`tel:${curatorPhone.replace(/[^\d+]/g, '')}`}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5"
-                          >
-                            <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{curatorPhone}</span>
-                          </a>
+                          {curatorPhone && (
+                            <a
+                              href={`tel:${curatorPhone.replace(/[^\d+]/g, '')}`}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center space-x-1.5"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{curatorPhone}</span>
+                            </a>
+                          )}
                           <a
                             href={
                               curatorTelegram.startsWith('http')
@@ -464,11 +564,21 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
                           </a>
                           <button
                             type="button"
+                            disabled={!bothPepSigned}
                             onClick={() => onOpenBuyerVault(app.lotCode)}
-                            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-xs flex items-center space-x-1.5 cursor-pointer"
+                            title={
+                              bothPepSigned
+                                ? 'Открыть документы сделки (ДДУ и закрытие)'
+                                : 'Сначала подпишите NDA и Оферту 2.5% (ПЭП 63-ФЗ)'
+                            }
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 border ${
+                              bothPepSigned
+                                ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200 cursor-pointer'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                            }`}
                           >
-                            <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Документы сделки</span>
+                            {bothPepSigned ? <FileText className="w-3.5 h-3.5 text-indigo-600" /> : <Lock className="w-3.5 h-3.5" />}
+                            <span>{bothPepSigned ? 'Документы сделки' : 'Документы (требуется ПЭП)'}</span>
                           </button>
                         </div>
                       </div>
@@ -740,6 +850,17 @@ export const BuyerDealsTab: React.FC<BuyerDealsTabProps> = ({
           </div>
         </div>
       )}
+
+      <PepSignatureModal
+        isOpen={pepModal.isOpen}
+        onClose={() => setPepModal((prev) => ({ ...prev, isOpen: false }))}
+        documentType={pepModal.documentType}
+        lotCode={pepModal.lotCode}
+        onSigned={() => {
+          loadBuyerPepSignatures();
+          onRefreshData?.();
+        }}
+      />
     </div>
   );
 };

@@ -7,11 +7,20 @@ import { AdminHeader } from '../components/layout/AdminHeader';
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
+import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
-import { DealTrack, Lot } from '../types';
+import { apiClient } from '../services/apiClient';
+import { ClosingStepId, DealTrack, Lot } from '../types';
 import { showDownloadToast } from '../utils/downloadManager';
 import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
+import { ClosingCommsAndTasksPanel } from '../components/closing/ClosingCommsAndTasksPanel';
+import {
+  CLOSING_STEPS_6,
+  getClosingProgressPercent,
+  normalizeClosingStepNum,
+} from '../utils/closingWorkflow';
+import { downloadPepCertificate } from '../utils/pepCertificate';
 import {
   Building2,
   ShieldCheck,
@@ -24,6 +33,9 @@ import {
   AlertTriangle,
   HardDrive,
   Lock,
+  FileSignature,
+  Download,
+  Upload,
 } from 'lucide-react';
 
 export const AdminClosingPage: React.FC = () => {
@@ -44,10 +56,20 @@ export const AdminClosingPage: React.FC = () => {
     'Покупатель не подтвердил депонирование средств на аккредитиве в установленный 48-часовой срок.'
   );
 
-  // Proof upload form state for Step C
+  // Proof upload form state for Step 4 & 6-Step Russian Closing State
   const [proofPhotos, setProofPhotos] = useState<string[]>([]);
   const [proofVideos, setProofVideos] = useState<string[]>([]);
   const [rosreestrStampDoc, setRosreestrStampDoc] = useState<string>('');
+  const [pepSignatures, setPepSignatures] = useState<any[]>([]);
+  const [pepOverrideReason, setPepOverrideReason] = useState<string>('');
+  const [pepOverrideDocKey, setPepOverrideDocKey] = useState<string>('');
+  const [bankInput, setBankInput] = useState<string>('ПАО Сбербанк');
+  const [sbrAccountInput, setSbrAccountInput] = useState<string>('');
+  const [kuvdInput, setKuvdInput] = useState<string>('');
+  const [notaryConfirmed, setNotaryConfirmed] = useState<boolean>(false);
+  const [sellerPayoutConfirmed, setSellerPayoutConfirmed] = useState<boolean>(false);
+  const [platformFeeConfirmed, setPlatformFeeConfirmed] = useState<boolean>(false);
+  const [advancingStep, setAdvancingStep] = useState<boolean>(false);
 
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
@@ -81,19 +103,29 @@ export const AdminClosingPage: React.FC = () => {
     setDeal(found || null);
 
     if (found) {
-      if (found.escrowWorkflow?.signingProofPhotos?.length) {
-        setProofPhotos(found.escrowWorkflow.signingProofPhotos);
-      }
-      if (found.escrowWorkflow?.signingProofVideos?.length) {
-        setProofVideos(found.escrowWorkflow.signingProofVideos);
-      }
-      if (found.escrowWorkflow?.rosreestrStampDocUrl) {
-        setRosreestrStampDoc(found.escrowWorkflow.rosreestrStampDocUrl);
-      }
-      const linkedLot = await LotsRepository.getByCode(found.lotCode);
+      setProofPhotos(found.escrowWorkflow?.signingProofPhotos || []);
+      setProofVideos(found.escrowWorkflow?.signingProofVideos || []);
+      setRosreestrStampDoc(
+        found.escrowWorkflow?.egrnExtractDocKey || found.escrowWorkflow?.rosreestrStampDocUrl || ''
+      );
+      setBankInput(found.escrowWorkflow?.bankName || 'ПАО Сбербанк');
+      setSbrAccountInput(found.escrowWorkflow?.escrowAccountNumber || '');
+      setKuvdInput(found.escrowWorkflow?.rosreestrKuvdNumber || '');
+      setNotaryConfirmed(Boolean(found.escrowWorkflow?.notaryConsentConfirmed));
+      setSellerPayoutConfirmed(Boolean(found.escrowWorkflow?.sellerPayoutConfirmed));
+      setPlatformFeeConfirmed(Boolean(found.escrowWorkflow?.platformFeeConfirmed));
+      setPepOverrideDocKey(found.escrowWorkflow?.pepOverrideDocKey || '');
+      setPepOverrideReason(found.escrowWorkflow?.pepOverrideReason || '');
+
+      const [linkedLot, pepRes] = await Promise.all([
+        LotsRepository.getByCode(found.lotCode),
+        apiClient.pep.getMySignatures(found.lotCode).catch(() => null),
+      ]);
       setLot(linkedLot);
+      setPepSignatures((pepRes as any)?.signatures || []);
     } else {
       setLot(null);
+      setPepSignatures([]);
     }
   };
 
@@ -233,8 +265,9 @@ export const AdminClosingPage: React.FC = () => {
     kind: 'photo' | 'video' | 'rosreestr'
   ) => {
     if (!deal) return;
+    let uploadedKey = '';
     try {
-      await StorageService.uploadDocument({
+      const uploaded = await StorageService.uploadDocument({
         file,
         category: kind === 'rosreestr' ? 'rosreestr_extract' : 'additional',
         categoryLabelRu:
@@ -248,42 +281,152 @@ export const AdminClosingPage: React.FC = () => {
         uploadedByUid: user?.id || 'closing-curator',
         clientCode: user?.clientCode || 'DEX-STAFF',
       });
+      uploadedKey = uploaded.objectKey;
     } catch (err: any) {
       console.error('[AdminClosingPage] upload error:', err);
-      showDownloadToast('Ошибка загрузки файла в хранилище. Пожалуйста, повторите попытку.', 'error');
+      showDownloadToast('Ошибка загрузки файла в S3-хранилище. Пожалуйста, повторите попытку.', 'error');
       return;
     }
 
+    const updatedEw = {
+      ...(deal.escrowWorkflow || {
+        step: 'pep_reservation' as ClosingStepId,
+        bankName: bankInput,
+        escrowAccountNumber: sbrAccountInput,
+        depositedAmountRub: totalEscrowDepositRub,
+        signingProofPhotos: [] as string[],
+        signingProofVideos: [] as string[],
+      }),
+    };
+
     if (kind === 'photo') {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setProofPhotos((prev) => [...prev, reader.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
+      const nextPhotos = [...proofPhotos, uploadedKey];
+      setProofPhotos(nextPhotos);
+      updatedEw.signingProofPhotos = nextPhotos;
     } else if (kind === 'video') {
-      setProofVideos((prev) => [...prev, file.name]);
+      const nextVideos = [...proofVideos, uploadedKey];
+      setProofVideos(nextVideos);
+      updatedEw.signingProofVideos = nextVideos;
     } else {
-      setRosreestrStampDoc(file.name);
+      setRosreestrStampDoc(uploadedKey);
+      updatedEw.egrnExtractDocKey = uploadedKey;
+      updatedEw.egrnExtractDocName = file.name;
+      updatedEw.rosreestrStampDocUrl = uploadedKey;
     }
 
-    setNotificationMsg(`Файл «${file.name}» загружен в хранилище сделки!`);
+    const nextDeal: DealTrack = { ...deal, escrowWorkflow: updatedEw };
+    await DealsRepository.update(nextDeal);
+    setDeal(nextDeal);
+
+    setNotificationMsg(`Файл «${file.name}» сохранён в S3 (${uploadedKey}) без Base64!`);
     setTimeout(() => setNotificationMsg(null), 3500);
   };
 
-  const progressPercent =
-    currentStep === 'curator_review'
-      ? 25
-      : currentStep === 'bank_escrow_deposit'
-      ? 50
-      : currentStep === 'signing_photos'
-      ? 75
-      : currentStep === 'bank_funds_release'
-      ? 90
-      : currentStep === 'deal_finalized'
-      ? 100
-      : 0;
+  const handleUploadClosingFieldDoc = async (
+    file: File,
+    fieldKey: 'cessionDraft' | 'developerConsent' | 'sbrReceipt' | 'notaryConsent' | 'pepOverride',
+    labelRu: string
+  ) => {
+    if (!deal) return;
+    try {
+      const uploaded = await StorageService.uploadDocument({
+        file,
+        category: 'additional',
+        categoryLabelRu: `${labelRu}: ${file.name}`,
+        entityType: 'deal',
+        entityId: deal.dealId,
+        uploadedByUid: user?.id || 'closing-curator',
+        clientCode: user?.clientCode || 'DEX-STAFF',
+      });
+      const updatedEw: NonNullable<DealTrack['escrowWorkflow']> = {
+        ...(deal.escrowWorkflow || {
+          step: currentStep as ClosingStepId,
+          bankName: bankInput,
+          escrowAccountNumber: sbrAccountInput,
+          depositedAmountRub: totalEscrowDepositRub,
+          signingProofPhotos: proofPhotos,
+          signingProofVideos: proofVideos,
+        }),
+      };
+      if (fieldKey === 'cessionDraft') {
+        updatedEw.cessionDraftDocKey = uploaded.objectKey;
+        updatedEw.cessionDraftDocName = file.name;
+      } else if (fieldKey === 'developerConsent') {
+        updatedEw.developerConsentDocKey = uploaded.objectKey;
+        updatedEw.developerConsentDocName = file.name;
+      } else if (fieldKey === 'sbrReceipt') {
+        updatedEw.sbrReceiptDocKey = uploaded.objectKey;
+        updatedEw.sbrReceiptDocName = file.name;
+      } else if (fieldKey === 'notaryConsent') {
+        updatedEw.notaryConsentDocKey = uploaded.objectKey;
+        updatedEw.notaryConsentDocName = file.name;
+        updatedEw.notaryConsentConfirmed = true;
+        setNotaryConfirmed(true);
+      } else if (fieldKey === 'pepOverride') {
+        updatedEw.pepOverrideDocKey = uploaded.objectKey;
+        setPepOverrideDocKey(uploaded.objectKey);
+      }
+
+      const nextDeal: DealTrack = { ...deal, escrowWorkflow: updatedEw };
+      await DealsRepository.update(nextDeal);
+      setDeal(nextDeal);
+      setNotificationMsg(`✓ Документ «${file.name}» загружен в S3`);
+      setTimeout(() => setNotificationMsg(null), 3500);
+    } catch (err: any) {
+      setNotificationMsg(`Ошибка загрузки в S3: ${err?.message || 'Сбой'}`);
+    }
+  };
+
+  const handleAdvanceToStep = async (nextStep: ClosingStepId) => {
+    if (!deal) return;
+    setAdvancingStep(true);
+    try {
+      const updatedEw: NonNullable<DealTrack['escrowWorkflow']> = {
+        ...(deal.escrowWorkflow || {
+          step: currentStep as ClosingStepId,
+          bankName: bankInput,
+          escrowAccountNumber: sbrAccountInput,
+          depositedAmountRub: totalEscrowDepositRub,
+          signingProofPhotos: proofPhotos,
+          signingProofVideos: proofVideos,
+        }),
+        step: nextStep,
+        bankName: bankInput.trim(),
+        escrowAccountNumber: sbrAccountInput.trim(),
+        rosreestrKuvdNumber: kuvdInput.trim(),
+        notaryConsentConfirmed: notaryConfirmed,
+        sellerPayoutConfirmed,
+        platformFeeConfirmed,
+        pepOverrideDocKey: pepOverrideDocKey || deal.escrowWorkflow?.pepOverrideDocKey,
+        pepOverrideReason: pepOverrideReason.trim() || deal.escrowWorkflow?.pepOverrideReason,
+      };
+      const nextDeal: DealTrack = { ...deal, escrowWorkflow: updatedEw };
+      await DealsRepository.update(nextDeal);
+      setDeal(nextDeal);
+
+      if (nextStep === 'developer_consent' && pepOverrideDocKey && pepOverrideReason.trim()) {
+        await AuditLogsRepository.addLog({
+          lotCode: deal.lotCode,
+          dealId: deal.dealId,
+          operatorName,
+          operatorRole: 'owner',
+          actionType: 'pep_paper_override',
+          title: 'Исключение владельца: бумажный скан ПЭП прикреплён в S3',
+          description: `Причина: ${pepOverrideReason.trim()} (S3: ${pepOverrideDocKey})`,
+        });
+      }
+
+      setNotificationMsg(`✓ Переход на этап «${CLOSING_STEPS_6[normalizeClosingStepNum(nextStep) - 1]?.title || nextStep}» выполнен!`);
+      setTimeout(() => setNotificationMsg(null), 4000);
+    } catch (err: any) {
+      setNotificationMsg(`Блокировка шлюза: ${err?.message || 'Не выполнены обязательные условия шага'}`);
+    } finally {
+      setAdvancingStep(false);
+    }
+  };
+
+  const currentStepNum = normalizeClosingStepNum(currentStep);
+  const progressPercent = currentStep === 'deal_cancelled' ? 0 : getClosingProgressPercent(currentStep);
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 pb-20">
@@ -423,14 +566,14 @@ export const AdminClosingPage: React.FC = () => {
                 </div>
               )}
 
-              {/* 4-Step Interactive Execution Flow Header */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+              {/* 6-Step Russian Closing Flow (Переуступка ДДУ 214-ФЗ) */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-5">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Синхронизированный контур закрытия ({bankName} / Росреестр / DomExit)
+                    6-шаговый контур закрытия переуступки ДДУ 214-ФЗ ({bankName} / Росреестр / DomExit)
                   </h3>
                   <span className="text-emerald-700 font-mono font-bold text-xs">
-                    {progressPercent}% Выполнено
+                    Шаг {currentStepNum}/6 • {progressPercent}% Выполнено
                   </span>
                 </div>
 
@@ -441,203 +584,340 @@ export const AdminClosingPage: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-2 text-xs">
-                  {/* Step A */}
-                  <div
-                    className={`p-4 rounded-2xl border transition-all ${
-                      currentStep === 'curator_review'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
-                        : currentStep !== 'deal_cancelled' && progressPercent > 25
-                        ? 'border-slate-200 bg-slate-50 text-slate-700'
-                        : 'border-slate-200 bg-white opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold mb-1">
-                      <span className="text-slate-900">Шаг А: Куратор DomExit</span>
-                      {progressPercent > 25 ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <Clock className="w-4 h-4 text-amber-500" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Согласование договора цессии и передача в банк
-                    </p>
-                    {currentStep === 'curator_review' && (
-                      <button
-                        type="button"
-                        disabled={!hasBuyer}
-                        onClick={handleHandoverToBank}
-                        className={`w-full py-2 font-bold rounded-xl text-xs shadow-xs transition-colors ${
-                          hasBuyer
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                            : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+                  {CLOSING_STEPS_6.map((st) => {
+                    const isDone = currentStep === 'deal_finalized' || st.num < currentStepNum;
+                    const isCurrent = currentStep !== 'deal_finalized' && st.num === currentStepNum;
+                    return (
+                      <div
+                        key={st.id}
+                        className={`p-3 rounded-2xl border transition-all ${
+                          isCurrent
+                            ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-500/20'
+                            : isDone
+                            ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900'
+                            : 'border-slate-200 bg-slate-50/60 text-slate-400'
                         }`}
-                        title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
                       >
-                        Передать в банк на аккредитив →
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Step B */}
-                  <div
-                    className={`p-4 rounded-2xl border transition-all ${
-                      currentStep === 'bank_escrow_deposit'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
-                        : currentStep !== 'deal_cancelled' && progressPercent > 50
-                        ? 'border-slate-200 bg-slate-50 text-slate-700'
-                        : 'border-slate-200 bg-white opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold mb-1">
-                      <span className="text-slate-900">Шаг Б: Банк-партнер</span>
-                      {progressPercent > 50 ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <Building2 className="w-4 h-4 text-slate-400" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Открытие аккредитива и блокировка средств покупателя
-                    </p>
-                    {currentStep === 'bank_escrow_deposit' && (
-                      canExecuteBankStep ? (
-                        <button
-                          type="button"
-                          disabled={!hasBuyer}
-                          onClick={handleConfirmBankDeposit}
-                          className={`w-full py-2 font-bold rounded-xl text-xs shadow-xs transition-colors ${
-                            hasBuyer
-                              ? 'bg-sky-600 hover:bg-sky-700 text-white cursor-pointer'
-                              : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                          }`}
-                          title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
-                        >
-                          ✓ Подтвердить депонирование в отделении банка (СБР)
-                        </button>
-                      ) : (
-                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
-                          <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-bold block">🔒 Действие банка-партнера</span>
-                            <span className="text-slate-600 block mt-0.5">
-                              Ожидается подтверждение депонирования от банка-партнера ({bankName}).
-                            </span>
-                            <div className="mt-1.5 inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-100/80 text-amber-900 font-medium text-[10px]">
-                              <span>Автообновление статуса в реальном времени</span>
-                            </div>
-                          </div>
+                        <div className="font-black text-[11px] flex items-center justify-between">
+                          <span>{st.shortTitle}</span>
+                          {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
                         </div>
-                      )
-                    )}
-                  </div>
+                        <div className="text-[10px] mt-1 leading-tight">{st.percent}%</div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  {/* Step C */}
-                  <div
-                    className={`p-4 rounded-2xl border transition-all ${
-                      currentStep === 'signing_photos'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
-                        : currentStep !== 'deal_cancelled' && progressPercent > 75
-                        ? 'border-slate-200 bg-slate-50 text-slate-700'
-                        : 'border-slate-200 bg-white opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold mb-1">
-                      <span className="text-slate-900">Шаг В: Фиксация и ЕГРН</span>
-                      {progressPercent > 75 ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <Camera className="w-4 h-4 text-slate-400" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Фото/видеофиксация подписания и выписка Росреестра
-                    </p>
-                    {currentStep === 'signing_photos' && (
-                      <button
-                        type="button"
-                        disabled={!hasBuyer}
-                        onClick={handleSubmitProof}
-                        className={`w-full py-2 font-bold rounded-xl text-xs shadow-xs transition-colors ${
-                          hasBuyer
-                            ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer'
-                            : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                        }`}
-                        title={!hasBuyer ? 'Сначала назначьте покупателя в Матчмейкере' : undefined}
-                      >
-                        Зафиксировать и передать банку →
-                      </button>
-                    )}
-                  </div>
+                {/* Live PEP 63-FZ Signatures Panel */}
+                {(() => {
+                  const ndaSig = pepSignatures.find((s) => s.documentType === 'nda_viewing_act' && s.status === 'signed');
+                  const offerSig = pepSignatures.find((s) => s.documentType === 'buyer_reservation_terms' && s.status === 'signed');
+                  const sellerSig = pepSignatures.find((s) => s.documentType === 'seller_exclusive_consent' && s.status === 'signed');
+                  const bothBuyerPep = Boolean(ndaSig && offerSig);
+                  const ownerOverrideReady = Boolean(isOwner && pepOverrideDocKey && pepOverrideReason.trim());
+                  const ew = deal.escrowWorkflow;
 
-                  {/* Step D */}
-                  <div
-                    className={`p-4 rounded-2xl border transition-all ${
-                      currentStep === 'bank_funds_release'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
-                        : currentStep === 'deal_finalized'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold'
-                        : 'border-slate-200 bg-white opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold mb-1">
-                      <span className="text-slate-900">Шаг Г: Раскрытие СБР</span>
-                      {currentStep === 'deal_finalized' ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <ShieldCheck className="w-4 h-4 text-slate-400" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Выплата 100% кэша продавцу и комиссии 2.5%
-                    </p>
-                    {currentStep === 'bank_funds_release' && (
-                      canExecuteBankStep ? (
-                        <div className="space-y-2">
+                  return (
+                    <div className="space-y-4 pt-2 border-t border-slate-100">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                        {[
+                          { label: '1. NDA покупателя (ПЭП)', sig: ndaSig },
+                          { label: '2. Оферта 2.5% покупателя (ПЭП)', sig: offerSig },
+                          { label: '3. Согласие продавца (ПЭП)', sig: sellerSig },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className={`p-3 rounded-2xl border flex items-center justify-between gap-2 ${
+                              item.sig ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-slate-50 border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold flex items-center space-x-1">
+                                <FileSignature className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{item.label}</span>
+                              </div>
+                              <div className="text-[10px] font-mono truncate">
+                                {item.sig
+                                  ? `✓ ${new Date(item.sig.signedAt).toLocaleString('ru-RU')} • ${(item.sig.documentTextHashSha256 || '').slice(0, 10)}...`
+                                  : 'Не подписано'}
+                              </div>
+                            </div>
+                            {item.sig && (
+                              <button
+                                type="button"
+                                onClick={() => downloadPepCertificate(item.sig)}
+                                className="p-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 cursor-pointer shrink-0"
+                                title="Скачать сертификат ПЭП"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Active Step Gate Controls */}
+                      {currentStepNum === 1 && (
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="font-black text-slate-900">
+                            Шаг 1 (15%): Подписание ПЭП (NDA + Оферта 2.5%) и Бронирование
+                          </div>
+                          {!bothBuyerPep && isOwner && (
+                            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                              <div className="font-bold text-amber-950">
+                                Исключительный обход владельца (бумажное подписание с сохранением в S3 + журнал аудита):
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <input
+                                  type="text"
+                                  value={pepOverrideReason}
+                                  onChange={(e) => setPepOverrideReason(e.target.value)}
+                                  placeholder="Обязательная причина обхода..."
+                                  className="flex-1 px-3 py-1.5 rounded-xl border border-amber-300 bg-white text-xs"
+                                />
+                                <label className="px-3 py-1.5 rounded-xl bg-amber-600 text-white font-bold cursor-pointer flex items-center space-x-1">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span>{pepOverrideDocKey ? 'Скан загружен ✓' : 'Загрузить скан в S3'}</span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      if (f) handleUploadClosingFieldDoc(f, 'pepOverride', 'Бумажный ПЭП (обход владельца)');
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          )}
                           <button
                             type="button"
-                            disabled={!hasRosreestrStamp || !hasBuyer}
-                            onClick={handleReleaseEscrow}
-                            className={`w-full py-2.5 font-bold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center space-x-1.5 ${
-                              hasRosreestrStamp && hasBuyer
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                                : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                            }`}
-                            title={
-                              !hasBuyer
-                                ? 'Сначала утвердите покупателя в Матчмейкере'
-                                : !hasRosreestrStamp
-                                ? 'Загрузите выписку ЕГРН со штампом Росреестра'
-                                : undefined
-                            }
+                            disabled={advancingStep || !hasBuyer || (!bothBuyerPep && !ownerOverrideReady)}
+                            onClick={() => handleAdvanceToStep('developer_consent')}
+                            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs cursor-pointer"
                           >
-                            <ShieldCheck className="w-4 h-4" />
-                            <span>Раскрыть СБР и выплатить 3 транша</span>
+                            Перейти к Шагу 2: Согласие застройщика →
                           </button>
-                          {!hasRosreestrStamp && (
-                            <p className="text-[10px] text-amber-700 font-bold leading-tight">
-                              ⚠️ Блокировка: Сначала загрузите выписку ЕГРН со штампом Росреестра на Шаге В
-                            </p>
+                        </div>
+                      )}
+
+                      {currentStepNum === 2 && (
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="font-black text-slate-900">
+                            Шаг 2 (35%): Согласие застройщика и проект договора цессии (S3)
+                          </div>
+                          <div className="flex flex-wrap gap-3">
+                            <label className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 font-bold cursor-pointer flex items-center space-x-2">
+                              <Upload className="w-4 h-4 text-indigo-600" />
+                              <span>
+                                {ew?.cessionDraftDocName
+                                  ? `✓ Проект цессии: ${ew.cessionDraftDocName}`
+                                  : 'Загрузить проект Договора уступки в S3'}
+                              </span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) handleUploadClosingFieldDoc(f, 'cessionDraft', 'Проект договора уступки');
+                                }}
+                              />
+                            </label>
+                            <label className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 font-bold cursor-pointer flex items-center space-x-2">
+                              <Upload className="w-4 h-4 text-emerald-600" />
+                              <span>
+                                {ew?.developerConsentDocName
+                                  ? `✓ Согласие застройщика: ${ew.developerConsentDocName}`
+                                  : 'Загрузить письмо согласия застройщика в S3'}
+                              </span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) handleUploadClosingFieldDoc(f, 'developerConsent', 'Согласие застройщика');
+                                }}
+                              />
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={advancingStep || !ew?.cessionDraftDocKey || !ew?.developerConsentDocKey}
+                            onClick={() => handleAdvanceToStep('notary_and_sbr')}
+                            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs cursor-pointer"
+                          >
+                            Перейти к Шагу 3: Нотариус и СБР →
+                          </button>
+                        </div>
+                      )}
+
+                      {currentStepNum === 3 && (
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="font-black text-slate-900">
+                            Шаг 3 (55%): Нотариальное согласие и открытие СБР / Аккредитива
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <input
+                              type="text"
+                              value={bankInput}
+                              onChange={(e) => setBankInput(e.target.value)}
+                              placeholder="Банк (напр. ПАО Сбербанк)"
+                              className="px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold"
+                            />
+                            <input
+                              type="text"
+                              value={sbrAccountInput}
+                              onChange={(e) => setSbrAccountInput(e.target.value)}
+                              placeholder="Номер счёта СБР / Аккредитива *"
+                              className="px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold"
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <label className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 font-bold cursor-pointer flex items-center space-x-2">
+                              <Upload className="w-4 h-4 text-emerald-600" />
+                              <span>
+                                {ew?.sbrReceiptDocName
+                                  ? `✓ Квитанция СБР: ${ew.sbrReceiptDocName}`
+                                  : 'Загрузить квитанцию депонирования СБР в S3 *'}
+                              </span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) handleUploadClosingFieldDoc(f, 'sbrReceipt', 'Квитанция СБР / аккредитива');
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center space-x-2 font-bold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={notaryConfirmed}
+                                onChange={(e) => setNotaryConfirmed(e.target.checked)}
+                                className="w-4 h-4 rounded text-emerald-600"
+                              />
+                              <span>Нотариальное согласие супруга(и) / заявление проверено</span>
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={
+                              advancingStep ||
+                              !bankInput.trim() ||
+                              !sbrAccountInput.trim() ||
+                              !ew?.sbrReceiptDocKey ||
+                              !notaryConfirmed
+                            }
+                            onClick={() => handleAdvanceToStep('rosreestr_filing')}
+                            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs cursor-pointer"
+                          >
+                            Перейти к Шагу 4: Подача в Росреестр (КУВД) →
+                          </button>
+                        </div>
+                      )}
+
+                      {currentStepNum === 4 && (
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="font-black text-slate-900">
+                            Шаг 4 (75%): Подписание (УКЭП) и подача в Росреестр
+                          </div>
+                          <input
+                            type="text"
+                            value={kuvdInput}
+                            onChange={(e) => setKuvdInput(e.target.value)}
+                            placeholder="Номер заявления Росреестра (КУВД), напр. КУВД-001/2026-123456 *"
+                            className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold"
+                          />
+                          <p className="text-[11px] text-slate-500">
+                            Загрузите фото или видео фиксации подписания ниже (сохраняются только S3-ключи, без Base64): {proofPhotos.length} фото, {proofVideos.length} видео.
+                          </p>
+                          <button
+                            type="button"
+                            disabled={
+                              advancingStep ||
+                              !kuvdInput.trim() ||
+                              (proofPhotos.length === 0 && proofVideos.length === 0)
+                            }
+                            onClick={() => handleAdvanceToStep('egrn_and_payout')}
+                            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs cursor-pointer"
+                          >
+                            Перейти к Шагу 5: Выписка ЕГРН и раскрытие СБР →
+                          </button>
+                        </div>
+                      )}
+
+                      {currentStepNum === 5 && (
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="font-black text-slate-900">
+                            Шаг 5 (90%): Выписка ЕГРН и раскрытие СБР продавцу
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="font-bold text-slate-700">
+                              ЕГРН в S3: {hasRosreestrStamp ? `✓ ${rosreestrStampDoc}` : 'Загрузите файл ЕГРН в блоке ниже'}
+                            </span>
+                            <label className="flex items-center space-x-2 font-bold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={sellerPayoutConfirmed}
+                                onChange={(e) => setSellerPayoutConfirmed(e.target.checked)}
+                                className="w-4 h-4 rounded text-emerald-600"
+                              />
+                              <span>СБР раскрыт, средства переведены продавцу</span>
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={advancingStep || !hasRosreestrStamp || !sellerPayoutConfirmed}
+                            onClick={() => handleAdvanceToStep('platform_fee_and_close')}
+                            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs cursor-pointer"
+                          >
+                            Перейти к Шагу 6: Подтверждение сбора и закрытие →
+                          </button>
+                        </div>
+                      )}
+
+                      {currentStepNum === 6 && (
+                        <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 space-y-3 text-xs">
+                          <div className="font-black text-emerald-950">
+                            Шаг 6 (100%): Подтверждение сбора DomExit (2.5%) и закрытие сделки
+                          </div>
+                          {currentStep === 'deal_finalized' ? (
+                            <div className="font-bold text-emerald-800">
+                              ✓ Сделка официально закрыта и перенесена в архив обеих сторон!
+                            </div>
+                          ) : (
+                            <>
+                              <label className="flex items-center space-x-2 font-bold text-emerald-900 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={platformFeeConfirmed}
+                                  onChange={(e) => setPlatformFeeConfirmed(e.target.checked)}
+                                  className="w-4 h-4 rounded text-emerald-600"
+                                />
+                                <span>
+                                  Сбор DomExit 2.5% ({formatRubles(platformFeeRub)}) подтверждён
+                                  {lot?.developerConsentPolicy === 'included_in_platform_fee' && lot?.developerConsentFeeRub
+                                    ? ` (за вычетом платы застройщику ${formatRubles(lot.developerConsentFeeRub)})`
+                                    : ''}
+                                </span>
+                              </label>
+                              <button
+                                type="button"
+                                disabled={!platformFeeConfirmed || !hasBuyer}
+                                onClick={handleReleaseEscrow}
+                                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs cursor-pointer flex items-center space-x-2"
+                              >
+                                <ShieldCheck className="w-4 h-4" />
+                                <span>Завершить сделку и архивировать</span>
+                              </button>
+                            </>
                           )}
                         </div>
-                      ) : (
-                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-tight flex items-start space-x-1.5">
-                          <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-bold block">🔒 Раскрытие заблокировано</span>
-                            <span className="text-slate-600 block mt-0.5">
-                              Ожидается подтверждение раскрытия от банка-партнера ({bankName}).
-                            </span>
-                            <div className="mt-1.5 inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-100/80 text-amber-900 font-medium text-[10px]">
-                              <span>Выплата траншей инициируется банком в СБР</span>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Safe Bank Settlement Assistant & Calculator */}
@@ -794,20 +1074,14 @@ export const AdminClosingPage: React.FC = () => {
                       </label>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                       {proofPhotos.map((p, i) => (
                         <div
                           key={i}
-                          className="aspect-video rounded-xl overflow-hidden border border-slate-200 relative bg-slate-100"
+                          className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between text-[11px] font-mono"
                         >
-                          <img
-                            src={p}
-                            alt={`Фиксация ${i + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
-                            Фото #{i + 1}
-                          </span>
+                          <span className="truncate text-slate-800">📷 Фото #{i + 1}: {p}</span>
+                          <span className="text-emerald-700 font-bold shrink-0">S3 ✓</span>
                         </div>
                       ))}
                     </div>
@@ -881,6 +1155,16 @@ export const AdminClosingPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              <ClosingCommsAndTasksPanel
+                deal={deal}
+                curatorName={operatorName}
+                onDealUpdated={(updated) => setDeal(updated)}
+                onNotify={(msg) => {
+                  setNotificationMsg(msg);
+                  setTimeout(() => setNotificationMsg(null), 5000);
+                }}
+              />
             </>
           )}
         </div>

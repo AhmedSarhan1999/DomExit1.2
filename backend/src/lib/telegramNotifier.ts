@@ -202,6 +202,7 @@ export const telegramNotifier = {
     threadChannel: 'seller_curator' | 'buyer_curator';
     senderUser: { id: string; role: string; name: string };
     text: string;
+    skipDbWrite?: boolean;
   }) => {
     try {
       if (!telegramClient.isConfigured()) return;

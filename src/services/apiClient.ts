@@ -300,14 +300,23 @@ export const apiClient = {
   pep: {
     getPreview: (documentType: string, lotCode: string) =>
       request<{
-        success: boolean;
-        documentType: string;
-        title: string;
-        lotCode: string;
-        version: string;
-        text: string;
-        sha256Hex: string;
+        ok?: boolean;
+        success?: boolean;
+        preview?: {
+          documentType: string;
+          documentTitle: string;
+          documentVersion: string;
+          canonicalText: string;
+          documentTextHashSha256: string;
+        };
+        documentType?: string;
+        title?: string;
+        lotCode?: string;
+        version?: string;
+        text?: string;
+        sha256Hex?: string;
         alreadySigned: boolean;
+        signatureRecord?: any;
         existingSignature?: any;
       }>(`/api/pep/preview?documentType=${encodeURIComponent(documentType)}&lotCode=${encodeURIComponent(lotCode)}`, {
         method: 'GET',
@@ -334,9 +343,10 @@ export const apiClient = {
 
     verifyAndSign: (documentType: string, lotCode: string, otpCode: string) =>
       request<{
+        ok?: boolean;
         success: boolean;
         signature: any;
-        certificate: {
+        certificate?: {
           signedAt: string;
           documentType: string;
           title: string;
@@ -577,6 +587,45 @@ export const apiClient = {
         method: 'POST',
         body: JSON.stringify({ bankOfficerName }),
       }),
+
+    createDealTask: (
+      dealId: string,
+      payload: {
+        title: string;
+        assignee: 'seller' | 'buyer';
+        kind?: 'upload_doc' | 'sign_pep' | 'confirm';
+        pepDocumentType?: 'nda_viewing_act' | 'buyer_reservation_terms' | 'seller_exclusive_consent';
+      }
+    ) =>
+      request<{ ok: boolean; task: any; deal: any }>(
+        `/api/matching/deals/${encodeURIComponent(dealId)}/tasks`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      ),
+
+    submitDealTask: (
+      dealId: string,
+      taskId: string,
+      payload?: { uploadedDocKey?: string; uploadedDocName?: string; note?: string }
+    ) =>
+      request<{ ok: boolean; task: any; deal: any }>(
+        `/api/matching/deals/${encodeURIComponent(dealId)}/tasks/${encodeURIComponent(taskId)}/submit`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload || {}),
+        }
+      ),
+
+    approveDealTask: (dealId: string, taskId: string) =>
+      request<{ ok: boolean; task: any; deal: any }>(
+        `/api/matching/deals/${encodeURIComponent(dealId)}/tasks/${encodeURIComponent(taskId)}/approve`,
+        {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }
+      ),
 
     getDemandRadar: (params?: { city?: string; maxBudget?: number; dealTrack?: string }) => {
       const sp = new URLSearchParams();

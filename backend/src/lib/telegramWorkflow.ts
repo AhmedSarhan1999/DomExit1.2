@@ -332,28 +332,33 @@ export async function relayBridgedMessage(params: {
   senderUser: { id: string; role: string; name: string };
   text: string;
   source: 'web' | 'telegram';
+  skipDbWrite?: boolean;
 }): Promise<{ ok: boolean; messageId: string }> {
   const ydb = getYdbClient();
-  const { lotCode, dealId, threadChannel, senderUser, text, source } = params;
+  const { lotCode, dealId, threadChannel, senderUser, text, source, skipDbWrite } = params;
 
   const msgId = `msg-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
-  // 1. Save message in curator_messages
-  const msgRecord = {
-    id: msgId,
-    lotCode,
-    dealId: dealId || undefined,
-    threadChannel,
-    senderId: senderUser.id,
-    senderName: senderUser.name,
-    role: senderUser.role,
-    text,
-    source,
-    createdAt: now,
-  };
+  // 1. Save message in unified deal_messages table (unless already saved by data.ts)
+  if (!skipDbWrite) {
+    const msgRecord = {
+      id: msgId,
+      lotCode: String(lotCode || '').toUpperCase(),
+      dealId: dealId || undefined,
+      threadChannel,
+      senderId: senderUser.id,
+      senderName: senderUser.name,
+      senderRole: senderUser.role,
+      role: senderUser.role,
+      text,
+      source,
+      isRead: false,
+      createdAt: now,
+    };
 
-  await ydb.putItem('curator_messages', msgRecord);
+    await ydb.putItem('deal_messages', msgRecord);
+  }
 
   // 2. Identify Recipient
   let lot = await ydb.getItem('lots', lotCode);

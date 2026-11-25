@@ -417,6 +417,25 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
       }
     }
 
+    // Notify staff when buyer/seller signs deal PEP documents
+    try {
+      const users = await ydb.scanAll<any>('users', 200);
+      const staffIds = (users || [])
+        .filter((u: any) => u.role === 'owner' || u.role === 'employee')
+        .map((u: any) => u.id);
+      const staffNote =
+        `✍️ <b>ПОДПИСАН ДОКУМЕНТ ПЭП (63-ФЗ): #${escapeHtml(lotCode)}</b>\n` +
+        `Подписант: <b>${escapeHtml(authUser.name || authUser.email)}</b> (${escapeHtml(authUser.role)})\n` +
+        `Документ: <b>${escapeHtml(doc.documentTitle)}</b>\n` +
+        `Канал: <code>${escapeHtml(channelUsed)}</code> • SHA-256: <code>${doc.documentTextHashSha256.substring(0, 12)}...</code>`;
+      for (const sid of staffIds) {
+        const sb = await findTelegramBindingByUser(sid).catch(() => null);
+        if (sb?.chatId) {
+          await telegramClient.sendMessage({ chat_id: sb.chatId, text: staffNote }).catch(() => {});
+        }
+      }
+    } catch {}
+
     return json(event, 200, {
       ok: true,
       success: true,

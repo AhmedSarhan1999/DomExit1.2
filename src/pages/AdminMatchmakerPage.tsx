@@ -9,6 +9,8 @@ import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { DealsRepository } from '../dal/repositories/DealsRepository';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
+import { apiClient } from '../services/apiClient';
+import { downloadPepCertificate } from '../utils/pepCertificate';
 import { Lot } from '../types';
 import { StagedDropQueueManager } from '../components/admin/StagedDropQueueManager';
 import {
@@ -16,6 +18,8 @@ import {
   ArrowRight,
   ShieldCheck,
   HardDrive,
+  FileSignature,
+  Download,
 } from 'lucide-react';
 
 export const AdminMatchmakerPage: React.FC = () => {
@@ -31,6 +35,7 @@ export const AdminMatchmakerPage: React.FC = () => {
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [warningToast, setWarningToast] = useState<string | null>(null);
   const [isBuyerVaultOpen, setIsBuyerVaultOpen] = useState<boolean>(false);
+  const [lotPepSignatures, setLotPepSignatures] = useState<any[]>([]);
 
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
@@ -54,10 +59,14 @@ export const AdminMatchmakerPage: React.FC = () => {
     setLot(current || null);
 
     if (current) {
-      const deal = await DealsRepository.getById(current.lotCode);
+      const [deal, pepRes] = await Promise.all([
+        DealsRepository.getById(current.lotCode),
+        apiClient.pep.getMySignatures(current.lotCode).catch(() => null),
+      ]);
       if (deal) {
         setLinkedDealId(deal.dealId);
       }
+      setLotPepSignatures((pepRes as any)?.signatures || []);
     }
   };
 
@@ -221,6 +230,53 @@ export const AdminMatchmakerPage: React.FC = () => {
                   setTimeout(() => setWarningToast(null), 5000);
                 }}
               />
+
+              {/* Live PEP 63-FZ Signatures Panel */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+                    <FileSignature className="w-4 h-4 text-emerald-600" />
+                    <span>Статус электронных подписей ПЭП (63-ФЗ) по лоту #{lot.lotCode}</span>
+                  </h3>
+                  <span className="text-[11px] font-mono text-slate-500">{lotPepSignatures.length} подписей</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  {[
+                    { type: 'nda_viewing_act', label: 'NDA покупателя (ПЭП)' },
+                    { type: 'buyer_reservation_terms', label: 'Оферта бронирования 2.5%' },
+                    { type: 'seller_exclusive_consent', label: 'Согласие продавца (ПЭП)' },
+                  ].map((docItem) => {
+                    const sig = lotPepSignatures.find((s) => s.documentType === docItem.type && s.status === 'signed');
+                    return (
+                      <div
+                        key={docItem.type}
+                        className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2 ${
+                          sig ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-slate-50 border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold truncate">{docItem.label}</div>
+                          <div className="text-[10px] font-mono truncate">
+                            {sig
+                              ? `✓ ${new Date(sig.signedAt).toLocaleDateString('ru-RU')} • ${(sig.documentTextHashSha256 || '').slice(0, 10)}...`
+                              : 'Не подписано'}
+                          </div>
+                        </div>
+                        {sig && (
+                          <button
+                            type="button"
+                            onClick={() => downloadPepCertificate(sig)}
+                            className="p-1.5 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-pointer shrink-0"
+                            title="Скачать сертификат ПЭП"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Linked Deal and Closing Quick Navigation */}
               {linkedDealId && (

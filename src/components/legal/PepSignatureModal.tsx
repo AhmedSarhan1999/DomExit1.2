@@ -12,9 +12,11 @@ import {
   ExternalLink,
   Clock,
   Key,
+  Download,
 } from 'lucide-react';
 import { apiClient, ApiError } from '../../services/apiClient';
 import { TelegramConnectCard } from '../telegram/TelegramConnectCard';
+import { downloadPepCertificate, formatPepChannelRu } from '../../utils/pepCertificate';
 
 interface PepSignatureModalProps {
   isOpen: boolean;
@@ -67,23 +69,34 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
       setNeedsTelegramLink(false);
 
       const res = await apiClient.pep.getPreview(documentType, lotCode);
-      setDocPreview(res);
+      const previewObj = res.preview || {
+        documentType: res.documentType || documentType,
+        documentTitle: res.title || 'Юридический документ (ПЭП 63-ФЗ)',
+        documentVersion: res.version || '1.0',
+        canonicalText: res.text || '',
+        documentTextHashSha256: res.sha256Hex || '',
+      };
+      setDocPreview(previewObj);
 
-      if (res.alreadySigned && res.existingSignature) {
+      const sigRec = res.signatureRecord || res.existingSignature;
+      if (res.alreadySigned && sigRec) {
         setSignedCertificate({
-          signedAt: res.existingSignature.signedAt,
-          documentType: res.existingSignature.documentType,
-          title: res.title,
-          docHashSha256: res.existingSignature.docHashSha256,
-          verificationMethod: res.existingSignature.verificationMethod || 'email_otp_63fz',
-          signatory: {
-            name: res.existingSignature.userNameMasked || 'Пользователь',
-            email: 'Защищено 152-ФЗ',
-            phone: 'Защищено 152-ФЗ',
-          },
+          id: sigRec.id,
+          lotCode: sigRec.lotCode || lotCode,
+          signedAt: sigRec.signedAt,
+          documentType: sigRec.documentType,
+          documentTitle: sigRec.documentTitle || previewObj.documentTitle,
+          documentTextHashSha256: sigRec.documentTextHashSha256 || sigRec.docHashSha256 || previewObj.documentTextHashSha256,
+          deliveryChannel: sigRec.deliveryChannel,
+          verificationMethod: sigRec.verificationMethod || 'email_otp_63fz',
+          ipHash: sigRec.ipHash,
+          userName: sigRec.userName || sigRec.userNameMasked || 'Пользователь',
+          userEmail: sigRec.userEmail,
           legalNote:
             'Документ ранее подписан простой электронной подписью (ПЭП) в соответствии со ст. 5 и 9 Федерального закона № 63-ФЗ «Об электронной подписи».',
         });
+      } else {
+        setSignedCertificate(null);
       }
     } catch (err: any) {
       setError(err?.message || 'Не удалось загрузить проект документа');
@@ -131,9 +144,24 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
       setSignLoading(true);
       setError(null);
       const res = await apiClient.pep.verifyAndSign(documentType, lotCode, otpCode.trim());
-      setSignedCertificate(res.certificate);
+      const sigRec = res.signature || res.certificate || {};
+      setSignedCertificate({
+        id: sigRec.id,
+        lotCode: sigRec.lotCode || lotCode,
+        signedAt: sigRec.signedAt || new Date().toISOString(),
+        documentType: sigRec.documentType || documentType,
+        documentTitle: sigRec.documentTitle || docPreview?.documentTitle || 'Документ ПЭП',
+        documentTextHashSha256: sigRec.documentTextHashSha256 || sigRec.docHashSha256 || docPreview?.documentTextHashSha256 || '',
+        deliveryChannel: sigRec.deliveryChannel || deliveryChannel,
+        verificationMethod: sigRec.verificationMethod || 'email_otp_63fz',
+        ipHash: sigRec.ipHash,
+        userName: sigRec.userName || sigRec.signatory?.name || 'Пользователь',
+        userEmail: sigRec.userEmail,
+        legalNote:
+          'Документ подписан простой электронной подписью (ПЭП) в соответствии со ст. 5 и 9 Федерального закона № 63-ФЗ «Об электронной подписи».',
+      });
       if (onSigned) {
-        onSigned(res.signature);
+        onSigned(sigRec);
       }
     } catch (err: any) {
       setError(err?.message || 'Ошибка проверки кода подтверждения');
@@ -157,7 +185,7 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
               </span>
             </div>
             <h3 className="text-lg font-black text-slate-900">
-              {docPreview?.title || 'Подписание юридического соглашения'}
+              {docPreview?.documentTitle || 'Подписание юридического соглашения'}
             </h3>
             <p className="text-xs text-slate-500">
               Объект #{lotCode} • Равнозначно собственноручной подписи на бумажном носителе
@@ -202,12 +230,16 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
 
             <div className="p-4 rounded-2xl bg-white border border-emerald-200 space-y-2 font-mono text-[11px] text-slate-800">
               <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                <span className="text-slate-500">Реестровый ID:</span>
+                <span className="font-bold">{signedCertificate.id || '—'}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-slate-500">Документ:</span>
-                <span className="font-bold">{signedCertificate.title}</span>
+                <span className="font-bold text-right">{signedCertificate.documentTitle}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-slate-500">Подписант:</span>
-                <span className="font-bold">{signedCertificate.signatory.name}</span>
+                <span className="font-bold">{signedCertificate.userName}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-slate-500">Дата и время (МСК):</span>
@@ -215,12 +247,12 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
               </div>
               <div className="flex justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-slate-500">SHA-256 хеш текста:</span>
-                <span className="font-bold truncate max-w-xs">{signedCertificate.docHashSha256}</span>
+                <span className="font-bold truncate max-w-xs">{signedCertificate.documentTextHashSha256}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 pb-1.5">
                 <span className="text-slate-500">Канал доставки OTP:</span>
                 <span className="font-bold text-emerald-800">
-                  {deliveryChannel === 'email' ? 'Электронная почта' : 'Telegram-бот'}
+                  {formatPepChannelRu(signedCertificate.deliveryChannel, signedCertificate.verificationMethod)}
                 </span>
               </div>
               <div className="flex justify-between pt-0.5">
@@ -233,13 +265,23 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
               {signedCertificate.legalNote}
             </p>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-md"
-            >
-              Закрыть окно сертификата
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => downloadPepCertificate(signedCertificate)}
+                className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center space-x-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Скачать сертификат ПЭП</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-md"
+              >
+                Закрыть окно сертификата
+              </button>
+            </div>
           </div>
         ) : needsTelegramLink ? (
           /* Telegram Binding Option with 1-click Email fallback */
@@ -269,11 +311,13 @@ export const PepSignatureModal: React.FC<PepSignatureModalProps> = ({
             {/* Canonical Document Text */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span>Канонический текст документа ({docPreview?.version}):</span>
-                <span className="font-mono truncate max-w-xs">SHA-256: {docPreview?.sha256Hex}</span>
+                <span>Канонический текст документа ({docPreview?.documentVersion || '1.0'}):</span>
+                <span className="font-mono truncate max-w-xs">
+                  SHA-256: {docPreview?.documentTextHashSha256 || '—'}
+                </span>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 max-h-56 overflow-y-auto whitespace-pre-line leading-relaxed">
-                {docPreview?.text}
+                {docPreview?.canonicalText || 'Загрузка текста документа...'}
               </div>
             </div>
 

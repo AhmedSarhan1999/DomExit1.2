@@ -30,6 +30,7 @@ const CLIENT_ISOLATED_COLLECTIONS = new Set([
   'buyer_applications',
   'documents_vault',
   'curator_messages',
+  'deal_messages',
   'user_consents',
   'pep_signatures',
   'buy_boxes',
@@ -42,7 +43,6 @@ const STAFF_COLLECTIONS = new Set([
   'partner_applications',
   'partner_preliminary_requests',
   'investor_applications',
-  'deal_messages',
   'escrow_bridge_chats',
   'partner_banks',
   'bank_employees',
@@ -634,6 +634,66 @@ export async function handleData(
         return json(event, 200, { item });
       }
 
+      if (collection === 'deal_messages' || collection === 'curator_messages') {
+        const [dealMsgs, legacyMsgs] = await Promise.all([
+          ydb.scanAll<any>('deal_messages', 500),
+          ydb.scanAll<any>('curator_messages', 300),
+        ]);
+        const byId = new Map<string, any>();
+        for (const m of [...(legacyMsgs || []), ...(dealMsgs || [])]) {
+          if (m?.id) {
+            byId.set(m.id, {
+              ...m,
+              threadChannel: m.threadChannel || (m.senderRole === 'seller' || m.role === 'seller' ? 'seller_curator' : 'buyer_curator'),
+            });
+          }
+        }
+        const merged = Array.from(byId.values());
+
+        if (isStaff) {
+          return json(event, 200, { items: merged, total: merged.length });
+        }
+
+        const [lots, deals, apps] = await Promise.all([
+          ydb.scanAll<any>('lots', 500),
+          ydb.scanAll<any>('deals', 500),
+          ydb.scanAll<any>('buyer_applications', 500),
+        ]);
+        const sellerLots = new Set<string>();
+        const buyerLots = new Set<string>();
+
+        for (const l of lots || []) {
+          const lc = String(l.lotCode || l.id || '').toUpperCase();
+          if (!lc) continue;
+          if (l.sellerUserId === authUser.id || l.sellerId === authUser.id) sellerLots.add(lc);
+          if (l.buyerUserId === authUser.id || l.buyerId === authUser.id) buyerLots.add(lc);
+        }
+        for (const d of deals || []) {
+          const lc = String(d.lotCode || d.lotId || '').toUpperCase();
+          if (!lc) continue;
+          if (d.sellerUserId === authUser.id || d.sellerId === authUser.id) sellerLots.add(lc);
+          if (d.buyerUserId === authUser.id || d.buyerId === authUser.id) buyerLots.add(lc);
+        }
+        for (const a of apps || []) {
+          const lc = String(a.lotCode || '').toUpperCase();
+          if (lc && a.userId === authUser.id) buyerLots.add(lc);
+        }
+
+        const isolated = merged.filter((m: any) => {
+          const lc = String(m.lotCode || m.lotId || '').toUpperCase();
+          const ch = m.threadChannel;
+          if (ch === 'seller_curator') {
+            return lc && sellerLots.has(lc) && m.senderRole !== 'buyer' && m.role !== 'buyer';
+          }
+          if (ch === 'buyer_curator') {
+            return (m.senderId === authUser.id || (lc && buyerLots.has(lc))) && m.senderRole !== 'seller' && m.role !== 'seller';
+          }
+          return false;
+        });
+
+        return json(event, 200, { items: isolated, total: isolated.length });
+      }
+
       const all = await ydb.scanAll(collection);
       let visibleItems = all;
 
@@ -709,6 +769,66 @@ export async function handleData(
           }
         }
         return json(event, 200, { item });
+      }
+
+      if (collection === 'deal_messages' || collection === 'curator_messages') {
+        const [dealMsgs, legacyMsgs] = await Promise.all([
+          ydb.scanAll<any>('deal_messages', 500),
+          ydb.scanAll<any>('curator_messages', 300),
+        ]);
+        const byId = new Map<string, any>();
+        for (const m of [...(legacyMsgs || []), ...(dealMsgs || [])]) {
+          if (m?.id) {
+            byId.set(m.id, {
+              ...m,
+              threadChannel: m.threadChannel || (m.senderRole === 'seller' || m.role === 'seller' ? 'seller_curator' : 'buyer_curator'),
+            });
+          }
+        }
+        const merged = Array.from(byId.values());
+
+        if (isStaff) {
+          return json(event, 200, { items: merged, total: merged.length });
+        }
+
+        const [lots, deals, apps] = await Promise.all([
+          ydb.scanAll<any>('lots', 500),
+          ydb.scanAll<any>('deals', 500),
+          ydb.scanAll<any>('buyer_applications', 500),
+        ]);
+        const sellerLots = new Set<string>();
+        const buyerLots = new Set<string>();
+
+        for (const l of lots || []) {
+          const lc = String(l.lotCode || l.id || '').toUpperCase();
+          if (!lc) continue;
+          if (l.sellerUserId === authUser.id || l.sellerId === authUser.id) sellerLots.add(lc);
+          if (l.buyerUserId === authUser.id || l.buyerId === authUser.id) buyerLots.add(lc);
+        }
+        for (const d of deals || []) {
+          const lc = String(d.lotCode || d.lotId || '').toUpperCase();
+          if (!lc) continue;
+          if (d.sellerUserId === authUser.id || d.sellerId === authUser.id) sellerLots.add(lc);
+          if (d.buyerUserId === authUser.id || d.buyerId === authUser.id) buyerLots.add(lc);
+        }
+        for (const a of apps || []) {
+          const lc = String(a.lotCode || '').toUpperCase();
+          if (lc && a.userId === authUser.id) buyerLots.add(lc);
+        }
+
+        const isolated = merged.filter((m: any) => {
+          const lc = String(m.lotCode || m.lotId || '').toUpperCase();
+          const ch = m.threadChannel;
+          if (ch === 'seller_curator') {
+            return lc && sellerLots.has(lc) && m.senderRole !== 'buyer' && m.role !== 'buyer';
+          }
+          if (ch === 'buyer_curator') {
+            return (m.senderId === authUser.id || (lc && buyerLots.has(lc))) && m.senderRole !== 'seller' && m.role !== 'seller';
+          }
+          return false;
+        });
+
+        return json(event, 200, { items: isolated, total: isolated.length });
       }
 
       const all = await ydb.scanAll(collection);
@@ -1528,11 +1648,34 @@ export async function handleData(
         if (authUser) {
           itemToSave.userId = authUser.id;
           if (collection === 'seller_requests') itemToSave.sellerId = authUser.id;
-          if (collection === 'curator_messages') itemToSave.senderId = authUser.id;
+          if (collection === 'curator_messages' || collection === 'deal_messages') {
+            itemToSave.senderId = authUser.id;
+            const lc = String(itemToSave.lotCode || itemToSave.lotId || '').trim().toUpperCase();
+            const [lots, deals] = await Promise.all([
+              ydb.scanAll<any>('lots', 500),
+              ydb.scanAll<any>('deals', 500),
+            ]);
+            const isSellerOnLot =
+              (lots || []).some(
+                (l: any) =>
+                  String(l.lotCode || l.id || '').toUpperCase() === lc &&
+                  (l.sellerUserId === authUser.id || l.sellerId === authUser.id)
+              ) ||
+              (deals || []).some(
+                (d: any) =>
+                  (String(d.lotCode || '').toUpperCase() === lc || d.dealId === itemToSave.dealId) &&
+                  (d.sellerUserId === authUser.id || d.sellerId === authUser.id)
+              );
+            itemToSave.threadChannel = isSellerOnLot ? 'seller_curator' : 'buyer_curator';
+            itemToSave.senderRole = isSellerOnLot ? 'seller' : 'buyer';
+          }
         } else {
           itemToSave.userId = itemToSave.userId || `guest-${crypto.randomUUID().substring(0, 8)}`;
           if (collection === 'seller_requests') itemToSave.sellerId = itemToSave.userId;
         }
+      } else if (collection === 'curator_messages' || collection === 'deal_messages') {
+        itemToSave.threadChannel =
+          itemToSave.threadChannel === 'buyer_curator' ? 'buyer_curator' : 'seller_curator';
       }
 
       // Auto-match preliminary requests on seller_requests submission
@@ -1570,8 +1713,105 @@ export async function handleData(
         }
       }
 
-      // When deals completed, ensure partner commission is payable
+      // When deals updated, enforce 6-step closing room gates + reject Base64 + partner commission
       if (collection === 'deals') {
+        const ew = itemToSave.escrowWorkflow;
+        if (ew) {
+          const hasBase64 =
+            (Array.isArray(ew.signingProofPhotos) && ew.signingProofPhotos.some((p: any) => typeof p === 'string' && p.startsWith('data:'))) ||
+            (Array.isArray(ew.signingProofVideos) && ew.signingProofVideos.some((v: any) => typeof v === 'string' && v.startsWith('data:')));
+          if (hasBase64) {
+            return json(event, 400, {
+              error: 'Хранение Base64 в YDB запрещено. Загружайте файлы только в S3 через StorageService.',
+              code: 'BASE64_NOT_ALLOWED',
+            });
+          }
+
+          if (method === 'PUT') {
+            const existingDeal = await ydb.getItem<any>('deals', docId).catch(() => null);
+            const stepOrder = (s?: string) => {
+              if (s === 'pep_reservation' || s === 'curator_review') return 1;
+              if (s === 'developer_consent') return 2;
+              if (s === 'notary_and_sbr' || s === 'bank_escrow_deposit') return 3;
+              if (s === 'rosreestr_filing' || s === 'signing_photos') return 4;
+              if (s === 'egrn_and_payout' || s === 'bank_funds_release') return 5;
+              if (s === 'platform_fee_and_close' || s === 'deal_finalized') return 6;
+              return 1;
+            };
+            const prevStepNum = stepOrder(existingDeal?.escrowWorkflow?.step);
+            const nextStepNum = stepOrder(ew.step);
+
+            if (ew.step !== 'deal_cancelled' && nextStepNum > prevStepNum) {
+              if (prevStepNum <= 1 && nextStepNum >= 2) {
+                const targetLot = String(itemToSave.lotCode || existingDeal?.lotCode || '').trim().toUpperCase();
+                const allSigs = await ydb.scanAll<any>('pep_signatures', 500);
+                const buyerId = itemToSave.buyerId || itemToSave.buyerUserId || existingDeal?.buyerId || existingDeal?.buyerUserId;
+                const lotSigs = (allSigs || []).filter(
+                  (s: any) =>
+                    String(s.lotCode || '').trim().toUpperCase() === targetLot &&
+                    s.status === 'signed' &&
+                    (!buyerId || s.userId === buyerId)
+                );
+                const hasNda = lotSigs.some((s: any) => s.documentType === 'nda_viewing_act');
+                const hasOffer = lotSigs.some((s: any) => s.documentType === 'buyer_reservation_terms');
+                const ownerOverride =
+                  authUser?.role === 'owner' && Boolean(ew.pepOverrideDocKey && ew.pepOverrideReason);
+
+                if ((!hasNda || !hasOffer) && !ownerOverride) {
+                  return json(event, 400, {
+                    error: 'Этап 1: Покупатель не подписал NDA и Оферту 2.5% (ПЭП 63-ФЗ).',
+                    code: 'CLOSING_GATE_PEP_REQUIRED',
+                  });
+                }
+              }
+
+              if (prevStepNum <= 2 && nextStepNum >= 3) {
+                if (!ew.cessionDraftDocKey || !ew.developerConsentDocKey) {
+                  return json(event, 400, {
+                    error: 'Этап 2: Загрузите проект Договора цессии и Согласие застройщика в S3.',
+                    code: 'CLOSING_GATE_DEV_CONSENT_REQUIRED',
+                  });
+                }
+              }
+
+              if (prevStepNum <= 3 && nextStepNum >= 4) {
+                if (
+                  !ew.bankName ||
+                  !ew.escrowAccountNumber ||
+                  !ew.sbrReceiptDocKey ||
+                  (!ew.notaryConsentConfirmed && !ew.notaryConsentDocKey)
+                ) {
+                  return json(event, 400, {
+                    error: 'Этап 3: Укажите банк, номер счёта СБР/аккредитива, загрузите квитанцию в S3 и подтвердите нотариальное согласие.',
+                    code: 'CLOSING_GATE_SBR_REQUIRED',
+                  });
+                }
+              }
+
+              if (prevStepNum <= 4 && nextStepNum >= 5) {
+                const hasProof =
+                  (Array.isArray(ew.signingProofPhotos) && ew.signingProofPhotos.length > 0) ||
+                  (Array.isArray(ew.signingProofVideos) && ew.signingProofVideos.length > 0);
+                if (!ew.rosreestrKuvdNumber || !hasProof) {
+                  return json(event, 400, {
+                    error: 'Этап 4: Укажите номер КУВД Росреестра и загрузите фото/видео подписания в S3.',
+                    code: 'CLOSING_GATE_ROSREESTR_REQUIRED',
+                  });
+                }
+              }
+
+              if (prevStepNum <= 5 && nextStepNum >= 6) {
+                if ((!ew.egrnExtractDocKey && !ew.rosreestrStampDocUrl) || !ew.sellerPayoutConfirmed) {
+                  return json(event, 400, {
+                    error: 'Этап 5: Загрузите выписку ЕГРН в S3 и подтвердите раскрытие СБР продавцу.',
+                    code: 'CLOSING_GATE_EGRN_REQUIRED',
+                  });
+                }
+              }
+            }
+          }
+        }
+
         if (itemToSave.stage === 'completed' || itemToSave.status === 'completed' || itemToSave.status === 'sold') {
           if (itemToSave.partnerRefCode || itemToSave.partnerId) {
             itemToSave.partnerPayoutStatus = 'payable';
@@ -1601,7 +1841,7 @@ export async function handleData(
           void telegramNotifier.notifyNewSellerSubmission(itemToSave);
         } else if (collection === 'buyer_applications' || collection === 'deals') {
           void telegramNotifier.notifyNewBuyerApplication(itemToSave);
-        } else if (collection === 'curator_messages') {
+        } else if (collection === 'curator_messages' || collection === 'deal_messages') {
           void telegramNotifier.handleWebCuratorMessage({
             lotCode: itemToSave.lotCode,
             dealId: itemToSave.dealId,
@@ -1612,6 +1852,7 @@ export async function handleData(
               name: authUser?.name || authUser?.email || 'Пользователь',
             },
             text: itemToSave.text || '',
+            skipDbWrite: true,
           });
         }
       }

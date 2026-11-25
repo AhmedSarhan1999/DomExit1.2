@@ -1887,5 +1887,165 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
   }
 
+  // =========================================================================
+  // 13. Deal Action Items / Interactive Tasks (Create, Submit, Approve)
+  // =========================================================================
+  const createTaskMatch = subPath.match(/^\/deals\/([^/]+)\/tasks$/);
+  if (createTaskMatch && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Создание задач доступно только сотрудникам DomExit' });
+    }
+    const dealId = decodeURIComponent(createTaskMatch[1]);
+    const body = parseBody<{
+      title: string;
+      assignee: 'seller' | 'buyer';
+      kind?: 'upload_doc' | 'sign_pep' | 'confirm';
+      pepDocumentType?: 'nda_viewing_act' | 'buyer_reservation_terms' | 'seller_exclusive_consent';
+    }>(event);
+
+    if (!body?.title || !body?.assignee) {
+      return json(event, 400, { error: 'Укажите title и assignee (seller|buyer)' });
+    }
+
+    const allDeals = await ydb.scanAll<any>('deals', 500);
+    const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    if (!deal) {
+      return json(event, 404, { error: `Сделка ${dealId} не найдена` });
+    }
+
+    const nowIso = new Date().toISOString();
+    const task = {
+      id: `task-${crypto.randomUUID().slice(0, 8)}`,
+      title: body.title.trim(),
+      assignee: body.assignee,
+      kind: body.kind || 'upload_doc',
+      pepDocumentType: body.pepDocumentType,
+      status: 'pending' as const,
+      createdAt: nowIso,
+      createdBy: authUser.name || authUser.email || 'Куратор DomExit',
+    };
+
+    deal.actionItems = Array.isArray(deal.actionItems) ? [...deal.actionItems, task] : [task];
+    await ydb.putItem('deals', deal);
+    memoryCache.invalidate('deals');
+    appCache.invalidatePrefix('deals');
+
+    // Notify target party via Telegram
+    const targetUserId = body.assignee === 'seller' ? deal.sellerUserId : (deal.buyerId || deal.buyerUserId);
+    if (targetUserId) {
+      const binding = await findTelegramBindingByUser(String(targetUserId)).catch(() => null);
+      if (binding?.chatId) {
+        await callTelegramApi('sendMessage', {
+          chat_id: binding.chatId,
+          text:
+            `📋 <b>Новая задача по сделке #${escapeHtml(deal.lotCode || '')}</b>\n` +
+            `${escapeHtml(task.title)}\n\n` +
+            `Выполните задачу в вашем Личном кабинете на портале DomExit.`,
+          parse_mode: 'HTML',
+        }).catch(() => {});
+      }
+    }
+
+    return json(event, 200, { ok: true, task, deal });
+  }
+
+  const submitTaskMatch = subPath.match(/^\/deals\/([^/]+)\/tasks\/([^/]+)\/submit$/);
+  if (submitTaskMatch && method === 'POST') {
+    const dealId = decodeURIComponent(submitTaskMatch[1]);
+    const taskId = decodeURIComponent(submitTaskMatch[2]);
+    const body = parseBody<{
+      uploadedDocKey?: string;
+      uploadedDocName?: string;
+      note?: string;
+    }>(event);
+
+    const allDeals = await ydb.scanAll<any>('deals', 500);
+    const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    if (!deal) {
+      return json(event, 404, { error: `Сделка ${dealId} не найдена` });
+    }
+
+    const isSeller = deal.sellerUserId === authUser.id || deal.sellerId === authUser.id;
+    const isBuyer = deal.buyerId === authUser.id || deal.buyerUserId === authUser.id;
+    if (!isStaff && !isSeller && !isBuyer) {
+      return json(event, 403, { error: 'Доступ к задаче запрещён' });
+    }
+
+    const items: any[] = Array.isArray(deal.actionItems) ? deal.actionItems : [];
+    const targetTask = items.find((t) => t.id === taskId);
+    if (!targetTask) {
+      return json(event, 404, { error: 'Задача не найдена' });
+    }
+    if (!isStaff) {
+      if (targetTask.assignee === 'seller' && !isSeller) {
+        return json(event, 403, { error: 'Эта задача предназначена продавцу' });
+      }
+      if (targetTask.assignee === 'buyer' && !isBuyer) {
+        return json(event, 403, { error: 'Эта задача предназначена покупателю' });
+      }
+    }
+
+    targetTask.status = 'submitted';
+    targetTask.submittedAt = new Date().toISOString();
+    if (body?.uploadedDocKey) targetTask.uploadedDocKey = body.uploadedDocKey;
+    if (body?.uploadedDocName) targetTask.uploadedDocName = body.uploadedDocName;
+    if (body?.note) targetTask.note = body.note;
+
+    await ydb.putItem('deals', deal);
+    memoryCache.invalidate('deals');
+    appCache.invalidatePrefix('deals');
+
+    await notifyStaff(
+      `📥 <b>КЛИЕНТ ВЫПОЛНИЛ ЗАДАЧУ: #${escapeHtml(deal.lotCode || '')}</b>\n` +
+      `Задача: <b>${escapeHtml(targetTask.title)}</b>\n` +
+      `Исполнитель: <b>${escapeHtml(authUser.name || authUser.email)}</b>\n` +
+      `Статус: <i>На проверке у куратора</i>`
+    ).catch(() => {});
+
+    return json(event, 200, { ok: true, task: targetTask, deal });
+  }
+
+  const approveTaskMatch = subPath.match(/^\/deals\/([^/]+)\/tasks\/([^/]+)\/approve$/);
+  if (approveTaskMatch && method === 'POST') {
+    if (!isStaff) {
+      return json(event, 403, { error: 'Подтверждение задач доступно только сотрудникам' });
+    }
+    const dealId = decodeURIComponent(approveTaskMatch[1]);
+    const taskId = decodeURIComponent(approveTaskMatch[2]);
+
+    const allDeals = await ydb.scanAll<any>('deals', 500);
+    const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    if (!deal) {
+      return json(event, 404, { error: `Сделка ${dealId} не найдена` });
+    }
+
+    const items: any[] = Array.isArray(deal.actionItems) ? deal.actionItems : [];
+    const targetTask = items.find((t) => t.id === taskId);
+    if (!targetTask) {
+      return json(event, 404, { error: 'Задача не найдена' });
+    }
+
+    targetTask.status = 'approved';
+    targetTask.approvedAt = new Date().toISOString();
+
+    await ydb.putItem('deals', deal);
+    memoryCache.invalidate('deals');
+    appCache.invalidatePrefix('deals');
+
+    const targetUserId = targetTask.assignee === 'seller' ? deal.sellerUserId : (deal.buyerId || deal.buyerUserId);
+    if (targetUserId) {
+      const binding = await findTelegramBindingByUser(String(targetUserId)).catch(() => null);
+      if (binding?.chatId) {
+        await callTelegramApi('sendMessage', {
+          chat_id: binding.chatId,
+          text: `✅ <b>Задача принята куратором (#${escapeHtml(deal.lotCode || '')}):</b>\n${escapeHtml(targetTask.title)}`,
+          parse_mode: 'HTML',
+        }).catch(() => {});
+      }
+    }
+
+    return json(event, 200, { ok: true, task: targetTask, deal });
+  }
+
   return json(event, 404, { error: `Endpoint /api/matching${subPath} не найден` });
 }

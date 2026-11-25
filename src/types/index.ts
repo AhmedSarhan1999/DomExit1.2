@@ -497,7 +497,7 @@ export interface DealTrack {
 
   // Closing sequence post-selection
   escrowWorkflow?: {
-    step: 'curator_review' | 'bank_escrow_deposit' | 'signing_photos' | 'bank_funds_release' | 'deal_finalized' | 'deal_cancelled';
+    step: ClosingStepId;
     bankName: string;
     escrowAccountNumber: string;
     depositedAmountRub: number;
@@ -508,8 +508,57 @@ export interface DealTrack {
     fundsReleasedAt?: string;
     platformFeeRub?: number;
     curatorHandoverAt?: string;
+    // Phase B 6-step Russian closing fields (S3 objectKeys only, no Base64)
+    pepOverrideReason?: string;
+    pepOverrideDocKey?: string;
+    cessionDraftDocKey?: string;
+    cessionDraftDocName?: string;
+    developerConsentDocKey?: string;
+    developerConsentDocName?: string;
+    notaryConsentConfirmed?: boolean;
+    notaryConsentDocKey?: string;
+    notaryConsentDocName?: string;
+    sbrReceiptDocKey?: string;
+    sbrReceiptDocName?: string;
+    rosreestrKuvdNumber?: string;
+    egrnExtractDocKey?: string;
+    egrnExtractDocName?: string;
+    sellerPayoutConfirmed?: boolean;
+    platformFeeConfirmed?: boolean;
+    developerFeeDeductedRub?: number;
   };
+  actionItems?: DealActionItem[];
 }
+
+export interface DealActionItem {
+  id: string;
+  title: string;
+  assignee: 'seller' | 'buyer';
+  kind: 'upload_doc' | 'sign_pep' | 'confirm';
+  pepDocumentType?: 'nda_viewing_act' | 'buyer_reservation_terms' | 'seller_exclusive_consent';
+  status: 'pending' | 'submitted' | 'approved';
+  createdAt: string;
+  createdBy: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  uploadedDocKey?: string;
+  uploadedDocName?: string;
+  note?: string;
+}
+
+export type ClosingStepId =
+  | 'pep_reservation'
+  | 'developer_consent'
+  | 'notary_and_sbr'
+  | 'rosreestr_filing'
+  | 'egrn_and_payout'
+  | 'platform_fee_and_close'
+  | 'deal_finalized'
+  | 'curator_review'
+  | 'bank_escrow_deposit'
+  | 'signing_photos'
+  | 'bank_funds_release'
+  | 'deal_cancelled';
 
 export interface InvestorApplication {
   id: string;
@@ -844,6 +893,7 @@ export interface AuditLogEntry {
     | 'document_vault_action'
     | 'packaging_published'
     | 'buyer_matched'
+    | 'pep_paper_override'
     | 'buyer_bid_submitted'
     | 'seller_request_submitted'
     | 'seller_request_decided'
@@ -1059,11 +1109,13 @@ export interface CuratorMessage {
   dealId?: string;
   lotId?: string;
   lotCode?: string;
+  threadChannel?: 'seller_curator' | 'buyer_curator';
   senderId: string;
   senderName: string;
   senderRole: 'buyer' | 'seller' | 'employee' | 'owner';
   curatorId?: string;
   text: string;
+  source?: 'web' | 'telegram';
   createdAt: string;
   isRead: boolean;
   attachmentUrl?: string;
