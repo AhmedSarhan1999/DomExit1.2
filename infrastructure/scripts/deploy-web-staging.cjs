@@ -1,6 +1,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { S3Client, PutObjectCommand } = require('../../backend/node_modules/@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+} = require('../../backend/node_modules/@aws-sdk/client-s3');
 
 const ROOT_DIR = path.resolve(__dirname, '../..');
 const MANIFEST_PATH = path.join(ROOT_DIR, 'infrastructure/cloud-manifest.json');
@@ -94,6 +99,52 @@ function getFiles(dir, base = '') {
   return results;
 }
 
+async function pruneStaleAssets(bucketName, currentRelPaths) {
+  const pruneAllStale = process.argv.includes('--prune-all-stale');
+  const keepSet = new Set(currentRelPaths);
+  const cutoffMs = Date.now() - (pruneAllStale ? 24 * 3600 * 1000 : 14 * 24 * 3600 * 1000);
+  const keysToDelete = [];
+  let continuationToken;
+
+  do {
+    const res = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: 'assets/',
+        ContinuationToken: continuationToken,
+      })
+    );
+    for (const obj of res.Contents || []) {
+      const key = obj.Key || '';
+      if (!key || keepSet.has(key)) continue;
+      const lastModMs = obj.LastModified ? new Date(obj.LastModified).getTime() : 0;
+      if (lastModMs > 0 && lastModMs < cutoffMs) {
+        keysToDelete.push({ Key: key });
+      }
+    }
+    continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  if (keysToDelete.length === 0) {
+    console.log('✓ No stale assets/ objects to prune.');
+    return 0;
+  }
+
+  let deletedCount = 0;
+  for (let i = 0; i < keysToDelete.length; i += 1000) {
+    const chunk = keysToDelete.slice(i, i + 1000);
+    await s3.send(
+      new DeleteObjectsCommand({
+        Bucket: bucketName,
+        Delete: { Objects: chunk, Quiet: true },
+      })
+    );
+    deletedCount += chunk.length;
+  }
+  console.log(`✓ Pruned ${deletedCount} stale assets/ objects from ${bucketName}.`);
+  return deletedCount;
+}
+
 async function deploy() {
   console.log(`=== Deploying DomExit Frontend to Staging Bucket: ${bucket} ===`);
   console.log(`Source Directory: ${DIST_DIR}`);
@@ -141,6 +192,8 @@ async function deploy() {
       throw err;
     }
   }
+
+  await pruneStaleAssets(bucket, files.map((f) => f.relPath));
 
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(2);
   const totalMb = (totalBytes / (1024 * 1024)).toFixed(2);

@@ -707,13 +707,23 @@ export const apiClient = {
         body: JSON.stringify(params),
       }),
 
-    runSlaSweep: (options?: { dryRun?: boolean }) =>
+    runSlaSweep: (options?: { dryRun?: boolean; forceDailyTasks?: boolean }) =>
       request<{
         ok: boolean;
-        scannedLotsCount: number;
-        promotedCount: number;
-        penalizedCount: number;
-        results: any[];
+        lotsScanCount?: number;
+        dailyTasksExecuted?: boolean;
+        silverWaveOpenedCount?: number;
+        expiredDropsClosedCount?: number;
+        priority1DeadlinesAlertedCount?: number;
+        sellerSlaEscalatedCount?: number;
+        partnerReservationsExpiredCount?: number;
+        staleLotsAlertedCount?: number;
+        prunedRateLimitsCount?: number;
+        prunedPepOtpsCount?: number;
+        scannedLotsCount?: number;
+        promotedCount?: number;
+        penalizedCount?: number;
+        results?: any[];
       }>('/api/matching/run-sla-sweep', {
         method: 'POST',
         body: JSON.stringify(options || {}),

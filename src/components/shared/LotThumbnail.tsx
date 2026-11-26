@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
+import { resolveCdnUrl } from '../../utils/cdnUrl';
 
 interface LotThumbnailProps {
   src?: string | null;
@@ -20,10 +21,11 @@ export const LotThumbnail: React.FC<LotThumbnailProps> = ({
   className = 'w-full h-full object-cover',
   fallbackClassName = 'w-full h-full flex items-center justify-center bg-slate-100 text-slate-400',
 }) => {
-  const resolved =
+  const rawResolved =
     [src, approvedImages?.[0], images?.[0], photos?.[0]]
       .map((u) => String(u || '').trim())
       .find((u) => u.length > 0 && !u.includes('undefined')) || '';
+  const resolved = resolveCdnUrl(rawResolved);
 
   const [failed, setFailed] = useState(false);
 

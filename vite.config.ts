@@ -50,7 +50,10 @@ function nativeCompressionPlugin(): Plugin {
 }
 
 // https://vite.dev/config/
+const cdnBase = (process.env.VITE_CDN_BASE_URL || '').trim().replace(/\/+$/, '');
+
 export default defineConfig({
+  base: cdnBase ? `${cdnBase}/` : '/',
   plugins: [
     react(),
     tailwindcss(),

@@ -240,8 +240,15 @@ export const StagedDropQueueManager: React.FC<StagedDropQueueManagerProps> = ({
     try {
       const res = await apiClient.matching.runSlaSweep();
       if (res.ok) {
+        const scannedCount = res.lotsScanCount ?? res.scannedLotsCount ?? 1;
+        const promotedCount =
+          res.promotedCount ??
+          (res.silverWaveOpenedCount || 0) + (res.expiredDropsClosedCount || 0);
+        const alertCount =
+          res.penalizedCount ??
+          (res.priority1DeadlinesAlertedCount || 0) + (res.sellerSlaEscalatedCount || 0);
         onShowToast?.(
-          `SLA Sweeper выполнен: проверено лотов: ${res.scannedLotsCount}, продвинуто: ${res.promotedCount}, штрафов: ${res.penalizedCount}`
+          `SLA Sweeper выполнен: сканов lots: ${scannedCount}, обновлений волн: ${promotedCount}, SLA-алертов: ${alertCount}`
         );
         loadQueue();
         onLotUpdated?.();
