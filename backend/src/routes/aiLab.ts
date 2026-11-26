@@ -56,6 +56,13 @@ import {
   AgentDeliveryChannel,
   MarketBenchmarkRecord,
 } from '../modules/proptech-ai/agentBridgeService.js';
+import {
+  enqueueOcrJob,
+  getOcrJobsForLot,
+  getOcrJobById,
+  getOcrStats,
+  AiOcrJobRecord,
+} from '../modules/legal-core/ocrQueueService.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -178,6 +185,8 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
         // non-fatal
       }
 
+      const ocrStats = await getOcrStats();
+
       return json(event, 200, {
         ...publicResponse,
         config,
@@ -200,6 +209,7 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
             pendingReviewCount,
             webhookUrl: `${cfg.PUBLIC_BASE_URL}/api/ai/agent-bridge/webhook/result`,
           },
+          ocr: ocrStats,
           yandexAi: {
             configured: Boolean(process.env.YC_FOLDER_ID),
           },
@@ -610,6 +620,108 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     }
 
     return json(event, 200, { ok: true, benchmarks });
+  }
+
+  // ============================================================
+  // POST /api/ai/ocr/jobs (Enqueue document for Vision OCR)
+  // ============================================================
+  if (subPath === '/ocr/jobs' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'visionOcrPreAudit', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'visionOcrPreAudit' });
+    }
+
+    if (!authUser) {
+      return json(event, 401, { error: 'Требуется авторизация' });
+    }
+
+    const body = getEventBody<{ lotCode?: string; documentId?: string; forceReprocess?: boolean }>(event) || {};
+    const lotCode = body.lotCode?.trim().toUpperCase();
+    const documentId = body.documentId?.trim();
+
+    if (!lotCode || !documentId) {
+      return json(event, 400, { error: 'lotCode и documentId обязательны' });
+    }
+
+    const ydb = getYdbClient();
+
+    // Verify employee access if employee
+    if (userRole === 'employee') {
+      const lot = await ydb.getItem<any>('lots', lotCode);
+      if (lot && lot.assignedEmployeeId && lot.assignedEmployeeId !== authUser.id) {
+        return json(event, 403, { error: 'Вы не назначены куратором данного объекта' });
+      }
+    }
+
+    // Fetch document from documents_vault
+    const doc = await ydb.getItem<any>('documents_vault', documentId);
+    if (!doc) {
+      return json(event, 404, { error: 'Документ не найден в хранилище' });
+    }
+
+    const objectKey = doc.objectKey || doc.fileKey || doc.s3Key || doc.url;
+    if (!objectKey) {
+      return json(event, 400, { error: 'Ключ файла документа отсутствует в записи' });
+    }
+
+    try {
+      const enqueueRes = await enqueueOcrJob({
+        lotCode,
+        documentId,
+        objectKey,
+        docCategory: doc.category || doc.type || 'other',
+        requestedBy: authUser.id,
+        forceReprocess: Boolean(body.forceReprocess),
+      });
+
+      return json(event, 200, { ok: true, job: enqueueRes.job, isExisting: enqueueRes.isExisting });
+    } catch (err: any) {
+      logger.error('Failed to enqueue OCR job', { meta: { lotCode, documentId, error: err.message } });
+      return json(event, 400, { error: err.message || 'Ошибка постановки задачи OCR в очередь' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/ocr/jobs (Get OCR jobs for lot)
+  // ============================================================
+  if (subPath === '/ocr/jobs' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'visionOcrPreAudit', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'visionOcrPreAudit' });
+    }
+
+    const queryParams = event.queryStringParameters || {};
+    const lotCode = queryParams.lotCode;
+    if (!lotCode) {
+      return json(event, 400, { error: 'Параметр lotCode обязателен' });
+    }
+
+    try {
+      const jobs = await getOcrJobsForLot(lotCode);
+      return json(event, 200, { ok: true, jobs });
+    } catch (err: any) {
+      logger.error('Failed to fetch OCR jobs for lot', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения задач OCR' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/ocr/jobs/:jobId (Get single OCR job status)
+  // ============================================================
+  const ocrJobMatch = subPath.match(/^\/ocr\/jobs\/([^/]+)$/);
+  if (ocrJobMatch && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'visionOcrPreAudit', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'visionOcrPreAudit' });
+    }
+
+    const jobId = decodeURIComponent(ocrJobMatch[1]);
+    const job = await getOcrJobById(jobId);
+    if (!job) {
+      return json(event, 404, { error: 'Задача OCR не найдена' });
+    }
+
+    return json(event, 200, { ok: true, job });
   }
 
   return json(event, 404, { error: `Endpoint /api/ai${subPath} не найден` });

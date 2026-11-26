@@ -85,6 +85,11 @@
     "webStaticBucket": "domexit-web-staging",
     "apiFunctionId": "d4ep633b03be8trc7d28",
     "apiGatewayId": "d5dpccovifu701p9lvga",
-    "apiGatewayUrl": "https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net"
+    "apiGatewayUrl": "https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net",
+    "ymqOcrQueueUrl": "https://message-queue.api.cloud.yandex.net/b1gbu0q3jqnheri2srsu/dj6000000161578o04o2/domexit-ai-ocr-staging",
+    "ymqOcrQueueArn": "yrn:yc:ymq:ru-central1:b1g46uad3gc3h34k5b0f:domexit-ai-ocr-staging",
+    "ymqOcrDlqUrl": "https://message-queue.api.cloud.yandex.net/b1gbu0q3jqnheri2srsu/dj6000000161574g04o2/domexit-ai-ocr-staging-dlq",
+    "aiWorkerFunctionId": "d4e2746hmhhtl2jtle9u",
+    "aiWorkerTriggerId": "a1s45g3s1tjj6ashfdjh"
   }
 }

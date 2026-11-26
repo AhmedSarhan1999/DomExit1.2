@@ -159,6 +159,10 @@ const envMap = {
   AGENT_BRIDGE_SECRET: envVars.AGENT_BRIDGE_SECRET || '',
   EXTERNAL_AGENT_WEBHOOK_URL: envVars.EXTERNAL_AGENT_WEBHOOK_URL || '',
   AGENT_TELEGRAM_CHAT_ID: envVars.AGENT_TELEGRAM_CHAT_ID || '',
+  YMQ_OCR_QUEUE_URL: manifest.staging?.ymqOcrQueueUrl || envVars.YMQ_OCR_QUEUE_URL || '',
+  YC_FOLDER_ID: manifest.folderId || 'b1g46uad3gc3h34k5b0f',
+  DAILY_OCR_PAGES_CAP: '200',
+  MAX_PAGES_PER_DOC: '15',
   YDB_USE_V2_TABLES: 'true',
 };
 

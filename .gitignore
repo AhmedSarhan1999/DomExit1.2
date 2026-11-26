@@ -15,6 +15,7 @@ dist-sweeper
 backend/dist
 backend/dist-backup
 backend/dist-sweeper
+backend/dist-worker
 *.local
 .env
 .env.*

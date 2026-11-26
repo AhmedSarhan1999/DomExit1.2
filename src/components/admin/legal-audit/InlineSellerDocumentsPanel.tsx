@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   CheckCircle2,
@@ -9,9 +9,13 @@ import {
   RefreshCw,
   AlertCircle,
   FolderOpen,
+  Sparkles,
 } from 'lucide-react';
 import { DocumentMetadata, Lot } from '../../../types';
 import { SELLER_MANDATORY_DOC_SLOTS, StorageService } from '../../../dal/StorageService';
+import { useAiFeatureFlags } from '../../../hooks/useAiFeatureFlags';
+import { apiClient } from '../../../services/apiClient';
+import { AiOcrPreAuditCard, AiOcrJobData } from './AiOcrPreAuditCard';
 
 interface InlineSellerDocumentsPanelProps {
   lot: Lot;
@@ -40,11 +44,53 @@ export const InlineSellerDocumentsPanel: React.FC<InlineSellerDocumentsPanelProp
   onOpenRequestDocsModal,
   onNotice,
 }) => {
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const isOcrEnabled = isFeatureEnabled('visionOcrPreAudit');
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [rejectingDocId, setRejectingDocId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState<string>(
     'Нечитаемый скан или отсутствуют все страницы / штамп Росреестра.'
   );
+
+  const [ocrJobs, setOcrJobs] = useState<Record<string, AiOcrJobData>>({});
+  const [ocrLoadingDocId, setOcrLoadingDocId] = useState<string | null>(null);
+  const [expandedOcrDocId, setExpandedOcrDocId] = useState<string | null>(null);
+
+  const fetchOcrJobs = async () => {
+    if (!isOcrEnabled || !lot?.lotCode) return;
+    try {
+      const res = await apiClient.aiLab.getOcrJobs(lot.lotCode);
+      if (res?.jobs) {
+        const map: Record<string, AiOcrJobData> = {};
+        for (const j of res.jobs) {
+          if (!map[j.documentId] || new Date(j.createdAt) > new Date(map[j.documentId].createdAt)) {
+            map[j.documentId] = j;
+          }
+        }
+        setOcrJobs(map);
+      }
+    } catch (err) {
+      console.error('Failed to load OCR jobs:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchOcrJobs();
+  }, [lot?.lotCode, isOcrEnabled]);
+
+  const handleTriggerOcr = async (docId: string, force = false) => {
+    setOcrLoadingDocId(docId);
+    try {
+      const res = await apiClient.aiLab.startOcrJob({ lotCode: lot.lotCode, documentId: docId, forceReprocess: force });
+      onNotice(res?.isExisting ? 'Найдена существующая задача OCR' : 'Задача OCR успешно поставлена в очередь');
+      await fetchOcrJobs();
+      setExpandedOcrDocId(docId);
+    } catch (err: any) {
+      onNotice(`Ошибка OCR: ${err?.message || 'Не удалось запустить распознавание'}`);
+    } finally {
+      setOcrLoadingDocId(null);
+    }
+  };
 
   const isSecondary = lot.dealTrack === 'secondary_dkp';
   const hasApprovedDdu = documents.some((d) => d.category === 'ddu_contract' && d.status === 'approved');
@@ -284,6 +330,55 @@ export const InlineSellerDocumentsPanel: React.FC<InlineSellerDocumentsPanelProp
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {isOcrEnabled && (
+                      <>
+                        {(() => {
+                          const job = ocrJobs[doc.id];
+                          const isLoadingThis = ocrLoadingDocId === doc.id;
+                          if (job?.status === 'processing' || job?.status === 'queued' || isLoadingThis) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedOcrDocId(expandedOcrDocId === doc.id ? null : doc.id)}
+                                className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold flex items-center space-x-1 cursor-pointer animate-pulse"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                                <span>{job?.status === 'queued' ? '⏳ В очереди' : '⚙ Распознавание...'}</span>
+                              </button>
+                            );
+                          }
+                          if (job?.status === 'completed') {
+                            const riskCount = job.extractedFields?.riskFlags?.length || 0;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedOcrDocId(expandedOcrDocId === doc.id ? null : doc.id)}
+                                className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center space-x-1 cursor-pointer ${
+                                  expandedOcrDocId === doc.id
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200'
+                                }`}
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>✓ OCR ({job.pagesProcessed || 1} стр.){riskCount > 0 ? ` • ${riskCount} риск` : ''}</span>
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleTriggerOcr(doc.id)}
+                              disabled={isBusy || isLoadingThis}
+                              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>AI OCR</span>
+                            </button>
+                          );
+                        })()}
+                      </>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => handlePreviewDoc(doc)}
@@ -316,6 +411,17 @@ export const InlineSellerDocumentsPanel: React.FC<InlineSellerDocumentsPanelProp
                     </button>
                   </div>
                 </div>
+
+                {isOcrEnabled && expandedOcrDocId === doc.id && ocrJobs[doc.id] && (
+                  <div className="pt-2">
+                    <AiOcrPreAuditCard
+                      job={ocrJobs[doc.id]}
+                      lot={lot}
+                      onReprocess={() => handleTriggerOcr(doc.id, true)}
+                      isReprocessing={ocrLoadingDocId === doc.id}
+                    />
+                  </div>
+                )}
 
                 {rejectingDocId === doc.id && (
                   <div className="p-3 bg-white rounded-xl border border-rose-200 flex flex-col sm:flex-row gap-2">

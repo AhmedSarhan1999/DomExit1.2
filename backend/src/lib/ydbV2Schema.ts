@@ -146,6 +146,15 @@ export const V2_TABLES_SCHEMA: Record<string, V2TableSchema> = {
       { indexName: 'lotCode-verifiedAt-index', hashKey: 'lotCode', rangeKey: 'verifiedAt' },
     ],
   },
+  ai_ocr_jobs: {
+    logicalName: 'ai_ocr_jobs',
+    v2TableName: 'ai_ocr_jobs_v2',
+    gsis: [
+      { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
+      { indexName: 'documentId-createdAt-index', hashKey: 'documentId', rangeKey: 'createdAt' },
+      { indexName: 'status-createdAt-index', hashKey: 'status', rangeKey: 'createdAt' },
+    ],
+  },
 };
 
 export const V2_LOGICAL_TABLES = Object.keys(V2_TABLES_SCHEMA);
@@ -264,6 +273,9 @@ export function sanitizeItemForV2(logicalTable: string, rawItem: Record<string, 
     if (!item.dealId && item.lotCode) {
       item.dealId = item.lotCode;
     }
+  } else if (baseName === 'ai_ocr_jobs') {
+    if (!item.status || String(item.status).trim() === '') item.status = 'queued';
+    if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
   } else if (baseName === 'seller_requests') {
     if (!item.assignedCuratorId && item.assignedEmployeeId) {
       item.assignedCuratorId = item.assignedEmployeeId;
@@ -285,6 +297,9 @@ export function sanitizeItemForV2(logicalTable: string, rawItem: Record<string, 
     if (!item.dealId && item.lotCode) {
       item.dealId = item.lotCode;
     }
+  } else if (baseName === 'ai_ocr_jobs') {
+    if (!item.status || String(item.status).trim() === '') item.status = 'queued';
+    if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
   }
 
   for (const field of indexedFields) {

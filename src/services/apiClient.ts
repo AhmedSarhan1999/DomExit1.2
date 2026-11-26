@@ -972,5 +972,24 @@ export const apiClient = {
         skipCache: true,
       });
     },
+
+    startOcrJob: (payload: { lotCode: string; documentId: string; forceReprocess?: boolean }) =>
+      request<{ ok: boolean; job: any; isExisting?: boolean }>(`/api/ai/ocr/jobs`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getOcrJobs: (lotCode: string) =>
+      request<{ ok: boolean; jobs: any[] }>(`/api/ai/ocr/jobs?lotCode=${encodeURIComponent(lotCode)}`, {
+        method: 'GET',
+        skipCache: true,
+      }),
+
+    getOcrJob: (jobId: string) =>
+      request<{ ok: boolean; job: any }>(`/api/ai/ocr/jobs/${encodeURIComponent(jobId)}`, {
+        method: 'GET',
+        skipCache: true,
+      }),
   },
 };

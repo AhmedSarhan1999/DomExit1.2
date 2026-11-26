@@ -202,6 +202,15 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'lotCode-verifiedAt-index', hashKey: 'lotCode', rangeKey: 'verifiedAt' },
     ],
   },
+  ai_ocr_jobs: {
+    logicalName: 'ai_ocr_jobs',
+    v2TableName: 'ai_ocr_jobs_v2',
+    gsis: [
+      { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
+      { indexName: 'documentId-createdAt-index', hashKey: 'documentId', rangeKey: 'createdAt' },
+      { indexName: 'status-createdAt-index', hashKey: 'status', rangeKey: 'createdAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {
@@ -266,6 +275,9 @@ function sanitizeItemForV2(logicalTable, rawItem) {
   } else if (baseName === 'pep_signatures') {
     if (!item.signedAt || String(item.signedAt).trim() === '') item.signedAt = item.createdAt || nowIso;
     if (!item.dealId && item.lotCode) item.dealId = item.lotCode;
+  } else if (baseName === 'ai_ocr_jobs') {
+    if (!item.status || String(item.status).trim() === '') item.status = 'queued';
+    if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
   }
 
   for (const field of indexedFields) {

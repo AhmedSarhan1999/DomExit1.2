@@ -61,6 +61,11 @@ export interface BackendConfig {
   AGENT_BRIDGE_SECRET?: string;
   EXTERNAL_AGENT_WEBHOOK_URL?: string;
   AGENT_TELEGRAM_CHAT_ID?: string;
+  YMQ_OCR_QUEUE_URL?: string;
+  YC_FOLDER_ID?: string;
+  DAILY_OCR_PAGES_CAP?: number;
+  MAX_PAGES_PER_DOC?: number;
+  YC_AI_IAM_TOKEN?: string;
   // DADATA_SECRET_KEY removed — cleaner.dadata.ru (paid) is permanently disabled.
   // All DaData usage is free-tier suggestions only via suggestions.dadata.ru.
   YDB_USE_V2_TABLES?: boolean;
@@ -137,6 +142,11 @@ export function getConfig(): BackendConfig {
     AGENT_BRIDGE_SECRET: process.env.AGENT_BRIDGE_SECRET || '',
     EXTERNAL_AGENT_WEBHOOK_URL: process.env.EXTERNAL_AGENT_WEBHOOK_URL || '',
     AGENT_TELEGRAM_CHAT_ID: process.env.AGENT_TELEGRAM_CHAT_ID || '',
+    YMQ_OCR_QUEUE_URL: process.env.YMQ_OCR_QUEUE_URL || '',
+    YC_FOLDER_ID: process.env.YC_FOLDER_ID || 'b1g46uad3gc3h34k5b0f',
+    DAILY_OCR_PAGES_CAP: process.env.DAILY_OCR_PAGES_CAP ? Number(process.env.DAILY_OCR_PAGES_CAP) : 200,
+    MAX_PAGES_PER_DOC: process.env.MAX_PAGES_PER_DOC ? Number(process.env.MAX_PAGES_PER_DOC) : 15,
+    YC_AI_IAM_TOKEN: process.env.YC_AI_IAM_TOKEN || '',
     YDB_USE_V2_TABLES: process.env.YDB_USE_V2_TABLES === 'true',
     EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER as any) || (process.env.POSTBOX_SMTP_USER ? 'postbox' : 'console'),
     POSTBOX_SMTP_HOST: process.env.POSTBOX_SMTP_HOST || 'postbox.cloud.yandex.net',

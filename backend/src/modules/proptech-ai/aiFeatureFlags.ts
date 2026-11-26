@@ -58,10 +58,10 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
   {
     key: 'visionOcrPreAudit',
     labelRu: 'Vision OCR Пре-аудит документов',
-    descriptionRu: 'Автоматическое распознавание и предварительный аудит документов (ДДУ, выписки ЕГРН) с помощью Yandex Vision',
-    implemented: false,
+    descriptionRu: 'Автоматическое распознавание и предварительный аудит документов (ДДУ, выписки ЕГРН) с помощью Yandex Vision (152-ФЗ)',
+    implemented: true,
     roadmapStep: 'Этап 03',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
   {
     key: 'gptLegalCopilot',
