@@ -118,6 +118,9 @@ export interface Lot {
   dealTrack?: PropertyDealTrack;
   dropConfig?: LotDropConfig;
   cadastralNumber?: string;
+  headline?: string;
+  description?: string;
+  investmentDescription?: string;
   secondaryRiskChecklist?: SecondaryRiskChecklist;
   legalRadarChecks?: LegalRadarCheckItem[];
   transactionType?: 'installment_cession' | 'mortgage_cession' | 'direct_sale_140fz';
@@ -331,6 +334,9 @@ export interface SellerExitRequest {
   dealTrack?: PropertyDealTrack;
   dropConfig?: LotDropConfig;
   cadastralNumber?: string;
+  headline?: string;
+  description?: string;
+  investmentDescription?: string;
   secondaryRiskChecklist?: SecondaryRiskChecklist;
   isNegotiable?: boolean;
   is_negotiable?: boolean;

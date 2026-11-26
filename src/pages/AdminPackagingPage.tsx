@@ -41,6 +41,7 @@ import { useAiFeatureFlags } from '../hooks/useAiFeatureFlags';
 import { apiClient } from '../services/apiClient';
 import { Bot } from 'lucide-react';
 import { AvmValuationCard } from '../components/admin/packaging/AvmValuationCard';
+import { AiPackagingStudioPanel } from '../components/admin/packaging/AiPackagingStudioPanel';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -95,6 +96,8 @@ export const AdminPackagingPage: React.FC = () => {
   const [sellerPhotos, setSellerPhotos] = useState<string[]>([]);
   const [approvedPhotos, setApprovedPhotos] = useState<string[]>([]);
   const [coverImageUrl, setCoverImageUrl] = useState<string>('');
+  const [headline, setHeadline] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
 
   // AI Lab: Feature Flags & External Agent Bridge
   const { isFeatureEnabled } = useAiFeatureFlags();
@@ -183,6 +186,8 @@ export const AdminPackagingPage: React.FC = () => {
         : [];
     setApprovedPhotos(aPhotos);
     setCoverImageUrl(data.imageUrl || aPhotos[0] || '');
+    setHeadline((data as any).headline || '');
+    setDescription((data as any).description || (data as any).investmentDescription || '');
   };
 
   useEffect(() => {
@@ -448,6 +453,9 @@ export const AdminPackagingPage: React.FC = () => {
       galleryImages: approvedPhotos.length > 0 ? approvedPhotos : (effectiveCover ? [effectiveCover] : []),
       sellerUploadedPhotos: sellerPhotos,
       sellerSubmittedImages: sellerPhotos,
+      headline,
+      description,
+      investmentDescription: description,
       ownerDossier: {
         ...lot.ownerDossier,
         hideExactFloor: hideFloor,
@@ -720,6 +728,51 @@ export const AdminPackagingPage: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {/* AI Packaging Studio Panel */}
+              {isFeatureEnabled('aiPackagingStudio') && (
+                <AiPackagingStudioPanel
+                  lotCode={lot.lotCode}
+                  currentValues={{
+                    complexName,
+                    developer,
+                    city,
+                    district,
+                    streetAddress,
+                    areaM2,
+                    rooms,
+                    floor,
+                    totalFloors,
+                    deliveryDate,
+                    oldDduPrice,
+                    cashToSeller,
+                    debtToDev,
+                    todayDevPrice,
+                    isNegotiable,
+                    sellerPhotos,
+                    approvedPhotos,
+                    metroName,
+                    metroTime,
+                    metroMode,
+                    coordinates,
+                  }}
+                  onApplyMetro={(name, time, mode, coords) => {
+                    setMetroName(name);
+                    setMetroTime(time);
+                    setMetroMode(mode);
+                    if (coords) setCoordinates(coords);
+                  }}
+                  onApplyCopy={(desc, head) => {
+                    setDescription(desc);
+                    if (head) setHeadline(head);
+                  }}
+                  showToast={(msg) => {
+                    setNotificationMsg(msg);
+                    setTimeout(() => setNotificationMsg(null), 4000);
+                  }}
+                  showError={(msg) => alert(msg)}
+                />
+              )}
 
               {/* 2-Column Packaging Layout */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1074,6 +1127,49 @@ export const AdminPackagingPage: React.FC = () => {
                           value={districtAvgPricePerM2}
                           onChange={(e) => setDistrictAvgPricePerM2(Number(e.target.value))}
                           className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono font-bold focus:bg-white focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3.5: Marketing Description & Headline */}
+                  <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-xs">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div className="flex items-center space-x-2 text-indigo-600">
+                        <Sparkles className="w-4 h-4" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                          Маркетинговое описание и заголовок
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        Отображается в каталоге DomExit
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-slate-500 mb-1 font-semibold text-xs">
+                          Заголовок объявления:
+                        </label>
+                        <input
+                          type="text"
+                          value={headline}
+                          onChange={(e) => setHeadline(e.target.value)}
+                          placeholder="Сгенерируйте в AI Packaging Studio или введите вручную..."
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-xs focus:bg-white focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-500 mb-1 font-semibold text-xs">
+                          Инвестиционное описание:
+                        </label>
+                        <textarea
+                          rows={5}
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="Сгенерируйте описание в AI Studio выше или введите вручную..."
+                          className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-xs leading-relaxed focus:bg-white focus:border-indigo-500 font-sans"
                         />
                       </div>
                     </div>

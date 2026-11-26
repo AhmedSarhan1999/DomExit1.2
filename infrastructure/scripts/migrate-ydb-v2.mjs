@@ -244,6 +244,13 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'complexKey-createdAt-index', hashKey: 'complexKey', rangeKey: 'createdAt' },
     ],
   },
+  ai_packaging_results: {
+    logicalName: 'ai_packaging_results',
+    v2TableName: 'ai_packaging_results_v2',
+    gsis: [
+      { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {

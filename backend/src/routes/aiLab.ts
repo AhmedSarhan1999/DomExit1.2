@@ -87,6 +87,18 @@ import {
   getAvmStats,
   AvmValuationInput,
 } from '../modules/proptech-ai/avmValuationEngine.js';
+import {
+  inspectLotPhotos,
+  analyzePhoto,
+} from '../modules/proptech-ai/photoQaService.js';
+import {
+  enrichLotGeoInfrastructure,
+  findNearestMetros,
+} from '../modules/proptech-ai/geoInfrastructureService.js';
+import {
+  generateListingCopy,
+  ListingCopyInput,
+} from '../modules/proptech-ai/aiListingCopyService.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -245,6 +257,10 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
             eiszhProjectsCount: eiszhStats.projectsCount,
             eiszhLastSyncAt: eiszhStats.lastSyncAt,
             totalAvmEstimates: avmStats.totalEstimates,
+          },
+          packagingStudio: {
+            configured: Boolean(process.env.YC_FOLDER_ID),
+            yandexMapsKeyConfigured: Boolean(process.env.YANDEX_MAPS_API_KEY),
           },
         },
       });
@@ -1114,6 +1130,220 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     } catch (err: any) {
       logger.error('Failed fetching AVM history', { meta: { lotCode, error: err.message } });
       return json(event, 500, { error: 'Ошибка получения истории оценок AVM' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/packaging/photo-qa — requires aiPackagingStudio
+  // ============================================================
+  if (subPath === '/packaging/photo-qa' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'aiPackagingStudio', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'aiPackagingStudio' });
+    }
+
+    const rateKey = authUser?.id || (event.requestContext?.identity?.sourceIp ? `ip_${event.requestContext.identity.sourceIp}` : 'anon');
+    const quota = await consumeQuota({
+      scope: 'photo_qa',
+      actorKey: rateKey,
+      limit: 30,
+      windowSec: 60,
+    });
+    if (!quota.allowed) {
+      return json(event, 429, { error: 'Слишком много запросов на проверку фото. Попробуйте через минуту.' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    const lotCode = body.lotCode ? String(body.lotCode).trim().toUpperCase() : '';
+    if (!lotCode) {
+      return json(event, 400, { error: 'Параметр lotCode обязателен' });
+    }
+
+    let photoUrls: string[] = Array.isArray(body.photoUrls) ? body.photoUrls : [];
+
+    if (photoUrls.length === 0) {
+      const ydb = getYdbClient();
+      try {
+        const lot = await ydb.getItem<any>('lots', lotCode);
+        if (lot) {
+          const list = [
+            ...(lot.sellerUploadedPhotos || []),
+            ...(lot.sellerSubmittedImages || []),
+            ...(lot.galleryImages || []),
+            ...(lot.images || []),
+            lot.imageUrl,
+          ].filter(Boolean);
+          photoUrls = Array.from(new Set(list));
+        }
+      } catch (err: any) {
+        logger.warn('[PhotoQA] Failed querying lot photos from YDB', { meta: { lotCode, error: err.message } });
+      }
+    }
+
+    if (photoUrls.length === 0) {
+      return json(event, 400, { error: 'В лоте нет прикрепленных фотографий для проверки' });
+    }
+
+    try {
+      const report = await inspectLotPhotos({
+        lotCode,
+        photoUrls,
+        forceReprocess: Boolean(body.forceReprocess),
+        operatorId: authUser?.id || 'system',
+      });
+
+      return json(event, 200, { ok: true, report });
+    } catch (err: any) {
+      logger.error('Photo QA inspection failed', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка проверки качества и приватности фотографий' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/packaging/geo-enrich — requires aiPackagingStudio
+  // ============================================================
+  if (subPath === '/packaging/geo-enrich' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'aiPackagingStudio', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'aiPackagingStudio' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    const lotCode = body.lotCode ? String(body.lotCode).trim().toUpperCase() : undefined;
+    let address = body.address ? String(body.address).trim() : undefined;
+    let city = body.city ? String(body.city).trim() : undefined;
+    let lat = body.lat !== undefined ? Number(body.lat) : undefined;
+    let lon = body.lon !== undefined ? Number(body.lon) : undefined;
+
+    if ((!address || !lat) && lotCode) {
+      const ydb = getYdbClient();
+      try {
+        const lot = await ydb.getItem<any>('lots', lotCode);
+        if (lot) {
+          address = address || lot.streetAddress || lot.district || lot.complexName;
+          city = city || lot.city;
+          if (!lat && lot.coordinates?.lat) lat = Number(lot.coordinates.lat);
+          if (!lon && lot.coordinates?.lng) lon = Number(lot.coordinates.lng);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      const geo = await enrichLotGeoInfrastructure({
+        lotCode,
+        address,
+        city,
+        lat,
+        lon,
+        operatorId: authUser?.id || 'system',
+      });
+
+      return json(event, 200, { ok: true, geo });
+    } catch (err: any) {
+      logger.error('Geo enrichment failed', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка определения геолокации и станций метро' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/packaging/generate-copy — requires aiPackagingStudio
+  // ============================================================
+  if (subPath === '/packaging/generate-copy' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'aiPackagingStudio', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'aiPackagingStudio' });
+    }
+
+    const rateKey = authUser?.id || (event.requestContext?.identity?.sourceIp ? `ip_${event.requestContext.identity.sourceIp}` : 'anon');
+    const quota = await consumeQuota({
+      scope: 'generate_copy',
+      actorKey: rateKey,
+      limit: 20,
+      windowSec: 60,
+    });
+    if (!quota.allowed) {
+      return json(event, 429, { error: 'Слишком много запросов генерации описаний. Попробуйте через минуту.' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    const lotCode = body.lotCode ? String(body.lotCode).trim().toUpperCase() : '';
+    if (!lotCode || !body.complexName || !body.areaSqm || !body.dduPriceRub) {
+      return json(event, 400, {
+        error: 'Обязательные поля: lotCode, complexName, areaSqm, dduPriceRub',
+      });
+    }
+
+    try {
+      const draft = await generateListingCopy({
+        lotCode,
+        complexName: String(body.complexName).trim(),
+        developerName: body.developerName ? String(body.developerName).trim() : undefined,
+        region: String(body.region || 'spb').trim(),
+        district: body.district ? String(body.district).trim() : undefined,
+        address: body.address ? String(body.address).trim() : undefined,
+        areaSqm: Number(body.areaSqm),
+        rooms: body.rooms,
+        floor: body.floor !== undefined ? Number(body.floor) : undefined,
+        totalFloors: body.totalFloors !== undefined ? Number(body.totalFloors) : undefined,
+        handoverQuarter: body.handoverQuarter ? String(body.handoverQuarter).trim() : undefined,
+        dduPriceRub: Number(body.dduPriceRub),
+        cashToSellerRub: Number(body.cashToSellerRub || body.dduPriceRub),
+        debtToDevRub: Number(body.debtToDevRub || 0),
+        todayDeveloperPriceRub: body.todayDeveloperPriceRub ? Number(body.todayDeveloperPriceRub) : undefined,
+        buyerNetSavingsRub: body.buyerNetSavingsRub ? Number(body.buyerNetSavingsRub) : undefined,
+        isNegotiable: Boolean(body.isNegotiable),
+        nearestMetroName: body.nearestMetroName ? String(body.nearestMetroName).trim() : undefined,
+        nearestMetroDistanceKm: body.nearestMetroDistanceKm !== undefined ? Number(body.nearestMetroDistanceKm) : undefined,
+        nearestMetroWalkMinutes: body.nearestMetroWalkMinutes !== undefined ? Number(body.nearestMetroWalkMinutes) : undefined,
+        nearestMetroTransportMinutes: body.nearestMetroTransportMinutes !== undefined ? Number(body.nearestMetroTransportMinutes) : undefined,
+        infraTags: Array.isArray(body.infraTags) ? body.infraTags : undefined,
+        tone: body.tone || 'balanced',
+        forceReprocess: Boolean(body.forceReprocess),
+        operatorId: authUser?.id || 'system',
+      });
+
+      return json(event, 200, { ok: true, draft });
+    } catch (err: any) {
+      logger.error('Listing copy generation failed', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка генерации продающего описания YandexGPT' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/packaging/results — requires aiPackagingStudio
+  // ============================================================
+  if (subPath === '/packaging/results' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'aiPackagingStudio', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'aiPackagingStudio' });
+    }
+
+    const q = event.queryStringParameters || {};
+    const lotCode = q.lotCode ? String(q.lotCode).trim().toUpperCase() : '';
+    if (!lotCode) {
+      return json(event, 400, { error: 'Параметр lotCode обязателен' });
+    }
+
+    const ydb = getYdbClient();
+    try {
+      const [photoQa, geo, copy] = await Promise.all([
+        ydb.getItem<any>('ai_packaging_results', `pkg-${lotCode}-photoqa`).catch(() => null),
+        ydb.getItem<any>('ai_packaging_results', `pkg-${lotCode}-geo`).catch(() => null),
+        ydb.getItem<any>('ai_packaging_results', `pkg-${lotCode}-copy`).catch(() => null),
+      ]);
+
+      return json(event, 200, {
+        ok: true,
+        lotCode,
+        photoQa: photoQa?.photoQaResults || null,
+        geo: geo?.geoResult || null,
+        copyDraft: copy?.copyDraft || null,
+      });
+    } catch (err: any) {
+      logger.error('Failed fetching packaging results', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения результатов упаковки' });
     }
   }
 

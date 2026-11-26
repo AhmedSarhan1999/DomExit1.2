@@ -82,10 +82,10 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
   {
     key: 'aiPackagingStudio',
     labelRu: 'AI Studio упаковки лотов',
-    descriptionRu: 'Автоматическая генерация описаний и материалов для маркетинга объектов',
-    implemented: false,
+    descriptionRu: 'QA аудит фото (152-ФЗ), автоподбор метро и продающие описания/Telegram-карточки через YandexGPT',
+    implemented: true,
     roadmapStep: 'Этап 06',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
   {
     key: 'legislativeRadar',

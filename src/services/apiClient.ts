@@ -1090,5 +1090,60 @@ export const apiClient = {
           skipCache: true,
         }
       ),
+
+    runPhotoQa: (payload: { lotCode: string; photoUrls?: string[]; forceReprocess?: boolean }) =>
+      request<{ ok: boolean; report: any }>(`/api/ai/packaging/photo-qa`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    enrichGeo: (payload: { lotCode?: string; address?: string; city?: string; lat?: number; lon?: number }) =>
+      request<{ ok: boolean; geo: any }>(`/api/ai/packaging/geo-enrich`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    generateListingCopy: (payload: {
+      lotCode: string;
+      complexName: string;
+      developerName?: string;
+      region: string;
+      district?: string;
+      address?: string;
+      areaSqm: number;
+      rooms?: number | string;
+      floor?: number;
+      totalFloors?: number;
+      handoverQuarter?: string;
+      dduPriceRub: number;
+      cashToSellerRub?: number;
+      debtToDevRub?: number;
+      todayDeveloperPriceRub?: number;
+      buyerNetSavingsRub?: number;
+      isNegotiable?: boolean;
+      nearestMetroName?: string;
+      nearestMetroDistanceKm?: number;
+      nearestMetroWalkMinutes?: number;
+      nearestMetroTransportMinutes?: number;
+      infraTags?: string[];
+      tone?: 'investor' | 'family' | 'balanced';
+      forceReprocess?: boolean;
+    }) =>
+      request<{ ok: boolean; draft: any }>(`/api/ai/packaging/generate-copy`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getPackagingResults: (lotCode: string) =>
+      request<{ ok: boolean; lotCode: string; photoQa?: any; geo?: any; copyDraft?: any }>(
+        `/api/ai/packaging/results?lotCode=${encodeURIComponent(lotCode)}`,
+        {
+          method: 'GET',
+          skipCache: true,
+        }
+      ),
   },
 };
