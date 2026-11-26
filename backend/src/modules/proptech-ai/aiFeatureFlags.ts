@@ -50,10 +50,10 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
   {
     key: 'agentResearchBridge',
     labelRu: 'Мост Агент-Исследователь',
-    descriptionRu: 'AI-агент для анализа рынка недвижимости и подбора объектов по параметрам покупателя',
-    implemented: false,
+    descriptionRu: 'AI-агент для анализа рынка недвижимости, парсинга цен застройщиков и сбора бенчмарков',
+    implemented: true,
     roadmapStep: 'Этап 02',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
   {
     key: 'visionOcrPreAudit',

@@ -58,6 +58,9 @@ export interface BackendConfig {
   TELEGRAM_WEBHOOK_SECRET?: string;
   TELEGRAM_API_BASE_URL?: string;
   DADATA_API_KEY?: string;
+  AGENT_BRIDGE_SECRET?: string;
+  EXTERNAL_AGENT_WEBHOOK_URL?: string;
+  AGENT_TELEGRAM_CHAT_ID?: string;
   // DADATA_SECRET_KEY removed — cleaner.dadata.ru (paid) is permanently disabled.
   // All DaData usage is free-tier suggestions only via suggestions.dadata.ru.
   YDB_USE_V2_TABLES?: boolean;
@@ -131,6 +134,9 @@ export function getConfig(): BackendConfig {
       '',
     TELEGRAM_API_BASE_URL: process.env.TELEGRAM_API_BASE_URL || '',
     DADATA_API_KEY: process.env.DADATA_API_KEY || '',
+    AGENT_BRIDGE_SECRET: process.env.AGENT_BRIDGE_SECRET || '',
+    EXTERNAL_AGENT_WEBHOOK_URL: process.env.EXTERNAL_AGENT_WEBHOOK_URL || '',
+    AGENT_TELEGRAM_CHAT_ID: process.env.AGENT_TELEGRAM_CHAT_ID || '',
     YDB_USE_V2_TABLES: process.env.YDB_USE_V2_TABLES === 'true',
     EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER as any) || (process.env.POSTBOX_SMTP_USER ? 'postbox' : 'console'),
     POSTBOX_SMTP_HOST: process.env.POSTBOX_SMTP_HOST || 'postbox.cloud.yandex.net',

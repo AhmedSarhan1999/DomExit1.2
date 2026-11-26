@@ -156,6 +156,9 @@ const envMap = {
   MAX_WEBHOOK_SECRET: envVars.MAX_WEBHOOK_SECRET || '',
   MAX_API_BASE_URL: envVars.MAX_API_BASE_URL || 'https://api.max-messenger.ru/bot/v1',
   DADATA_API_KEY: envVars.DADATA_API_KEY || '',
+  AGENT_BRIDGE_SECRET: envVars.AGENT_BRIDGE_SECRET || '',
+  EXTERNAL_AGENT_WEBHOOK_URL: envVars.EXTERNAL_AGENT_WEBHOOK_URL || '',
+  AGENT_TELEGRAM_CHAT_ID: envVars.AGENT_TELEGRAM_CHAT_ID || '',
   YDB_USE_V2_TABLES: 'true',
 };
 

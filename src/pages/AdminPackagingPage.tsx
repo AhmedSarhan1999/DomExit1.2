@@ -37,6 +37,9 @@ import {
 import { AddressAutocompleteInput } from '../components/maps/AddressAutocompleteInput';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import { Stage0CuratorBanner } from '../components/admin/Stage0CuratorBanner';
+import { useAiFeatureFlags } from '../hooks/useAiFeatureFlags';
+import { apiClient } from '../services/apiClient';
+import { Bot } from 'lucide-react';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -91,6 +94,11 @@ export const AdminPackagingPage: React.FC = () => {
   const [sellerPhotos, setSellerPhotos] = useState<string[]>([]);
   const [approvedPhotos, setApprovedPhotos] = useState<string[]>([]);
   const [coverImageUrl, setCoverImageUrl] = useState<string>('');
+
+  // AI Lab: Feature Flags & External Agent Bridge
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const [latestBenchmark, setLatestBenchmark] = useState<any>(null);
+  const [aiRequestLoading, setAiRequestLoading] = useState<boolean>(false);
 
   const isEmployee = user?.activeRole === 'employee';
   const currentEmployeeId = user?.assignedEmployeeId || (isEmployee ? user?.id || '' : '');
@@ -214,6 +222,57 @@ export const AdminPackagingPage: React.FC = () => {
     }
     load();
   }, [lotId, isEmployee, currentEmployeeId, user]);
+
+  useEffect(() => {
+    if (lot?.lotCode) {
+      apiClient.aiLab.getBenchmarks({ lotCode: lot.lotCode, limit: 1 })
+        .then((res) => {
+          if (res?.ok && Array.isArray(res.benchmarks) && res.benchmarks.length > 0) {
+            setLatestBenchmark(res.benchmarks[0]);
+          } else {
+            setLatestBenchmark(null);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [lot?.lotCode]);
+
+  const handleRequestAiBenchmark = async () => {
+    if (!lot) return;
+    try {
+      setAiRequestLoading(true);
+      const publicPayload = {
+        complexName: complexName || lot.complexName || '',
+        developer: developer || lot.developer || '',
+        city: city || lot.city || 'spb',
+        district: district || lot.district || '',
+        rooms: rooms || lot.rooms || '1-room',
+        areaM2: areaM2 || lot.areaM2 || 0,
+        deliveryDate: deliveryDate || lot.deliveryDate || '',
+        deliveryYear: deliveryYear || lot.deliveryYear || 2026,
+      };
+      const res = await apiClient.aiLab.createTask({
+        taskType: 'developer_price_check',
+        lotCode: lot.lotCode,
+        title: `Проверка цен застройщика: ЖК "${publicPayload.complexName || 'Не указан'}", ${publicPayload.rooms}`,
+        publicQueryPayload: publicPayload,
+        deliveryChannel: 'manual_copy',
+        autoDispatch: false,
+      });
+      if (res?.ok) {
+        setNotificationMsg(`Задача #${res.task.id.slice(0, 8)} создана в AI Lab (Мост агентов). Скопируйте промпт или отправьте вебхук.`);
+      } else {
+        setNotificationMsg('Не удалось создать задачу в AI Lab');
+      }
+      setTimeout(() => setNotificationMsg(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to create AI agent task:', err);
+      setNotificationMsg(`Ошибка создания задачи AI: ${err.message || 'Сбой'}`);
+      setTimeout(() => setNotificationMsg(null), 5000);
+    } finally {
+      setAiRequestLoading(false);
+    }
+  };
 
   const grossSavings = Math.max(0, todayDevPrice - oldDduPrice);
   const consentBuyerDeduction =
@@ -1094,9 +1153,23 @@ export const AdminPackagingPage: React.FC = () => {
                       </div>
 
                       <div>
-                        <label className="block text-slate-500 mb-1 font-semibold">
-                          4. Официальная цена застройщика сегодня (₽):
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-slate-500 font-semibold text-xs sm:text-sm">
+                            4. Официальная цена застройщика сегодня (₽):
+                          </label>
+                          {isFeatureEnabled('agentResearchBridge') && (
+                            <button
+                              type="button"
+                              onClick={handleRequestAiBenchmark}
+                              disabled={aiRequestLoading || !lot}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Создать задачу поиска цен застройщика в AI Lab"
+                            >
+                              <Bot className="w-3.5 h-3.5 text-indigo-600" />
+                              {aiRequestLoading ? 'Запрос...' : 'Запросить у AI-агента'}
+                            </button>
+                          )}
+                        </div>
                         <input
                           type="number"
                           step="50000"
@@ -1107,6 +1180,47 @@ export const AdminPackagingPage: React.FC = () => {
                         <span className="text-[10px] text-slate-400 mt-1 block">
                           Прайс отдела продаж: {formatRubles(devPricePerM2)}/м²
                         </span>
+
+                        {isFeatureEnabled('agentResearchBridge') && latestBenchmark && (
+                          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1.5 animate-fade-in">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                                Рыночный бенчмарк (AI Bridge):
+                              </span>
+                              <span className="text-[10px] text-blue-600 font-mono">
+                                {latestBenchmark.verifiedAt ? new Date(latestBenchmark.verifiedAt).toLocaleDateString('ru-RU') : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between text-slate-800">
+                              <span>
+                                Цена застройщика: <strong>{formatRubles(latestBenchmark.developerPriceTotal || (latestBenchmark.avgPricePerM2 * (areaM2 || 1)))}</strong>
+                              </span>
+                              <span className="font-mono text-slate-500">
+                                ({formatRubles(latestBenchmark.avgPricePerM2)}/м²)
+                              </span>
+                            </div>
+                            {latestBenchmark.sourceName && (
+                              <div className="text-[10px] text-slate-500 truncate">
+                                Источник: {latestBenchmark.sourceName}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const price = latestBenchmark.developerPriceTotal || Math.round(latestBenchmark.avgPricePerM2 * (areaM2 || 1));
+                                if (price > 0) {
+                                  setTodayDevPrice(price);
+                                  setNotificationMsg(`Цена застройщика (${formatRubles(price)}) подставлена из бенчмарка!`);
+                                  setTimeout(() => setNotificationMsg(null), 3000);
+                                }
+                              }}
+                              className="mt-1 w-full py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] transition-colors cursor-pointer text-center"
+                            >
+                              Применить цену застройщика в расчет
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 

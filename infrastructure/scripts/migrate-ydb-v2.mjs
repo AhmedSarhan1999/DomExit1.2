@@ -185,6 +185,23 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'userId-signedAt-index', hashKey: 'userId', rangeKey: 'signedAt' },
     ],
   },
+  agent_research_tasks: {
+    logicalName: 'agent_research_tasks',
+    v2TableName: 'agent_research_tasks_v2',
+    gsis: [
+      { indexName: 'status-createdAt-index', hashKey: 'status', rangeKey: 'createdAt' },
+      { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
+      { indexName: 'taskType-createdAt-index', hashKey: 'taskType', rangeKey: 'createdAt' },
+    ],
+  },
+  market_benchmarks: {
+    logicalName: 'market_benchmarks',
+    v2TableName: 'market_benchmarks_v2',
+    gsis: [
+      { indexName: 'complexKey-verifiedAt-index', hashKey: 'complexKey', rangeKey: 'verifiedAt' },
+      { indexName: 'lotCode-verifiedAt-index', hashKey: 'lotCode', rangeKey: 'verifiedAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {
@@ -437,7 +454,12 @@ async function scanAllItems(tableName) {
     const res = await callYdbWithRetry('Scan', body);
     if (!res.ok) {
       const msg = res.body?.message || JSON.stringify(res.body);
-      if (msg.includes('ResourceNotFoundException') || msg.includes('not found') || res.status === 404) {
+      if (
+        msg.includes('ResourceNotFoundException') ||
+        msg.includes('not found') ||
+        msg.includes('non-existent table') ||
+        res.status === 404
+      ) {
         return { exists: false, items: [] };
       }
       throw new Error(`Scan(${tableName}) failed (${res.status}): ${msg}`);

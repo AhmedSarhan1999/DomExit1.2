@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { apiClient } from '../../../services/apiClient';
+import { AiAgentBridgePanel } from './AiAgentBridgePanel';
 
 type FeatureKey =
   | 'dadataAutocomplete'
@@ -177,7 +178,7 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
 
       {/* Connector Status */}
       {connectors && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* DaData */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
             <div className="flex items-center space-x-2">
@@ -230,6 +231,27 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
               {syncingCbr ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               <span>{syncingCbr ? 'Синхронизация...' : 'Синхронизировать ставку ЦБ РФ сейчас'}</span>
             </button>
+          </div>
+
+          {/* Agent Bridge */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center space-x-2">
+              <Bot className="w-5 h-5 text-indigo-600" />
+              <span className="font-bold text-sm text-slate-900">Мост агентов</span>
+              {connectors.agentBridge?.webhookSecretConfigured ? (
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">HMAC OK</span>
+              ) : (
+                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">Без секрета</span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500">n8n / Webhook / Telegram</p>
+            <div className="text-xs text-slate-700">
+              Ждут проверки:{' '}
+              <span className="font-bold text-purple-700">
+                {connectors.agentBridge?.pendingReviewCount || 0}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400">Шлюз 152-ФЗ Zero-PII активен</p>
           </div>
 
           {/* Yandex AI */}
@@ -374,6 +396,13 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
           </div>
         </div>
       )}
+
+      {/* Agent Research Bridge Panel */}
+      <AiAgentBridgePanel
+        connectors={connectors}
+        showToast={showToast}
+        showError={showError}
+      />
     </div>
   );
 };

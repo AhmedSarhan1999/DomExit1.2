@@ -901,5 +901,76 @@ export const apiClient = {
         body: JSON.stringify({}),
         skipCache: true,
       }),
+
+    getTasks: (params?: { status?: string; lotCode?: string; limit?: number }) => {
+      const sp = new URLSearchParams();
+      if (params?.status) sp.set('status', params.status);
+      if (params?.lotCode) sp.set('lotCode', params.lotCode);
+      if (params?.limit) sp.set('limit', String(params.limit));
+      const qs = sp.toString() ? `?${sp.toString()}` : '';
+      return request<{ ok: boolean; tasks: any[] }>(`/api/ai/agent-bridge/tasks${qs}`, {
+        method: 'GET',
+        skipCache: true,
+      });
+    },
+
+    createTask: (payload: {
+      taskType: string;
+      lotCode?: string;
+      title?: string;
+      publicQueryPayload: any;
+      deliveryChannel?: string;
+      autoDispatch?: boolean;
+    }) =>
+      request<{ ok: boolean; task: any }>(`/api/ai/agent-bridge/tasks`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    dispatchTask: (taskId: string, channel?: string) =>
+      request<{ ok: boolean; channel?: string; error?: string }>(
+        `/api/ai/agent-bridge/tasks/${encodeURIComponent(taskId)}/dispatch`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ channel }),
+          skipCache: true,
+        }
+      ),
+
+    submitManualResult: (taskId: string, payload: { rawResultText?: string; result?: any }) =>
+      request<{ ok: boolean; task: any }>(
+        `/api/ai/agent-bridge/tasks/${encodeURIComponent(taskId)}/submit-manual`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+          skipCache: true,
+        }
+      ),
+
+    reviewTask: (
+      taskId: string,
+      payload: { decision: 'approve' | 'reject'; applyToLotPrice?: boolean; reviewNotes?: string }
+    ) =>
+      request<{ ok: boolean; task: any; benchmark?: any }>(
+        `/api/ai/agent-bridge/tasks/${encodeURIComponent(taskId)}/review`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+          skipCache: true,
+        }
+      ),
+
+    getBenchmarks: (params?: { lotCode?: string; complexKey?: string; limit?: number }) => {
+      const sp = new URLSearchParams();
+      if (params?.lotCode) sp.set('lotCode', params.lotCode);
+      if (params?.complexKey) sp.set('complexKey', params.complexKey);
+      if (params?.limit) sp.set('limit', String(params.limit));
+      const qs = sp.toString() ? `?${sp.toString()}` : '';
+      return request<{ ok: boolean; benchmarks: any[] }>(`/api/ai/benchmarks${qs}`, {
+        method: 'GET',
+        skipCache: true,
+      });
+    },
   },
 };
