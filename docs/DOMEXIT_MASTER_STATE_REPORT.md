@@ -1,7 +1,7 @@
-# التقرير المرجعي الشامل لحالة منصة DomExit (Master State Report)
+# التقرير المرجعي الشامل لحالة منصة DomExit (Master State Report — `v2.0.0-prod`)
 
-**تاريخ الإصدار:** 2026-11-25  
-**نطاق المراجعة:** الترقية الشاملة والمزامنة النهائية للحزم الست (`a489f94`, `613e92d`, `a02a419`, `b6f5e0f`, `8dfcc1d`, `c6ee3da`) إلى `Production (https://domexit.ru)` + إصلاح `CORS` لدلاء S3 الإنتاجية + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main`)  
+**تاريخ الإصدار:** 2026-11-26  
+**نطاق المراجعة:** الترقية الرسمية الشاملة (`v2.0.0-prod`) لكافة الحزم المختبَرة حتى الالتزام `6663938` (`13b270f`, `eea121b`, `781c69c`, `6663938`) إلى `Production (https://domexit.ru)` + تفعيل القراءة العامة و`CORS` لـ `domexit-storage-vault` + `Lifecycle Rules` وتقليم الأصول + التحقق الحي (`Read-Only`) + مزامنة GitHub (`origin/main` والوسم `v2.0.0-prod`).  
 **الحالة العامة للمنصة:** ✅ متطابقة 100% عبر جميع البيئات (`Local = Staging = Production = GitHub`).
 
 ---
@@ -9,9 +9,13 @@
 ## 1. الملخص التنفيذي ومصفوفة البيئات (Environments & Deployment Matrix)
 
 ### 1.1 حالة المستودع وGit
-- **الفرع النشط:** `main`
+- **الفرع النشط:** `main` | **وسم الإصدار المرجعي:** `v2.0.0-prod`
 - **حالة التزامن (`Local = Staging = Production = GitHub`):** متطابق 100%.
-- **آخر الـ Commits المرجعية المرقّاة إلى الإنتاج:**
+- **أحدث الالتزامات المرقّاة إلى الإنتاج (`v2.0.0-prod`):**
+  - `6663938` — `chore(staging-reset-finops): add staging clean-slate reset preserving user accounts, verify buyer rejection flow, apply S3 lifecycle/pruning, and document scaling playbook`
+  - `781c69c` — `perf(finops-ux): remove boot waste, dedupe sla-sweeper & add TTL pruning, cache auth lookups with instant invalidation, and add client SWR cache, prefetch & skeletons`
+  - `eea121b` — `fix(profile-crash): resolve white-screen runtime crash in UserProfileModal & AdminCuratorProfilePage and add global ErrorBoundary`
+  - `13b270f` — `feat(matchmaker-queue-review): add buyer proof-doc application form, per-applicant dossier & individual winner/waitlist/reject actions, live SLA sync, and honest rejection UI`
   - `c6ee3da` — `fix(rbac-media-comms): enable employee append-only audit logs & lot isolation, move avatars to S3, fix photo uploads & broken images, and unify staff profile & Telegram routing`
   - `3eeba05` — `docs(release): update master state report after full production rollout (v2 workflow, PEP 63-FZ, 6-step closing & 152-FZ comms)`
   - `8dfcc1d` — `feat(closing-pep-comms-phase-b): fix & integrate PEP 63-FZ, 6-step S3 closing room with gates, unified 152-FZ isolated chat with Telegram relay, and interactive deal tasks`
@@ -19,12 +23,6 @@
   - `a02a419` — `refactor(legal-audit-workflow): rebuild legal audit into 3 tabs with true zero-state, strict UI/API verification gate, auto-navigation to packaging, and honest seller badge`
   - `613e92d` — `fix(buyer-engine-staff): sync Gold tier & SLA, implement 3-slot buyer queue with cross-deal standby & withdrawal penalty, and include owner/employees in curator assignment`
   - `a489f94` — `docs(audit): fix legal proof signed URLs, buyerNetSavings deduction & radar sync, and export DOMEXIT_MASTER_STATE_REPORT`
-  - `964d9dd` — `refactor(legal-audit-clean-slate): make legal audit fully operational with real S3 proofs and purge all mock data across platform`
-  - `c6f54ad` — `fix(workflow-catalog): fix card projection & SBR calculator, enforce strict 5-stage state machine, auto-launch drop, sync winner to deal, and add developer consent fee policy`
-  - `2cb3969` — `feat(tier-governance): add Gold verification workflow with private S3 proofs, admin review queue, audit logging, and SLA recovery`
-  - `6c96b55` — `refactor(admin-governance): separate WAF vs 152-FZ incidents with archiving, fix S3 health, remove AI artifacts, split Tab 5, and paginate admin tables`
-  - `4a6a19f` — `chore(prod-rollout): add production index support, developer INN sync, and live smoke test verification`
-  - `1a51201` — `perf(architecture): add cursor/offset pagination, YDB indexes, LRU cache with invalidation, WebP compression, Cache-Control, and rate limiting`
 
 ### 1.2 مصفوفة مقارنة البيئات السحابية (`Yandex Cloud ru-central1` — Folder: `b1g46uad3gc3h34k5b0f`)
 
@@ -32,17 +30,18 @@
 |---|---|---|
 | **النطاق / API Gateway** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net` (`d5dpccovifu701p9lvga`) | `https://domexit.ru` (`d5dsuuhvetioe2hp0q7i`) |
 | **دالة الخادم (`API`)** | `domexit-api-staging` (`d4ep633b03be8trc7d28`) | `domexit-api-prod` (`d4eouspb2d0s8dfguf1h`) |
-| **أحدث إصدار نشط (`API`)** | `d4edbvkjtfcnjg52s2i4` (`nodejs22`, `ACTIVE`) | **`d4esii1h58989qgcjtko`** (`nodejs22`, `ACTIVE`) |
-| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` (يدوي / زر UI) | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4e92qusbp5d1vi5mn1g`** (`ACTIVE`) |
+| **أحدث إصدار نشط (`API`)** | **`d4en6uo2m203nbsgu8a3`** (`nodejs22`, `ACTIVE`) | **`d4erehso52ec1p26ajoj`** (`nodejs22`, `ACTIVE`) |
+| **دالة المراقبة المجدولة (`SLA Sweeper`)** | عبر `POST /api/matching/run-sla-sweep` | `domexit-sla-sweeper-prod` (`d4eag6buonjeslfpan73`) — الإصدار **`d4eb85vi651jub6o9lkd`** (`256m`, `ACTIVE`) |
 | **تريغر SLA Cron** | غير مجدول تلقائياً | `a1sbuqn63f9cmamjeqp7` (`0/15 * * * ? *` — كل 15 دقيقة UTC) |
-| **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — أحدث نسخة: `_backups/ydb/daily/backup-2026-11-25-1206.json.gz` (`23,825` بايت) |
+| **دالة النسخ الاحتياطي** | يدوي / عبر لوحة الإدارة | `domexit-backup-prod` (`d4edb2l5n6gcpfbnl3b0`) — أحدث نسخة: `_backups/ydb/daily/backup-2026-11-26-1525.json.gz` (`23,829` بايت) |
 | **تريغر النسخ الاحتياطي** | غير مجدول | `a1sqlo5a1el40u9tmqdn` (`0 2 * * ? *` — يومياً 02:00 UTC) |
-| **قاعدة بيانات `YDB Document API`** | `etnkpeqnbmb1a6cocipk` | `etnckg937628mnid7tnb` (15 مطوراً معتمداً بدون `dev-test`) |
-| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (212 ملفاً — `3.04 MB`) | `domexit-web-prod` (212 ملفاً — `3.04 MB` + `yandex_863365d0efe2c1c8.html`) |
-| **دلو الصور العامة (`S3 Public`)** | `domexit-public-photos-staging` | `domexit-storage-vault` (CORS يشمل `https://domexit.ru` و`https://www.domexit.ru`) |
-| **دلو الوثائق الخاصة (`S3 Private`)** | `domexit-private-docs-staging` | `domexit-private-docs-prod` (CORS يشمل `https://domexit.ru` و`https://www.domexit.ru`) |
+| **قاعدة بيانات `YDB Document API`** | `etnkpeqnbmb1a6cocipk` *(وضع Clean Slate مع حفظ 6 حسابات و14 مطوراً و26 وثيقة)* | `etnckg937628mnid7tnb` (جداول `v1`، 15 مطوراً معتمداً بدون `dev-test`) |
+| **دلو الويب الثابت (`S3`)** | `domexit-web-staging` (`335` كائناً — `5.324 MB` بعد التقليم + Lifecycle) | `domexit-web-prod` (`215` كائناً — `3.113 MB` بعد تقليم `2,124` ملفاً قديماً + `yandex_863365d0efe2c1c8.html`) |
+| **دلو الصور العامة (`S3 Public`)** | `domexit-public-photos-staging` (`read: true` + Lifecycle) | `domexit-storage-vault` (`read: true`, `list: false`, CORS يشمل `https://domexit.ru` و`https://www.domexit.ru` + Lifecycle) |
+| **دلو الوثائق الخاصة (`S3 Private`)** | `domexit-private-docs-staging` (`read: false` + Lifecycle `COLD/ICE`) | `domexit-private-docs-prod` (`read: false`, `list: false`, CORS يشمل `https://domexit.ru` و`https://www.domexit.ru` + Lifecycle `COLD/ICE`) |
+| **عدد الدلاء في المجلد** | 6 دلاء إجمالاً (تم حذف الدلو اليتيم الفارغ `domexit-storage-2027`) | 6 دلاء نظيفة (`3 Staging + 3 Production`) |
 | **إعداد OAuth Callback** | `https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net/api/auth/yandex/callback` | `https://domexit.ru/api/auth/yandex/callback` |
-| **حالة التزامن** | **محدّثة 100%** (`c6ee3da`) | **محدّثة 100%** (`c6ee3da` + `docs` release report) |
+| **حالة التزامن** | **محدّثة 100%** (`v2.0.0-prod`) | **محدّثة 100%** (`v2.0.0-prod`) |
 
 ---
 
