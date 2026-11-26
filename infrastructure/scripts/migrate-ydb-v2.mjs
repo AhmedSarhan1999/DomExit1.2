@@ -227,6 +227,23 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'userId-createdAt-index', hashKey: 'userId', rangeKey: 'createdAt' },
     ],
   },
+  eiszh_projects: {
+    logicalName: 'eiszh_projects',
+    v2TableName: 'eiszh_projects_v2',
+    gsis: [
+      { indexName: 'developerInn-index', hashKey: 'developerInn', rangeKey: 'syncedAt' },
+      { indexName: 'complexKey-index', hashKey: 'complexKey', rangeKey: 'syncedAt' },
+      { indexName: 'region-syncedAt-index', hashKey: 'region', rangeKey: 'syncedAt' },
+    ],
+  },
+  avm_valuations: {
+    logicalName: 'avm_valuations',
+    v2TableName: 'avm_valuations_v2',
+    gsis: [
+      { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
+      { indexName: 'complexKey-createdAt-index', hashKey: 'complexKey', rangeKey: 'createdAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {

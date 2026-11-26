@@ -56,12 +56,15 @@ import { SellerStepIdentity } from '../components/sellers/SellerStepIdentity';
 import { SellerStepDocuments } from '../components/sellers/SellerStepDocuments';
 import { SellerStepConfirmation } from '../components/sellers/SellerStepConfirmation';
 import { SellerDemandRadarBanner } from '../components/sellers/SellerDemandRadarBanner';
+import { SellerAvmQuickCard } from '../components/sellers/SellerAvmQuickCard';
+import { useAiFeatureFlags } from '../hooks/useAiFeatureFlags';
 
 export const SellersPage: React.FC = () => {
   const { language } = useLanguage();
   const { user, login, openAuthModal, updateUserProfile } = useAuth();
   const { channels } = usePublicChannelsStore();
   const navigate = useNavigate();
+  const { isFeatureEnabled } = useAiFeatureFlags();
 
   // Wizard Step (1 to 4)
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -828,6 +831,18 @@ export const SellersPage: React.FC = () => {
                   devPenalty={devPenalty}
                   netFamilyBenefit={netFamilyBenefit}
                 />
+
+                {isFeatureEnabled('avmValuation') && (
+                  <SellerAvmQuickCard
+                    complexName={complexName}
+                    developerName={developerName}
+                    region={locationRegion}
+                    areaSqm={Number(areaM2) || 0}
+                    dduFullPriceRub={contractPrice}
+                    paidToDeveloperRub={paidAmount}
+                    todayMarketPrice={todayMarketPrice}
+                  />
+                )}
               </div>
             </div>
           )}

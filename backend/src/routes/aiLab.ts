@@ -74,6 +74,19 @@ import {
   getBuyerVerifications,
   AiBuyerVerificationRecord,
 } from '../modules/legal-core/buyerProofAiService.js';
+import {
+  syncDeveloperProjectsFromEiszh,
+  upsertEiszhProjectManual,
+  findMatchingEiszhProject,
+  getEiszhStats,
+  EiszhProjectRecord,
+} from '../modules/proptech-ai/nashDomSyncService.js';
+import {
+  computeAssignmentAvm,
+  getAvmHistoryForLot,
+  getAvmStats,
+  AvmValuationInput,
+} from '../modules/proptech-ai/avmValuationEngine.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -197,6 +210,8 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
       }
 
       const ocrStats = await getOcrStats();
+      const eiszhStats = await getEiszhStats();
+      const avmStats = await getAvmStats();
 
       return json(event, 200, {
         ...publicResponse,
@@ -224,6 +239,12 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
           yandexGpt: getGptUsageSummary(),
           yandexAi: {
             configured: Boolean(process.env.YC_FOLDER_ID),
+          },
+          eiszhAvm: {
+            configured: true,
+            eiszhProjectsCount: eiszhStats.projectsCount,
+            eiszhLastSyncAt: eiszhStats.lastSyncAt,
+            totalAvmEstimates: avmStats.totalEstimates,
           },
         },
       });
@@ -916,6 +937,183 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     } catch (err: any) {
       logger.error('Failed fetching buyer verification results', { meta: { targetId, error: err.message } });
       return json(event, 500, { error: 'Ошибка получения результатов проверки' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/eiszh/sync — owner only
+  // ============================================================
+  if (subPath === '/eiszh/sync' && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    try {
+      const result = await syncDeveloperProjectsFromEiszh({
+        developerInn: body.developerInn ? String(body.developerInn).trim() : undefined,
+        limitPerDeveloper: body.limitPerDeveloper ? Number(body.limitPerDeveloper) : undefined,
+      });
+
+      return json(event, 200, { ok: true, result });
+    } catch (err: any) {
+      logger.error('EISZH sync failed', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка синхронизации ЕИСЖС' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/eiszh/projects — requires avmValuation
+  // ============================================================
+  if (subPath === '/eiszh/projects' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'avmValuation', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'avmValuation' });
+    }
+
+    const q = event.queryStringParameters || {};
+    const complexName = q.complexName ? String(q.complexName).trim() : undefined;
+    const developerInn = q.developerInn ? String(q.developerInn).trim() : undefined;
+    const region = q.region ? String(q.region).trim() : undefined;
+
+    if (complexName || developerInn) {
+      const match = await findMatchingEiszhProject({ complexName, developerInn, region });
+      return json(event, 200, { ok: true, project: match });
+    }
+
+    const ydb = getYdbClient();
+    try {
+      const limit = Math.min(100, Math.max(1, Number(q.limit) || 20));
+      const projects = await ydb.scanAll<EiszhProjectRecord>('eiszh_projects', limit);
+      return json(event, 200, { ok: true, projects });
+    } catch (err: any) {
+      return json(event, 500, { error: 'Ошибка получения проектов ЕИСЖС' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/eiszh/projects/manual — staff/owner only
+  // ============================================================
+  if (subPath === '/eiszh/projects/manual' && method === 'POST') {
+    if (!authUser || (userRole !== 'owner' && userRole !== 'employee')) {
+      return json(event, 403, { error: 'Доступ запрещён: требуется роль сотрудника или владельца' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    if (!body.complexName || !body.developerName || !body.region) {
+      return json(event, 400, { error: 'Поля complexName, developerName и region обязательны' });
+    }
+
+    try {
+      const project = await upsertEiszhProjectManual({
+        complexName: String(body.complexName).trim(),
+        developerName: String(body.developerName).trim(),
+        developerInn: String(body.developerInn || '0000000000').trim(),
+        region: String(body.region).trim(),
+        address: String(body.address || '').trim(),
+        escrowBankName: body.escrowBankName ? String(body.escrowBankName).trim() : undefined,
+        plannedHandoverQuarter: body.plannedHandoverQuarter ? String(body.plannedHandoverQuarter).trim() : undefined,
+        delayMonths: Number(body.delayMonths) || 0,
+        readinessPct: body.readinessPct !== undefined ? Number(body.readinessPct) : undefined,
+        avgPricePerSqmRub: body.avgPricePerSqmRub ? Number(body.avgPricePerSqmRub) : undefined,
+        propertyClass: body.propertyClass || 'Комфорт',
+        isProblematic: Boolean(body.isProblematic),
+        sourceUrl: body.sourceUrl ? String(body.sourceUrl).trim() : undefined,
+        eiszhObjId: body.eiszhObjId ? String(body.eiszhObjId).trim() : undefined,
+      });
+
+      return json(event, 200, { ok: true, project });
+    } catch (err: any) {
+      logger.error('Failed manual EISZH project upsert', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка сохранения проекта ЕИСЖС' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/avm/estimate — requires avmValuation
+  // ============================================================
+  if (subPath === '/avm/estimate' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'avmValuation', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'avmValuation' });
+    }
+
+    const rateKey = authUser?.id || (event.requestContext?.identity?.sourceIp ? `ip_${event.requestContext.identity.sourceIp}` : 'anon');
+    const quota = await consumeQuota({
+      scope: 'avm_estimate',
+      actorKey: rateKey,
+      limit: 60,
+      windowSec: 60,
+    });
+    if (!quota.allowed) {
+      return json(event, 429, { error: 'Слишком много запросов на оценку. Попробуйте через минуту.' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    if (!body.complexName || !body.region || !body.areaSqm || !body.dduFullPriceRub) {
+      return json(event, 400, {
+        error: 'Обязательные поля: complexName, region, areaSqm (площадь > 0), dduFullPriceRub (цена ДДУ > 0)',
+      });
+    }
+
+    const areaSqm = Number(body.areaSqm);
+    const dduFullPriceRub = Number(body.dduFullPriceRub);
+    if (isNaN(areaSqm) || areaSqm <= 0 || isNaN(dduFullPriceRub) || dduFullPriceRub <= 0) {
+      return json(event, 400, { error: 'Некорректная площадь или цена ДДУ' });
+    }
+
+    try {
+      const input: AvmValuationInput = {
+        lotCode: body.lotCode ? String(body.lotCode).trim().toUpperCase() : undefined,
+        complexName: String(body.complexName).trim(),
+        developerName: body.developerName ? String(body.developerName).trim() : undefined,
+        developerInn: body.developerInn ? String(body.developerInn).trim() : undefined,
+        region: String(body.region).trim(),
+        areaSqm,
+        rooms: body.rooms !== undefined ? Number(body.rooms) : undefined,
+        floor: body.floor !== undefined ? Number(body.floor) : undefined,
+        totalFloors: body.totalFloors !== undefined ? Number(body.totalFloors) : undefined,
+        dduFullPriceRub,
+        paidToDeveloperRub: body.paidToDeveloperRub !== undefined ? Number(body.paidToDeveloperRub) : dduFullPriceRub,
+        remainingDebtRub: body.remainingDebtRub !== undefined ? Number(body.remainingDebtRub) : undefined,
+        handoverQuarter: body.handoverQuarter ? String(body.handoverQuarter).trim() : undefined,
+        familyMortgageEligible: body.familyMortgageEligible !== undefined ? Boolean(body.familyMortgageEligible) : undefined,
+        developerConsentFeeRub: body.developerConsentFeeRub !== undefined ? Number(body.developerConsentFeeRub) : undefined,
+        developerPriceTodayRub: body.developerPriceTodayRub !== undefined ? Number(body.developerPriceTodayRub) : undefined,
+        curatorOverrideBenchmarkSqmRub: body.curatorOverrideBenchmarkSqmRub !== undefined ? Number(body.curatorOverrideBenchmarkSqmRub) : undefined,
+        saveHistory: body.saveHistory !== undefined ? Boolean(body.saveHistory) : Boolean(body.lotCode),
+        requestedBy: authUser?.id || 'guest',
+      };
+
+      const valuation = await computeAssignmentAvm(input);
+      return json(event, 200, { ok: true, valuation });
+    } catch (err: any) {
+      logger.error('Failed computing assignment AVM', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка расчёта экспресс-оценки AVM' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/avm/history — requires avmValuation
+  // ============================================================
+  if (subPath === '/avm/history' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'avmValuation', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'avmValuation' });
+    }
+
+    const q = event.queryStringParameters || {};
+    const lotCode = q.lotCode ? String(q.lotCode).trim() : '';
+    if (!lotCode) {
+      return json(event, 400, { error: 'Параметр lotCode обязателен' });
+    }
+
+    try {
+      const history = await getAvmHistoryForLot(lotCode);
+      return json(event, 200, { ok: true, history });
+    } catch (err: any) {
+      logger.error('Failed fetching AVM history', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения истории оценок AVM' });
     }
   }
 

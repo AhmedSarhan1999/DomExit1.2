@@ -40,6 +40,7 @@ import { Stage0CuratorBanner } from '../components/admin/Stage0CuratorBanner';
 import { useAiFeatureFlags } from '../hooks/useAiFeatureFlags';
 import { apiClient } from '../services/apiClient';
 import { Bot } from 'lucide-react';
+import { AvmValuationCard } from '../components/admin/packaging/AvmValuationCard';
 
 export const AdminPackagingPage: React.FC = () => {
   const { lotId } = useParams<{ lotId: string }>();
@@ -1094,6 +1095,33 @@ export const AdminPackagingPage: React.FC = () => {
                       </div>
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                     </div>
+
+                    {isFeatureEnabled('avmValuation') && (
+                      <AvmValuationCard
+                        lotCode={lot?.lotCode}
+                        complexName={complexName}
+                        developerName={developer}
+                        region={city}
+                        areaSqm={areaM2}
+                        rooms={rooms}
+                        floor={floor}
+                        totalFloors={totalFloors}
+                        oldDduPrice={oldDduPrice}
+                        debtToDev={debtToDev}
+                        todayDevPrice={todayDevPrice}
+                        developerConsentFeeRub={developerConsentFeeRub}
+                        deliveryDate={deliveryDate}
+                        onApplyRecommendedPrice={(recPrice, anchorDev) => {
+                          setOldDduPrice(recPrice);
+                          setCashToSeller(Math.max(0, recPrice - debtToDev));
+                          if (anchorDev && anchorDev > 0) {
+                            setTodayDevPrice(anchorDev);
+                          }
+                          setNotificationMsg(`Рекомендованная цена (${formatRubles(recPrice)}) успешно применена!`);
+                          setTimeout(() => setNotificationMsg(null), 4000);
+                        }}
+                      />
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                       <div>

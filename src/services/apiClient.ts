@@ -1028,5 +1028,67 @@ export const apiClient = {
           skipCache: true,
         }
       ),
+
+    syncEiszh: (payload?: { developerInn?: string; limitPerDeveloper?: number }) =>
+      request<{ ok: boolean; result?: any; error?: string }>(`/api/ai/eiszh/sync`, {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+        skipCache: true,
+      }),
+
+    getEiszhProjects: (params?: { complexName?: string; developerInn?: string; region?: string; limit?: number }) => {
+      const sp = new URLSearchParams();
+      if (params?.complexName) sp.set('complexName', params.complexName);
+      if (params?.developerInn) sp.set('developerInn', params.developerInn);
+      if (params?.region) sp.set('region', params.region);
+      if (params?.limit) sp.set('limit', String(params.limit));
+      const qs = sp.toString() ? `?${sp.toString()}` : '';
+      return request<{ ok: boolean; project?: any; projects?: any[] }>(`/api/ai/eiszh/projects${qs}`, {
+        method: 'GET',
+        skipCache: true,
+      });
+    },
+
+    upsertEiszhProject: (payload: any) =>
+      request<{ ok: boolean; project: any }>(`/api/ai/eiszh/projects/manual`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    estimateAvm: (payload: {
+      lotCode?: string;
+      complexName: string;
+      developerName?: string;
+      developerInn?: string;
+      region: string;
+      areaSqm: number;
+      rooms?: number;
+      floor?: number;
+      totalFloors?: number;
+      dduFullPriceRub: number;
+      paidToDeveloperRub?: number;
+      remainingDebtRub?: number;
+      handoverQuarter?: string;
+      familyMortgageEligible?: boolean;
+      developerConsentFeeRub?: number;
+      developerPriceTodayRub?: number;
+      curatorOverrideBenchmarkSqmRub?: number;
+      saveHistory?: boolean;
+    }) =>
+      request<{ ok: boolean; valuation: any }>(`/api/ai/avm/estimate`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getAvmHistory: (lotCode: string) =>
+      request<{ ok: boolean; history: any[] }>(
+        `/api/ai/avm/history?lotCode=${encodeURIComponent(lotCode)}`,
+        {
+          method: 'GET',
+          skipCache: true,
+        }
+      ),
   },
 };

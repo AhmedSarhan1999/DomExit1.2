@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react';
 import { apiClient } from '../../../services/apiClient';
 import { AiAgentBridgePanel } from './AiAgentBridgePanel';
 
@@ -40,16 +40,23 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncingCbr, setSyncingCbr] = useState(false);
+  const [syncingEiszh, setSyncingEiszh] = useState(false);
 
   // Local editable state
   const [masterEnabled, setMasterEnabled] = useState(false);
   const [features, setFeatures] = useState<Record<FeatureKey, Visibility>>({} as any);
 
   // Sandbox state
-  const [sandboxTab, setSandboxTab] = useState<'address' | 'party' | 'bank'>('address');
+  const [sandboxTab, setSandboxTab] = useState<'address' | 'party' | 'bank' | 'avm'>('address');
   const [sandboxQuery, setSandboxQuery] = useState('');
   const [sandboxLoading, setSandboxLoading] = useState(false);
   const [sandboxResult, setSandboxResult] = useState<any>(null);
+
+  // AVM Sandbox inputs
+  const [avmComplexName, setAvmComplexName] = useState('Чистое Небо');
+  const [avmRegion, setAvmRegion] = useState('spb');
+  const [avmAreaSqm, setAvmAreaSqm] = useState('38.5');
+  const [avmDduPrice, setAvmDduPrice] = useState('6800000');
 
   const loadConfig = useCallback(async () => {
     try {
@@ -99,7 +106,48 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
     }
   };
 
+  const handleEiszhSync = async () => {
+    setSyncingEiszh(true);
+    try {
+      const res = await apiClient.aiLab.syncEiszh({ limitPerDeveloper: 2 });
+      if (res.ok) {
+        showToast(`✅ Синхронизация ЕИСЖС: проверено ${res.result?.developersChecked || 0} застройщиков, сохранено ${res.result?.syncedCount || 0} проектов`);
+        await loadConfig();
+      } else {
+        showError('Ошибка синхронизации ЕИСЖС: ' + (res.error || 'Неизвестная ошибка'));
+      }
+    } catch (err: any) {
+      showError('Ошибка запроса к ЕИСЖС: ' + err.message);
+    } finally {
+      setSyncingEiszh(false);
+    }
+  };
+
   const handleSandboxQuery = async () => {
+    if (sandboxTab === 'avm') {
+      if (!avmComplexName.trim() || !avmAreaSqm || !avmDduPrice) {
+        showError('Укажите название ЖК, площадь (> 0) и цену ДДУ (> 0)');
+        return;
+      }
+      setSandboxLoading(true);
+      setSandboxResult(null);
+      try {
+        const res = await apiClient.aiLab.estimateAvm({
+          complexName: avmComplexName.trim(),
+          region: avmRegion,
+          areaSqm: Number(avmAreaSqm),
+          dduFullPriceRub: Number(avmDduPrice),
+          paidToDeveloperRub: Number(avmDduPrice),
+        });
+        setSandboxResult(res);
+      } catch (err: any) {
+        setSandboxResult({ error: err.message });
+      } finally {
+        setSandboxLoading(false);
+      }
+      return;
+    }
+
     if (!sandboxQuery.trim()) return;
     setSandboxLoading(true);
     setSandboxResult(null);
@@ -178,7 +226,7 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
 
       {/* Connector Status */}
       {connectors && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {/* DaData */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
             <div className="flex items-center space-x-2">
@@ -230,6 +278,33 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
             >
               {syncingCbr ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               <span>{syncingCbr ? 'Синхронизация...' : 'Синхронизировать ставку ЦБ РФ сейчас'}</span>
+            </button>
+          </div>
+
+          {/* EISZH (Nash.Dom.RF) & AVM v1 */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center space-x-2">
+              <Building2 className="w-5 h-5 text-sky-600" />
+              <span className="font-bold text-sm text-slate-900">ЕИСЖС & AVM</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">0 ₽</span>
+            </div>
+            <div className="text-xs text-slate-700 space-y-0.5">
+              <div>Проектов в базе: <span className="font-bold">{connectors.eiszhAvm?.eiszhProjectsCount || 0}</span></div>
+              <div>Оценок AVM: <span className="font-bold">{connectors.eiszhAvm?.totalAvmEstimates || 0}</span></div>
+            </div>
+            <p className="text-[10px] text-slate-400 truncate">
+              {connectors.eiszhAvm?.eiszhLastSyncAt
+                ? `Синхр: ${new Date(connectors.eiszhAvm.eiszhLastSyncAt).toLocaleDateString('ru-RU')}`
+                : 'Синхронизация не выполнялась'}
+            </p>
+            <button
+              type="button"
+              onClick={handleEiszhSync}
+              disabled={syncingEiszh}
+              className="w-full flex items-center justify-center space-x-2 px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-xs transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {syncingEiszh ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              <span>{syncingEiszh ? 'Синхронизация...' : 'Синхронизировать ЕИСЖС'}</span>
             </button>
           </div>
 
@@ -324,42 +399,101 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
 
           {/* Tabs */}
           <div className="flex border-b border-slate-100">
-            {(['address', 'party', 'bank'] as const).map((tab) => (
+            {(['address', 'party', 'bank', 'avm'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => { setSandboxTab(tab); setSandboxQuery(''); setSandboxResult(null); }}
                 className={`flex-1 py-2.5 text-xs font-bold transition-colors ${sandboxTab === tab ? 'text-violet-700 border-b-2 border-violet-600 bg-violet-50' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {tab === 'address' ? '🏠 Адрес' : tab === 'party' ? '🏢 ИНН (ЕГРЮЛ)' : '🏦 БИК (Банк)'}
+                {tab === 'address' ? '🏠 Адрес' : tab === 'party' ? '🏢 ИНН (ЕГРЮЛ)' : tab === 'bank' ? '🏦 БИК (Банк)' : '⚡ AVM v1 Оценка'}
               </button>
             ))}
           </div>
 
           <div className="p-5 space-y-4">
-            <div className="flex space-x-3">
-              <input
-                type="text"
-                value={sandboxQuery}
-                onChange={(e) => setSandboxQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSandboxQuery(); }}
-                placeholder={
-                  sandboxTab === 'address' ? 'Санкт-Петербург Ланское...' :
-                  sandboxTab === 'party' ? 'ИНН юр. лица (10 цифр)...' :
-                  'БИК банка (9 цифр)...'
-                }
-                className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
-              <button
-                type="button"
-                onClick={handleSandboxQuery}
-                disabled={sandboxLoading || !sandboxQuery.trim()}
-                className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition-all disabled:opacity-50 flex items-center space-x-2"
-              >
-                {sandboxLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                <span>Запрос</span>
-              </button>
-            </div>
+            {sandboxTab === 'avm' ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Название ЖК:</label>
+                    <input
+                      type="text"
+                      value={avmComplexName}
+                      onChange={(e) => setAvmComplexName(e.target.value)}
+                      placeholder="ЖК Чистое Небо"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Регион:</label>
+                    <select
+                      value={avmRegion}
+                      onChange={(e) => setAvmRegion(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                    >
+                      <option value="spb">Санкт-Петербург / ЛО</option>
+                      <option value="msk">Москва / МО</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Площадь (м²):</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={avmAreaSqm}
+                      onChange={(e) => setAvmAreaSqm(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Цена ДДУ (₽):</label>
+                    <input
+                      type="number"
+                      step="50000"
+                      value={avmDduPrice}
+                      onChange={(e) => setAvmDduPrice(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSandboxQuery}
+                    disabled={sandboxLoading}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all disabled:opacity-50 flex items-center space-x-2 cursor-pointer"
+                  >
+                    {sandboxLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    <span>⚡ Рассчитать AVM v1</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex space-x-3">
+                <input
+                  type="text"
+                  value={sandboxQuery}
+                  onChange={(e) => setSandboxQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSandboxQuery(); }}
+                  placeholder={
+                    sandboxTab === 'address' ? 'Санкт-Петербург Ланское...' :
+                    sandboxTab === 'party' ? 'ИНН юр. лица (10 цифр)...' :
+                    'БИК банка (9 цифр)...'
+                  }
+                  className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleSandboxQuery}
+                  disabled={sandboxLoading || !sandboxQuery.trim()}
+                  className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold text-xs transition-all disabled:opacity-50 flex items-center space-x-2 cursor-pointer"
+                >
+                  {sandboxLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                  <span>Запрос</span>
+                </button>
+              </div>
+            )}
 
             {sandboxResult && (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
@@ -383,6 +517,7 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
                     </div>
                     <pre className="text-[10px] text-slate-700 overflow-auto max-h-60 bg-white rounded-lg p-3 border border-slate-100">
                       {JSON.stringify(
+                        sandboxTab === 'avm' ? sandboxResult.valuation :
                         sandboxTab === 'address' ? sandboxResult.items?.slice(0, 3) :
                         sandboxTab === 'party' ? sandboxResult.party :
                         sandboxResult.bank,

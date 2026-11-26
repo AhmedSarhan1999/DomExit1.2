@@ -74,10 +74,10 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
   {
     key: 'avmValuation',
     labelRu: 'AVM Автоматическая оценка',
-    descriptionRu: 'Автоматизированная рыночная оценка объектов недвижимости на основе AI-модели',
-    implemented: false,
+    descriptionRu: 'Автоматизированная рыночная оценка объектов недвижимости и расчет коридора быстрого выхода (14 дней)',
+    implemented: true,
     roadmapStep: 'Этап 05',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
   {
     key: 'aiPackagingStudio',
