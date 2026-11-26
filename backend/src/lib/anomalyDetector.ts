@@ -227,7 +227,9 @@ async function notifyOwnerSecurityIncident(incident: Record<string, any>): Promi
     const ydb = getYdbClient();
 
     // Find platform owner
-    const users = await ydb.scanAll('users', 200);
+    const users = ydb.isV2TablesEnabled()
+      ? await ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' })
+      : await ydb.scanAll('users', 200);
     const owner = users.find((u: any) => u.role === 'owner');
     if (!owner) return;
 

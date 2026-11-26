@@ -1,5 +1,49 @@
 import crypto from 'node:crypto';
 import { getConfig } from './config.js';
+import { FIELD_TO_INDEX_MAP, V2_TABLES_SCHEMA, sanitizeItemForV2 } from './ydbV2Schema.js';
+
+export interface QueryRangeCondition {
+  op: '=' | '<' | '<=' | '>' | '>=' | 'between' | 'begins_with';
+  value: string;
+  value2?: string;
+}
+
+export interface QueryByIndexParams {
+  tableName: string;
+  indexName: string;
+  hashKey: string;
+  hashValue: string;
+  rangeKey?: string;
+  rangeCondition?: QueryRangeCondition;
+  scanIndexForward?: boolean;
+  limit?: number;
+  exclusiveStartKey?: Record<string, any> | string;
+}
+
+export interface QueryPageResult<T = any> {
+  items: T[];
+  lastEvaluatedKey?: Record<string, any>;
+  nextCursor: string | null;
+}
+
+export function encodeCursor(keyObj?: Record<string, any> | null): string | null {
+  if (!keyObj || Object.keys(keyObj).length === 0) return null;
+  return Buffer.from(JSON.stringify(keyObj), 'utf-8').toString('base64url');
+}
+
+export function decodeCursor(cursor?: string | null): Record<string, any> | undefined {
+  if (!cursor) return undefined;
+  try {
+    const raw = Buffer.from(cursor, 'base64url').toString('utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function toDynamo(val: any): any {
   if (val === null || val === undefined) return { NULL: true };
@@ -133,9 +177,37 @@ export class YdbClient {
     return data;
   }
 
+  private parseDynamoItems<T = any>(rawItems?: any[]): T[] {
+    const items: T[] = [];
+    if (!rawItems || !Array.isArray(rawItems)) return items;
+    for (const rawItem of rawItems) {
+      const obj: Record<string, any> = {};
+      for (const [k, v] of Object.entries(rawItem)) {
+        obj[k] = fromDynamo(v);
+      }
+      items.push(obj as T);
+    }
+    return items;
+  }
+
+  isV2TablesEnabled(): boolean {
+    if (process.env.YDB_USE_V2_TABLES === 'true') return true;
+    return Boolean(getConfig().YDB_USE_V2_TABLES);
+  }
+
+  resolveTableName(logicalTable: string): string {
+    if (!logicalTable) return logicalTable;
+    if (logicalTable.endsWith('_v2')) return logicalTable;
+    if (this.isV2TablesEnabled() && V2_TABLES_SCHEMA[logicalTable]) {
+      return V2_TABLES_SCHEMA[logicalTable].v2TableName;
+    }
+    return logicalTable;
+  }
+
   async getItem<T = any>(tableName: string, id: string): Promise<T | null> {
+    const resolvedTable = this.resolveTableName(tableName);
     const res = await this.callApi('DynamoDB_20120810.GetItem', {
-      TableName: tableName,
+      TableName: resolvedTable,
       Key: {
         id: { S: id },
       },
@@ -155,35 +227,118 @@ export class YdbClient {
       throw new Error(`[YdbClient.putItem] Item missing mandatory "id" attribute.`);
     }
 
+    const resolvedTable = this.resolveTableName(tableName);
+    const isV2Write = resolvedTable.endsWith('_v2');
+    const normalizedItem = isV2Write ? sanitizeItemForV2(tableName, item) : item;
+
     const dynamoItem: Record<string, any> = {};
-    for (const [k, v] of Object.entries(item)) {
+    for (const [k, v] of Object.entries(normalizedItem)) {
       if (v !== undefined) {
         dynamoItem[k] = toDynamo(v);
       }
     }
 
     await this.callApi('DynamoDB_20120810.PutItem', {
-      TableName: tableName,
+      TableName: resolvedTable,
       Item: dynamoItem,
     });
   }
 
   async deleteItem(tableName: string, id: string): Promise<void> {
+    const resolvedTable = this.resolveTableName(tableName);
     await this.callApi('DynamoDB_20120810.DeleteItem', {
-      TableName: tableName,
+      TableName: resolvedTable,
       Key: {
         id: { S: id },
       },
     });
   }
 
+  async queryByIndex<T = any>(params: QueryByIndexParams): Promise<QueryPageResult<T>> {
+    const resolvedTable = this.resolveTableName(params.tableName);
+    const expressionNames: Record<string, string> = { '#hk': params.hashKey };
+    const expressionValues: Record<string, any> = { ':hv': toDynamo(String(params.hashValue)) };
+    let keyCondition = '#hk = :hv';
+
+    if (params.rangeKey && params.rangeCondition) {
+      expressionNames['#rk'] = params.rangeKey;
+      const rc = params.rangeCondition;
+      expressionValues[':rv1'] = toDynamo(String(rc.value));
+      if (rc.op === 'between') {
+        expressionValues[':rv2'] = toDynamo(String(rc.value2 ?? rc.value));
+        keyCondition += ' AND #rk BETWEEN :rv1 AND :rv2';
+      } else if (rc.op === 'begins_with') {
+        keyCondition += ' AND begins_with(#rk, :rv1)';
+      } else {
+        keyCondition += ` AND #rk ${rc.op} :rv1`;
+      }
+    }
+
+    const startKey =
+      typeof params.exclusiveStartKey === 'string'
+        ? decodeCursor(params.exclusiveStartKey)
+        : params.exclusiveStartKey;
+
+    const payload: Record<string, any> = {
+      TableName: resolvedTable,
+      IndexName: params.indexName,
+      ConsistentRead: false, // Mandatory for GlobalSecondaryIndex queries in YDB DocAPI
+      KeyConditionExpression: keyCondition,
+      ExpressionAttributeNames: expressionNames,
+      ExpressionAttributeValues: expressionValues,
+      ScanIndexForward: params.scanIndexForward ?? true,
+    };
+
+    if (params.limit && params.limit > 0) {
+      payload.Limit = params.limit;
+    }
+    if (startKey) {
+      payload.ExclusiveStartKey = startKey;
+    }
+
+    const res = await this.callApi('DynamoDB_20120810.Query', payload);
+    const items = this.parseDynamoItems<T>(res?.Items);
+    const lastEvaluatedKey = res?.LastEvaluatedKey;
+
+    return {
+      items,
+      lastEvaluatedKey,
+      nextCursor: encodeCursor(lastEvaluatedKey),
+    };
+  }
+
+  async queryAllByIndex<T = any>(
+    params: Omit<QueryByIndexParams, 'exclusiveStartKey'>,
+    maxPages = 20
+  ): Promise<T[]> {
+    const allItems: T[] = [];
+    let exclusiveStartKey: Record<string, any> | undefined = undefined;
+    let pageCount = 0;
+    const targetCap = params.limit && params.limit > 0 ? params.limit : Infinity;
+
+    do {
+      pageCount++;
+      const remaining = targetCap === Infinity ? 100 : Math.min(100, Math.max(1, targetCap - allItems.length));
+      const res: QueryPageResult<T> = await this.queryByIndex<T>({
+        ...params,
+        limit: remaining,
+        exclusiveStartKey,
+      });
+      allItems.push(...res.items);
+      exclusiveStartKey = res.lastEvaluatedKey;
+    } while (exclusiveStartKey && pageCount < maxPages && allItems.length < targetCap);
+
+    return allItems;
+  }
+
   async scanAll<T = any>(tableName: string, limit = 1000): Promise<T[]> {
+    const resolvedTable = this.resolveTableName(tableName);
     const items: T[] = [];
     let lastEvaluatedKey: any = undefined;
 
     do {
       const payload: Record<string, any> = {
-        TableName: tableName,
+        TableName: resolvedTable,
         Limit: Math.min(limit - items.length, 100),
       };
       if (lastEvaluatedKey) {
@@ -191,16 +346,7 @@ export class YdbClient {
       }
 
       const res = await this.callApi('DynamoDB_20120810.Scan', payload);
-
-      if (res?.Items && Array.isArray(res.Items)) {
-        for (const rawItem of res.Items) {
-          const obj: Record<string, any> = {};
-          for (const [k, v] of Object.entries(rawItem)) {
-            obj[k] = fromDynamo(v);
-          }
-          items.push(obj as T);
-        }
-      }
+      items.push(...this.parseDynamoItems<T>(res?.Items));
 
       lastEvaluatedKey = res?.LastEvaluatedKey;
     } while (lastEvaluatedKey && items.length < limit);
@@ -218,9 +364,10 @@ export class YdbClient {
       expressionAttributeValues?: Record<string, any>;
     } = {}
   ): Promise<{ items: T[]; lastEvaluatedKey?: any }> {
+    const resolvedTable = this.resolveTableName(tableName);
     const limit = options.limit || 50;
     const payload: Record<string, any> = {
-      TableName: tableName,
+      TableName: resolvedTable,
       Limit: limit,
     };
     if (options.exclusiveStartKey) {
@@ -237,31 +384,36 @@ export class YdbClient {
     }
 
     const res = await this.callApi('DynamoDB_20120810.Scan', payload);
-    const items: T[] = [];
-    if (res?.Items && Array.isArray(res.Items)) {
-      for (const rawItem of res.Items) {
-        const obj: Record<string, any> = {};
-        for (const [k, v] of Object.entries(rawItem)) {
-          obj[k] = fromDynamo(v);
-        }
-        items.push(obj as T);
-      }
-    }
-
     return {
-      items,
+      items: this.parseDynamoItems<T>(res?.Items),
       lastEvaluatedKey: res?.LastEvaluatedKey,
     };
   }
 
   async findByField<T = any>(tableName: string, field: string, value: any, limit = 100): Promise<T[]> {
+    const baseName = tableName.endsWith('_v2') ? tableName.slice(0, -3) : tableName;
+    const indexMapping = FIELD_TO_INDEX_MAP[baseName]?.[field];
+
+    if (this.isV2TablesEnabled() && indexMapping && value !== undefined && value !== null && String(value).trim() !== '') {
+      const normalizedValue = field === 'email' ? String(value).trim().toLowerCase() : String(value).trim();
+      return this.queryAllByIndex<T>({
+        tableName: baseName,
+        indexName: indexMapping.indexName,
+        hashKey: indexMapping.hashKey,
+        hashValue: normalizedValue,
+        scanIndexForward: false,
+        limit,
+      });
+    }
+
+    const resolvedTable = this.resolveTableName(tableName);
     try {
       const items: T[] = [];
       let lastEvaluatedKey: any = undefined;
 
       do {
         const payload: Record<string, any> = {
-          TableName: tableName,
+          TableName: resolvedTable,
           Limit: Math.min(limit - items.length, 50),
           FilterExpression: '#f = :v',
           ExpressionAttributeNames: { '#f': field },
@@ -272,23 +424,14 @@ export class YdbClient {
         }
 
         const res = await this.callApi('DynamoDB_20120810.Scan', payload);
-
-        if (res?.Items && Array.isArray(res.Items)) {
-          for (const rawItem of res.Items) {
-            const obj: Record<string, any> = {};
-            for (const [k, v] of Object.entries(rawItem)) {
-              obj[k] = fromDynamo(v);
-            }
-            items.push(obj as T);
-          }
-        }
+        items.push(...this.parseDynamoItems<T>(res?.Items));
 
         lastEvaluatedKey = res?.LastEvaluatedKey;
       } while (lastEvaluatedKey && items.length < limit);
 
       return items;
     } catch (err: any) {
-      console.warn(`[YdbClient.findByField] FilterExpression scan failed for ${tableName}.${field}:`, err.message);
+      console.warn(`[YdbClient.findByField] FilterExpression scan failed for ${resolvedTable}.${field}:`, err.message);
       const all = await this.scanAll<T>(tableName, 500);
       return all.filter((item: any) => item[field] === value);
     }

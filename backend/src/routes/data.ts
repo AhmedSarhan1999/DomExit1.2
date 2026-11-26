@@ -451,13 +451,41 @@ export async function handleData(
 
     for (const col of collectionsToClean) {
       try {
-        const items = await ydb.scanAll(col, 500);
-        const toDelete = items.filter(
-          (item: any) =>
-            item.lotCode === lotCode ||
-            item.id === lotCode ||
-            item.code === lotCode
-        );
+        let toDelete: any[] = [];
+        if (ydb.isV2TablesEnabled()) {
+          if (col === 'lots') {
+            const direct = await ydb.getItem(col, lotCode);
+            const byCode = await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: lotCode });
+            toDelete = Array.from(new Map([...(direct ? [direct] : []), ...byCode].map((x: any) => [x.id, x])).values());
+          } else if (col === 'buyer_applications') {
+            toDelete = await ydb.queryAllByIndex<any>({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: lotCode.toUpperCase() });
+          } else if (col === 'deals' || col === 'documents_vault' || col === 'deal_messages' || col === 'curator_messages' || col === 'pep_signatures') {
+            const mapCfg: Record<string, { indexName: string; hashKey: string }> = {
+              deals: { indexName: 'lotId-createdAt-index', hashKey: 'lotId' },
+              documents_vault: { indexName: 'lotId-uploadedAt-index', hashKey: 'lotId' },
+              deal_messages: { indexName: 'dealId-createdAt-index', hashKey: 'dealId' },
+              curator_messages: { indexName: 'dealId-createdAt-index', hashKey: 'dealId' },
+              pep_signatures: { indexName: 'dealId-signedAt-index', hashKey: 'dealId' },
+            };
+            const m = mapCfg[col];
+            const direct = await ydb.getItem(col, lotCode).catch(() => null);
+            const byIdx = await ydb.queryAllByIndex<any>({ tableName: col, indexName: m.indexName, hashKey: m.hashKey, hashValue: lotCode });
+            toDelete = Array.from(new Map([...(direct ? [direct] : []), ...byIdx].map((x: any) => [x.id, x])).values());
+          } else if (col === 'audit_logs') {
+            toDelete = await ydb.queryAllByIndex<any>({ tableName: 'audit_logs', indexName: 'targetId-timestamp-index', hashKey: 'targetId', hashValue: lotCode });
+          } else {
+            const items = await ydb.scanAll(col, 500);
+            toDelete = items.filter((item: any) => item.lotCode === lotCode || item.id === lotCode || item.code === lotCode);
+          }
+        } else {
+          const items = await ydb.scanAll(col, 500);
+          toDelete = items.filter(
+            (item: any) =>
+              item.lotCode === lotCode ||
+              item.id === lotCode ||
+              item.code === lotCode
+          );
+        }
         for (const item of toDelete) {
           await ydb.deleteItem(col, item.id);
           deletedDbCount++;
@@ -543,7 +571,12 @@ export async function handleData(
       const isStaff = Boolean(authUser && (authUser.role === 'owner' || authUser.role === 'employee'));
 
       const [allUsers, allEmployees] = await Promise.all([
-        ydb.scanAll<any>('users', 300),
+        ydb.isV2TablesEnabled()
+          ? Promise.all([
+              ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner', scanIndexForward: false }),
+              ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'employee', scanIndexForward: false }),
+            ]).then(([owners, emps]) => [...owners, ...emps])
+          : ydb.scanAll<any>('users', 300),
         ydb.scanAll<any>('employees', 200),
       ]);
 
@@ -655,12 +688,97 @@ export async function handleData(
         if (!authUser || (!isOwner && !isEmployee)) {
           return json(event, 403, { error: 'Доступ к журналу аудита разрешен только сотрудникам платформы' });
         }
-        const allLogs = await ydb.scanAll<any>('audit_logs');
-        let visibleLogs = allLogs || [];
+        const q = event.queryStringParameters || {};
+        const qOperatorId = q['operatorId']?.trim();
+        const qLotCode = q['lotCode']?.trim().toUpperCase();
+        const qCursor = q['cursor']?.trim();
+        const qPage = q['page']?.trim();
+        const limit = Math.min(100, Math.max(1, parseInt(q['limit'] || '25', 10) || 25));
+
+        if (
+          ydb.isV2TablesEnabled() &&
+          isOwner &&
+          !qOperatorId &&
+          !qLotCode &&
+          !q['status'] &&
+          !q['category'] &&
+          !q['search'] &&
+          (isPaginated || qCursor !== undefined) &&
+          (!qPage || qPage === '1')
+        ) {
+          const pageRes = await ydb.queryByIndex<any>({
+            tableName: 'audit_logs',
+            indexName: 'partitionKey-timestamp-index',
+            hashKey: 'partitionKey',
+            hashValue: 'AUDIT',
+            scanIndexForward: false,
+            limit,
+            exclusiveStartKey: qCursor,
+          });
+          return json(event, 200, {
+            items: pageRes.items,
+            nextCursor: pageRes.nextCursor,
+            hasMore: Boolean(pageRes.nextCursor),
+            total: pageRes.items.length,
+            page: 1,
+            limit,
+          });
+        }
+
+        let visibleLogs: any[] = [];
+        if (ydb.isV2TablesEnabled()) {
+          if (qLotCode) {
+            visibleLogs = await ydb.queryAllByIndex<any>({
+              tableName: 'audit_logs',
+              indexName: 'targetId-timestamp-index',
+              hashKey: 'targetId',
+              hashValue: qLotCode,
+              scanIndexForward: false,
+              limit: 300,
+            });
+          } else if (qOperatorId && isOwner) {
+            visibleLogs = await ydb.queryAllByIndex<any>({
+              tableName: 'audit_logs',
+              indexName: 'actorId-timestamp-index',
+              hashKey: 'actorId',
+              hashValue: qOperatorId,
+              scanIndexForward: false,
+              limit: 300,
+            });
+          } else {
+            visibleLogs = await ydb.queryAllByIndex<any>({
+              tableName: 'audit_logs',
+              indexName: 'partitionKey-timestamp-index',
+              hashKey: 'partitionKey',
+              hashValue: 'AUDIT',
+              scanIndexForward: false,
+              limit: 500,
+            });
+          }
+        } else {
+          visibleLogs = (await ydb.scanAll<any>('audit_logs')) || [];
+        }
+
         if (isEmployee) {
-          const allLots = await ydb.scanAll<any>('lots', 500);
+          let assignedLots: any[] = [];
+          if (ydb.isV2TablesEnabled()) {
+            const staffIds = Array.from(new Set([authUser.id, authUser.assignedEmployeeId].filter(Boolean) as string[]));
+            const lotLists = await Promise.all(
+              staffIds.map((sid) =>
+                ydb.queryAllByIndex<any>({
+                  tableName: 'lots',
+                  indexName: 'assignedCuratorId-createdAt-index',
+                  hashKey: 'assignedCuratorId',
+                  hashValue: sid,
+                })
+              )
+            );
+            assignedLots = lotLists.flat();
+          } else {
+            assignedLots = (await ydb.scanAll<any>('lots', 500)) || [];
+          }
           const myLotCodes = new Set(
-            (allLots || [])
+            assignedLots
               .filter((l: any) => isEmployeeAssignedToRecord(authUser, l))
               .map((l: any) => String(l.lotCode || l.id || '').toUpperCase())
           );
@@ -671,8 +789,6 @@ export async function handleData(
               (log.lotCode && myLotCodes.has(String(log.lotCode).toUpperCase()))
           );
         }
-        const qOperatorId = event.queryStringParameters?.operatorId?.trim();
-        const qLotCode = event.queryStringParameters?.lotCode?.trim().toUpperCase();
         if (qOperatorId) {
           visibleLogs = visibleLogs.filter((l: any) => l.operatorId === qOperatorId || l.performedBy === qOperatorId);
         }
@@ -696,7 +812,17 @@ export async function handleData(
         return json(event, 200, { item });
       }
 
-      const all = await ydb.scanAll(collection);
+      const roleFilter = event.queryStringParameters?.role?.trim();
+      const all =
+        collection === 'users' && ydb.isV2TablesEnabled() && roleFilter
+          ? await ydb.queryAllByIndex({
+              tableName: 'users',
+              indexName: 'role-createdAt-index',
+              hashKey: 'role',
+              hashValue: roleFilter,
+              scanIndexForward: false,
+            })
+          : await ydb.scanAll(collection);
       if (collection === 'users') {
         for (const u of all) delete u.passwordHash;
       }
@@ -841,11 +967,21 @@ export async function handleData(
         } else if (authUser.role === 'employee' && collection === 'deals') {
           let assigned = isEmployeeAssignedToRecord(authUser, item);
           if (!assigned && (item.lotCode || item.lotId)) {
-            const targetLc = String(item.lotCode || item.lotId).toUpperCase();
-            const allLots = await ydb.scanAll<any>('lots', 500);
-            const linkedLot = (allLots || []).find(
-              (l: any) => String(l.lotCode || l.id || '').toUpperCase() === targetLc
-            );
+            const targetLc = String(item.lotCode || item.lotId).trim();
+            let linkedLot: any = null;
+            if (ydb.isV2TablesEnabled()) {
+              linkedLot =
+                (item.lotId ? await ydb.getItem<any>('lots', String(item.lotId)).catch(() => null) : null) ||
+                (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: targetLc, limit: 5 }))[0] ||
+                (targetLc !== targetLc.toUpperCase()
+                  ? (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: targetLc.toUpperCase(), limit: 5 }))[0]
+                  : null);
+            } else {
+              const allLots = await ydb.scanAll<any>('lots', 500);
+              linkedLot = (allLots || []).find(
+                (l: any) => String(l.lotCode || l.id || '').toUpperCase() === targetLc.toUpperCase()
+              );
+            }
             assigned = isEmployeeAssignedToRecord(authUser, linkedLot);
           }
           if (!assigned) {
@@ -863,7 +999,78 @@ export async function handleData(
         return json(event, 200, { items, total: items.length });
       }
 
-      const all = await ydb.scanAll(collection);
+      const statusParam = event.queryStringParameters?.status?.trim();
+      let all: any[] = [];
+      let prefilteredEmployeeLots: any[] | null = null;
+
+      if (ydb.isV2TablesEnabled()) {
+        if (!isStaff && !isPartner) {
+          if (collection === 'buy_boxes' || collection === 'buyer_applications' || collection === 'seller_requests') {
+            all = await ydb.queryAllByIndex<any>({
+              tableName: collection,
+              indexName: 'userId-createdAt-index',
+              hashKey: 'userId',
+              hashValue: authUser.id,
+              scanIndexForward: false,
+            });
+          } else if (collection === 'pep_signatures') {
+            all = await ydb.queryAllByIndex<any>({
+              tableName: 'pep_signatures',
+              indexName: 'userId-signedAt-index',
+              hashKey: 'userId',
+              hashValue: authUser.id,
+              scanIndexForward: false,
+            });
+          } else if (collection === 'deals') {
+            const [asBuyer, asSeller] = await Promise.all([
+              ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'buyerId-createdAt-index', hashKey: 'buyerId', hashValue: authUser.id, scanIndexForward: false }),
+              ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'sellerId-createdAt-index', hashKey: 'sellerId', hashValue: authUser.id, scanIndexForward: false }),
+            ]);
+            all = Array.from(new Map([...asBuyer, ...asSeller].map((d: any) => [d.id, d])).values());
+          } else if (collection === 'documents_vault') {
+            all = await ydb.queryAllByIndex<any>({
+              tableName: 'documents_vault',
+              indexName: 'ownerId-uploadedAt-index',
+              hashKey: 'ownerId',
+              hashValue: authUser.id,
+              scanIndexForward: false,
+            });
+          } else {
+            all = await ydb.scanAll(collection);
+          }
+        } else if (authUser.role === 'employee' && collection === 'deals') {
+          const staffIds = Array.from(new Set([authUser.id, authUser.assignedEmployeeId].filter(Boolean) as string[]));
+          const [assignedLotLists, directDealLists] = await Promise.all([
+            Promise.all(staffIds.map((sid) => ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'assignedCuratorId-createdAt-index', hashKey: 'assignedCuratorId', hashValue: sid }))),
+            Promise.all(staffIds.map((sid) => ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'assignedCuratorId-createdAt-index', hashKey: 'assignedCuratorId', hashValue: sid }))),
+          ]);
+          prefilteredEmployeeLots = assignedLotLists.flat();
+          const lotKeys = Array.from(
+            new Set(prefilteredEmployeeLots.flatMap((l: any) => [l.id, l.lotCode].filter(Boolean).map(String)))
+          ).slice(0, 30);
+          const lotDealLists = await Promise.all(
+            lotKeys.map((lk) => ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: lk }))
+          );
+          all = Array.from(new Map([...directDealLists.flat(), ...lotDealLists.flat()].map((d: any) => [d.id, d])).values());
+        } else if (
+          isStaff &&
+          statusParam &&
+          (collection === 'deals' || collection === 'buyer_applications' || collection === 'seller_requests' || collection === 'buy_boxes')
+        ) {
+          all = await ydb.queryAllByIndex<any>({
+            tableName: collection,
+            indexName: 'status-createdAt-index',
+            hashKey: 'status',
+            hashValue: statusParam,
+            scanIndexForward: false,
+          });
+        } else {
+          all = await ydb.scanAll(collection);
+        }
+      } else {
+        all = await ydb.scanAll(collection);
+      }
+
       let visibleItems = isStaff
         ? all
         : all.filter((item: any) => {
@@ -890,7 +1097,7 @@ export async function handleData(
           });
 
       if (authUser.role === 'employee' && collection === 'deals') {
-        const allLots = await ydb.scanAll<any>('lots', 500);
+        const allLots = prefilteredEmployeeLots || (await ydb.scanAll<any>('lots', 500));
         const lotByCode = new Map<string, any>();
         for (const l of allLots || []) {
           const lc = String(l.lotCode || l.id || '').toUpperCase();
@@ -922,14 +1129,26 @@ export async function handleData(
       if (id) {
         let item = await ydb.getItem(collection, id);
         if (!item && collection === 'lots') {
-          // Fallback: search by lotCode or id case-insensitively
-          const allLots = await ydb.scanAll('lots');
-          const target = id.trim().toUpperCase();
-          item = (allLots || []).find(
-            (l: any) =>
-              (l.lotCode && String(l.lotCode).trim().toUpperCase() === target) ||
-              (l.id && String(l.id).trim().toUpperCase() === target)
-          );
+          if (ydb.isV2TablesEnabled()) {
+            const cleanId = id.trim();
+            const upperId = cleanId.toUpperCase();
+            const [exactRes, upperRes] = await Promise.all([
+              ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: cleanId, limit: 5 }),
+              upperId !== cleanId
+                ? ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: upperId, limit: 5 })
+                : Promise.resolve([]),
+            ]);
+            item = exactRes[0] || upperRes[0] || null;
+          } else {
+            // Fallback: search by lotCode or id case-insensitively
+            const allLots = await ydb.scanAll('lots');
+            const target = id.trim().toUpperCase();
+            item = (allLots || []).find(
+              (l: any) =>
+                (l.lotCode && String(l.lotCode).trim().toUpperCase() === target) ||
+                (l.id && String(l.id).trim().toUpperCase() === target)
+            );
+          }
         }
         if (!item) return json(event, 404, { error: 'Запись не найдена' });
 
@@ -982,24 +1201,21 @@ export async function handleData(
         return json(event, 200, { item });
       }
 
-      // Safe Warm Cache: use cache only for public queries without ?fresh=1, bypassed for staff
-      let all: any[] | null = null;
-      if (!isStaff && !isFresh && CACHEABLE_COLLECTIONS.has(collection)) {
-        all = memoryCache.get(collection);
-      }
-
-      if (!all) {
-        all = await ydb.scanAll(collection);
-        if (!isStaff && CACHEABLE_COLLECTIONS.has(collection)) {
-          memoryCache.set(collection, all);
-        }
-      }
-
       if (collection === 'lots') {
-        const cursor = event.queryStringParameters?.cursor;
-        const pageStr = event.queryStringParameters?.page;
-        const limit = Math.min(50, Math.max(1, parseInt(event.queryStringParameters?.limit || '12', 10) || 12));
-        const fields = event.queryStringParameters?.fields; // 'card' or 'full'
+        const q = event.queryStringParameters || {};
+        const cursor = q['cursor'];
+        const pageStr = q['page'];
+        const limit = Math.min(50, Math.max(1, parseInt(q['limit'] || '12', 10) || 12));
+        const fields = q['fields']; // 'card' or 'full'
+        const statusFilter = q['status']?.trim()?.toLowerCase();
+        const lotCodeFilter = q['lotCode']?.trim()?.toLowerCase();
+        const locationFilter = (q['city'] || q['region'] || q['district'])?.trim()?.toLowerCase();
+        const developerFilter = q['developer']?.trim()?.toLowerCase();
+        const roomsFilter = q['rooms']?.trim()?.toLowerCase();
+        const priceMin = q['priceMin'] ? Number(q['priceMin']) : undefined;
+        const priceMax = q['priceMax'] ? Number(q['priceMax']) : undefined;
+        const searchFilter = q['search']?.trim()?.toLowerCase();
+        const sortFilter = q['sort']?.trim()?.toLowerCase();
 
         // Check if query is default Page 1 catalog query (unauthenticated/visitor, default params)
         const isDefaultPage1 =
@@ -1007,16 +1223,15 @@ export async function handleData(
           !isFresh &&
           (!cursor || cursor === '0') &&
           (!pageStr || pageStr === '1') &&
-          !event.queryStringParameters?.search &&
-          !event.queryStringParameters?.city &&
-          !event.queryStringParameters?.region &&
-          !event.queryStringParameters?.district &&
-          !event.queryStringParameters?.status &&
-          !event.queryStringParameters?.developer &&
-          !event.queryStringParameters?.rooms &&
-          !event.queryStringParameters?.priceMin &&
-          !event.queryStringParameters?.priceMax &&
-          (!event.queryStringParameters?.sort || event.queryStringParameters?.sort === 'newest');
+          !searchFilter &&
+          !locationFilter &&
+          !statusFilter &&
+          !lotCodeFilter &&
+          !developerFilter &&
+          !roomsFilter &&
+          priceMin === undefined &&
+          priceMax === undefined &&
+          (!sortFilter || sortFilter === 'newest');
 
         const cacheKey = `lots:catalog:p1:${fields || 'card'}:${limit}`;
 
@@ -1032,6 +1247,138 @@ export async function handleData(
               return notModified(event, cacheHeaders);
             }
             return json(event, 200, cached.data, { extraHeaders: cacheHeaders });
+          }
+        }
+
+        // True YDB LastEvaluatedKey Cursor Pagination path on GSI (status-publishedAt-index)
+        const canUseDirectYdbCursor =
+          ydb.isV2TablesEnabled() &&
+          (!isStaff || Boolean(statusFilter)) &&
+          (isPaginated || cursor !== undefined) &&
+          (!pageStr || pageStr === '1') &&
+          !lotCodeFilter &&
+          !searchFilter &&
+          !locationFilter &&
+          !developerFilter &&
+          !roomsFilter &&
+          priceMin === undefined &&
+          priceMax === undefined &&
+          (!sortFilter || sortFilter === 'newest');
+
+        if (canUseDirectYdbCursor) {
+          const queryStatus = statusFilter || 'available';
+          const pageRes = await ydb.queryByIndex<any>({
+            tableName: 'lots',
+            indexName: 'status-publishedAt-index',
+            hashKey: 'status',
+            hashValue: queryStatus,
+            scanIndexForward: false,
+            limit,
+            exclusiveStartKey: cursor && cursor !== '0' ? cursor : undefined,
+          });
+
+          const allowedStatuses = new Set(['active', 'available', 'reserved', 'in_deal', 'deal_closing', 'sold']);
+          const visibleRaw = isStaff
+            ? pageRes.items
+            : pageRes.items.filter(
+                (lot: any) =>
+                  ((lot.isApproved === true || lot.isPublished === true || lot.approvalStatus === 'approved') &&
+                    allowedStatuses.has(lot.status)) ||
+                  (authUser?.id && lot.sellerId === authUser.id)
+              );
+
+          const sanitizedPage = visibleRaw.map((lot: any) => sanitizeLotForPublic(lot, authUser));
+          const finalItems =
+            fields === 'card'
+              ? sanitizedPage.map(projectLotForCard)
+              : fields === 'summary'
+              ? sanitizedPage.map(projectLotForAdminSummary)
+              : sanitizedPage;
+
+          const responsePayload = {
+            items: finalItems,
+            nextCursor: pageRes.nextCursor,
+            hasMore: Boolean(pageRes.nextCursor),
+            totalMatching: finalItems.length,
+            stats: {
+              totalCount: finalItems.length,
+              activeCount: finalItems.filter((l: any) => l.status === 'active' || l.status === 'available').length,
+            },
+          };
+
+          const etag = generateETag(responsePayload);
+          const cacheControl = isStaff ? 'private, no-store' : 'public, max-age=30, stale-while-revalidate=60';
+          const headers: Record<string, string> = {
+            'Cache-Control': cacheControl,
+            ETag: etag,
+            'X-Cache': isDefaultPage1 ? 'MISS' : 'BYPASS',
+          };
+          if (isDefaultPage1) {
+            appCache.set(cacheKey, responsePayload, 60000, etag);
+          }
+          if (!isStaff && ifNoneMatch && ifNoneMatch === etag) {
+            return notModified(event, headers);
+          }
+          return json(event, 200, responsePayload, { extraHeaders: headers });
+        }
+
+        // Non-cursor / filtered / multi-status catalog path (still zero scanAll when V2 enabled!)
+        let all: any[] | null = null;
+        if (!isStaff && !isFresh && CACHEABLE_COLLECTIONS.has('lots')) {
+          all = memoryCache.get('lots');
+        }
+
+        if (!all) {
+          if (ydb.isV2TablesEnabled()) {
+            if (lotCodeFilter) {
+              const rawCode = q['lotCode']!.trim();
+              const [exactMatches, upperMatches] = await Promise.all([
+                ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: rawCode }),
+                rawCode.toUpperCase() !== rawCode
+                  ? ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: rawCode.toUpperCase() })
+                  : Promise.resolve([]),
+              ]);
+              all = Array.from(new Map([...exactMatches, ...upperMatches].map((l: any) => [l.id, l])).values());
+            } else {
+              const statusesToFetch = statusFilter
+                ? [statusFilter]
+                : isStaff
+                ? ['available', 'in_deal', 'reserved', 'active', 'deal_closing', 'draft', 'pending_legal', 'packaging', 'sold', 'closed', 'completed', 'rejected', 'archived']
+                : ['available', 'in_deal', 'reserved', 'active', 'deal_closing', 'sold'];
+
+              const queries: Promise<any[]>[] = statusesToFetch.map((st) =>
+                ydb.queryAllByIndex<any>({
+                  tableName: 'lots',
+                  indexName: 'status-publishedAt-index',
+                  hashKey: 'status',
+                  hashValue: st,
+                  scanIndexForward: false,
+                  limit: 200,
+                })
+              );
+              if (!isStaff && authUser?.id && !statusFilter) {
+                queries.push(
+                  ydb.queryAllByIndex<any>({
+                    tableName: 'lots',
+                    indexName: 'ownerId-createdAt-index',
+                    hashKey: 'ownerId',
+                    hashValue: authUser.id,
+                    scanIndexForward: false,
+                    limit: 100,
+                  })
+                );
+              }
+              const chunks = await Promise.all(queries);
+              all = Array.from(new Map(chunks.flat().map((l: any) => [l.id, l])).values());
+              all.sort((a: any, b: any) =>
+                String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || ''))
+              );
+            }
+          } else {
+            all = await ydb.scanAll('lots');
+          }
+          if (!isStaff && CACHEABLE_COLLECTIONS.has('lots') && !lotCodeFilter && !statusFilter) {
+            memoryCache.set('lots', all);
           }
         }
 
@@ -1056,17 +1403,7 @@ export async function handleData(
         const sanitized = filtered.map((lot: any) => sanitizeLotForPublic(lot, authUser));
 
         // Apply filters & sort
-        const q = event.queryStringParameters || {};
         let matching = sanitized;
-        const statusFilter = q['status']?.trim()?.toLowerCase();
-        const lotCodeFilter = q['lotCode']?.trim()?.toLowerCase();
-        const locationFilter = (q['city'] || q['region'] || q['district'])?.trim()?.toLowerCase();
-        const developerFilter = q['developer']?.trim()?.toLowerCase();
-        const roomsFilter = q['rooms']?.trim()?.toLowerCase();
-        const priceMin = q['priceMin'] ? Number(q['priceMin']) : undefined;
-        const priceMax = q['priceMax'] ? Number(q['priceMax']) : undefined;
-        const searchFilter = q['search']?.trim()?.toLowerCase();
-        const sortFilter = q['sort']?.trim()?.toLowerCase();
 
         if (statusFilter) {
           matching = matching.filter((l: any) => String(l.status || '').toLowerCase() === statusFilter);
@@ -1232,6 +1569,16 @@ export async function handleData(
         }
 
         return json(event, 200, responsePayload, { extraHeaders: headers });
+      }
+
+      let all: any[] | null = !isStaff && !isFresh && CACHEABLE_COLLECTIONS.has(collection)
+        ? memoryCache.get(collection)
+        : null;
+      if (!all) {
+        all = await ydb.scanAll(collection);
+        if (!isStaff && CACHEABLE_COLLECTIONS.has(collection)) {
+          memoryCache.set(collection, all);
+        }
       }
 
       if (collection === 'developers') {
@@ -1764,10 +2111,17 @@ export async function handleData(
           if (collection === 'curator_messages' || collection === 'deal_messages') {
             itemToSave.senderId = authUser.id;
             const lc = String(itemToSave.lotCode || itemToSave.lotId || '').trim().toUpperCase();
-            const [lots, deals] = await Promise.all([
-              ydb.scanAll<any>('lots', 500),
-              ydb.scanAll<any>('deals', 500),
-            ]);
+            const [lots, deals] = ydb.isV2TablesEnabled()
+              ? await Promise.all([
+                  lc
+                    ? ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: lc, limit: 5 })
+                    : ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'ownerId-createdAt-index', hashKey: 'ownerId', hashValue: authUser.id, limit: 20 }),
+                  ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'sellerId-createdAt-index', hashKey: 'sellerId', hashValue: authUser.id, limit: 20 }),
+                ])
+              : await Promise.all([
+                  ydb.scanAll<any>('lots', 500),
+                  ydb.scanAll<any>('deals', 500),
+                ]);
             const isSellerOnLot =
               (lots || []).some(
                 (l: any) =>
@@ -1831,10 +2185,20 @@ export async function handleData(
         if (collection === 'deals' && method === 'PUT') {
           const existingDealRec = await ydb.getItem<any>('deals', docId).catch(() => null);
           const targetCode = String(itemToSave.lotCode || existingDealRec?.lotCode || '').trim().toUpperCase();
-          const allLots = targetCode ? await ydb.scanAll<any>('lots', 500) : [];
-          const linkedLot = (allLots || []).find(
-            (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetCode
-          );
+          let linkedLot: any = null;
+          if (targetCode) {
+            if (ydb.isV2TablesEnabled()) {
+              linkedLot =
+                (await ydb.getItem<any>('lots', targetCode).catch(() => null)) ||
+                (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: targetCode, limit: 5 }))[0] ||
+                null;
+            } else {
+              const allLots = await ydb.scanAll<any>('lots', 500);
+              linkedLot = (allLots || []).find(
+                (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetCode
+              );
+            }
+          }
           if (
             (existingDealRec || linkedLot) &&
             !isEmployeeAssignedToRecord(authUser, existingDealRec) &&
@@ -1850,16 +2214,29 @@ export async function handleData(
           const existingDoc = await ydb.getItem<any>('documents_vault', docId).catch(() => null);
           const targetEntityId = String(itemToSave.entityId || existingDoc?.entityId || '').trim().toUpperCase();
           if (targetEntityId) {
-            const [allLots, allDeals] = await Promise.all([
-              ydb.scanAll<any>('lots', 500),
-              ydb.scanAll<any>('deals', 500),
-            ]);
-            const linkedLot = (allLots || []).find(
-              (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetEntityId
-            );
-            const linkedDeal = (allDeals || []).find(
-              (d: any) => String(d.dealId || d.id || '').trim().toUpperCase() === targetEntityId || String(d.lotCode || '').trim().toUpperCase() === targetEntityId
-            );
+            let linkedLot: any = null;
+            let linkedDeal: any = null;
+            if (ydb.isV2TablesEnabled()) {
+              const [directLot, lotMatches, directDeal, dealMatches] = await Promise.all([
+                ydb.getItem<any>('lots', targetEntityId).catch(() => null),
+                ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: targetEntityId, limit: 5 }),
+                ydb.getItem<any>('deals', targetEntityId).catch(() => null),
+                ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: targetEntityId, limit: 5 }),
+              ]);
+              linkedLot = directLot || lotMatches[0] || null;
+              linkedDeal = directDeal || dealMatches[0] || null;
+            } else {
+              const [allLots, allDeals] = await Promise.all([
+                ydb.scanAll<any>('lots', 500),
+                ydb.scanAll<any>('deals', 500),
+              ]);
+              linkedLot = (allLots || []).find(
+                (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetEntityId
+              );
+              linkedDeal = (allDeals || []).find(
+                (d: any) => String(d.dealId || d.id || '').trim().toUpperCase() === targetEntityId || String(d.lotCode || '').trim().toUpperCase() === targetEntityId
+              );
+            }
             if (
               (linkedLot || linkedDeal) &&
               !isEmployeeAssignedToRecord(authUser, linkedLot) &&
@@ -1905,8 +2282,12 @@ export async function handleData(
             if (ew.step !== 'deal_cancelled' && nextStepNum > prevStepNum) {
               if (prevStepNum <= 1 && nextStepNum >= 2) {
                 const targetLot = String(itemToSave.lotCode || existingDeal?.lotCode || '').trim().toUpperCase();
-                const allSigs = await ydb.scanAll<any>('pep_signatures', 500);
                 const buyerId = itemToSave.buyerId || itemToSave.buyerUserId || existingDeal?.buyerId || existingDeal?.buyerUserId;
+                const allSigs = ydb.isV2TablesEnabled()
+                  ? buyerId
+                    ? await ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'userId-signedAt-index', hashKey: 'userId', hashValue: String(buyerId) })
+                    : await ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'dealId-signedAt-index', hashKey: 'dealId', hashValue: targetLot })
+                  : await ydb.scanAll<any>('pep_signatures', 500);
                 const lotSigs = (allSigs || []).filter(
                   (s: any) =>
                     String(s.lotCode || '').trim().toUpperCase() === targetLot &&
@@ -2062,12 +2443,20 @@ export async function handleData(
         if (method === 'PUT' && docId) {
           existingLotRecord = await ydb.getItem<any>('lots', docId);
           if (!existingLotRecord && itemToSave.lotCode) {
-            const allLotsScan = await ydb.scanAll<any>('lots', 500);
             const targetCode = String(itemToSave.lotCode).trim().toUpperCase();
-            existingLotRecord =
-              (allLotsScan || []).find(
-                (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetCode
-              ) || null;
+            if (ydb.isV2TablesEnabled()) {
+              const byCode = await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: String(itemToSave.lotCode).trim(), limit: 5 });
+              existingLotRecord =
+                byCode[0] ||
+                (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: targetCode, limit: 5 }))[0] ||
+                null;
+            } else {
+              const allLotsScan = await ydb.scanAll<any>('lots', 500);
+              existingLotRecord =
+                (allLotsScan || []).find(
+                  (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === targetCode
+                ) || null;
+            }
           }
         }
 
@@ -2174,7 +2563,14 @@ export async function handleData(
 
           // Verify approved mandatory seller documents in documents_vault
           const lotCodeTarget = String(itemToSave.lotCode || itemToSave.id || docId).trim().toUpperCase();
-          const allVaultDocs = await ydb.scanAll<any>('documents_vault', 500);
+          const allVaultDocs = ydb.isV2TablesEnabled()
+            ? await Promise.all([
+                ydb.queryAllByIndex<any>({ tableName: 'documents_vault', indexName: 'lotId-uploadedAt-index', hashKey: 'lotId', hashValue: lotCodeTarget }),
+                itemToSave.id && String(itemToSave.id).toUpperCase() !== lotCodeTarget
+                  ? ydb.queryAllByIndex<any>({ tableName: 'documents_vault', indexName: 'lotId-uploadedAt-index', hashKey: 'lotId', hashValue: String(itemToSave.id) })
+                  : Promise.resolve([]),
+              ]).then(([a, b]) => [...a, ...b])
+            : await ydb.scanAll<any>('documents_vault', 500);
           const approvedLotDocs = (allVaultDocs || []).filter(
             (d: any) =>
               String(d.entityId || '').trim().toUpperCase() === lotCodeTarget &&
@@ -2286,12 +2682,21 @@ export async function handleData(
         // Auto-sync status with linked seller_requests
         try {
           const lotCode = itemToSave.lotCode || itemToSave.id;
-          const allSellerReqs = await ydb.scanAll<any>('seller_requests');
-          const linkedReq = (allSellerReqs || []).find((r: any) =>
-            (itemToSave.sellerRequestId && r.id === itemToSave.sellerRequestId) ||
-            (r.lotCode && String(r.lotCode).trim().toUpperCase() === String(lotCode).trim().toUpperCase()) ||
-            (r.lotId && (String(r.lotId).trim().toUpperCase() === String(itemToSave.id).trim().toUpperCase() || String(r.lotId).trim().toUpperCase() === String(lotCode).trim().toUpperCase()))
-          );
+          let linkedReq: any = itemToSave.sellerRequestId
+            ? await ydb.getItem<any>('seller_requests', itemToSave.sellerRequestId).catch(() => null)
+            : null;
+          if (!linkedReq) {
+            const sellerUid = itemToSave.sellerUserId || itemToSave.sellerId;
+            const candidateReqs =
+              ydb.isV2TablesEnabled() && sellerUid
+                ? await ydb.queryAllByIndex<any>({ tableName: 'seller_requests', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: String(sellerUid) })
+                : await ydb.scanAll<any>('seller_requests');
+            linkedReq = (candidateReqs || []).find((r: any) =>
+              (itemToSave.sellerRequestId && r.id === itemToSave.sellerRequestId) ||
+              (r.lotCode && String(r.lotCode).trim().toUpperCase() === String(lotCode).trim().toUpperCase()) ||
+              (r.lotId && (String(r.lotId).trim().toUpperCase() === String(itemToSave.id).trim().toUpperCase() || String(r.lotId).trim().toUpperCase() === String(lotCode).trim().toUpperCase()))
+            );
+          }
 
           if (linkedReq) {
             let reqStatusChanged = false;

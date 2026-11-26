@@ -42,7 +42,12 @@ import { isEmployeeAssignedToRecord } from '../lib/rbac.js';
 async function notifyStaff(text: string): Promise<void> {
   try {
     const ydb = getYdbClient();
-    const users = await ydb.scanAll<UserProfile>('users', 200);
+    const users = ydb.isV2TablesEnabled()
+      ? await Promise.all([
+          ydb.queryAllByIndex<UserProfile>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' }),
+          ydb.queryAllByIndex<UserProfile>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'employee' }),
+        ]).then(([owners, emps]) => [...owners, ...emps])
+      : await ydb.scanAll<UserProfile>('users', 200);
     const staff = (users || []).filter((u) => u.role === 'owner' || u.role === 'employee');
     for (const member of staff) {
       const binding = await findTelegramBindingByUser(member.id);
@@ -76,15 +81,27 @@ async function notifyUserTelegram(userId: string, text: string): Promise<void> {
 
 async function findLotByCode(ydb: any, lotCode: string): Promise<any | null> {
   const cleanCode = String(lotCode || '').trim();
+  if (!cleanCode) return null;
   let lot = await ydb.getItem('lots', cleanCode);
   if (!lot) {
-    const allLots = await ydb.scanAll('lots', 500);
-    lot = allLots.find(
-      (l: any) =>
-        String(l.lotCode || '').trim().toUpperCase() === cleanCode.toUpperCase() ||
-        String(l.id || '').trim().toUpperCase() === cleanCode.toUpperCase() ||
-        String(l.code || '').trim().toUpperCase() === cleanCode.toUpperCase()
-    );
+    if (ydb.isV2TablesEnabled?.()) {
+      const upperCode = cleanCode.toUpperCase();
+      const [exactMatches, upperMatches] = await Promise.all([
+        ydb.queryAllByIndex({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: cleanCode, limit: 5 }),
+        upperCode !== cleanCode
+          ? ydb.queryAllByIndex({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: upperCode, limit: 5 })
+          : Promise.resolve([]),
+      ]);
+      lot = exactMatches[0] || upperMatches[0] || null;
+    } else {
+      const allLots = await ydb.scanAll('lots', 500);
+      lot = allLots.find(
+        (l: any) =>
+          String(l.lotCode || '').trim().toUpperCase() === cleanCode.toUpperCase() ||
+          String(l.id || '').trim().toUpperCase() === cleanCode.toUpperCase() ||
+          String(l.code || '').trim().toUpperCase() === cleanCode.toUpperCase()
+      );
+    }
   }
   return lot || null;
 }
@@ -120,8 +137,13 @@ async function writeMatchingAuditLog(
 async function syncLotDropSeats(ydb: any, lotCode: string, preloadedApps?: BuyerApplication[]): Promise<any | null> {
   const lot = await findLotByCode(ydb, lotCode);
   if (!lot || !lot.dropConfig) return lot;
-  const allApps: BuyerApplication[] = preloadedApps || ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[]) || [];
   const targetCode = String(lotCode || '').trim().toUpperCase();
+  const allApps: BuyerApplication[] =
+    preloadedApps ||
+    (ydb.isV2TablesEnabled?.()
+      ? await ydb.queryAllByIndex({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: targetCode, limit: 200 })
+      : ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[])) ||
+    [];
   const activeCount = allApps.filter(
     (a: BuyerApplication) => String(a.lotCode || '').trim().toUpperCase() === targetCode && isActiveApplication(a)
   ).length;
@@ -161,7 +183,10 @@ async function syncLotAndDealAssignment(
       targetLot.status = 'available';
       targetLot.currentStage = 3;
       if (targetLot.dropConfig) {
-        const allApps = ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[]) || [];
+        const allApps =
+          (ydb.isV2TablesEnabled?.()
+            ? await ydb.queryAllByIndex({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: targetCode, limit: 200 })
+            : ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[])) || [];
         const activeCount = allApps.filter(
           (a: BuyerApplication) => String(a.lotCode || '').trim().toUpperCase() === targetCode && isActiveApplication(a)
         ).length;
@@ -179,12 +204,23 @@ async function syncLotAndDealAssignment(
     appCache.invalidatePrefix('lot:');
   }
 
-  const allDeals = ((await ydb.scanAll('deals', 300)) as any[]) || [];
-  const targetDeal = allDeals.find(
-    (d: any) =>
-      String(d.lotCode || '').trim().toUpperCase() === targetCode ||
-      (targetLot && String(d.lotId || '').trim().toUpperCase() === String(targetLot.id).trim().toUpperCase())
-  );
+  let targetDeal: any = null;
+  if (ydb.isV2TablesEnabled?.()) {
+    const dealCandidates = await Promise.all([
+      ydb.queryAllByIndex({ tableName: 'deals', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: targetCode, limit: 10 }),
+      targetLot && targetLot.id !== targetCode
+        ? ydb.queryAllByIndex({ tableName: 'deals', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: String(targetLot.id), limit: 10 })
+        : Promise.resolve([]),
+    ]);
+    targetDeal = dealCandidates.flat()[0] || null;
+  } else {
+    const allDeals = ((await ydb.scanAll('deals', 300)) as any[]) || [];
+    targetDeal = allDeals.find(
+      (d: any) =>
+        String(d.lotCode || '').trim().toUpperCase() === targetCode ||
+        (targetLot && String(d.lotId || '').trim().toUpperCase() === String(targetLot.id).trim().toUpperCase())
+    );
+  }
   if (targetDeal) {
     if (winner) {
       targetDeal.buyerUserId = winner.userId;
@@ -205,7 +241,10 @@ async function syncLotAndDealAssignment(
 }
 
 async function unfreezeBuyerOtherApplications(ydb: any, userId: string, excludedAppId?: string): Promise<number> {
-  const allApps = ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[]) || [];
+  const allApps: BuyerApplication[] =
+    (ydb.isV2TablesEnabled?.()
+      ? await ydb.queryAllByIndex({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: userId, limit: 100 })
+      : ((await ydb.scanAll('buyer_applications', 500)) as BuyerApplication[])) || [];
   const otherWin = allApps.find(
     (a: BuyerApplication) =>
       a.userId === userId && a.id !== excludedAppId && (a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal')
@@ -428,26 +467,52 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
   // =========================================================================
   if (subPath === '/my-applications' && method === 'GET') {
     try {
-      const [buyBox, allApps, allLots, allDeals] = await Promise.all([
+      const [buyBox, myRawApps] = await Promise.all([
         getUnifiedBuyBox(ydb, authUser.id),
-        ydb.scanAll<BuyerApplication>('buyer_applications', 500),
-        ydb.scanAll<any>('lots', 500),
-        ydb.scanAll<any>('deals', 500),
+        ydb.isV2TablesEnabled()
+          ? ydb.queryAllByIndex<BuyerApplication>({
+              tableName: 'buyer_applications',
+              indexName: 'userId-createdAt-index',
+              hashKey: 'userId',
+              hashValue: authUser.id,
+              scanIndexForward: false,
+            })
+          : ydb.scanAll<BuyerApplication>('buyer_applications', 500),
       ]);
 
-      const lotMap = new Map<string, any>();
-      for (const l of allLots || []) {
-        if (l.lotCode) lotMap.set(String(l.lotCode).toUpperCase(), l);
-        if (l.id) lotMap.set(String(l.id).toUpperCase(), l);
-      }
-      const dealMap = new Map<string, any>();
-      for (const d of allDeals || []) {
-        if (d.lotCode) dealMap.set(String(d.lotCode).toUpperCase(), d);
-      }
-
-      const myApps = (allApps || [])
+      const myApps = (myRawApps || [])
         .filter((a) => a.userId === authUser.id)
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
+      const lotMap = new Map<string, any>();
+      const dealMap = new Map<string, any>();
+      if (ydb.isV2TablesEnabled()) {
+        const uniqueCodes = Array.from(new Set(myApps.map((a) => String(a.lotCode || '').trim()).filter(Boolean)));
+        const [resolvedLots, buyerDeals] = await Promise.all([
+          Promise.all(uniqueCodes.map((code) => findLotByCode(ydb, code).catch(() => null))),
+          ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'buyerId-createdAt-index', hashKey: 'buyerId', hashValue: authUser.id }),
+        ]);
+        for (const l of resolvedLots) {
+          if (!l) continue;
+          if (l.lotCode) lotMap.set(String(l.lotCode).toUpperCase(), l);
+          if (l.id) lotMap.set(String(l.id).toUpperCase(), l);
+        }
+        for (const d of buyerDeals || []) {
+          if (d.lotCode) dealMap.set(String(d.lotCode).toUpperCase(), d);
+        }
+      } else {
+        const [allLots, allDeals] = await Promise.all([
+          ydb.scanAll<any>('lots', 500),
+          ydb.scanAll<any>('deals', 500),
+        ]);
+        for (const l of allLots || []) {
+          if (l.lotCode) lotMap.set(String(l.lotCode).toUpperCase(), l);
+          if (l.id) lotMap.set(String(l.id).toUpperCase(), l);
+        }
+        for (const d of allDeals || []) {
+          if (d.lotCode) dealMap.set(String(d.lotCode).toUpperCase(), d);
+        }
+      }
 
       const enriched = myApps.map((app) => {
         const codeKey = String(app.lotCode || '').toUpperCase();
@@ -522,8 +587,19 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         });
       }
 
-      const allLots = await ydb.scanAll<any>('lots', 300);
-      const allMyApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 200);
+      const [allLots, allMyApps] = ydb.isV2TablesEnabled()
+        ? await Promise.all([
+            Promise.all(
+              ['available', 'in_deal', 'reserved', 'active'].map((st) =>
+                ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'status-publishedAt-index', hashKey: 'status', hashValue: st, scanIndexForward: false, limit: 200 })
+              )
+            ).then((chunks) => Array.from(new Map(chunks.flat().map((l: any) => [l.id, l])).values())),
+            ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: authUser.id }),
+          ])
+        : await Promise.all([
+            ydb.scanAll<any>('lots', 300),
+            ydb.scanAll<BuyerApplication>('buyer_applications', 200),
+          ]);
       const myAppsMap = new Map<string, BuyerApplication>();
       for (const a of allMyApps || []) {
         if (a.userId === authUser.id) {
@@ -823,8 +899,14 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
 
     // Check duplicate applications & strict 3-slot limit
-    const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 500);
-    const myApps = (allApps || []).filter((a) => a.userId === authUser.id);
+    const myApps = ydb.isV2TablesEnabled()
+      ? await ydb.queryAllByIndex<BuyerApplication>({
+          tableName: 'buyer_applications',
+          indexName: 'userId-createdAt-index',
+          hashKey: 'userId',
+          hashValue: authUser.id,
+        })
+      : ((await ydb.scanAll<BuyerApplication>('buyer_applications', 500)) || []).filter((a) => a.userId === authUser.id);
     const myActiveApps = myApps.filter((a) => isActiveApplication(a));
 
     const existingOnThisLot = myActiveApps.find(
@@ -848,7 +930,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     );
 
     // Check NDA signature
-    const allSigs = await ydb.scanAll<any>('pep_signatures', 200);
+    const allSigs = ydb.isV2TablesEnabled()
+      ? await ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'userId-signedAt-index', hashKey: 'userId', hashValue: authUser.id })
+      : await ydb.scanAll<any>('pep_signatures', 200);
     const ndaSig = (allSigs || []).find(
       (s) => s.lotCode === lotCode && s.userId === authUser.id && s.documentType === 'nda_viewing_act' && s.status === 'signed'
     );
@@ -978,11 +1062,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     await ydb.putItem('buyer_applications', newApp);
 
     // Sync active seat counter accurately on lot
-    const updatedLot = await syncLotDropSeats(
-      ydb,
-      lotCode,
-      [...(allApps || []).filter((a) => a.id !== appId), newApp]
-    );
+    const updatedLot = await syncLotDropSeats(ydb, lotCode);
 
     await recordJournalEvent({
       action: 'CREATE',
@@ -1032,17 +1112,44 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         });
       }
 
-      const [allApps, allUsers, allTierReqs, allPepSigs] = await Promise.all([
-        ydb.scanAll<BuyerApplication>('buyer_applications', 500),
-        ydb.scanAll<UserProfile>('users', 300),
-        ydb.scanAll<any>('tier_verification_requests', 200),
-        ydb.scanAll<any>('pep_signatures', 300),
-      ]);
-
       const upperLotCode = lotCode.toUpperCase();
-      const lotAllApps = (allApps || []).filter(
-        (a) => String(a.lotCode || '').trim().toUpperCase() === upperLotCode
-      );
+      let lotAllApps: BuyerApplication[] = [];
+      let allUsers: UserProfile[] = [];
+      let allTierReqs: any[] = [];
+      let allPepSigs: any[] = [];
+
+      if (ydb.isV2TablesEnabled()) {
+        const [appsByLot, pepByLot] = await Promise.all([
+          ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: upperLotCode, scanIndexForward: false }),
+          ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'dealId-signedAt-index', hashKey: 'dealId', hashValue: upperLotCode, scanIndexForward: false }),
+        ]);
+        lotAllApps = appsByLot;
+        allPepSigs = pepByLot;
+        const applicantIds = Array.from(new Set(lotAllApps.map((a) => a.userId).filter(Boolean)));
+        const [fetchedUsers, fetchedTiers] = await Promise.all([
+          Promise.all(applicantIds.map((uid) => ydb.getItem<UserProfile>('users', uid).catch(() => null))),
+          Promise.all(
+            applicantIds.map((uid) =>
+              ydb.queryAllByIndex<any>({ tableName: 'tier_verification_requests', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: uid, limit: 10 }).catch(() => [])
+            )
+          ),
+        ]);
+        allUsers = fetchedUsers.filter((u): u is UserProfile => Boolean(u));
+        allTierReqs = fetchedTiers.flat();
+      } else {
+        const [allAppsRaw, allUsersRaw, allTierReqsRaw, allPepSigsRaw] = await Promise.all([
+          ydb.scanAll<BuyerApplication>('buyer_applications', 500),
+          ydb.scanAll<UserProfile>('users', 300),
+          ydb.scanAll<any>('tier_verification_requests', 200),
+          ydb.scanAll<any>('pep_signatures', 300),
+        ]);
+        lotAllApps = (allAppsRaw || []).filter(
+          (a) => String(a.lotCode || '').trim().toUpperCase() === upperLotCode
+        );
+        allUsers = allUsersRaw || [];
+        allTierReqs = allTierReqsRaw || [];
+        allPepSigs = allPepSigsRaw || [];
+      }
 
       // Resolve LIVE Buy-Box for every unique applicant on this lot to avoid stale SLA/Tier mismatches
       const uniqueUserIds = Array.from(new Set(lotAllApps.map((a) => a.userId).filter(Boolean)));
@@ -1060,8 +1167,17 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       }
 
       const appCountByUser = new Map<string, number>();
-      for (const a of allApps || []) {
-        if (a.userId) appCountByUser.set(a.userId, (appCountByUser.get(a.userId) || 0) + 1);
+      if (ydb.isV2TablesEnabled()) {
+        await Promise.all(
+          uniqueUserIds.map(async (uid) => {
+            const uApps = await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: uid, limit: 50 }).catch(() => []);
+            appCountByUser.set(uid, uApps.length);
+          })
+        );
+      } else {
+        for (const a of lotAllApps || []) {
+          if (a.userId) appCountByUser.set(a.userId, (appCountByUser.get(a.userId) || 0) + 1);
+        }
       }
 
       const enrichApp = (a: BuyerApplication) => {
@@ -1190,8 +1306,11 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }>(event) || {};
 
     try {
-      const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 200);
-      const lotApps = (allApps || []).filter((a) => a.lotCode === lotCode);
+      const upperLotCode = lotCode.toUpperCase();
+      const lotAppsRaw = ydb.isV2TablesEnabled()
+        ? await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: upperLotCode })
+        : ((await ydb.scanAll<BuyerApplication>('buyer_applications', 200)) || []).filter((a) => a.lotCode === lotCode);
+      const lotApps = lotAppsRaw.filter((a) => String(a.lotCode || '').trim().toUpperCase() === upperLotCode);
 
       let p1Id = body.priority1AppId;
       if (!p1Id && body.priority1UserId) {
@@ -1218,10 +1337,13 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       if (!candidateP1) {
         return json(event, 404, { error: 'Выбранная заявка №1 не найдена в очереди этого лота' });
       }
-      const otherActiveWin = (allApps || []).find(
+      const winnerAllApps = ydb.isV2TablesEnabled()
+        ? await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: candidateP1.userId })
+        : lotAppsRaw;
+      const otherActiveWin = (winnerAllApps || []).find(
         (a) =>
           a.userId === candidateP1.userId &&
-          String(a.lotCode || '').toUpperCase() !== lotCode.toUpperCase() &&
+          String(a.lotCode || '').toUpperCase() !== upperLotCode &&
           (a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal')
       );
       if (candidateP1.queueStatus === 'standby_in_other_deal' || otherActiveWin) {
@@ -1277,7 +1399,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       // Freeze winning buyer's other active applications across all other lots -> standby_in_other_deal
       let frozenAppsCount = 0;
       if (priority1App) {
-        const otherAppsToFreeze = (allApps || []).filter(
+        const otherAppsToFreeze = (winnerAllApps || []).filter(
           (a) =>
             a.userId === priority1App!.userId &&
             String(a.lotCode || '').toUpperCase() !== lotCode.toUpperCase() &&
@@ -1305,38 +1427,10 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       // Atomically sync winning buyer to Lot and Deal
       if (priority1App) {
         try {
-          const allLots = await ydb.scanAll<any>('lots');
-          const targetLot = (allLots || []).find((l: any) =>
-            (l.lotCode && String(l.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
-            (l.id && String(l.id).trim().toUpperCase() === lotCode.toUpperCase())
-          );
-          if (targetLot) {
-            targetLot.buyerUserId = priority1App.userId;
-            targetLot.buyerName = priority1App.userName || targetLot.buyerName || 'Покупатель';
-            targetLot.status = 'in_deal';
-            targetLot.currentStage = 4;
-            targetLot.updatedAt = now.toISOString();
-            await ydb.putItem('lots', targetLot);
-            memoryCache.invalidate('lots');
-            appCache.invalidatePrefix('lots');
-            appCache.invalidatePrefix('lot:');
-
-            const allDeals = await ydb.scanAll<any>('deals');
-            let targetDeal = (allDeals || []).find((d: any) =>
-              (d.lotCode && String(d.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
-              (d.lotId && String(d.lotId).trim().toUpperCase() === String(targetLot.id).toUpperCase())
-            );
-            if (targetDeal) {
-              targetDeal.buyerUserId = priority1App.userId;
-              targetDeal.buyerName = priority1App.userName || targetDeal.buyerName || 'Покупатель';
-              targetDeal.stage = 'closing_escrow';
-              targetDeal.status = 'in_deal';
-              targetDeal.updatedAt = now.toISOString();
-              await ydb.putItem('deals', targetDeal);
-              memoryCache.invalidate('deals');
-              appCache.invalidatePrefix('deals');
-            }
-          }
+          await syncLotAndDealAssignment(ydb, lotCode, {
+            userId: priority1App.userId,
+            userName: priority1App.userName,
+          });
         } catch (lotSyncErr) {
           logger.warn('Failed to sync lot and deal for priority1 winner', { meta: { error: lotSyncErr, lotCode } });
         }
@@ -1384,8 +1478,10 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const reason = body.reason || 'passed';
 
     try {
-      const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 200);
-      const lotApps = (allApps || []).filter((a) => a.lotCode === lotCode);
+      const upperLotCode = lotCode.toUpperCase();
+      const lotApps = ydb.isV2TablesEnabled()
+        ? await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: upperLotCode })
+        : ((await ydb.scanAll<BuyerApplication>('buyer_applications', 200)) || []).filter((a) => a.lotCode === lotCode);
 
       let prevP1 = body.previousPriority1AppId
         ? lotApps.find((a) => a.id === body.previousPriority1AppId)
@@ -1410,40 +1506,33 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
       // Unfreeze prevP1's other applications if no longer in active deal
       if (prevP1) {
-        const frozenApps = (allApps || []).filter(
-          (a) =>
-            a.userId === prevP1!.userId &&
-            a.queueStatus === 'standby_in_other_deal' &&
-            String(a.lotCode || '').toUpperCase() !== lotCode.toUpperCase()
+        await unfreezeBuyerOtherApplications(ydb, prevP1.userId, prevP1.id);
+      }
+
+      const reserveUserIds = Array.from(
+        new Set(lotApps.filter((a) => a.queueStatus === 'reserve_2' || a.queueStatus === 'reserve_3').map((a) => a.userId).filter(Boolean))
+      );
+      const userAppsMap = new Map<string, BuyerApplication[]>();
+      if (ydb.isV2TablesEnabled()) {
+        await Promise.all(
+          reserveUserIds.map(async (uid) => {
+            const uApps = await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: uid });
+            userAppsMap.set(uid, uApps);
+          })
         );
-        if (frozenApps.length > 0) {
-          const prevBb = await getUnifiedBuyBox(ydb, prevP1.userId);
-          for (const fa of frozenApps) {
-            fa.queueStatus = 'pending_review';
-            fa.activeDealLotCode = undefined;
-            if (prevBb) {
-              const linkedLot = await findLotByCode(ydb, fa.lotCode);
-              if (linkedLot) {
-                const rescored = computeClosingScore(fa, prevBb, linkedLot);
-                fa.closingScore = rescored.closingScore;
-                fa.scoreBreakdown = rescored.breakdown;
-              }
-            }
-            fa.updatedAt = new Date().toISOString();
-            await ydb.putItem('buyer_applications', fa);
-          }
-        }
       }
 
       // Find eligible Reserve #2 (skipping buyers busy in another active deal)
-      const isBusyElsewhere = (cand: BuyerApplication) =>
-        cand.queueStatus === 'standby_in_other_deal' ||
-        (allApps || []).some(
+      const isBusyElsewhere = (cand: BuyerApplication) => {
+        if (cand.queueStatus === 'standby_in_other_deal') return true;
+        const pool = ydb.isV2TablesEnabled() ? (userAppsMap.get(cand.userId) || []) : lotApps;
+        return pool.some(
           (a) =>
             a.userId === cand.userId &&
-            String(a.lotCode || '').toUpperCase() !== lotCode.toUpperCase() &&
+            String(a.lotCode || '').toUpperCase() !== upperLotCode &&
             (a.queueStatus === 'priority_1' || a.queueStatus === 'in_deal')
         );
+      };
 
       const reserve2Candidate = lotApps.find((a) => a.queueStatus === 'reserve_2' && !isBusyElsewhere(a));
       const reserve3Candidate = lotApps.find((a) => a.queueStatus === 'reserve_3' && !isBusyElsewhere(a));
@@ -1462,10 +1551,14 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         await ydb.putItem('buyer_applications', reserve2);
 
         // Freeze newly promoted winner's other applications
-        const otherAppsToFreeze = (allApps || []).filter(
+        const reserve2Pool = ydb.isV2TablesEnabled()
+          ? (userAppsMap.get(reserve2.userId) ||
+            (await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: reserve2.userId })))
+          : lotApps;
+        const otherAppsToFreeze = reserve2Pool.filter(
           (a) =>
             a.userId === reserve2.userId &&
-            String(a.lotCode || '').toUpperCase() !== lotCode.toUpperCase() &&
+            String(a.lotCode || '').toUpperCase() !== upperLotCode &&
             isActiveApplication(a) &&
             a.queueStatus !== 'priority_1' &&
             a.queueStatus !== 'in_deal'
@@ -1499,58 +1592,11 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
       // Atomically sync promoted winner (or revert) to Lot and Deal
       try {
-        const allLots = await ydb.scanAll<any>('lots');
-        const targetLot = (allLots || []).find((l: any) =>
-          (l.lotCode && String(l.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
-          (l.id && String(l.id).trim().toUpperCase() === lotCode.toUpperCase())
+        await syncLotAndDealAssignment(
+          ydb,
+          lotCode,
+          reserve2 ? { userId: reserve2.userId, userName: reserve2.userName } : null
         );
-        const allDeals = await ydb.scanAll<any>('deals');
-        let targetDeal = (allDeals || []).find((d: any) =>
-          (d.lotCode && String(d.lotCode).trim().toUpperCase() === lotCode.toUpperCase()) ||
-          (targetLot && d.lotId && String(d.lotId).trim().toUpperCase() === String(targetLot.id).toUpperCase())
-        );
-
-        if (reserve2) {
-          if (targetLot) {
-            targetLot.buyerUserId = reserve2.userId;
-            targetLot.buyerName = reserve2.userName || targetLot.buyerName || 'Покупатель';
-            targetLot.status = 'in_deal';
-            targetLot.currentStage = 4;
-            targetLot.updatedAt = now.toISOString();
-            await ydb.putItem('lots', targetLot);
-          }
-          if (targetDeal) {
-            targetDeal.buyerUserId = reserve2.userId;
-            targetDeal.buyerName = reserve2.userName || targetDeal.buyerName || 'Покупатель';
-            targetDeal.stage = 'closing_escrow';
-            targetDeal.status = 'in_deal';
-            targetDeal.updatedAt = now.toISOString();
-            await ydb.putItem('deals', targetDeal);
-          }
-        } else {
-          // No reserves left - revert lot to available Stage 3
-          if (targetLot) {
-            targetLot.buyerUserId = null;
-            targetLot.buyerName = null;
-            targetLot.status = 'available';
-            targetLot.currentStage = 3;
-            targetLot.updatedAt = now.toISOString();
-            await ydb.putItem('lots', targetLot);
-          }
-          if (targetDeal) {
-            targetDeal.buyerUserId = null;
-            targetDeal.buyerName = null;
-            targetDeal.stage = 'buyer_matching';
-            targetDeal.status = 'active';
-            targetDeal.updatedAt = now.toISOString();
-            await ydb.putItem('deals', targetDeal);
-          }
-        }
-        memoryCache.invalidate('lots');
-        memoryCache.invalidate('deals');
-        appCache.invalidatePrefix('lots');
-        appCache.invalidatePrefix('lot:');
-        appCache.invalidatePrefix('deals');
       } catch (syncErr) {
         logger.warn('Failed to sync lot and deal on promote-next', { meta: { error: syncErr, lotCode } });
       }
@@ -1889,10 +1935,25 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
         // 2. Revert linked deal back to buyer_matching
         try {
-          const allDeals = await ydb.scanAll<any>('deals', 300);
-          const linkedDeal = (allDeals || []).find(
-            (d: any) => String(d.lotCode || '').toUpperCase() === String(app.lotCode || '').toUpperCase()
-          );
+          let linkedDeal: any = null;
+          if (ydb.isV2TablesEnabled()) {
+            const lotCodeUpper = String(app.lotCode || '').trim().toUpperCase();
+            const lotObj = lotCodeUpper ? await findLotByCode(ydb, lotCodeUpper) : null;
+            const candidates = await Promise.all([
+              ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'buyerId-createdAt-index', hashKey: 'buyerId', hashValue: app.userId }),
+              lotObj?.id
+                ? ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: String(lotObj.id) })
+                : Promise.resolve([]),
+            ]);
+            linkedDeal = candidates
+              .flat()
+              .find((d: any) => String(d.lotCode || '').toUpperCase() === lotCodeUpper);
+          } else {
+            const allDeals = await ydb.scanAll<any>('deals', 300);
+            linkedDeal = (allDeals || []).find(
+              (d: any) => String(d.lotCode || '').toUpperCase() === String(app.lotCode || '').toUpperCase()
+            );
+          }
           if (linkedDeal) {
             linkedDeal.buyerUserId = null;
             linkedDeal.buyerName = null;
@@ -1908,7 +1969,9 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         }
 
         // 3. Re-enable standby_in_other_deal applications and recalculate Closing Score with penalized SLA
-        const allUserApps = (await ydb.scanAll<BuyerApplication>('buyer_applications', 500)) || [];
+        const allUserApps = ydb.isV2TablesEnabled()
+          ? await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: app.userId })
+          : (await ydb.scanAll<BuyerApplication>('buyer_applications', 500)) || [];
         const frozenApps = allUserApps.filter(
           (a) =>
             a.userId === app.userId &&
@@ -2087,10 +2150,18 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         return json(event, 400, { error: 'Нельзя выбрать победителем архивную или отклонённую заявку' });
       }
 
-      const allApps = ((await ydb.scanAll<BuyerApplication>('buyer_applications', 500)) || []);
       const upperCode = String(lotCode).trim().toUpperCase();
+      const [userApps, lotApps] = ydb.isV2TablesEnabled()
+        ? await Promise.all([
+            ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: app.userId }),
+            ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: upperCode }),
+          ])
+        : await Promise.all([
+            ydb.scanAll<BuyerApplication>('buyer_applications', 500).then((xs) => xs || []),
+            Promise.resolve([] as BuyerApplication[]),
+          ]);
 
-      const otherActiveWin = allApps.find(
+      const otherActiveWin = userApps.find(
         (a) =>
           a.userId === app.userId &&
           String(a.lotCode || '').trim().toUpperCase() !== upperCode &&
@@ -2105,7 +2176,8 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
         });
       }
 
-      const existingLotWinner = allApps.find(
+      const existingLotPool = ydb.isV2TablesEnabled() ? lotApps : userApps;
+      const existingLotWinner = existingLotPool.find(
         (a) =>
           a.id !== app.id &&
           String(a.lotCode || '').trim().toUpperCase() === upperCode &&
@@ -2142,7 +2214,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
       // Freeze winning buyer's applications on OTHER lots
       let frozenAppsCount = 0;
-      const otherAppsToFreeze = allApps.filter(
+      const otherAppsToFreeze = userApps.filter(
         (a) =>
           a.userId === app.userId &&
           String(a.lotCode || '').trim().toUpperCase() !== upperCode &&
@@ -2414,22 +2486,22 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const bankOfficerName = body?.bankOfficerName || authUser.name || authUser.email || 'Куратор DomExit';
 
     try {
-      const allDeals = await ydb.scanAll<any>('deals', 500);
-      const deal = (allDeals || []).find(
-        (d: any) => d.id === dealId || d.dealId === dealId
-      );
+      let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
+      if (!deal) {
+        const allDeals = await ydb.scanAll<any>('deals', 500);
+        deal = (allDeals || []).find(
+          (d: any) => d.id === dealId || d.dealId === dealId
+        );
+      }
       if (!deal) {
         return json(event, 404, { error: `Сделка ${dealId} не найдена` });
       }
 
       const targetLotCode = String(deal.lotCode || '').trim();
       const targetLotId = String(deal.lotId || '').trim();
-      const allLots = await ydb.scanAll<any>('lots', 500);
-      const lot = (allLots || []).find(
-        (l: any) =>
-          (targetLotCode && String(l.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase()) ||
-          (targetLotId && String(l.id || '').trim().toUpperCase() === targetLotId.toUpperCase())
-      );
+      const lot =
+        (targetLotId ? await ydb.getItem<any>('lots', targetLotId).catch(() => null) : null) ||
+        (targetLotCode ? await findLotByCode(ydb, targetLotCode) : null);
 
       if (!isEmployeeAssignedToRecord(authUser, lot || deal)) {
         return json(event, 403, {
@@ -2473,14 +2545,16 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       }
 
       // 3. Update Buyer Applications + Unfreeze Standby + +5 SLA & completedDealsCount
-      const allApps = await ydb.scanAll<BuyerApplication>('buyer_applications', 1000);
+      const lotApps = ydb.isV2TablesEnabled() && targetLotCode
+        ? await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'lotId-createdAt-index', hashKey: 'lotId', hashValue: targetLotCode.toUpperCase() })
+        : (await ydb.scanAll<BuyerApplication>('buyer_applications', 1000)) || [];
       const winnerUserIds = new Set<string>();
       if (deal.buyerId) winnerUserIds.add(String(deal.buyerId));
 
       let closedApplicationsCount = 0;
       let unfrozenApplicationsCount = 0;
 
-      for (const app of allApps || []) {
+      for (const app of lotApps) {
         const sameLot =
           targetLotCode && String(app.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase();
         if (!sameLot) continue;
@@ -2516,7 +2590,10 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
           await syncBuyBoxAndUser(ydb, winnerUid, bb);
         }
 
-        const frozenApps = (allApps || []).filter(
+        const winnerApps = ydb.isV2TablesEnabled()
+          ? await ydb.queryAllByIndex<BuyerApplication>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: winnerUid })
+          : lotApps;
+        const frozenApps = (winnerApps || []).filter(
           (a) =>
             String(a.userId) === winnerUid &&
             a.queueStatus === 'standby_in_other_deal' &&
@@ -2526,9 +2603,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
           fa.queueStatus = 'pending_review';
           fa.activeDealLotCode = undefined;
           if (bb) {
-            const linkedLot = (allLots || []).find(
-              (l: any) => String(l.lotCode || '').trim().toUpperCase() === String(fa.lotCode || '').trim().toUpperCase()
-            );
+            const linkedLot = await findLotByCode(ydb, fa.lotCode);
             if (linkedLot) {
               const rescored = computeClosingScore(fa, bb, linkedLot);
               fa.closingScore = rescored.closingScore;
@@ -2542,7 +2617,10 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       }
 
       // 4. Update Seller Requests
-      const allRequests = await ydb.scanAll<any>('seller_requests', 500);
+      const sellerUidForReqs = deal.sellerUserId || deal.sellerId || lot?.sellerUserId || lot?.sellerId;
+      const allRequests = ydb.isV2TablesEnabled() && sellerUidForReqs
+        ? await ydb.queryAllByIndex<any>({ tableName: 'seller_requests', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: String(sellerUidForReqs) })
+        : await ydb.scanAll<any>('seller_requests', 500);
       for (const reqItem of allRequests || []) {
         const matchesReq =
           (targetLotCode && String(reqItem.lotCode || '').trim().toUpperCase() === targetLotCode.toUpperCase()) ||
@@ -2648,8 +2726,11 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       return json(event, 400, { error: 'Укажите title и assignee (seller|buyer)' });
     }
 
-    const allDeals = await ydb.scanAll<any>('deals', 500);
-    const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
+    if (!deal) {
+      const allDeals = await ydb.scanAll<any>('deals', 500);
+      deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    }
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }
@@ -2704,8 +2785,11 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       note?: string;
     }>(event);
 
-    const allDeals = await ydb.scanAll<any>('deals', 500);
-    const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
+    if (!deal) {
+      const allDeals = await ydb.scanAll<any>('deals', 500);
+      deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    }
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }
@@ -2764,8 +2848,11 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const dealId = decodeURIComponent(approveTaskMatch[1]);
     const taskId = decodeURIComponent(approveTaskMatch[2]);
 
-    const allDeals = await ydb.scanAll<any>('deals', 500);
-    const deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
+    if (!deal) {
+      const allDeals = await ydb.scanAll<any>('deals', 500);
+      deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
+    }
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }

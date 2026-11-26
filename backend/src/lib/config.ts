@@ -1,24 +1,40 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// If running locally and env vars are not set, attempt loading from .env.cloud.local
-if (!process.env.YC_ACCESS_KEY_ID) {
+// If running locally and env vars are not set, attempt loading from .env.cloud.local and .env.backend.local
+const loadEnvFile = (fileName: string) => {
   try {
-    const envPath = path.resolve(process.cwd(), '.env.cloud.local');
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, 'utf-8');
-      for (const line of content.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const [k, ...vParts] = trimmed.split('=');
-        if (k && !process.env[k]) {
-          process.env[k] = vParts.join('=');
+    const candidates = [
+      path.resolve(process.cwd(), fileName),
+      path.resolve(process.cwd(), '..', fileName),
+    ];
+    for (const envPath of candidates) {
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf-8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx <= 0) continue;
+          const k = trimmed.slice(0, eqIdx).trim();
+          const v = trimmed.slice(eqIdx + 1).trim();
+          if (k && !process.env[k]) {
+            process.env[k] = v;
+          }
         }
+        break;
       }
     }
   } catch {
     // Ignore in production cloud function
   }
+};
+
+if (!process.env.YC_ACCESS_KEY_ID) {
+  loadEnvFile('.env.cloud.local');
+}
+if (!process.env.DADATA_API_KEY || !process.env.DADATA_SECRET_KEY) {
+  loadEnvFile('.env.backend.local');
 }
 
 export interface BackendConfig {
@@ -42,6 +58,8 @@ export interface BackendConfig {
   TELEGRAM_WEBHOOK_SECRET?: string;
   TELEGRAM_API_BASE_URL?: string;
   DADATA_API_KEY?: string;
+  DADATA_SECRET_KEY?: string;
+  YDB_USE_V2_TABLES?: boolean;
   EMAIL_PROVIDER?: 'postbox' | 'smtp' | 'console';
   POSTBOX_SMTP_HOST?: string;
   POSTBOX_SMTP_PORT?: number;
@@ -112,6 +130,8 @@ export function getConfig(): BackendConfig {
       '',
     TELEGRAM_API_BASE_URL: process.env.TELEGRAM_API_BASE_URL || '',
     DADATA_API_KEY: process.env.DADATA_API_KEY || '',
+    DADATA_SECRET_KEY: process.env.DADATA_SECRET_KEY || '',
+    YDB_USE_V2_TABLES: process.env.YDB_USE_V2_TABLES === 'true',
     EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER as any) || (process.env.POSTBOX_SMTP_USER ? 'postbox' : 'console'),
     POSTBOX_SMTP_HOST: process.env.POSTBOX_SMTP_HOST || 'postbox.cloud.yandex.net',
     POSTBOX_SMTP_PORT: process.env.POSTBOX_SMTP_PORT ? Number(process.env.POSTBOX_SMTP_PORT) : 465,

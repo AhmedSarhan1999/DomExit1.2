@@ -37,7 +37,12 @@ const MAX_PROOF_SIZE = 15 * 1024 * 1024; // 15MB
 async function notifyStaff(text: string): Promise<void> {
   try {
     const ydb = getYdbClient();
-    const users = await ydb.scanAll<UserProfile>('users', 200);
+    const users = ydb.isV2TablesEnabled()
+      ? await Promise.all([
+          ydb.queryAllByIndex<UserProfile>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' }),
+          ydb.queryAllByIndex<UserProfile>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'employee' }),
+        ]).then(([o, e]) => [...o, ...e])
+      : await ydb.scanAll<UserProfile>('users', 200);
     const staff = (users || []).filter((u) => u.role === 'owner' || u.role === 'employee');
     for (const member of staff) {
       const binding = await findTelegramBindingByUser(member.id);
@@ -89,10 +94,19 @@ export async function handleTierVerification(
   // =========================================================================
   if (subPath === '/my' && method === 'GET') {
     try {
-      const allRequests = await ydb.scanAll<TierVerificationRequest>('tier_verification_requests', 200);
-      const userRequests = (allRequests || [])
-        .filter((r) => r.userId === authUser.id)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const userRequests = (
+        ydb.isV2TablesEnabled()
+          ? await ydb.queryAllByIndex<TierVerificationRequest>({
+              tableName: 'tier_verification_requests',
+              indexName: 'userId-createdAt-index',
+              hashKey: 'userId',
+              hashValue: authUser.id,
+              scanIndexForward: false,
+            })
+          : ((await ydb.scanAll<TierVerificationRequest>('tier_verification_requests', 200)) || []).filter(
+              (r) => r.userId === authUser.id
+            )
+      ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
       return json(event, 200, {
         ok: true,
@@ -158,8 +172,15 @@ export async function handleTierVerification(
       }
 
       // Check if user already has a pending request
-      const allRequests = await ydb.scanAll<TierVerificationRequest>('tier_verification_requests', 200);
-      const existingPending = (allRequests || []).find(
+      const userRequests = ydb.isV2TablesEnabled()
+        ? await ydb.queryAllByIndex<TierVerificationRequest>({
+            tableName: 'tier_verification_requests',
+            indexName: 'userId-createdAt-index',
+            hashKey: 'userId',
+            hashValue: authUser.id,
+          })
+        : await ydb.scanAll<TierVerificationRequest>('tier_verification_requests', 200);
+      const existingPending = (userRequests || []).find(
         (r) => r.userId === authUser.id && r.status === 'pending'
       );
       if (existingPending) {
@@ -235,14 +256,26 @@ export async function handleTierVerification(
     const limit = Math.min(100, Math.max(1, parseInt(query['limit'] || '25', 10) || 25));
 
     try {
-      const allRequests = await ydb.scanAll<TierVerificationRequest>('tier_verification_requests', 500);
-
-      const filtered = (allRequests || []).filter((r) => {
+      let filtered: TierVerificationRequest[] = [];
+      if (ydb.isV2TablesEnabled()) {
         if (statusParam === 'archive') {
-          return r.status === 'approved' || r.status === 'rejected';
+          const [approved, rejected] = await Promise.all([
+            ydb.queryAllByIndex<TierVerificationRequest>({ tableName: 'tier_verification_requests', indexName: 'status-createdAt-index', hashKey: 'status', hashValue: 'approved', scanIndexForward: false }),
+            ydb.queryAllByIndex<TierVerificationRequest>({ tableName: 'tier_verification_requests', indexName: 'status-createdAt-index', hashKey: 'status', hashValue: 'rejected', scanIndexForward: false }),
+          ]);
+          filtered = [...approved, ...rejected];
+        } else {
+          filtered = await ydb.queryAllByIndex<TierVerificationRequest>({ tableName: 'tier_verification_requests', indexName: 'status-createdAt-index', hashKey: 'status', hashValue: 'pending', scanIndexForward: false });
         }
-        return r.status === 'pending';
-      });
+      } else {
+        const allRequests = await ydb.scanAll<TierVerificationRequest>('tier_verification_requests', 500);
+        filtered = (allRequests || []).filter((r) => {
+          if (statusParam === 'archive') {
+            return r.status === 'approved' || r.status === 'rejected';
+          }
+          return r.status === 'pending';
+        });
+      }
 
       // Sort: Pending -> oldest first or newest first; Archive -> newest reviewed first
       if (statusParam === 'archive') {

@@ -46,9 +46,11 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
     let signatureRecord: any = null;
 
     try {
-      const allSigs = await ydb.scanAll('pep_signatures', 300);
+      const userSigs = ydb.isV2TablesEnabled()
+        ? await ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'userId-signedAt-index', hashKey: 'userId', hashValue: authUser.id })
+        : await ydb.scanAll('pep_signatures', 300);
       signatureRecord =
-        allSigs.find(
+        userSigs.find(
           (s: any) =>
             s.userId === authUser.id &&
             s.lotCode === lotCode &&
@@ -419,7 +421,12 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
 
     // Notify staff when buyer/seller signs deal PEP documents
     try {
-      const users = await ydb.scanAll<any>('users', 200);
+      const users = ydb.isV2TablesEnabled()
+        ? await Promise.all([
+            ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' }),
+            ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'employee' }),
+          ]).then(([o, e]) => [...o, ...e])
+        : await ydb.scanAll<any>('users', 200);
       const staffIds = (users || [])
         .filter((u: any) => u.role === 'owner' || u.role === 'employee')
         .map((u: any) => u.id);
@@ -448,10 +455,21 @@ export async function handlePep(event: YcHttpEvent, subPath: string): Promise<Yc
     const isStaff = authUser.role === 'owner' || authUser.role === 'employee';
     const filterLotCode = event.queryStringParameters?.lotCode?.trim();
 
-    const allSigs = await ydb.scanAll('pep_signatures', 500);
-    let visible = isStaff
-      ? allSigs
-      : allSigs.filter((s: any) => s.userId === authUser.id);
+    let visible: any[] = [];
+    if (ydb.isV2TablesEnabled()) {
+      if (!isStaff) {
+        visible = await ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'userId-signedAt-index', hashKey: 'userId', hashValue: authUser.id, scanIndexForward: false });
+      } else if (filterLotCode) {
+        visible = await ydb.queryAllByIndex<any>({ tableName: 'pep_signatures', indexName: 'dealId-signedAt-index', hashKey: 'dealId', hashValue: filterLotCode, scanIndexForward: false });
+      } else {
+        visible = await ydb.scanAll('pep_signatures', 500);
+      }
+    } else {
+      const allSigs = await ydb.scanAll('pep_signatures', 500);
+      visible = isStaff
+        ? allSigs
+        : allSigs.filter((s: any) => s.userId === authUser.id);
+    }
 
     if (filterLotCode) {
       visible = visible.filter((s: any) => s.lotCode === filterLotCode);

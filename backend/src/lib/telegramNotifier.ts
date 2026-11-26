@@ -14,7 +14,9 @@ function formatPrice(val: any): string {
 async function getOwnerChatIds(): Promise<string[]> {
   try {
     const ydb = getYdbClient();
-    const users = await ydb.scanAll('users', 200);
+    const users = ydb.isV2TablesEnabled()
+      ? await ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' })
+      : await ydb.scanAll('users', 200);
     const owners = users.filter((u: any) => u.role === 'owner' || u.activeRole === 'owner');
     const chatIds: string[] = [];
 
@@ -37,7 +39,12 @@ async function getAssignedStaffChatIds(
 ): Promise<string[]> {
   try {
     const ydb = getYdbClient();
-    const users = await ydb.scanAll('users', 200);
+    const users = ydb.isV2TablesEnabled()
+      ? await Promise.all([
+          ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' }),
+          ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'employee' }),
+        ]).then(([o, e]) => [...o, ...e])
+      : await ydb.scanAll('users', 200);
     const targetId = String(assignedEmployeeId || '').trim();
     const recipients = users.filter((u: any) => {
       const isOwner = u.role === 'owner' || u.activeRole === 'owner';
@@ -66,11 +73,19 @@ async function resolveLotAssignedEmployeeId(lotCode?: string): Promise<string | 
   if (!lotCode) return undefined;
   try {
     const ydb = getYdbClient();
-    const allLots = await ydb.scanAll<any>('lots', 500);
     const clean = String(lotCode).trim().toUpperCase();
-    const lot = (allLots || []).find(
-      (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === clean
-    );
+    let lot: any = null;
+    if (ydb.isV2TablesEnabled()) {
+      lot =
+        (await ydb.getItem<any>('lots', String(lotCode).trim()).catch(() => null)) ||
+        (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: clean, limit: 5 }))[0] ||
+        null;
+    } else {
+      const allLots = await ydb.scanAll<any>('lots', 500);
+      lot = (allLots || []).find(
+        (l: any) => String(l.lotCode || l.id || '').trim().toUpperCase() === clean
+      );
+    }
     return lot?.assignedEmployeeId || lot?.assignedCuratorId || undefined;
   } catch {
     return undefined;

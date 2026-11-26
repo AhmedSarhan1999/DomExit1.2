@@ -24,14 +24,24 @@ if (!fs.existsSync(ENV_PATH)) {
 }
 
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));
-const envContent = fs.readFileSync(ENV_PATH, 'utf-8');
 const envVars = {};
-for (const line of envContent.split('\n')) {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith('#')) continue;
-  const [k, ...vParts] = trimmed.split('=');
-  envVars[k] = vParts.join('=');
-}
+const loadEnvFile = (filePath) => {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, 'utf-8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx <= 0) continue;
+    const k = trimmed.slice(0, eqIdx).trim();
+    const v = trimmed.slice(eqIdx + 1).trim();
+    if (k && envVars[k] === undefined) {
+      envVars[k] = v;
+    }
+  }
+};
+loadEnvFile(ENV_PATH);
+loadEnvFile(path.join(ROOT_DIR, '.env.backend.local'));
 
 const saId = manifest.runtimeServiceAccount?.id || envVars.YC_SERVICE_ACCOUNT_ID;
 if (!saId) {
@@ -145,6 +155,9 @@ const envMap = {
   MAX_BOT_USERNAME: envVars.MAX_BOT_USERNAME || '',
   MAX_WEBHOOK_SECRET: envVars.MAX_WEBHOOK_SECRET || '',
   MAX_API_BASE_URL: envVars.MAX_API_BASE_URL || 'https://api.max-messenger.ru/bot/v1',
+  DADATA_API_KEY: envVars.DADATA_API_KEY || '',
+  DADATA_SECRET_KEY: envVars.DADATA_SECRET_KEY || '',
+  YDB_USE_V2_TABLES: 'true',
 };
 
 // Build environment string without printing secrets to console

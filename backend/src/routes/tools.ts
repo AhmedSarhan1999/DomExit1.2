@@ -162,5 +162,110 @@ export async function handleTools(event: YcHttpEvent, subPath: string): Promise<
     return json(event, 200, result);
   }
 
+  // POST /api/tools/clean-address { address: string } (uses DaData Cleaner API with API Key + Secret Key)
+  if (subPath === '/clean-address' && method === 'POST') {
+    let body: any = {};
+    try {
+      body = event.body ? JSON.parse(event.body) : {};
+    } catch {
+      return json(event, 400, { error: 'Некорректный JSON' });
+    }
+    const address = String(body.address || '').trim();
+    if (!address) {
+      return json(event, 400, { error: 'Укажите параметр address' });
+    }
+
+    const quotaRes = await consumeQuota({
+      scope: 'tools_clean_address',
+      actorKey: authUser.id,
+      limit: 60,
+      windowSec: 3600,
+    });
+    if (!quotaRes.allowed) {
+      return json(
+        event,
+        429,
+        {
+          error: 'Превышен лимит запросов стандартизации адреса (максимум 60 в час).',
+          retryAfter: quotaRes.retryAfterSec,
+        },
+        { extraHeaders: { 'Retry-After': String(quotaRes.retryAfterSec) } }
+      );
+    }
+
+    const cacheKey = `clean_address:${address.toLowerCase()}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) {
+      return json(event, 200, { ...cached, cached: true });
+    }
+
+    const cfg = getConfig();
+    const dadataApiKey = (process.env.DADATA_API_KEY || cfg.DADATA_API_KEY || '').trim();
+    const dadataSecretKey = (process.env.DADATA_SECRET_KEY || cfg.DADATA_SECRET_KEY || '').trim();
+
+    if (!dadataApiKey || !dadataSecretKey) {
+      return json(event, 200, {
+        ok: true,
+        dadataConfigured: false,
+        source: 'local_unstandardized',
+        address,
+        cleaned: null,
+      });
+    }
+
+    let cleaned: any = null;
+    let dadataError: string | null = null;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const response = await fetch('https://cleaner.dadata.ru/api/v1/clean/address', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Token ${dadataApiKey}`,
+          'X-Secret': dadataSecretKey,
+        },
+        body: JSON.stringify([address]),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const resJson: any = await response.json();
+        const first = Array.isArray(resJson) ? resJson[0] : null;
+        if (first) {
+          cleaned = {
+            result: first.result || null,
+            region: first.region_with_type || first.region || null,
+            city: first.city_with_type || first.city || first.settlement_with_type || null,
+            postalCode: first.postal_code || null,
+            fiasId: first.fias_id || null,
+            geoLat: first.geo_lat || null,
+            geoLon: first.geo_lon || null,
+            qcGeo: first.qc_geo ?? null,
+          };
+        }
+      } else {
+        dadataError = `DaData HTTP ${response.status}`;
+      }
+    } catch (err: any) {
+      dadataError = err.name === 'AbortError' ? 'Timeout 3.5s exceeded' : err.message;
+    }
+
+    const result = {
+      ok: true,
+      dadataConfigured: true,
+      dadataError,
+      source: cleaned ? 'dadata_cleaner' : 'dadata_unavailable',
+      address,
+      cleaned,
+    };
+    if (cleaned) {
+      memoryCache.set(cacheKey, result, 3600);
+    }
+    return json(event, 200, result);
+  }
+
   return json(event, 404, { error: `Endpoint /api/tools${subPath} не найден` });
 }

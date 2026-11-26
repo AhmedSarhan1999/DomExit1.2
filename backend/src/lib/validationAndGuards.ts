@@ -513,8 +513,16 @@ export async function validateCollectionPayload(params: {
     // Server-side YDB existence check
     let lot = await ydb.getItem('lots', lotCode);
     if (!lot) {
-      const allLots = await ydb.scanAll('lots', 500);
-      lot = allLots.find((l: any) => l.lotCode === lotCode || l.id === lotCode || l.code === lotCode);
+      if (ydb.isV2TablesEnabled()) {
+        const clean = String(lotCode).trim();
+        lot =
+          (await ydb.queryAllByIndex({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: clean, limit: 5 }))[0] ||
+          (await ydb.queryAllByIndex({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: clean.toUpperCase(), limit: 5 }))[0] ||
+          null;
+      } else {
+        const allLots = await ydb.scanAll('lots', 500);
+        lot = allLots.find((l: any) => l.lotCode === lotCode || l.id === lotCode || l.code === lotCode);
+      }
     }
 
     if (!lot) {
@@ -537,8 +545,10 @@ export async function validateCollectionPayload(params: {
 
     // Duplicate Bid Guard for clients on POST
     if (!isStaff && method === 'POST' && authUser) {
-      const allBids = await ydb.scanAll('buyer_applications', 500);
-      const existingActiveBid = allBids.find(
+      const userBids = ydb.isV2TablesEnabled()
+        ? await ydb.queryAllByIndex({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: authUser.id })
+        : await ydb.scanAll('buyer_applications', 500);
+      const existingActiveBid = userBids.find(
         (b: any) =>
           (b.userId === authUser.id || b.uid === authUser.id) &&
           (b.lotCode === lotCode || b.lotId === lotCode) &&

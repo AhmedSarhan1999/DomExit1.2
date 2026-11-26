@@ -174,10 +174,17 @@ export async function handleStorage(
     if (isStaff && !isOwner && lotCode) {
       let lotForStaff = await ydb.getItem('lots', lotCode);
       if (!lotForStaff) {
-        const allLots = await ydb.scanAll<any>('lots', 500);
-        lotForStaff = (allLots || []).find(
-          (l: any) => String(l.lotCode || l.id || '').toUpperCase() === String(lotCode).toUpperCase()
-        );
+        if (ydb.isV2TablesEnabled()) {
+          lotForStaff =
+            (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: String(lotCode).trim(), limit: 5 }))[0] ||
+            (await ydb.queryAllByIndex<any>({ tableName: 'lots', indexName: 'lotCode-index', hashKey: 'lotCode', hashValue: String(lotCode).trim().toUpperCase(), limit: 5 }))[0] ||
+            null;
+        } else {
+          const allLots = await ydb.scanAll<any>('lots', 500);
+          lotForStaff = (allLots || []).find(
+            (l: any) => String(l.lotCode || l.id || '').toUpperCase() === String(lotCode).toUpperCase()
+          );
+        }
       }
       if (lotForStaff && !isEmployeeAssignedToRecord(authUser, lotForStaff)) {
         return json(event, 403, {
@@ -225,12 +232,21 @@ export async function handleStorage(
         lot && (lot.sellerUserId === authUser.id || lot.sellerId === authUser.id);
 
       if (!isSeller) {
-        const [deals, apps, vaultDocs] = await Promise.all([
-          ydb.scanAll<any>('deals', 300),
-          ydb.scanAll<any>('buyer_applications', 500),
-          ydb.scanAll<any>('documents_vault', 300),
-        ]);
         const targetCode = String(lotCode).toUpperCase();
+        const [deals, apps, vaultDocs] = ydb.isV2TablesEnabled()
+          ? await Promise.all([
+              Promise.all([
+                ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'buyerId-createdAt-index', hashKey: 'buyerId', hashValue: authUser.id }),
+                ydb.queryAllByIndex<any>({ tableName: 'deals', indexName: 'sellerId-createdAt-index', hashKey: 'sellerId', hashValue: authUser.id }),
+              ]).then(([b, s]) => [...b, ...s]),
+              ydb.queryAllByIndex<any>({ tableName: 'buyer_applications', indexName: 'userId-createdAt-index', hashKey: 'userId', hashValue: authUser.id }),
+              ydb.queryAllByIndex<any>({ tableName: 'documents_vault', indexName: 'lotId-uploadedAt-index', hashKey: 'lotId', hashValue: targetCode }),
+            ])
+          : await Promise.all([
+              ydb.scanAll<any>('deals', 300),
+              ydb.scanAll<any>('buyer_applications', 500),
+              ydb.scanAll<any>('documents_vault', 300),
+            ]);
         const userDeal = (deals || []).find(
           (d: any) =>
             String(d.lotCode || d.lotId || '').toUpperCase() === targetCode &&
