@@ -184,6 +184,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
       storageKey: string;
       bucketType: string;
       publicUrl: string;
+      uploadHeaders?: Record<string, string>;
     }>('/api/storage/presign-upload', {
       scope: 'photo',
       purpose,
@@ -191,6 +192,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
       fileName,
       contentType,
       fileSize: file.size,
+      includeCacheControl: true,
     });
 
     if (!presignRes?.uploadUrl) {
@@ -201,6 +203,7 @@ class YandexS3CompatibleStorageService implements IStorageService {
       method: 'PUT',
       headers: {
         'Content-Type': contentType,
+        ...(presignRes.uploadHeaders || {}),
       },
       body: file,
     });

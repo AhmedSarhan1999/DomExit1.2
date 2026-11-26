@@ -66,6 +66,7 @@ export async function handleStorage(
       fileName?: string;
       contentType?: string;
       fileSize?: number;
+      includeCacheControl?: boolean;
     }>(event);
 
     const purpose = body?.purpose;
@@ -99,11 +100,13 @@ export async function handleStorage(
         purpose === 'avatar'
           ? `avatars/${authUser.id}/${uuid}-${safeName || 'avatar.webp'}`
           : `photos/${lotCode}/${uuid}-${safeName || 'photo.webp'}`;
+      const cacheControl = body?.includeCacheControl ? 'public, max-age=86400' : undefined;
       const uploadUrl = await createPresignedUploadUrl({
         bucket: cfg.S3_PUBLIC_BUCKET,
         key,
         contentType,
         expiresInSeconds: 300,
+        cacheControl,
       });
 
       const publicUrl = `${cfg.S3_ENDPOINT}/${cfg.S3_PUBLIC_BUCKET}/${key}`;
@@ -114,6 +117,14 @@ export async function handleStorage(
         storageKey: key,
         bucketType: 'public-photos',
         publicUrl,
+        ...(cacheControl
+          ? {
+              uploadHeaders: {
+                'Content-Type': contentType,
+                'Cache-Control': cacheControl,
+              },
+            }
+          : {}),
       });
     }
 

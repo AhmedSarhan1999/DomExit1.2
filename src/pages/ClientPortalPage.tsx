@@ -16,6 +16,7 @@ import { LegalPoliciesRepository } from '../dal/repositories/LegalPoliciesReposi
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { FileManager } from '../utils/fileManager';
+import { PortalTabSkeleton } from '../components/shared/Skeletons';
 
 // Modals
 import { DocumentVaultModal } from '../components/documents/DocumentVaultModal';
@@ -156,6 +157,7 @@ export const ClientPortalPage: React.FC = () => {
   const [sellerVaultDocs, setSellerVaultDocs] = useState<DocumentMetadata[]>([]);
   const [isSellerVaultOpen, setIsSellerVaultOpen] = useState<boolean>(false);
   const [isUploadingRequestedDoc, setIsUploadingRequestedDoc] = useState<boolean>(false);
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [curator, setCurator] = useState<Employee | null>(null);
 
   // Curator Chat Widget State
@@ -224,7 +226,8 @@ export const ClientPortalPage: React.FC = () => {
   };
 
   const loadData = async () => {
-    const uid = user?.id || '';
+    try {
+      const uid = user?.id || '';
     const clientCode = user?.clientCode || '';
     const partnerRefCode = user?.partnerRefCode || user?.referralCode || '';
     const partnerId = user?.partnerId || uid;
@@ -381,6 +384,9 @@ export const ClientPortalPage: React.FC = () => {
     // Favorites
     const favCodes = user?.favorites || [];
     setFavoriteLots(lotsData.filter((l) => favCodes.includes(l.lotCode)));
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -653,6 +659,10 @@ export const ClientPortalPage: React.FC = () => {
         )}
 
         {/* TAB 0: BUY-BOX & DETERMINISTIC QUEUE */}
+        {dataLoading ? (
+          <PortalTabSkeleton />
+        ) : (
+          <>
         {activeTab === 'buybox' && (
           <BuyerBuyBoxTab user={user} />
         )}
@@ -735,6 +745,8 @@ export const ClientPortalPage: React.FC = () => {
         {/* TAB 5: 152-FZ PROOF OF CONSENTS ARCHIVE */}
         {activeTab === 'consents' && (
           <ConsentsArchiveTab userConsents={userConsents} />
+        )}
+          </>
         )}
 
         {/* Section: My PEP Digital Signatures 63-FZ */}

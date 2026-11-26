@@ -133,6 +133,7 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
       });
     } else {
       logger.info(`${method} ${path} -> ${response.statusCode}`, {
+        event: 'HTTP_ACCESS',
         method,
         path,
         statusCode: response.statusCode,

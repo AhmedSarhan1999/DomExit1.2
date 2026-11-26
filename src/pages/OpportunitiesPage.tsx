@@ -10,7 +10,7 @@ import { LotCard } from '../components/catalog/LotCard';
 import { YandexCatalogMap } from '../components/maps/YandexCatalogMap';
 import { AdvancedFilterDrawer } from '../components/catalog/AdvancedFilterDrawer';
 import { QuickMatchModal } from '../components/catalog/QuickMatchModal';
-import { LotCardSkeleton } from '../components/common/Skeletons';
+import { LotCardSkeleton } from '../components/shared/Skeletons';
 import { useDebounce } from '../hooks/useDebounce';
 import { Link } from 'react-router-dom';
 import {

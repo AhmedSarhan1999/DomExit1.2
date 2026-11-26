@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Lot } from '../../types';
 import { formatRubles, formatPercent } from '../../utils/formatters';
@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { resolveLotGeoDetails } from '../../data/russianGeography';
 import { ShieldCheck, Flame, ArrowRight, Heart, MapPin, TrainFront, Building2 } from 'lucide-react';
 import { LotThumbnail } from '../shared/LotThumbnail';
+import { apiClient } from '../../services/apiClient';
 
 interface LotCardProps {
   lot: Lot;
@@ -19,6 +20,29 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
   const { language, t } = useLanguage();
   const { isFavorite, toggleFavorite } = useAuth();
   const favorited = isFavorite(lot.lotCode);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (prefetchTimerRef.current) {
+        clearTimeout(prefetchTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleMouseEnter = () => {
+    if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = setTimeout(() => {
+      apiClient.prefetchLot(lot.lotCode || lot.id);
+    }, 150);
+  };
+
+  const handleMouseLeave = () => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  };
 
   const geo = resolveLotGeoDetails(lot);
   const primaryMetro = geo.metroStations[0];
@@ -46,7 +70,11 @@ export const LotCardComponent: React.FC<LotCardProps> = ({ lot }) => {
     : '';
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
+    <div
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group"
+    >
       
       {/* Top Image Container */}
       <div className="relative h-56 overflow-hidden bg-slate-100 aspect-[16/9]">

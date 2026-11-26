@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { UserProfile, YcHttpEvent, YcHttpResponse } from '../types.js';
 import { json, notModified, normalizeHeaders, parseBody, getClientIp } from '../lib/http.js';
 import { getYdbClient } from '../lib/ydbClient.js';
-import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
+import { getAuthenticatedUser, invalidateAuthUserCache } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
 import { deleteS3ObjectsByPrefix } from '../lib/s3Client.js';
 import { memoryCache, CACHEABLE_COLLECTIONS } from '../lib/memoryCache.js';
@@ -212,6 +212,80 @@ export function projectLotForCard(lot: Record<string, any>): Record<string, any>
     createdAt: lot.createdAt,
     updatedAt: lot.updatedAt,
     assignedEmployeeId: lot.assignedEmployeeId,
+  };
+}
+
+export function projectLotForAdminSummary(lot: Record<string, any>): Record<string, any> {
+  const card = projectLotForCard(lot);
+  const firstPhoto = card.imageUrl || (Array.isArray(card.photos) && card.photos[0]) || '';
+  return {
+    ...card,
+    photos: firstPhoto ? [firstPhoto] : [],
+    images: firstPhoto ? [firstPhoto] : [],
+    curatorApprovedImages: firstPhoto ? [firstPhoto] : [],
+    approvedGalleryImages: firstPhoto ? [firstPhoto] : [],
+    assignedCuratorId: lot.assignedCuratorId,
+    curator: lot.curator ? { id: lot.curator.id, name: lot.curator.name, phone: lot.curator.phone } : undefined,
+    sellerId: lot.sellerId,
+    sellerUserId: lot.sellerUserId,
+    sellerClientCode: lot.sellerClientCode,
+    sellerName: lot.sellerName,
+    sellerPhone: lot.sellerPhone,
+    sellerEmail: lot.sellerEmail,
+    approvalNote: lot.approvalNote,
+    rejectionReason: lot.rejectionReason,
+    additionalDocsRequested: lot.additionalDocsRequested,
+    viewsCount: lot.viewsCount ?? lot.views ?? 0,
+    views: lot.views ?? lot.viewsCount ?? 0,
+  };
+}
+
+export function projectDealForAdminSummary(deal: Record<string, any>): Record<string, any> {
+  const ew = deal.escrowWorkflow;
+  return {
+    id: deal.id,
+    dealId: deal.dealId || deal.id,
+    lotCode: deal.lotCode,
+    lotId: deal.lotId,
+    complexName: deal.complexName,
+    city: deal.city,
+    district: deal.district,
+    stage: deal.stage,
+    status: deal.status,
+    assignedEmployeeId: deal.assignedEmployeeId,
+    curatorName: deal.curatorName,
+    sellerId: deal.sellerId,
+    sellerUserId: deal.sellerUserId,
+    sellerClientCode: deal.sellerClientCode,
+    sellerName: deal.sellerName,
+    buyerId: deal.buyerId,
+    buyerUserId: deal.buyerUserId,
+    buyerName: deal.buyerName,
+    buyerClientCode: deal.buyerClientCode,
+    partnerId: deal.partnerId,
+    partnerRefCode: deal.partnerRefCode,
+    referredByPartnerId: deal.referredByPartnerId,
+    referredByPartnerCode: deal.referredByPartnerCode,
+    sellerReturnRub: deal.sellerReturnRub,
+    dduContractPrice: deal.dduContractPrice,
+    commissionRub: deal.commissionRub,
+    closingStep: deal.closingStep,
+    escrowWorkflow: ew
+      ? {
+          step: ew.step,
+          bankName: ew.bankName,
+          depositedAmountRub: ew.depositedAmountRub,
+          curatorHandoverAt: ew.curatorHandoverAt,
+          closingCompletedAt: ew.closingCompletedAt,
+          signingProofPhotosCount: Array.isArray(ew.signingProofPhotos) ? ew.signingProofPhotos.length : 0,
+          signingProofVideosCount: Array.isArray(ew.signingProofVideos) ? ew.signingProofVideos.length : 0,
+        }
+      : undefined,
+    createdDate: deal.createdDate,
+    updatedDate: deal.updatedDate,
+    createdAt: deal.createdAt,
+    updatedAt: deal.updatedAt,
+    closedAt: deal.closedAt,
   };
 }
 
@@ -828,6 +902,11 @@ export async function handleData(
         });
       }
 
+      const fields = event.queryStringParameters?.fields;
+      if (collection === 'deals' && fields === 'summary') {
+        visibleItems = visibleItems.map(projectDealForAdminSummary);
+      }
+
       if (isPaginated) {
         return json(event, 200, applyPaginationAndFilters(visibleItems, event.queryStringParameters));
       }
@@ -1088,12 +1167,17 @@ export async function handleData(
         }
 
         const sliced = matching.slice(offset, offset + limit);
-        const finalItems = fields === 'card' ? sliced.map(projectLotForCard) : sliced;
+        const finalItems =
+          fields === 'card'
+            ? sliced.map(projectLotForCard)
+            : fields === 'summary'
+            ? sliced.map(projectLotForAdminSummary)
+            : sliced;
         const hasMore = offset + limit < totalMatching;
         const nextCursor = hasMore ? encodeCursor(offset + limit) : null;
 
         let responsePayload: any;
-        if (cursor !== undefined || (isPaginated && fields === 'card')) {
+        if (cursor !== undefined || (isPaginated && (fields === 'card' || fields === 'summary'))) {
           responsePayload = {
             items: finalItems,
             nextCursor,
@@ -1125,8 +1209,9 @@ export async function handleData(
           };
         } else {
           // Backward compatible safety cap (max 100)
+          const rawItems = fields === 'summary' ? sanitized.map(projectLotForAdminSummary) : sanitized;
           responsePayload = {
-            items: sanitized.slice(0, 100),
+            items: rawItems.slice(0, 100),
           };
         }
 
@@ -1510,6 +1595,9 @@ export async function handleData(
       }
 
       await ydb.putItem(collection, itemToSave);
+      if (collection === 'users') {
+        invalidateAuthUserCache(itemToSave.id || docId);
+      }
 
       const safeItem = { ...itemToSave };
       if (collection === 'users') {
@@ -1623,6 +1711,7 @@ export async function handleData(
               }
               // STRICTLY preserve passwordHash!
               await ydb.putItem('users', targetUser);
+              invalidateAuthUserCache(targetUser.id);
             }
           } catch (uErr) {
             console.warn('[data] Non-fatal user role update on partner approval:', uErr);
@@ -1631,6 +1720,9 @@ export async function handleData(
       }
 
       await ydb.putItem(collection, itemToSave);
+      if (collection === 'users') {
+        invalidateAuthUserCache(itemToSave.id || docId);
+      }
 
       // Record immutable journal event if collection is journaled
       await recordJournalEvent({
@@ -1890,6 +1982,9 @@ export async function handleData(
       }
 
       await ydb.putItem(collection, itemToSave);
+      if (collection === 'users') {
+        invalidateAuthUserCache(itemToSave.id || docId);
+      }
 
       // Record immutable journal event
       await recordJournalEvent({
@@ -2237,6 +2332,9 @@ export async function handleData(
       }
 
       await ydb.putItem(collection, itemToSave);
+      if (collection === 'users') {
+        invalidateAuthUserCache(itemToSave.id || docId);
+      }
       return json(event, 200, { success: true, item: itemToSave });
     }
 
@@ -2280,6 +2378,9 @@ export async function handleData(
     }
 
     await ydb.deleteItem(collection, id);
+    if (collection === 'users') {
+      invalidateAuthUserCache(id);
+    }
 
     // Invalidate cache
     memoryCache.invalidate(collection);

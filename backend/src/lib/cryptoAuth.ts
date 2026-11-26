@@ -3,6 +3,7 @@ import { AuthSessionPayload, UserProfile, YcHttpEvent } from '../types.js';
 import { normalizeHeaders, parseCookies } from './http.js';
 import { getConfig } from './config.js';
 import { getYdbClient } from './ydbClient.js';
+import { appCache } from './cache.js';
 
 export async function hashPassword(password: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -137,6 +138,17 @@ export function resetFailedLogin(key: string): void {
   loginAttempts.delete(key);
 }
 
+const AUTH_USER_CACHE_TTL_MS = 45_000;
+
+export function getAuthUserCacheKey(userId: string): string {
+  return `auth:user:${userId}`;
+}
+
+export function invalidateAuthUserCache(userId?: string | null): void {
+  if (!userId) return;
+  appCache.delete(getAuthUserCacheKey(userId));
+}
+
 export async function getAuthenticatedUser(event: YcHttpEvent): Promise<UserProfile | null> {
   const cookies = parseCookies(event);
   let token = cookies['domexit_session'];
@@ -154,9 +166,22 @@ export async function getAuthenticatedUser(event: YcHttpEvent): Promise<UserProf
   if (!payload?.userId) return null;
 
   try {
-    const ydb = getYdbClient();
-    const user = await ydb.getItem<UserProfile>('users', payload.userId);
-    if (!user) return null;
+    const cacheKey = getAuthUserCacheKey(payload.userId);
+    let user = appCache.get<UserProfile>(cacheKey);
+
+    if (!user) {
+      const ydb = getYdbClient();
+      user = await ydb.getItem<UserProfile>('users', payload.userId);
+      if (!user) return null;
+      appCache.set(cacheKey, user, AUTH_USER_CACHE_TTL_MS);
+    }
+
+    // Reject blocked or suspended accounts immediately even when served from cache
+    const uAny = user as any;
+    if (uAny.isBlocked === true || uAny.blocked === true || uAny.status === 'blocked') {
+      appCache.delete(cacheKey);
+      return null;
+    }
 
     // Verify token version for session invalidation (defaults to 1 if unset)
     const expectedTokenVersion = user.tokenVersion ?? 1;

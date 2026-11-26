@@ -5,6 +5,7 @@ import { PartnersRepository } from '../dal/repositories/PartnersRepository';
 import { LotsRepository } from '../dal/repositories/LotsRepository';
 import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { apiClient, ApiError } from '../services/apiClient';
+import { clientCache } from '../services/clientCache';
 import { swrCache } from '../dal/cache/SWRCache';
 
 type UserRole = 'buyer' | 'seller' | 'partner' | 'investor' | 'employee' | 'owner';
@@ -135,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(res.user);
       swrCache.clear();
+      clientCache.clear();
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -183,6 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(res.user);
       swrCache.clear();
+      clientCache.clear();
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -239,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setUser(null);
       swrCache.clear();
+      clientCache.clear();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('domexit:dal_updated'));
       }
@@ -257,6 +261,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       setUser((prev) => (prev ? { ...prev, activeRole: targetRole as any } : null));
       swrCache.clear();
+      clientCache.clear();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('domexit:dal_updated', {

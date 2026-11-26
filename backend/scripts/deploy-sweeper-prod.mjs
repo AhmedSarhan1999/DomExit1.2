@@ -84,8 +84,9 @@ try {
   console.log('✓ Created function domexit-sla-sweeper-prod (ID:', functionId + ')');
 }
 
-// 3. Deploy Function Version
-console.log('\n[3/4] Deploying function version for domexit-sla-sweeper-prod (512MB, 120s)...');
+// 3. Deploy Function Version (256MB default for lightweight JSON SLA sweeps; override via SWEEPER_MEMORY_MB)
+const sweeperMemory = process.env.SWEEPER_MEMORY_MB || '256m';
+console.log(`\n[3/4] Deploying function version for domexit-sla-sweeper-prod (${sweeperMemory}, 120s)...`);
 const envMap = {
   APP_ENV: 'production',
   YDB_DOCAPI_ENDPOINT: manifest.production.ydbDocApiEndpoint,
@@ -105,7 +106,7 @@ const envEntries = Object.entries(envMap)
 let versionOutput = '';
 try {
   versionOutput = execSync(
-    `yc serverless function version create --function-name domexit-sla-sweeper-prod --runtime nodejs22 --memory 512m --execution-timeout 120s --entrypoint sweeper.handler --service-account-id ${saId} --source-path "${zipPath}" --environment "${envEntries}" --format json`,
+    `yc serverless function version create --function-name domexit-sla-sweeper-prod --runtime nodejs22 --memory ${sweeperMemory} --execution-timeout 120s --entrypoint sweeper.handler --service-account-id ${saId} --source-path "${zipPath}" --environment "${envEntries}" --format json`,
     { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 90000 }
   );
 } catch (execErr) {

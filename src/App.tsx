@@ -42,7 +42,6 @@ const ArticleDetailPage = React.lazy(() => import('./pages/knowledge/ArticleDeta
 const FAQPage = React.lazy(() => import('./pages/knowledge/FAQPage').then((m) => ({ default: m.FAQPage })));
 
 import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
-import { DatabaseInitializer } from './dal/initializer';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
@@ -69,10 +68,6 @@ const ScrollToTop: React.FC = () => {
 };
 
 export const App: React.FC = () => {
-  useEffect(() => {
-    DatabaseInitializer.initLiveDatabase();
-  }, []);
-
   return (
     <AppErrorBoundary>
       <LanguageProvider>

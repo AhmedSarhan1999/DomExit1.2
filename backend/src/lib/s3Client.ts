@@ -32,12 +32,14 @@ export async function createPresignedUploadUrl(options: {
   key: string;
   contentType: string;
   expiresInSeconds?: number;
+  cacheControl?: string;
 }): Promise<string> {
   const client = getS3Client();
   const command = new PutObjectCommand({
     Bucket: options.bucket,
     Key: options.key,
     ContentType: options.contentType,
+    ...(options.cacheControl ? { CacheControl: options.cacheControl } : {}),
   });
 
   return await getSignedUrl(client, command, {

@@ -7,6 +7,7 @@ import {
   TierVerificationRequest,
   TierVerificationProofType,
 } from '../types';
+import { clientCache } from './clientCache';
 
 /**
  * Unified Client API Gateway Client for DomExit Platform
@@ -33,12 +34,20 @@ export class ApiError extends Error {
 
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
+  skipCache?: boolean;
+  ttlMs?: number;
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
-async function request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { timeoutMs = 25000, headers = {}, ...customOptions } = options;
+async function executeFetch<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const {
+    timeoutMs = 25000,
+    headers = {},
+    skipCache: _skipCache,
+    ttlMs: _ttlMs,
+    ...customOptions
+  } = options;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -105,6 +114,31 @@ async function request<T = any>(endpoint: string, options: RequestOptions = {}):
   }
 }
 
+async function request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const method = (options.method || 'GET').toUpperCase();
+
+  if (method === 'GET') {
+    if (options.skipCache) {
+      return clientCache.dedupe(cleanEndpoint, () => executeFetch<T>(cleanEndpoint, options));
+    }
+    const effectiveTtl =
+      options.ttlMs !== undefined ? options.ttlMs : clientCache.resolveTtlMs(cleanEndpoint);
+    return clientCache.getOrFetch<T>(
+      cleanEndpoint,
+      () => executeFetch<T>(cleanEndpoint, options),
+      effectiveTtl
+    );
+  }
+
+  try {
+    return await executeFetch<T>(cleanEndpoint, options);
+  } finally {
+    // Immediately invalidate related caches on any mutation (POST/PUT/PATCH/DELETE)
+    clientCache.invalidateByEndpoint(cleanEndpoint);
+  }
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   total?: number;
@@ -124,7 +158,7 @@ export interface PaginationParams {
   page?: number;
   limit?: number;
   cursor?: string | null;
-  fields?: 'card' | 'full';
+  fields?: 'card' | 'summary' | 'full';
   status?: string;
   category?: string;
   role?: string;
@@ -144,6 +178,23 @@ export interface PaginationParams {
 export const apiClient = {
   get: <T = any>(endpoint: string, options?: RequestOptions) =>
     request<T>(endpoint, { method: 'GET', ...options }),
+
+  /**
+   * Quietly prefetches lot details into clientCache at most once per 30s per lotCode.
+   */
+  prefetchLot: (lotCode?: string | null): void => {
+    const clean = String(lotCode || '').trim().toUpperCase();
+    if (!clean) return;
+    if (!clientCache.shouldPrefetch(`lot:${clean}`, 30_000)) return;
+    void request(`/api/data/lots/${encodeURIComponent(clean)}`, {
+      method: 'GET',
+      ttlMs: 30_000,
+    }).catch(() => {});
+  },
+
+  clearCache: (): void => {
+    clientCache.clear();
+  },
 
   getPaginated: <T = any>(collection: string, params: PaginationParams = {}, options?: RequestOptions) => {
     const query = new URLSearchParams({ paginated: '1' });

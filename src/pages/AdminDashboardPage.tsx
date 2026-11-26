@@ -22,6 +22,7 @@ import { DatabaseGateway } from '../dal/DatabaseGateway';
 // Modular Dashboard Subcomponents
 import { AdminGovernanceCard } from '../components/admin/AdminGovernanceCard';
 import { AdminSlimStatusBar } from '../components/admin/dashboard/AdminSlimStatusBar';
+import { TableRowsSkeleton } from '../components/shared/Skeletons';
 import { AdminTabBar, OwnerTab } from '../components/admin/dashboard/AdminTabBar';
 import { DashboardOverviewTab } from '../components/admin/dashboard/DashboardOverviewTab';
 import { SellerRequestsTableTab } from '../components/admin/dashboard/SellerRequestsTableTab';
@@ -97,6 +98,7 @@ export const AdminDashboardPage: React.FC = () => {
 
   // Modal inspection state for lots
   const [modalLot, setModalLot] = useState<Lot | null>(null);
+  const [loadingData, setLoadingData] = useState<boolean>(true);
 
   // Cloud Document Vault Modal State
   const [vaultConfig, setVaultConfig] = useState<{
@@ -145,14 +147,14 @@ export const AdminDashboardPage: React.FC = () => {
         allDevsData,
       ] = await Promise.all([
         AnalyticsRepository.getKPIs(),
-        LotsRepository.getAll({ includePendingApproval: true }),
+        LotsRepository.getSummary(),
         SellerRequestsRepository.getAll(),
         EmployeesRepository.getAssignableCurators(),
         CandidatesRepository.getAll(),
         PartnersRepository.getAll(),
         MarketSettingsRepository.getSettings(),
         UsersRepository.getAll(),
-        DealsRepository.getAll(),
+        DealsRepository.getSummary(),
         DevelopersRepository.getAllAccreditationRequests(),
         DevelopersRepository.getAllDevelopers(),
       ]);
@@ -197,6 +199,8 @@ export const AdminDashboardPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
+    } finally {
+      setLoadingData(false);
     }
   };
 
@@ -294,7 +298,9 @@ export const AdminDashboardPage: React.FC = () => {
           {/* =========================================================================
               OWNER MODE: Full platform financial view & Triage Desk
           ========================================================================= */}
-          {isOwner && (
+          {isOwner && loadingData && <TableRowsSkeleton rows={6} cols={5} />}
+
+          {isOwner && !loadingData && (
             <>
               {/* Executive Tab Navigation Bar (5 tabs, zero horizontal clipping) */}
               <AdminTabBar
@@ -464,7 +470,9 @@ export const AdminDashboardPage: React.FC = () => {
           {/* =========================================================================
               EMPLOYEE MODE: Data Isolation (Only Assigned Lots & Inbound Bids)
           ========================================================================= */}
-          {!isOwner && (
+          {!isOwner && loadingData && <TableRowsSkeleton rows={5} cols={4} />}
+
+          {!isOwner && !loadingData && (
             <CuratorEmployeeView
               currentEmployeeId={currentEmployeeId}
               employeeLots={employeeLots}

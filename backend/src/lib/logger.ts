@@ -66,9 +66,46 @@ export function log(entry: LogEntry): void {
   const cfg = getConfig();
   const timestamp = entry.timestamp || new Date().toISOString();
   const env = entry.env || cfg.APP_ENV || 'staging';
+  const isProd = process.env.NODE_ENV === 'production' || env === 'production';
 
   const cleanPath = entry.path ? redactUrlPath(entry.path) : undefined;
-  const cleanMeta = entry.meta ? redactDeep(entry.meta) : undefined;
+  const isCriticalEvent = Boolean(
+    entry.event &&
+      (entry.event.startsWith('AUTH') ||
+        entry.event.startsWith('SECURITY') ||
+        entry.event.startsWith('AUDIT') ||
+        entry.event.startsWith('SLA_SWEEP') ||
+        entry.event.startsWith('BACKUP'))
+  );
+
+  // In production, keep 2xx HTTP access / routine INFO logs compact (no bulky meta payloads)
+  if (
+    isProd &&
+    entry.level === 'INFO' &&
+    entry.event === 'HTTP_ACCESS' &&
+    entry.statusCode !== undefined &&
+    entry.statusCode < 400
+  ) {
+    console.log(
+      JSON.stringify({
+        level: 'INFO',
+        env,
+        method: entry.method,
+        path: cleanPath,
+        status: entry.statusCode,
+        ms: entry.durationMs,
+        rid: entry.requestId,
+      })
+    );
+    return;
+  }
+
+  const cleanMeta =
+    isProd && entry.level === 'INFO' && !isCriticalEvent && entry.meta
+      ? undefined
+      : entry.meta
+      ? redactDeep(entry.meta)
+      : undefined;
 
   const record: Record<string, any> = {
     level: entry.level,

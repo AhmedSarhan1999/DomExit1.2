@@ -12,6 +12,15 @@ export class DealsRepository {
     return DatabaseGateway.getAll<DealTrack>(COLLECTION, []);
   }
 
+  static async getSummary(): Promise<DealTrack[]> {
+    try {
+      const res = await apiClient.get<{ items?: DealTrack[] }>('/api/data/deals?fields=summary');
+      return Array.isArray(res?.items) ? res.items : [];
+    } catch {
+      return this.getAll();
+    }
+  }
+
   static async getPaginated(params: {
     page?: number;
     limit?: number;
@@ -37,9 +46,9 @@ export class DealsRepository {
     return found || null;
   }
 
-  static async getByEmployee(employeeId: string): Promise<DealTrack[]> {
+  static async getByEmployee(employeeId: string, useSummary = false): Promise<DealTrack[]> {
     const [deals, assignedLots] = await Promise.all([
-      this.getAll(),
+      useSummary ? this.getSummary() : this.getAll(),
       LotsRepository.getByAssignedEmployee(employeeId),
     ]);
     const assignedLotCodes = new Set(assignedLots.map((l) => l.lotCode.toUpperCase()));

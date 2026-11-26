@@ -2386,9 +2386,12 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       return json(event, 403, { error: 'Запуск SLA Sweeper разрешен только сотрудникам' });
     }
 
-    const body = parseBody<{ dryRun?: boolean }>(event);
+    const body = parseBody<{ dryRun?: boolean; forceDailyTasks?: boolean }>(event);
     try {
-      const result = await runSlaSweep({ dryRun: Boolean(body?.dryRun) });
+      const result = await runSlaSweep({
+        dryRun: Boolean(body?.dryRun),
+        forceDailyTasks: Boolean(body?.forceDailyTasks),
+      });
       return json(event, 200, result);
     } catch (err: any) {
       logger.error('Error executing manual SLA sweep', { meta: { error: err.message } });

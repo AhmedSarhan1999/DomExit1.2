@@ -1,5 +1,6 @@
 import { BuyerBuyBox, QueueStatus, TierVerificationRequest, UserProfile } from '../types.js';
 import { appCache, memoryCache } from './memoryCache.js';
+import { invalidateAuthUserCache } from './cryptoAuth.js';
 
 export const ACTIVE_APPLICATION_STATUSES = new Set<string>([
   'pending_review',
@@ -136,6 +137,7 @@ export async function getUnifiedBuyBox(ydb: any, userId: string): Promise<BuyerB
       (userRecord as any).reliabilityScore = primary.reliabilityScore ?? 100;
       await ydb.putItem('users', userRecord).catch(() => {});
       appCache.invalidatePrefix('users');
+      invalidateAuthUserCache(userId);
     }
   }
 
@@ -172,6 +174,7 @@ export async function syncBuyBoxAndUser(
   memoryCache.invalidate('demand_radar_summary');
   appCache.invalidatePrefix('buy_boxes');
   appCache.invalidatePrefix('users');
+  invalidateAuthUserCache(userId);
   return toSave;
 }
 

@@ -17,12 +17,16 @@ import {
 export interface SlaSweepResult {
   ok: boolean;
   timestamp: string;
+  lotsScanCount: number;
+  dailyTasksExecuted: boolean;
   silverWaveOpenedCount: number;
   expiredDropsClosedCount: number;
   priority1DeadlinesAlertedCount: number;
   sellerSlaEscalatedCount: number;
   partnerReservationsExpiredCount: number;
   staleLotsAlertedCount: number;
+  prunedRateLimitsCount: number;
+  prunedPepOtpsCount: number;
   dryRun?: boolean;
 }
 
@@ -98,27 +102,47 @@ async function notifyUser(userId: string, text: string, replyMarkup?: any): Prom
  * The core 15-minute SLA Sweeper engine.
  * Executes 6 deterministic, idempotent, fail-safe tasks.
  */
-export async function runSlaSweep(options: { dryRun?: boolean; env?: string } = {}): Promise<SlaSweepResult> {
-  const { dryRun = false } = options;
+export async function runSlaSweep(
+  options: { dryRun?: boolean; env?: string; forceDailyTasks?: boolean } = {}
+): Promise<SlaSweepResult> {
+  const { dryRun = false, forceDailyTasks = false } = options;
   const now = new Date();
   const isoNow = now.toISOString();
   const ydb = getYdbClient();
 
+  let lotsScanCount = 0;
   let silverWaveOpenedCount = 0;
   let expiredDropsClosedCount = 0;
   let priority1DeadlinesAlertedCount = 0;
   let sellerSlaEscalatedCount = 0;
   let partnerReservationsExpiredCount = 0;
   let staleLotsAlertedCount = 0;
+  let prunedRateLimitsCount = 0;
+  let prunedPepOtpsCount = 0;
 
-  logger.info('Starting 15-minute SLA sweep', { event: 'SLA_SWEEP_START', meta: { timestamp: isoNow, dryRun } });
+  // Daily heavy/slow tasks execute once per day on the first 15-min run after 03:00 UTC (or when forced in tests)
+  const isDailyWindow = now.getUTCHours() === 3 && now.getUTCMinutes() < 15;
+  const dailyTasksExecuted = Boolean(forceDailyTasks || isDailyWindow);
+
+  logger.info('Starting 15-minute SLA sweep', {
+    event: 'SLA_SWEEP_START',
+    meta: { timestamp: isoNow, dryRun, dailyTasksExecuted },
+  });
+
+  // Single shared lots scan reused across Task 1, Task 2, and Task 6 (eliminates 3x redundant table scans)
+  let sharedLots: any[] = [];
+  try {
+    sharedLots = (await ydb.scanAll<any>('lots', 500)) || [];
+    lotsScanCount = 1;
+  } catch (err: any) {
+    logger.error('Failed initial shared lots scan in SLA sweeper', { meta: { error: err.message } });
+  }
 
   // =========================================================================
   // Task 1: Open Silver Wave Automatically for expired Gold windows
   // =========================================================================
   try {
-    const allLots = await ydb.scanAll<any>('lots', 500);
-    const candidateLots = (allLots || []).filter(
+    const candidateLots = sharedLots.filter(
       (l) =>
         l.dropConfig &&
         l.dropConfig.mode === 'staged_drop' &&
@@ -179,8 +203,7 @@ export async function runSlaSweep(options: { dryRun?: boolean; env?: string } = 
   // Task 2: Close Expired Drop Windows
   // =========================================================================
   try {
-    const allLots = await ydb.scanAll<any>('lots', 500);
-    const expiredDropLots = (allLots || []).filter(
+    const expiredDropLots = sharedLots.filter(
       (l) =>
         l.dropConfig &&
         l.dropConfig.mode === 'staged_drop' &&
@@ -287,89 +310,150 @@ export async function runSlaSweep(options: { dryRun?: boolean; env?: string } = 
   }
 
   // =========================================================================
-  // Task 5: 7-day Partner Preliminary Reservation Expiration
+  // Daily Slow Tasks (once daily at 03:00 UTC or when forced):
+  //   Task 5: 7-day Partner Preliminary Reservation Expiration
+  //   Task 6: Stale Lot Radar (10 days without reservation, reusing sharedLots)
+  //   Task 7: TTL Pruning for rate_limits and pep_otps (> 24 hours expired)
   // =========================================================================
-  try {
-    const allPartnerReqs = await ydb.scanAll<any>('partner_preliminary_requests', 300);
-    const expiredPartnerReqs = (allPartnerReqs || []).filter((pr) => {
-      if (pr.status === 'expired' || pr.status === 'cancelled' || pr.status === 'closed') return false;
-      if (!pr.expiresAt) return false;
-      return now >= new Date(pr.expiresAt);
-    });
+  if (dailyTasksExecuted) {
+    // Task 5: 7-day Partner Preliminary Reservation Expiration
+    try {
+      const allPartnerReqs = await ydb.scanAll<any>('partner_preliminary_requests', 300);
+      const expiredPartnerReqs = (allPartnerReqs || []).filter((pr) => {
+        if (pr.status === 'expired' || pr.status === 'cancelled' || pr.status === 'closed') return false;
+        if (!pr.expiresAt) return false;
+        return now >= new Date(pr.expiresAt);
+      });
 
-    for (const pr of expiredPartnerReqs) {
-      pr.status = 'expired';
-      pr.expiredAt = isoNow;
-      pr.updatedAt = isoNow;
+      for (const pr of expiredPartnerReqs) {
+        pr.status = 'expired';
+        pr.expiredAt = isoNow;
+        pr.updatedAt = isoNow;
 
-      if (!dryRun) {
-        await ydb.putItem('partner_preliminary_requests', pr);
+        if (!dryRun) {
+          await ydb.putItem('partner_preliminary_requests', pr);
 
-        await recordJournalEvent({
-          action: 'UPDATE',
-          collection: 'partner_preliminary_requests',
-          recordId: pr.id,
-          actor: { role: 'system', email: 'sla-sweeper' },
-          payload: { status: 'expired', expiredAt: isoNow },
-        });
+          await recordJournalEvent({
+            action: 'UPDATE',
+            collection: 'partner_preliminary_requests',
+            recordId: pr.id,
+            actor: { role: 'system', email: 'sla-sweeper' },
+            payload: { status: 'expired', expiredAt: isoNow },
+          });
 
-        // Notify partner via Telegram if partner is linked
-        if (pr.partnerUserId) {
-          const text =
-            `⏳ <b>Срок предварительного бронирования по объекту #${escapeHtml(pr.lotCode || pr.lotId || '')} истек</b>\n` +
-            `Бронь переведена в архив. Вы можете оформить новый запрос в партнерском кабинете.`;
-          void notifyUser(pr.partnerUserId, text);
+          // Notify partner via Telegram if partner is linked
+          if (pr.partnerUserId) {
+            const text =
+              `⏳ <b>Срок предварительного бронирования по объекту #${escapeHtml(pr.lotCode || pr.lotId || '')} истек</b>\n` +
+              `Бронь переведена в архив. Вы можете оформить новый запрос в партнерском кабинете.`;
+            void notifyUser(pr.partnerUserId, text);
+          }
         }
+        partnerReservationsExpiredCount++;
       }
-      partnerReservationsExpiredCount++;
+    } catch (err: any) {
+      logger.error('Error in Task 5 (partner preliminary requests expiration)', { meta: { error: err.message } });
     }
-  } catch (err: any) {
-    logger.error('Error in Task 5 (partner preliminary requests expiration)', { meta: { error: err.message } });
-  }
 
-  // =========================================================================
-  // Task 6: Stale Lot Radar (10 days without reservation)
-  // =========================================================================
-  try {
-    const allLots = await ydb.scanAll<any>('lots', 500);
-    const staleLots = (allLots || []).filter((l) => {
-      if (l.staleAlertedAt) return false;
-      const status = l.status || 'available';
-      if (status !== 'available' && status !== 'active') return false;
+    // Task 6: Stale Lot Radar (10 days without reservation — reuses sharedLots)
+    try {
+      const staleLots = sharedLots.filter((l) => {
+        if (l.staleAlertedAt) return false;
+        const status = l.status || 'available';
+        if (status !== 'available' && status !== 'active') return false;
 
-      const createdTime = new Date(l.createdAt || l.publishedAt || l.dateAdded || 0).getTime();
-      if (!createdTime) return false;
-      return now.getTime() - createdTime > 10 * 86400 * 1000; // > 10 days
-    });
+        const createdTime = new Date(l.createdAt || l.publishedAt || l.dateAdded || 0).getTime();
+        if (!createdTime) return false;
+        return now.getTime() - createdTime > 10 * 86400 * 1000; // > 10 days
+      });
 
-    for (const lot of staleLots) {
-      lot.staleAlertedAt = isoNow;
-      if (!dryRun) {
-        await ydb.putItem('lots', lot);
+      for (const lot of staleLots) {
+        lot.staleAlertedAt = isoNow;
+        if (!dryRun) {
+          await ydb.putItem('lots', lot);
 
-        const alertText =
-          `📉 <b>РАДАР СТАГНАЦИИ (10 ДНЕЙ): Лот #${escapeHtml(lot.lotCode)}</b>\n` +
-          `ЖК: <b>${escapeHtml(lot.complexName || 'Не указан')}</b>\n` +
-          `Объект находится в каталоге более 10 дней без активной брони.\n` +
-          `Рекомендуется согласовать дисконт с продавцом или перезапустить закрытый дроп (/launch-drop).`;
+          const alertText =
+            `📉 <b>РАДАР СТАГНАЦИИ (10 ДНЕЙ): Лот #${escapeHtml(lot.lotCode)}</b>\n` +
+            `ЖК: <b>${escapeHtml(lot.complexName || 'Не указан')}</b>\n` +
+            `Объект находится в каталоге более 10 дней без активной брони.\n` +
+            `Рекомендуется согласовать дисконт с продавцом или перезапустить закрытый дроп (/launch-drop).`;
 
-        void notifyOwner(alertText);
+          void notifyOwner(alertText);
+        }
+        staleLotsAlertedCount++;
       }
-      staleLotsAlertedCount++;
+    } catch (err: any) {
+      logger.error('Error in Task 6 (stale lot radar)', { meta: { error: err.message } });
     }
-  } catch (err: any) {
-    logger.error('Error in Task 6 (stale lot radar)', { meta: { error: err.message } });
+
+    // Task 7: TTL Pruning for expired rate_limits & pep_otps older than 24 hours
+    const cutoffMs = now.getTime() - 24 * 3600 * 1000;
+    try {
+      const rateItems = (await ydb.scanAll<any>('rate_limits', 500)) || [];
+      const expiredRateIds = rateItems
+        .filter((item) => {
+          if (!item?.id) return false;
+          const expMs =
+            typeof item.expiresAt === 'number'
+              ? item.expiresAt
+              : item.expiresAt
+              ? new Date(item.expiresAt).getTime()
+              : NaN;
+          if (Number.isFinite(expMs)) return expMs < cutoffMs;
+          const tsMs = new Date(item.updatedAt || item.createdAt || 0).getTime();
+          return Number.isFinite(tsMs) && tsMs > 0 && tsMs < cutoffMs;
+        })
+        .map((item) => String(item.id));
+
+      prunedRateLimitsCount = expiredRateIds.length;
+      if (!dryRun && expiredRateIds.length > 0) {
+        await ydb.batchDelete('rate_limits', expiredRateIds);
+      }
+    } catch (err: any) {
+      logger.warn('TTL pruning notice for rate_limits', { meta: { error: err.message } });
+    }
+
+    try {
+      const otpItems = (await ydb.scanAll<any>('pep_otps', 500)) || [];
+      const expiredOtpIds = otpItems
+        .filter((item) => {
+          if (!item?.id) return false;
+          const createdMs = item.createdAt ? new Date(item.createdAt).getTime() : NaN;
+          const expMs =
+            typeof item.expiresAt === 'number'
+              ? item.expiresAt
+              : item.expiresAt
+              ? new Date(item.expiresAt).getTime()
+              : NaN;
+          return (
+            (Number.isFinite(expMs) && expMs < cutoffMs) ||
+            (Number.isFinite(createdMs) && createdMs < cutoffMs)
+          );
+        })
+        .map((item) => String(item.id));
+
+      prunedPepOtpsCount = expiredOtpIds.length;
+      if (!dryRun && expiredOtpIds.length > 0) {
+        await ydb.batchDelete('pep_otps', expiredOtpIds);
+      }
+    } catch (err: any) {
+      logger.warn('TTL pruning notice for pep_otps', { meta: { error: err.message } });
+    }
   }
 
   const result: SlaSweepResult = {
     ok: true,
     timestamp: isoNow,
+    lotsScanCount,
+    dailyTasksExecuted,
     silverWaveOpenedCount,
     expiredDropsClosedCount,
     priority1DeadlinesAlertedCount,
     sellerSlaEscalatedCount,
     partnerReservationsExpiredCount,
     staleLotsAlertedCount,
+    prunedRateLimitsCount,
+    prunedPepOtpsCount,
     dryRun,
   };
 

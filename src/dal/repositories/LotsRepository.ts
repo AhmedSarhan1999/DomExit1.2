@@ -60,6 +60,25 @@ export class LotsRepository {
       stats: res.stats,
     };
   }
+
+  /**
+   * Slim Admin summary projection for /admin/dashboard & Kanban tables (omits heavy legalAuditAxes & full photo arrays).
+   */
+  static async getSummary(): Promise<Lot[]> {
+    try {
+      const res = await apiClient.get<{ items?: Lot[] }>('/api/data/lots?fields=summary');
+      const items = Array.isArray(res?.items) ? res.items : [];
+      const seenCodes = new Set<string>();
+      return items.filter((l) => {
+        const code = (l.lotCode || l.id || '').toUpperCase();
+        if (!code || seenCodes.has(code)) return false;
+        seenCodes.add(code);
+        return true;
+      });
+    } catch {
+      return this.getAll({ includePendingApproval: true });
+    }
+  }
   static async getAll(filter?: {
     city?: string;
     district?: string;

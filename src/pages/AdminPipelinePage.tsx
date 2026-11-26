@@ -80,10 +80,8 @@ export const AdminPipelinePage: React.FC = () => {
     async function loadDeals() {
 
       const data = isEmployee
-
-        ? await DealsRepository.getByEmployee(currentEmployeeId)
-
-        : await DealsRepository.getAll();
+        ? await DealsRepository.getByEmployee(currentEmployeeId, true)
+        : await DealsRepository.getSummary();
 
       const seenDealKeys = new Set<string>();
       const deduplicatedDeals = data.filter((d) => {

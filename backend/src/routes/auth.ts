@@ -17,7 +17,9 @@ import {
   hashPassword,
   verifyPassword,
   createJwt,
+  verifyJwt,
   getAuthenticatedUser,
+  invalidateAuthUserCache,
   checkLoginRateLimit,
   recordFailedLogin,
   resetFailedLogin,
@@ -378,6 +380,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     dbUser.updatedAt = new Date().toISOString();
 
     await ydb.putItem('users', dbUser);
+    invalidateAuthUserCache(dbUser.id);
 
     const sessionToken = createJwt(
       {
@@ -471,6 +474,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     dbUser.updatedAt = new Date().toISOString();
 
     await ydb.putItem('users', dbUser);
+    invalidateAuthUserCache(dbUser.id);
 
     const sessionToken = createJwt(
       {
@@ -510,12 +514,28 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     if (dbUser) {
       dbUser.passwordSetupDismissedAt = new Date().toISOString();
       await ydb.putItem('users', dbUser);
+    invalidateAuthUserCache(dbUser.id);
     }
     return json(event, 200, { success: true });
   }
 
   // POST /api/auth/logout
   if (subPath === '/logout' && method === 'POST') {
+    const cookies = parseCookies(event);
+    let token = cookies['domexit_session'];
+    if (!token) {
+      const hdrs = event.headers || {};
+      const authHdr = hdrs['authorization'] || hdrs['Authorization'] || '';
+      if (authHdr.toLowerCase().startsWith('bearer ')) {
+        token = authHdr.slice(7).trim();
+      }
+    }
+    if (token) {
+      const payload = verifyJwt<{ userId?: string }>(token, cfg.JWT_SIGNING_SECRET);
+      if (payload?.userId) {
+        invalidateAuthUserCache(payload.userId);
+      }
+    }
     return json(event, 200, { success: true }, { cookies: [clearSessionCookie()] });
   }
 
@@ -733,6 +753,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     user.tokenVersion = (user.tokenVersion ?? 1) + 1;
     (user as any).updatedAt = new Date().toISOString();
     await ydb.putItem('users', user);
+    invalidateAuthUserCache(user.id);
 
     // Audit log
     try {
@@ -868,6 +889,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     };
 
     await ydb.putItem('users', updatedUser);
+    invalidateAuthUserCache(updatedUser.id);
     memoryCache.invalidate('curators');
     appCache.invalidatePrefix('curators');
 
@@ -926,6 +948,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
     existing.activeRole = targetRole;
     // ensure existing record is saved with passwordHash intact
     await ydb.putItem('users', existing);
+    invalidateAuthUserCache(existing.id);
 
     const sessionToken = createJwt(
       {
@@ -1057,6 +1080,8 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
       user.tokenVersion = user.tokenVersion ?? 1;
       // Do NOT erase passwordHash!
       await ydb.putItem('users', user);
+      invalidateAuthUserCache(user.id);
+    invalidateAuthUserCache(user.id);
     } else {
       // New user: unified client by default
       const assignedRole: UserRole = isMasterOwnerEmail ? 'owner' : 'buyer';
@@ -1082,6 +1107,7 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
         tokenVersion: 1,
       };
       await ydb.putItem('users', user);
+    invalidateAuthUserCache(user.id);
     }
 
     // Auto-link accredited partner if approved in partners
@@ -1107,6 +1133,8 @@ export async function handleAuth(event: YcHttpEvent, subPath: string): Promise<Y
           await ydb.putItem('partners', approvedPartner);
         }
         await ydb.putItem('users', user);
+        invalidateAuthUserCache(user.id);
+    invalidateAuthUserCache(user.id);
       }
     } catch (partnerErr) {
       console.warn('[auth] Non-fatal partner auto-link in yandex callback:', partnerErr);

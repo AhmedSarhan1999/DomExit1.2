@@ -1,8 +1,10 @@
 import { DatabaseGateway } from './DatabaseGateway';
 
 /**
- * Live Database Provisioning & Cleanup Controller
- * Strictly uses DatabaseGateway (IDatabaseAdapter).
+ * Live Database Provisioning & Cleanup Controller (Manual Maintenance Only).
+ *
+ * @deprecated Kept solely as an isolated manual cleanup helper; never invoked
+ * automatically during public application boot so visitors trigger zero wasted requests.
  */
 export class DatabaseInitializer {
   private static isInitialized = false;

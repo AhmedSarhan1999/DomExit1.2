@@ -10,7 +10,7 @@ import {
 } from '../types.js';
 import { json, parseBody } from '../lib/http.js';
 import { getYdbClient } from '../lib/ydbClient.js';
-import { getAuthenticatedUser } from '../lib/cryptoAuth.js';
+import { getAuthenticatedUser, invalidateAuthUserCache } from '../lib/cryptoAuth.js';
 import { getConfig } from '../lib/config.js';
 import { memoryCache } from '../lib/memoryCache.js';
 import { getUnifiedBuyBox, syncBuyBoxAndUser } from '../lib/buyBoxSync.js';
@@ -389,6 +389,7 @@ export async function handleTierVerification(
         updatedBb.updatedAt = now;
 
         await syncBuyBoxAndUser(ydb, req.userId, updatedBb);
+        invalidateAuthUserCache(req.userId);
 
         // Audit log entry
         await ydb.putItem('audit_logs', {
