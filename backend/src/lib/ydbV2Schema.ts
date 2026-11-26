@@ -155,6 +155,22 @@ export const V2_TABLES_SCHEMA: Record<string, V2TableSchema> = {
       { indexName: 'status-createdAt-index', hashKey: 'status', rangeKey: 'createdAt' },
     ],
   },
+  ai_legal_analyses: {
+    logicalName: 'ai_legal_analyses',
+    v2TableName: 'ai_legal_analyses_v2',
+    gsis: [
+      { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
+      { indexName: 'ocrJobId-index', hashKey: 'ocrJobId' },
+    ],
+  },
+  ai_buyer_verifications: {
+    logicalName: 'ai_buyer_verifications',
+    v2TableName: 'ai_buyer_verifications_v2',
+    gsis: [
+      { indexName: 'targetId-createdAt-index', hashKey: 'targetId', rangeKey: 'createdAt' },
+      { indexName: 'userId-createdAt-index', hashKey: 'userId', rangeKey: 'createdAt' },
+    ],
+  },
 };
 
 export const V2_LOGICAL_TABLES = Object.keys(V2_TABLES_SCHEMA);

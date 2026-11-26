@@ -9,6 +9,7 @@ import {
   UploadCloud,
   FileCheck,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 import { Lot, LegalAuditAxis, LegalAuditAxisStatus, SecondaryRiskChecklist } from '../../../types';
 import { HONEST_STATUS_CONFIG } from '../../../data/legalAuditAxes';
@@ -18,6 +19,7 @@ interface LegalAuditAxesSectionProps {
   axes: LegalAuditAxis[];
   curatorName: string;
   uploadingAxisId?: string | null;
+  suggestedDrafts?: Record<string, string>;
   onAxisStatusChange: (axisId: string, status: LegalAuditAxisStatus) => void;
   onAxisNotesChange: (axisId: string, notes: string) => void;
   onSaveAxis: (axisId: string) => void;
@@ -33,6 +35,7 @@ export const LegalAuditAxesSection: React.FC<LegalAuditAxesSectionProps> = ({
   axes,
   curatorName,
   uploadingAxisId,
+  suggestedDrafts,
   onAxisStatusChange,
   onAxisNotesChange,
   onSaveAxis,
@@ -250,6 +253,28 @@ export const LegalAuditAxesSection: React.FC<LegalAuditAxesSectionProps> = ({
                   <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center space-x-2">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>Разделы 1–3 должны быть полностью проверены до перехода к упаковке (нельзя отложить на сделку).</span>
+                  </div>
+                )}
+
+                {/* AI Draft Suggestion from YandexGPT Legal Copilot */}
+                {suggestedDrafts?.[axis.id] && (
+                  <div className="p-3 rounded-2xl bg-indigo-50/80 border border-indigo-200 text-xs text-indigo-950 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1.5 font-bold text-indigo-900">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Черновик от YandexGPT Copilot:</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onAxisNotesChange(axis.id, suggestedDrafts[axis.id])}
+                        className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition-colors cursor-pointer shadow-2xs"
+                      >
+                        Вставить в комментарий
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-indigo-900 leading-relaxed font-sans bg-white/70 p-2.5 rounded-xl border border-indigo-100">
+                      {suggestedDrafts[axis.id]}
+                    </p>
                   </div>
                 )}
 

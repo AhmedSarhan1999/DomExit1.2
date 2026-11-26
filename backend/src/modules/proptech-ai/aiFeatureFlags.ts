@@ -66,10 +66,10 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
   {
     key: 'gptLegalCopilot',
     labelRu: 'GPT Юридический Копилот',
-    descriptionRu: 'Интерактивный помощник для юридического анализа условий сделок и рисков по ДДУ',
-    implemented: false,
+    descriptionRu: 'Интерактивный помощник для юридического анализа условий сделок, рисков по ДДУ и проверки платёжеспособности покупателей',
+    implemented: true,
     roadmapStep: 'Этап 04',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
   {
     key: 'avmValuation',

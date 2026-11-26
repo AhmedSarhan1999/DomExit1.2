@@ -63,6 +63,17 @@ import {
   getOcrStats,
   AiOcrJobRecord,
 } from '../modules/legal-core/ocrQueueService.js';
+import { getGptUsageSummary } from '../modules/legal-core/yandexGptClient.js';
+import {
+  analyzeLotFromOcr,
+  getLegalAnalysesForLot,
+  AiLegalAnalysisRecord,
+} from '../modules/legal-core/dduLegalCopilotService.js';
+import {
+  verifyBuyerProofDocument,
+  getBuyerVerifications,
+  AiBuyerVerificationRecord,
+} from '../modules/legal-core/buyerProofAiService.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -210,6 +221,7 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
             webhookUrl: `${cfg.PUBLIC_BASE_URL}/api/ai/agent-bridge/webhook/result`,
           },
           ocr: ocrStats,
+          yandexGpt: getGptUsageSummary(),
           yandexAi: {
             configured: Boolean(process.env.YC_FOLDER_ID),
           },
@@ -722,6 +734,189 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     }
 
     return json(event, 200, { ok: true, job });
+  }
+
+  // ============================================================
+  // POST /api/ai/legal-copilot/analyze (YandexGPT Pro DDU Analysis)
+  // ============================================================
+  if (subPath === '/legal-copilot/analyze' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'gptLegalCopilot', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'gptLegalCopilot' });
+    }
+    if (!authUser) {
+      return json(event, 401, { error: 'Требуется авторизация' });
+    }
+
+    const body = getEventBody<{ lotCode?: string; ocrJobId?: string; forceReanalyze?: boolean }>(event) || {};
+    const lotCode = body.lotCode?.trim().toUpperCase();
+    if (!lotCode) {
+      return json(event, 400, { error: 'lotCode обязателен' });
+    }
+
+    const ydb = getYdbClient();
+    if (userRole === 'employee') {
+      const lot = await ydb.getItem<any>('lots', lotCode);
+      if (lot && lot.assignedEmployeeId && lot.assignedEmployeeId !== authUser.id) {
+        return json(event, 403, { error: 'Вы не назначены куратором данного объекта' });
+      }
+    }
+
+    try {
+      const analysis = await analyzeLotFromOcr({
+        lotCode,
+        ocrJobId: body.ocrJobId,
+        requestedBy: authUser.id,
+        forceReanalyze: Boolean(body.forceReanalyze),
+      });
+      return json(event, 200, { ok: true, analysis });
+    } catch (err: any) {
+      logger.error('Failed legal copilot analysis', { meta: { lotCode, error: err.message } });
+      return json(event, 400, { error: err.message || 'Ошибка юридического анализа ДДУ' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/legal-copilot/analyses (List analyses for lot)
+  // ============================================================
+  if (subPath === '/legal-copilot/analyses' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'gptLegalCopilot', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'gptLegalCopilot' });
+    }
+
+    const queryParams = event.queryStringParameters || {};
+    const lotCode = queryParams.lotCode;
+    if (!lotCode) {
+      return json(event, 400, { error: 'Параметр lotCode обязателен' });
+    }
+
+    try {
+      const analyses = await getLegalAnalysesForLot(lotCode);
+      return json(event, 200, { ok: true, analyses });
+    } catch (err: any) {
+      logger.error('Failed fetching legal analyses for lot', { meta: { lotCode, error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения анализов ДДУ' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/buyer-verify/run (OCR + YandexGPT Lite Solvency Proof)
+  // ============================================================
+  if (subPath === '/buyer-verify/run' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'gptLegalCopilot', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'gptLegalCopilot' });
+    }
+    if (!authUser) {
+      return json(event, 401, { error: 'Требуется авторизация' });
+    }
+
+    const body = getEventBody<{
+      targetType?: 'tier_request' | 'buyer_application';
+      targetId?: string;
+      objectKey?: string;
+      forceReanalyze?: boolean;
+    }>(event) || {};
+
+    const targetType = body.targetType;
+    const targetId = body.targetId?.trim();
+    if (!targetType || !targetId) {
+      return json(event, 400, { error: 'targetType и targetId обязательны' });
+    }
+
+    const ydb = getYdbClient();
+    let applicantName = '';
+    let declaredAmountRub = 0;
+    let resolvedObjectKey = body.objectKey?.trim() || '';
+    let targetUserId = '';
+    let targetLotCode: string | undefined = undefined;
+
+    if (targetType === 'tier_request') {
+      const isStaff = userRole === 'owner' || userRole === 'employee';
+      if (!isStaff) {
+        return json(event, 403, { error: 'Только сотрудники и владелец могут проверять документы верификации Gold' });
+      }
+      const tr = await ydb.getItem<any>('tier_verification_requests', targetId);
+      if (!tr) return json(event, 404, { error: 'Запрос на верификацию не найден' });
+      targetUserId = tr.userId;
+      if (!resolvedObjectKey) {
+        resolvedObjectKey = tr.proofFileKey || tr.fileKey || tr.documentKey || tr.s3Key || '';
+      }
+      declaredAmountRub = Number(tr.budgetRub || tr.declaredAmountRub || 0);
+
+      if (targetUserId) {
+        const u = await ydb.getItem<any>('users', targetUserId);
+        applicantName = u?.fullName || u?.name || u?.login || '';
+      }
+    } else if (targetType === 'buyer_application') {
+      const app = await ydb.getItem<any>('buyer_applications', targetId);
+      if (!app) return json(event, 404, { error: 'Заявка покупателя не найдена' });
+
+      targetUserId = app.userId;
+      targetLotCode = app.lotId || app.lotCode;
+
+      if (userRole === 'employee' && app.assignedCuratorId && app.assignedCuratorId !== authUser.id) {
+        return json(event, 403, { error: 'Вы не назначены куратором данной заявки' });
+      }
+
+      if (!resolvedObjectKey) {
+        resolvedObjectKey = app.proofFileKey || app.solvencyDocKey || app.documentKey || '';
+      }
+      declaredAmountRub = Number(app.offerPriceRub || app.budgetRub || 0);
+
+      if (targetUserId) {
+        const u = await ydb.getItem<any>('users', targetUserId);
+        applicantName = u?.fullName || u?.name || u?.login || '';
+      }
+    }
+
+    if (!resolvedObjectKey) {
+      return json(event, 400, { error: 'В заявке отсутствует прикрепленный файл документа подтверждения' });
+    }
+
+    try {
+      const verification = await verifyBuyerProofDocument({
+        targetType,
+        targetId,
+        objectKey: resolvedObjectKey,
+        applicantName,
+        declaredAmountRub,
+        lotCode: targetLotCode,
+        userId: targetUserId,
+        requestedBy: authUser.id,
+        forceReanalyze: Boolean(body.forceReanalyze),
+      });
+
+      return json(event, 200, { ok: true, verification });
+    } catch (err: any) {
+      logger.error('Failed buyer proof verification', { meta: { targetId, error: err.message } });
+      return json(event, 400, { error: err.message || 'Ошибка проверки документа покупателя' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/buyer-verify/results (Get verification results)
+  // ============================================================
+  if (subPath === '/buyer-verify/results' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'gptLegalCopilot', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'gptLegalCopilot' });
+    }
+
+    const queryParams = event.queryStringParameters || {};
+    const targetId = queryParams.targetId;
+    if (!targetId) {
+      return json(event, 400, { error: 'Параметр targetId обязателен' });
+    }
+
+    try {
+      const results = await getBuyerVerifications(targetId);
+      return json(event, 200, { ok: true, results });
+    } catch (err: any) {
+      logger.error('Failed fetching buyer verification results', { meta: { targetId, error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения результатов проверки' });
+    }
   }
 
   return json(event, 404, { error: `Endpoint /api/ai${subPath} не найден` });

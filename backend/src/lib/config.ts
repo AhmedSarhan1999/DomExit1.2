@@ -65,6 +65,8 @@ export interface BackendConfig {
   YC_FOLDER_ID?: string;
   DAILY_OCR_PAGES_CAP?: number;
   MAX_PAGES_PER_DOC?: number;
+  DAILY_GPT_CALLS_CAP?: number;
+  YANDEX_AI_API_KEY?: string;
   YC_AI_IAM_TOKEN?: string;
   // DADATA_SECRET_KEY removed — cleaner.dadata.ru (paid) is permanently disabled.
   // All DaData usage is free-tier suggestions only via suggestions.dadata.ru.
@@ -146,6 +148,8 @@ export function getConfig(): BackendConfig {
     YC_FOLDER_ID: process.env.YC_FOLDER_ID || 'b1g46uad3gc3h34k5b0f',
     DAILY_OCR_PAGES_CAP: process.env.DAILY_OCR_PAGES_CAP ? Number(process.env.DAILY_OCR_PAGES_CAP) : 200,
     MAX_PAGES_PER_DOC: process.env.MAX_PAGES_PER_DOC ? Number(process.env.MAX_PAGES_PER_DOC) : 15,
+    DAILY_GPT_CALLS_CAP: process.env.DAILY_GPT_CALLS_CAP ? Number(process.env.DAILY_GPT_CALLS_CAP) : 100,
+    YANDEX_AI_API_KEY: process.env.YANDEX_AI_API_KEY || '',
     YC_AI_IAM_TOKEN: process.env.YC_AI_IAM_TOKEN || '',
     YDB_USE_V2_TABLES: process.env.YDB_USE_V2_TABLES === 'true',
     EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER as any) || (process.env.POSTBOX_SMTP_USER ? 'postbox' : 'console'),

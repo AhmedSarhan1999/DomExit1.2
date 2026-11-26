@@ -991,5 +991,42 @@ export const apiClient = {
         method: 'GET',
         skipCache: true,
       }),
+
+    analyzeDduContract: (payload: { lotCode: string; ocrJobId?: string; forceReanalyze?: boolean }) =>
+      request<{ ok: boolean; analysis: any }>(`/api/ai/legal-copilot/analyze`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getLegalAnalyses: (lotCode: string) =>
+      request<{ ok: boolean; analyses: any[] }>(
+        `/api/ai/legal-copilot/analyses?lotCode=${encodeURIComponent(lotCode)}`,
+        {
+          method: 'GET',
+          skipCache: true,
+        }
+      ),
+
+    verifyBuyerProof: (payload: {
+      targetType: 'tier_request' | 'buyer_application';
+      targetId: string;
+      objectKey?: string;
+      forceReanalyze?: boolean;
+    }) =>
+      request<{ ok: boolean; verification: any }>(`/api/ai/buyer-verify/run`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getBuyerVerifications: (targetId: string) =>
+      request<{ ok: boolean; results: any[] }>(
+        `/api/ai/buyer-verify/results?targetId=${encodeURIComponent(targetId)}`,
+        {
+          method: 'GET',
+          skipCache: true,
+        }
+      ),
   },
 };

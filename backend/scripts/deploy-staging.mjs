@@ -163,6 +163,8 @@ const envMap = {
   YC_FOLDER_ID: manifest.folderId || 'b1g46uad3gc3h34k5b0f',
   DAILY_OCR_PAGES_CAP: '200',
   MAX_PAGES_PER_DOC: '15',
+  DAILY_GPT_CALLS_CAP: '100',
+  YANDEX_AI_API_KEY: envVars.YANDEX_AI_API_KEY || '',
   YDB_USE_V2_TABLES: 'true',
 };
 

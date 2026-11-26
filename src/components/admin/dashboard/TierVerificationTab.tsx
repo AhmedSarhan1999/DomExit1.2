@@ -15,7 +15,10 @@ import {
   CreditCard,
   Archive,
   RefreshCw,
+  Bot,
+  Sparkles,
 } from 'lucide-react';
+import { apiClient } from '../../../services/apiClient';
 import { TierVerificationRequest } from '../../../types';
 import { TierVerificationRepository } from '../../../dal/repositories/TierVerificationRepository';
 import { PaginationControls } from '../PaginationControls';
@@ -50,6 +53,38 @@ export const TierVerificationTab: React.FC<TierVerificationTabProps> = ({
   const [rejectingItem, setRejectingItem] = useState<TierVerificationRequest | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
   const [rejectError, setRejectError] = useState<string | null>(null);
+
+  // AI Verification State (Yandex Vision OCR + YandexGPT Lite)
+  const [aiVerifications, setAiVerifications] = useState<Record<string, any>>({});
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+
+  const handleVerifyWithAi = async (req: TierVerificationRequest) => {
+    setVerifyingId(req.id);
+    try {
+      const res = await apiClient.aiLab.verifyBuyerProof({
+        targetType: 'tier_request',
+        targetId: req.id,
+        objectKey: req.documentKey,
+      });
+      if (res.ok && res.verification) {
+        setAiVerifications((prev) => ({
+          ...prev,
+          [req.id]: res.verification,
+        }));
+        showToast(
+          res.verification.isCached
+            ? '✓ Результат проверки загружен из кэша (0 ₽)'
+            : '✓ ИИ-проверка документа завершена успешно!'
+        );
+      } else {
+        throw new Error('Не удалось выполнить проверку документа');
+      }
+    } catch (err: any) {
+      showError(err.message || 'Ошибка запуска ИИ-проверки документа');
+    } finally {
+      setVerifyingId(null);
+    }
+  };
 
   const loadData = async (targetSubTab = activeSubTab, targetPage = page, targetLimit = limit) => {
     setLoading(true);
@@ -275,7 +310,8 @@ export const TierVerificationTab: React.FC<TierVerificationTabProps> = ({
                   const isRejected = req.status === 'rejected';
 
                   return (
-                    <tr key={req.id} className="hover:bg-slate-50/60 transition-colors">
+                    <React.Fragment key={req.id}>
+                      <tr className="hover:bg-slate-50/60 transition-colors">
                       {/* Date */}
                       <td className="py-3.5 px-4 font-mono text-slate-600">
                         <div>{new Date(req.createdAt).toLocaleDateString('ru-RU')}</div>
@@ -387,6 +423,21 @@ export const TierVerificationTab: React.FC<TierVerificationTabProps> = ({
                           <div className="flex items-center justify-end space-x-2">
                             <button
                               type="button"
+                              disabled={verifyingId === req.id}
+                              onClick={() => handleVerifyWithAi(req)}
+                              className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition-colors flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                              title="Проверить выписку/одобрение через OCR + YandexGPT Lite"
+                            >
+                              {verifyingId === req.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+                              ) : (
+                                <Bot className="w-3.5 h-3.5 text-indigo-600" />
+                              )}
+                              <span>ИИ-проверка</span>
+                            </button>
+
+                            <button
+                              type="button"
                               disabled={actionLoadingId === req.id}
                               onClick={() => handleApprove(req)}
                               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
@@ -418,6 +469,113 @@ export const TierVerificationTab: React.FC<TierVerificationTabProps> = ({
                         </td>
                       )}
                     </tr>
+
+                    {aiVerifications[req.id] && (() => {
+                      const v = aiVerifications[req.id];
+                      const ext = v.extracted || v;
+                      const isMatch = ext.nameMatchStatus === 'exact' || ext.nameMatchStatus === 'matches';
+                      const isPartial = ext.nameMatchStatus === 'partial';
+
+                      return (
+                        <tr key={`ai-${req.id}`} className="bg-indigo-50/40 border-b border-indigo-100">
+                          <td colSpan={activeSubTab === 'archive' ? 7 : 6} className="py-2.5 px-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex items-center space-x-1.5 font-black text-indigo-900">
+                                  <Bot className="w-4 h-4 text-indigo-600" />
+                                  <span>YandexGPT Lite аудит документа:</span>
+                                </div>
+
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-slate-500">Банк:</span>
+                                  <span className="font-bold text-slate-800">
+                                    {ext.bankName || ext.bankNameRu || 'Не определён'}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-slate-500">Сумма в документе:</span>
+                                  <span className="font-mono font-bold text-slate-900">
+                                    {formatRubles(ext.confirmedAmountRub || ext.extractedAmountRub || 0)}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      ext.amountSufficient ?? ext.budgetSufficient
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {ext.amountSufficient ?? ext.budgetSufficient
+                                      ? '✓ Достаточно'
+                                      : '⚠ Меньше бюджета'}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-slate-500">ФИО:</span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      isMatch
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : isPartial
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {isMatch
+                                      ? '✓ Совпадает'
+                                      : isPartial
+                                      ? '~ Частично'
+                                      : '⚠ Не совпадает'}
+                                  </span>
+                                  {(ext.holderFullName || ext.extractedNameRu) && (
+                                    <span className="text-slate-600 font-mono text-[11px]">
+                                      ({ext.holderFullName || ext.extractedNameRu})
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-slate-500">Срок:</span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      ext.isExpired
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : 'bg-emerald-100 text-emerald-800'
+                                    }`}
+                                  >
+                                    {ext.isExpired ? '⚠ Истёк' : '✓ Действует'}
+                                  </span>
+                                  {ext.expiryDate && (
+                                    <span className="text-slate-500 text-[10px]">
+                                      до {ext.expiryDate}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center space-x-2 text-[10px] text-slate-500 font-mono">
+                                {v.isCached ? (
+                                  <span className="bg-slate-200/80 px-1.5 py-0.5 rounded text-slate-700">
+                                    Кэш (0 ₽)
+                                  </span>
+                                ) : (
+                                  <span>~{v.estimatedCostRub} ₽</span>
+                                )}
+                                <span>{v.inputTokens || 0} токенов</span>
+                              </div>
+                            </div>
+                            {ext.summaryRu && (
+                              <p className="mt-1.5 text-[11px] text-indigo-950 font-sans">
+                                <strong className="text-indigo-900">Вывод ИИ:</strong>{' '}
+                                {ext.summaryRu}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })()}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

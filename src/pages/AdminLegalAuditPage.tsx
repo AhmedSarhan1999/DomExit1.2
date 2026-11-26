@@ -31,12 +31,19 @@ import {
   RejectModal,
 } from '../components/admin/legal-audit/LegalAuditModals';
 import {
+  AiLegalCopilotCard,
+  AiLegalAnalysisData,
+} from '../components/admin/legal-audit/AiLegalCopilotCard';
+import {
   CheckCircle2,
   FileSearch,
   Scale,
   ShieldCheck,
   AlertCircle,
   Radar,
+  Bot,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { FileManager } from '../utils/fileManager';
 
@@ -63,6 +70,11 @@ export const AdminLegalAuditPage: React.FC = () => {
   const [axes, setAxes] = useState<LegalAuditAxis[]>(() => createInitialLegalAuditAxes());
   const [radarChecks, setRadarChecks] = useState<LegalRadarCheckItem[]>([]);
   const [uploadingAxisId, setUploadingAxisId] = useState<string | null>(null);
+
+  // AI Legal Copilot State
+  const [copilotAnalysis, setCopilotAnalysis] = useState<AiLegalAnalysisData | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState<boolean>(false);
+  const [suggestedDrafts, setSuggestedDrafts] = useState<Record<string, string>>({});
 
   // Modals State
   const [isRequestDocsModalOpen, setIsRequestDocsModalOpen] = useState(false);
@@ -102,6 +114,71 @@ export const AdminLegalAuditPage: React.FC = () => {
     }
   };
 
+  const loadCopilotAnalysis = async (code: string) => {
+    if (!code) {
+      setCopilotAnalysis(null);
+      setSuggestedDrafts({});
+      return;
+    }
+    try {
+      const res = await apiClient.aiLab.getLegalAnalyses(code);
+      if (res.ok && Array.isArray(res.analyses) && res.analyses.length > 0) {
+        const latest = res.analyses[0];
+        setCopilotAnalysis(latest);
+        const drafts: Record<string, string> = {};
+        if (Array.isArray(latest.suggestedAxes)) {
+          for (const item of latest.suggestedAxes) {
+            if (item.axisId && item.draftNoteRu) {
+              drafts[item.axisId] = item.draftNoteRu;
+            }
+          }
+        }
+        setSuggestedDrafts(drafts);
+      } else {
+        setCopilotAnalysis(null);
+        setSuggestedDrafts({});
+      }
+    } catch {
+      setCopilotAnalysis(null);
+      setSuggestedDrafts({});
+    }
+  };
+
+  const handleRunCopilot = async (force = false) => {
+    if (!lot) return;
+    setCopilotLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await apiClient.aiLab.analyzeDduContract({
+        lotCode: lot.lotCode,
+        forceReanalyze: force,
+      });
+      if (res.ok && res.analysis) {
+        setCopilotAnalysis(res.analysis);
+        const drafts: Record<string, string> = {};
+        if (Array.isArray(res.analysis.suggestedAxes)) {
+          for (const item of res.analysis.suggestedAxes) {
+            if (item.axisId && item.draftNoteRu) {
+              drafts[item.axisId] = item.draftNoteRu;
+            }
+          }
+        }
+        setSuggestedDrafts(drafts);
+        showToast(
+          res.analysis.isCached
+            ? '✓ Анализ ДДУ загружен из кэша (0 ₽)'
+            : '✓ Анализ YandexGPT Pro успешно завершён!'
+        );
+      } else {
+        throw new Error('Не удалось сформировать анализ договора ДДУ');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Ошибка запуска YandexGPT Legal Copilot');
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
+
   const loadLotData = async () => {
     let pool = isEmployee
       ? await LotsRepository.getByAssignedEmployee(currentEmployeeId)
@@ -137,12 +214,17 @@ export const AdminLegalAuditPage: React.FC = () => {
           : createInitialLegalAuditAxes();
       setAxes(loadedAxes);
       setRadarChecks(Array.isArray(found.legalRadarChecks) ? found.legalRadarChecks : []);
-      await loadDocumentsForLot(found.lotCode);
+      await Promise.all([
+        loadDocumentsForLot(found.lotCode),
+        loadCopilotAnalysis(found.lotCode),
+      ]);
     } else {
       setLot(null);
       setVaultDocs([]);
       setAxes(createInitialLegalAuditAxes());
       setRadarChecks([]);
+      setCopilotAnalysis(null);
+      setSuggestedDrafts({});
     }
   };
 
@@ -579,11 +661,66 @@ export const AdminLegalAuditPage: React.FC = () => {
               {/* TAB 2: 5 Legal Audit Axes + Proof Scans + Auto-Computed Index Summary */}
               {activeTab === 2 && (
                 <div className="space-y-6">
+                  {/* YandexGPT Legal Copilot Trigger Banner */}
+                  <div className="bg-white rounded-3xl p-5 border border-indigo-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Bot className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-black text-slate-900">
+                            YandexGPT Legal Copilot (анализ ДДУ)
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            214-ФЗ / 127-ФЗ
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Автоматическое извлечение рисков, условий уступки, маткапитала и генерация черновиков 5 разделов экспертизы.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={copilotLoading}
+                      onClick={() => handleRunCopilot(false)}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+                    >
+                      {copilotLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Анализ YandexGPT...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>{copilotAnalysis ? 'Обновить анализ ИИ' : 'Запустить YandexGPT Copilot'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {copilotAnalysis && (
+                    <AiLegalCopilotCard
+                      analysis={copilotAnalysis}
+                      loading={copilotLoading}
+                      onReanalyze={() => handleRunCopilot(true)}
+                      onApplyAxisDraft={(axisId, note) => handleAxisNotesChange(axisId, note)}
+                      onApplyMemo={(_memo, _penalty) => {
+                        setActiveTab(3);
+                        showToast('✓ Черновик перенесён в раздел 3 (Обоснование 61.2 ФЗ-127)');
+                      }}
+                    />
+                  )}
+
                   <LegalAuditAxesSection
                     lot={lot}
                     axes={axes}
                     curatorName={curatorName}
                     uploadingAxisId={uploadingAxisId}
+                    suggestedDrafts={suggestedDrafts}
                     onAxisStatusChange={handleAxisStatusChange}
                     onAxisNotesChange={handleAxisNotesChange}
                     onSaveAxis={handleSaveAxis}
@@ -668,7 +805,11 @@ export const AdminLegalAuditPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <LegalMemoGenerator lot={lot} />
+                  <LegalMemoGenerator
+                    lot={lot}
+                    aiProtectionMemo={copilotAnalysis?.draftProtectionMemo612Ru}
+                    aiPenaltyPercent={copilotAnalysis?.developerPenaltyPct}
+                  />
                   <LegalOperationsLog lot={lot} />
                 </div>
               )}

@@ -107,7 +107,13 @@ function runYc(cmd, ignoreError = false) {
 async function main() {
   // 1. Ensure IAM Roles
   console.log('\n[1/5] Checking and ensuring IAM roles for domexit-runtime-sa...');
-  const rolesToEnsure = ['ai.vision.user', 'ymq.admin', 'storage.editor', 'serverless.functions.invoker'];
+  const rolesToEnsure = [
+    'ai.vision.user',
+    'ai.languageModels.user',
+    'ymq.admin',
+    'storage.editor',
+    'serverless.functions.invoker',
+  ];
   let currentBindings = [];
   try {
     currentBindings = JSON.parse(runYc(`resource-manager folder list-access-bindings ${folderId}`));
