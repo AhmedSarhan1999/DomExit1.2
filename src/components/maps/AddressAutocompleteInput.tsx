@@ -7,6 +7,8 @@ import {
   findNearestMetro,
   AddressSuggestion,
 } from '../../services/yandexMapsService';
+import { useAiFeatureFlags } from '../../hooks/useAiFeatureFlags';
+import { apiClient } from '../../services/apiClient';
 
 interface AddressAutocompleteInputProps {
   value: string;
@@ -32,7 +34,10 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
   className = '',
   onBlur,
 }) => {
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const dadataEnabled = isFeatureEnabled('dadataAutocomplete');
+
+  const [suggestions, setSuggestions] = useState<(AddressSuggestion & { geoLat?: string | null; geoLon?: string | null; district?: string | null })[]>([]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
@@ -63,6 +68,28 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
 
       setIsLoading(true);
       try {
+        if (dadataEnabled && query.trim().length >= 3) {
+          try {
+            const regionHint = cityCode === 'spb' ? 'Санкт-Петербург' : cityCode === 'msk' ? 'Москва' : undefined;
+            const dadataRes = await apiClient.aiLab.suggestAddress(query, regionHint);
+            if (dadataRes?.ok && Array.isArray(dadataRes.items) && dadataRes.items.length > 0) {
+              const mapped = dadataRes.items.map((item: any) => ({
+                title: item.value,
+                subtitle: [item.region, item.city, item.district].filter(Boolean).join(', '),
+                fullAddress: item.unrestrictedValue || item.value,
+                geoLat: item.geoLat,
+                geoLon: item.geoLon,
+                district: item.district,
+              }));
+              setSuggestions(mapped);
+              setIsOpen(true);
+              setSelectedIndex(-1);
+              return;
+            }
+          } catch {
+            // Silent fallback to yandexMapsService / manual entry
+          }
+        }
         const results = await suggestAddresses(query, cityCode);
         setSuggestions(results);
         setIsOpen(results.length > 0);
@@ -75,7 +102,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
         setIsLoading(false);
       }
     },
-    [cityCode]
+    [cityCode, dadataEnabled]
   );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,7 +118,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
     }, 350);
   };
 
-  const handleSelectSuggestion = async (item: AddressSuggestion) => {
+  const handleSelectSuggestion = async (item: AddressSuggestion & { geoLat?: string | null; geoLon?: string | null; district?: string | null }) => {
     const selectedText = item.title;
     onChange(selectedText);
     setIsOpen(false);
@@ -100,6 +127,27 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
     if (onSelectAddress) {
       setIsGeocoding(true);
       try {
+        if (item.geoLat && item.geoLon) {
+          const lat = parseFloat(item.geoLat);
+          const lng = parseFloat(item.geoLon);
+          if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+            let metro: MetroStationInfo | undefined = undefined;
+            try {
+              const nearest = await findNearestMetro(lat, lng, cityCode);
+              if (nearest) metro = nearest;
+            } catch {
+              // ignore
+            }
+            onSelectAddress({
+              address: selectedText,
+              coordinates: { lat, lng },
+              nearestMetro: metro,
+              district: item.district || undefined,
+            });
+            return;
+          }
+        }
+
         const geocoded = await geocodeAddress(item.fullAddress || selectedText, cityCode);
         let metro: MetroStationInfo | undefined = undefined;
 

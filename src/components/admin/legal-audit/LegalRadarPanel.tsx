@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Lot, LegalRadarCheckItem } from '../../../types';
 import { apiClient } from '../../../services/apiClient';
+import { useAiFeatureFlags } from '../../../hooks/useAiFeatureFlags';
 
 interface LegalRadarPanelProps {
   lot: Lot;
@@ -97,10 +98,16 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
   onUpdateChecks,
   onDownloadProtocol,
 }) => {
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const dadataEnabled = isFeatureEnabled('dadataAutocomplete');
+
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [innLoading, setInnLoading] = useState(false);
   const [innResult, setInnResult] = useState<any | null>(null);
   const [innError, setInnError] = useState<string | null>(null);
+  const [dadataLoading, setDadataLoading] = useState(false);
+  const [dadataParty, setDadataParty] = useState<any | null>(null);
+  const [dadataError, setDadataError] = useState<string | null>(null);
 
   // Local state for radar checks (resets/syncs when lot changes)
   const buildChecksMap = (items?: LegalRadarCheckItem[]) => {
@@ -121,6 +128,8 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
     setChecks(buildChecksMap(lot.legalRadarChecks));
     setInnResult(null);
     setInnError(null);
+    setDadataParty(null);
+    setDadataError(null);
   }, [lot.lotCode, lot.legalRadarChecks]);
 
   const sellerInn = (lot.sellerInn || '').trim() || '—';
@@ -151,6 +160,28 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
       setInnError(err?.message || 'Не удалось выполнить проверку ИНН');
     } finally {
       setInnLoading(false);
+    }
+  };
+
+  const handleDadataPartyLookup = async () => {
+    if (!lot.sellerInn || lot.sellerInn === '—') {
+      setDadataError('ИНН не указан в карточке объекта');
+      return;
+    }
+    setDadataLoading(true);
+    setDadataError(null);
+    setDadataParty(null);
+    try {
+      const res = await apiClient.aiLab.lookupParty(lot.sellerInn);
+      if (res?.ok && res?.party) {
+        setDadataParty(res.party);
+      } else {
+        setDadataError(res?.errorCode || 'Не удалось получить данные из DaData');
+      }
+    } catch (err: any) {
+      setDadataError(err?.message || 'Ошибка запроса DaData ЕГРЮЛ');
+    } finally {
+      setDadataLoading(false);
     }
   };
 
@@ -272,25 +303,91 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLookupInn}
-            disabled={innLoading || !sellerInn || sellerInn === '—'}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer shrink-0"
-          >
-            {innLoading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Проверка...</span>
-              </>
-            ) : (
-              <>
-                <Search className="w-3.5 h-3.5" />
-                <span>Проверить ИНН {sellerInn}</span>
-              </>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {dadataEnabled && (
+              <button
+                type="button"
+                onClick={handleDadataPartyLookup}
+                disabled={dadataLoading || !sellerInn || sellerInn === '—'}
+                className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                {dadataLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>ЕГРЮЛ...</span>
+                  </>
+                ) : (
+                  <>
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>DaData ЕГРЮЛ</span>
+                  </>
+                )}
+              </button>
             )}
-          </button>
+            <button
+              type="button"
+              onClick={handleLookupInn}
+              disabled={innLoading || !sellerInn || sellerInn === '—'}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+            >
+              {innLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Проверка...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Проверить ИНН {sellerInn}</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
+
+        {dadataParty && (
+          <div className="p-3.5 rounded-xl bg-white border border-violet-200 text-xs space-y-2 animate-fade-in font-sans">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-violet-950 flex items-center space-x-1.5">
+                <Building2 className="w-4 h-4 text-violet-600" />
+                <span>{dadataParty.found ? (dadataParty.nameFull || dadataParty.nameShort) : 'Организация не найдена в ЕГРЮЛ'}</span>
+              </span>
+              {dadataParty.statusLabelRu && (
+                <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${dadataParty.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                  {dadataParty.statusLabelRu}
+                </span>
+              )}
+            </div>
+            {dadataParty.found && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px] text-slate-600 border-t border-slate-100">
+                {dadataParty.ogrn && (
+                  <div><span className="font-bold text-slate-800">ОГРН:</span> {dadataParty.ogrn}</div>
+                )}
+                {dadataParty.kpp && (
+                  <div><span className="font-bold text-slate-800">КПП:</span> {dadataParty.kpp}</div>
+                )}
+                {dadataParty.managementName && (
+                  <div className="sm:col-span-2">
+                    <span className="font-bold text-slate-800">Руководитель:</span> {dadataParty.managementName}
+                    {dadataParty.managementPost ? ` (${dadataParty.managementPost})` : ''}
+                  </div>
+                )}
+                {dadataParty.legalAddress && (
+                  <div className="sm:col-span-2">
+                    <span className="font-bold text-slate-800">Юр. адрес:</span> {dadataParty.legalAddress}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {dadataError && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-2 animate-fade-in">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{dadataError}</span>
+          </div>
+        )}
 
         {innResult && (
           <div className="p-3.5 rounded-xl bg-white border border-indigo-200 text-xs space-y-2 animate-fade-in font-sans">

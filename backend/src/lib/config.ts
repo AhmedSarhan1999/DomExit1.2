@@ -33,7 +33,7 @@ const loadEnvFile = (fileName: string) => {
 if (!process.env.YC_ACCESS_KEY_ID) {
   loadEnvFile('.env.cloud.local');
 }
-if (!process.env.DADATA_API_KEY || !process.env.DADATA_SECRET_KEY) {
+if (!process.env.DADATA_API_KEY) {
   loadEnvFile('.env.backend.local');
 }
 
@@ -58,7 +58,8 @@ export interface BackendConfig {
   TELEGRAM_WEBHOOK_SECRET?: string;
   TELEGRAM_API_BASE_URL?: string;
   DADATA_API_KEY?: string;
-  DADATA_SECRET_KEY?: string;
+  // DADATA_SECRET_KEY removed — cleaner.dadata.ru (paid) is permanently disabled.
+  // All DaData usage is free-tier suggestions only via suggestions.dadata.ru.
   YDB_USE_V2_TABLES?: boolean;
   EMAIL_PROVIDER?: 'postbox' | 'smtp' | 'console';
   POSTBOX_SMTP_HOST?: string;
@@ -130,7 +131,6 @@ export function getConfig(): BackendConfig {
       '',
     TELEGRAM_API_BASE_URL: process.env.TELEGRAM_API_BASE_URL || '',
     DADATA_API_KEY: process.env.DADATA_API_KEY || '',
-    DADATA_SECRET_KEY: process.env.DADATA_SECRET_KEY || '',
     YDB_USE_V2_TABLES: process.env.YDB_USE_V2_TABLES === 'true',
     EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER as any) || (process.env.POSTBOX_SMTP_USER ? 'postbox' : 'console'),
     POSTBOX_SMTP_HOST: process.env.POSTBOX_SMTP_HOST || 'postbox.cloud.yandex.net',

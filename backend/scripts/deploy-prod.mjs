@@ -175,7 +175,6 @@ const envMap = {
   MAX_WEBHOOK_SECRET: envVars.MAX_WEBHOOK_SECRET || '',
   MAX_API_BASE_URL: envVars.MAX_API_BASE_URL || 'https://api.max-messenger.ru/bot/v1',
   DADATA_API_KEY: envVars.DADATA_API_KEY || '',
-  DADATA_SECRET_KEY: envVars.DADATA_SECRET_KEY || '',
 };
 
 // Build environment string without printing secrets to console

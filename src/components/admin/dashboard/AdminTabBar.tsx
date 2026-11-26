@@ -5,6 +5,7 @@ import {
   Sliders,
   Users,
   ShieldCheck,
+  FlaskConical,
 } from 'lucide-react';
 
 export type OwnerTab =
@@ -12,13 +13,15 @@ export type OwnerTab =
   | 'sellers'
   | 'market'
   | 'users_rbac'
-  | 'system_cms';
+  | 'system_cms'
+  | 'ai_lab';
 
 export interface AdminTabBarProps {
   activeOwnerTab: OwnerTab;
   setActiveOwnerTab: (tab: OwnerTab) => void;
   pendingSellerCount: number;
   usersAndStaffCount: number;
+  isOwner?: boolean;
 }
 
 export const AdminTabBar: React.FC<AdminTabBarProps> = ({
@@ -26,6 +29,7 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
   setActiveOwnerTab,
   pendingSellerCount,
   usersAndStaffCount,
+  isOwner = false,
 }) => {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
@@ -118,6 +122,23 @@ export const AdminTabBar: React.FC<AdminTabBarProps> = ({
         <ShieldCheck className="w-4 h-4" />
         <span>5. Система, Telegram и CMS</span>
       </button>
+
+      {/* TAB 6 — AI Lab (owner only) */}
+      {isOwner && (
+        <button
+          type="button"
+          onClick={() => setActiveOwnerTab('ai_lab')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex-shrink-0 cursor-pointer ${
+            activeOwnerTab === 'ai_lab'
+              ? 'bg-violet-600 text-white shadow-2xs'
+              : 'bg-white hover:bg-violet-50 text-violet-700 border border-violet-200'
+          }`}
+        >
+          <FlaskConical className="w-4 h-4" />
+          <span>6. AI Лаборатория (Beta)</span>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeOwnerTab === 'ai_lab' ? 'bg-white text-violet-900' : 'bg-violet-100 text-violet-700'}`}>Beta</span>
+        </button>
+      )}
     </div>
   );
 };

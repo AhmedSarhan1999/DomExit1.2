@@ -18,6 +18,7 @@ import { handlePep } from './routes/pep.js';
 import { handleMatching } from './routes/matching.js';
 import { handleMessenger } from './routes/messenger.js';
 import { handleTierVerification } from './routes/tierVerification.js';
+import { handleAiLab } from './routes/aiLab.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -101,6 +102,11 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
     else if (path.startsWith('/api/tier-requests')) {
       const subPath = path.substring('/api/tier-requests'.length) || '/';
       response = await handleTierVerification(event, subPath);
+    }
+    // 10b. AI Laboratory (/api/ai/*)
+    else if (path.startsWith('/api/ai')) {
+      const subPath = path.substring('/api/ai'.length) || '/';
+      response = await handleAiLab(event, subPath);
     }
     // 10. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {

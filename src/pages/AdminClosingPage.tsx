@@ -11,6 +11,7 @@ import { AuditLogsRepository } from '../dal/repositories/AuditLogsRepository';
 import { StorageService } from '../dal/StorageService';
 import { DatabaseGateway } from '../dal/DatabaseGateway';
 import { apiClient } from '../services/apiClient';
+import { useAiFeatureFlags } from '../hooks/useAiFeatureFlags';
 import { ClosingStepId, DealTrack, Lot } from '../types';
 import { showDownloadToast } from '../utils/downloadManager';
 import { BankSettlementAssistant } from '../components/shared/BankSettlementAssistant';
@@ -64,6 +65,11 @@ export const AdminClosingPage: React.FC = () => {
   const [pepOverrideReason, setPepOverrideReason] = useState<string>('');
   const [pepOverrideDocKey, setPepOverrideDocKey] = useState<string>('');
   const [bankInput, setBankInput] = useState<string>('ПАО Сбербанк');
+  const [bikInput, setBikInput] = useState<string>('');
+  const [bikLoading, setBikLoading] = useState<boolean>(false);
+  const [bikError, setBikError] = useState<string | null>(null);
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const dadataEnabled = isFeatureEnabled('dadataAutocomplete');
   const [sbrAccountInput, setSbrAccountInput] = useState<string>('');
   const [kuvdInput, setKuvdInput] = useState<string>('');
   const [notaryConfirmed, setNotaryConfirmed] = useState<boolean>(false);
@@ -757,6 +763,42 @@ export const AdminClosingPage: React.FC = () => {
                           <div className="font-black text-slate-900">
                             Шаг 3 (55%): Нотариальное согласие и открытие СБР / Аккредитива
                           </div>
+                          {dadataEnabled && (
+                            <div className="flex flex-wrap items-center gap-2 bg-violet-50 border border-violet-200 rounded-xl p-2.5">
+                              <input
+                                type="text"
+                                value={bikInput}
+                                onChange={(e) => setBikInput(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                                placeholder="БИК банка (9 цифр, напр. 044525225)"
+                                className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-violet-200 bg-white font-mono text-xs"
+                              />
+                              <button
+                                type="button"
+                                disabled={bikLoading || bikInput.length !== 9}
+                                onClick={async () => {
+                                  setBikLoading(true);
+                                  setBikError(null);
+                                  try {
+                                    const res = await apiClient.aiLab.lookupBank(bikInput);
+                                    if (res?.ok && res?.bank?.found) {
+                                      setBankInput(res.bank.nameShort || res.bank.nameFull || bankInput);
+                                      setNotificationMsg(`Банк найден через DaData: ${res.bank.nameShort || res.bank.nameFull}`);
+                                    } else {
+                                      setBikError(res?.errorCode || 'Банк по БИК не найден');
+                                    }
+                                  } catch (err: any) {
+                                    setBikError(err?.message || 'Ошибка поиска по БИК');
+                                  } finally {
+                                    setBikLoading(false);
+                                  }
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white font-bold text-xs cursor-pointer"
+                              >
+                                {bikLoading ? 'Поиск...' : 'Найти банк (DaData)'}
+                              </button>
+                              {bikError && <span className="text-[11px] text-rose-700 font-bold w-full">{bikError}</span>}
+                            </div>
+                          )}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <input
                               type="text"

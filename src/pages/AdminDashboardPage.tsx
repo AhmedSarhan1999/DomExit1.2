@@ -29,6 +29,7 @@ import { SellerRequestsTableTab } from '../components/admin/dashboard/SellerRequ
 import { MarketSettingsTab } from '../components/admin/dashboard/MarketSettingsTab';
 import { UsersRbacTab } from '../components/admin/dashboard/UsersRbacTab';
 import { LegalAndChannelsTab } from '../components/admin/dashboard/LegalAndChannelsTab';
+import { AiLabControlTab } from '../components/admin/dashboard/AiLabControlTab';
 import { CuratorEmployeeView } from '../components/admin/dashboard/CuratorEmployeeView';
 
 const LegalCmsManager = React.lazy(() =>
@@ -308,6 +309,7 @@ export const AdminDashboardPage: React.FC = () => {
                 setActiveOwnerTab={setActiveOwnerTab}
                 pendingSellerCount={pendingSellerCount}
                 usersAndStaffCount={employees.length + usersList.length}
+                isOwner={isOwner}
               />
 
               {/* TAB 1: Сводка и метрики */}
@@ -463,6 +465,11 @@ export const AdminDashboardPage: React.FC = () => {
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* TAB 6: AI Лаборатория (Beta) — Owner Only */}
+              {activeOwnerTab === 'ai_lab' && isOwner && (
+                <AiLabControlTab showToast={showToast} showError={showError} />
               )}
             </>
           )}

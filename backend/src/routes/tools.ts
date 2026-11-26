@@ -162,7 +162,9 @@ export async function handleTools(event: YcHttpEvent, subPath: string): Promise<
     return json(event, 200, result);
   }
 
-  // POST /api/tools/clean-address { address: string } (uses DaData Cleaner API with API Key + Secret Key)
+  // POST /api/tools/clean-address { address: string }
+  // IMPORTANT: Uses FREE DaData suggestions API only (suggestions.dadata.ru).
+  // cleaner.dadata.ru (paid) is permanently disabled. No DADATA_SECRET_KEY is used.
   if (subPath === '/clean-address' && method === 'POST') {
     let body: any = {};
     try {
@@ -199,11 +201,11 @@ export async function handleTools(event: YcHttpEvent, subPath: string): Promise<
       return json(event, 200, { ...cached, cached: true });
     }
 
+    // Use FREE suggestions API only — no cleaner.dadata.ru, no DADATA_SECRET_KEY
     const cfg = getConfig();
     const dadataApiKey = (process.env.DADATA_API_KEY || cfg.DADATA_API_KEY || '').trim();
-    const dadataSecretKey = (process.env.DADATA_SECRET_KEY || cfg.DADATA_SECRET_KEY || '').trim();
 
-    if (!dadataApiKey || !dadataSecretKey) {
+    if (!dadataApiKey) {
       return json(event, 200, {
         ok: true,
         dadataConfigured: false,
@@ -217,47 +219,48 @@ export async function handleTools(event: YcHttpEvent, subPath: string): Promise<
     let dadataError: string | null = null;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-      const response = await fetch('https://cleaner.dadata.ru/api/v1/clean/address', {
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
           Authorization: `Token ${dadataApiKey}`,
-          'X-Secret': dadataSecretKey,
+          // No X-Secret header — free tier only
         },
-        body: JSON.stringify([address]),
+        body: JSON.stringify({ query: address, count: 1 }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
       if (response.ok) {
         const resJson: any = await response.json();
-        const first = Array.isArray(resJson) ? resJson[0] : null;
-        if (first) {
+        const suggestion = resJson.suggestions?.[0];
+        if (suggestion?.data) {
+          const d = suggestion.data;
           cleaned = {
-            result: first.result || null,
-            region: first.region_with_type || first.region || null,
-            city: first.city_with_type || first.city || first.settlement_with_type || null,
-            postalCode: first.postal_code || null,
-            fiasId: first.fias_id || null,
-            geoLat: first.geo_lat || null,
-            geoLon: first.geo_lon || null,
-            qcGeo: first.qc_geo ?? null,
+            result: suggestion.unrestricted_value || suggestion.value || null,
+            region: d.region_with_type || d.region || null,
+            city: d.city_with_type || d.city || d.settlement_with_type || null,
+            postalCode: d.postal_code || null,
+            fiasId: d.fias_id || null,
+            kladrId: d.kladr_id || null,
+            geoLat: d.geo_lat || null,
+            geoLon: d.geo_lon || null,
           };
         }
       } else {
         dadataError = `DaData HTTP ${response.status}`;
       }
     } catch (err: any) {
-      dadataError = err.name === 'AbortError' ? 'Timeout 3.5s exceeded' : err.message;
+      dadataError = err.name === 'AbortError' ? 'Timeout 6s exceeded' : err.message;
     }
 
     const result = {
       ok: true,
       dadataConfigured: true,
+      source: 'free_tier_only', // cleaner.dadata.ru permanently disabled
       dadataError,
-      source: cleaned ? 'dadata_cleaner' : 'dadata_unavailable',
       address,
       cleaned,
     };

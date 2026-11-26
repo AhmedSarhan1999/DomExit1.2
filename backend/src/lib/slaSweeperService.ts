@@ -7,6 +7,8 @@ import { callTelegramApi, escapeHtml } from './telegramClient.js';
 import { findTelegramBindingByUser } from './telegramWorkflow.js';
 import { computeMatchScore } from './buyBoxEngine.js';
 import { logger } from './logger.js';
+import { getAiLabConfig } from '../modules/proptech-ai/aiFeatureFlags.js';
+import { syncCbrKeyRate } from '../modules/proptech-ai/cbrSyncService.js';
 import {
   LotDropConfig,
   BuyerBuyBox,
@@ -438,6 +440,25 @@ export async function runSlaSweep(
       }
     } catch (err: any) {
       logger.warn('TTL pruning notice for pep_otps', { meta: { error: err.message } });
+    }
+
+    // Task 8: Daily CBR Key Rate Sync (when AI Lab cbrAutoSync is enabled)
+    try {
+      const aiCfg = await getAiLabConfig();
+      if (aiCfg.masterLabEnabled && aiCfg.features?.cbrAutoSync !== 'off' && !dryRun) {
+        const cbrResult = await syncCbrKeyRate();
+        if (cbrResult.ok && cbrResult.changed) {
+          const prevStr = cbrResult.previousRate !== null ? `${cbrResult.previousRate}%` : '—';
+          const text =
+            `🏦 <b>ЦБ РФ: Ключевая ставка изменилась</b>\n` +
+            `Было: <b>${prevStr}</b> → Стало: <b>${cbrResult.keyRate}%</b>\n` +
+            `Дата вступления: <code>${escapeHtml(cbrResult.effectiveDate || '—')}</code>\n` +
+            `Источник: ${escapeHtml(cbrResult.source)} (market_settings обновлён автоматически)`;
+          void notifyOwner(text);
+        }
+      }
+    } catch (err: any) {
+      logger.warn('Error in Task 8 (CBR key rate sync)', { meta: { error: err.message } });
     }
   }
 

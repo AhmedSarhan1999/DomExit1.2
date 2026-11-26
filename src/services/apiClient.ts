@@ -862,4 +862,44 @@ export const apiClient = {
         body: JSON.stringify(data),
       }),
   },
+
+  // AI Laboratory — Feature Flags & Connectors
+  aiLab: {
+    getConfig: () =>
+      request<any>('/api/ai/config', { method: 'GET', ttlMs: 60_000 }),
+
+    updateConfig: (payload: { masterLabEnabled: boolean; features: Record<string, string> }) =>
+      request<any>('/api/ai/config', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    suggestAddress: (query: string, region?: string) =>
+      request<any>('/api/ai/dadata/address', {
+        method: 'POST',
+        body: JSON.stringify({ query, region, count: 5 }),
+        skipCache: true,
+      }),
+
+    lookupParty: (inn: string) =>
+      request<any>('/api/ai/dadata/party', {
+        method: 'POST',
+        body: JSON.stringify({ inn }),
+        skipCache: true,
+      }),
+
+    lookupBank: (bik: string) =>
+      request<any>('/api/ai/dadata/bank', {
+        method: 'POST',
+        body: JSON.stringify({ bik }),
+        skipCache: true,
+      }),
+
+    syncCbrRate: () =>
+      request<any>('/api/ai/cbr/sync', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        skipCache: true,
+      }),
+  },
 };
