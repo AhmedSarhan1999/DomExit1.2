@@ -20,6 +20,7 @@ import { handleMessenger } from './routes/messenger.js';
 import { handleTierVerification } from './routes/tierVerification.js';
 import { handleAiLab } from './routes/aiLab.js';
 import { handlePublicJournal } from './routes/publicJournal.js';
+import { handleLegalCoreV1 } from './routes/legalCoreV1.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -115,6 +116,11 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
         ? path.substring('/api/public'.length) || '/'
         : path;
       response = await handlePublicJournal(event, subPath);
+    }
+    // 10d. Legal Core v1 Independent Facade (/api/legal-core/v1/*)
+    else if (path.startsWith('/api/legal-core/v1')) {
+      const subPath = path.substring('/api/legal-core/v1'.length) || '/';
+      response = await handleLegalCoreV1(event, subPath);
     }
     // 10. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {

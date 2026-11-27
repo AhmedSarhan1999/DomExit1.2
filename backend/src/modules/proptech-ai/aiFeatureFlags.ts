@@ -19,7 +19,8 @@ export type AiFeatureKey =
   | 'aiPackagingStudio'
   | 'legislativeRadar'
   | 'publicJournalSeo'
-  | 'aiConciergeRag';
+  | 'aiConciergeRag'
+  | 'autoKycProvider';
 
 export type FeatureVisibility = 'off' | 'owner_only' | 'staff_only' | 'public';
 export type UserRole = 'owner' | 'employee' | 'buyer' | 'guest';
@@ -110,6 +111,14 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
     descriptionRu: 'Интеллектуальный суверенный ассистент на базе RAG и YandexGPT для консультации покупателей и продавцов 24/7',
     implemented: true,
     roadmapStep: 'Этап 09',
+    defaultVisibility: 'owner_only',
+  },
+  {
+    key: 'autoKycProvider',
+    labelRu: 'Автопроверка сторон 1-Click (API-Cloud / Checko)',
+    descriptionRu: 'Мгновенная проверка участников сделки по ФССП, ЕФРСБ, судам и ФНС с кэшем 30 дней и протоколом в S3',
+    implemented: true,
+    roadmapStep: 'Этап 10',
     defaultVisibility: 'owner_only',
   },
 ];

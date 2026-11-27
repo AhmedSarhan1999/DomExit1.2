@@ -1355,5 +1355,62 @@ export const apiClient = {
         method: 'PATCH',
         skipCache: true,
       }),
+
+    // --- 1-Click KYC/KYB & Legal Core Methods ---
+    runKycCheck: (payload: {
+      lotCode?: string;
+      subjectType: 'individual' | 'legal_entity';
+      fio?: string;
+      birthDate?: string;
+      passportSeries?: string;
+      passportNumber?: string;
+      inn?: string;
+      ogrn?: string;
+      companyName?: string;
+      regionCode?: string;
+      forceRefresh?: boolean;
+      provider?: string;
+    }) =>
+      request<{
+        ok: boolean;
+        record?: any;
+        hintRu?: string;
+        configured?: boolean;
+        provider?: string;
+      }>('/api/ai/kyc/check', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getKycHistory: (lotCode?: string) =>
+      request<{ ok: boolean; records: any[] }>(
+        `/api/ai/kyc/history${lotCode ? `?lotCode=${encodeURIComponent(lotCode)}` : ''}`,
+        { method: 'GET', skipCache: true }
+      ),
+
+    getKycProtocolUrl: (checkId: string) =>
+      request<{ ok: boolean; checkId: string; protocolS3Key: string; downloadUrl: string | null }>(
+        `/api/ai/kyc/protocol/${encodeURIComponent(checkId)}`,
+        { method: 'GET', skipCache: true }
+      ),
+
+    exportDataLensSnapshots: () =>
+      request<{ ok: boolean; meta: any }>('/api/ai/datalens/export', {
+        method: 'POST',
+        skipCache: true,
+      }),
+
+    getDataLensMeta: () =>
+      request<{ ok: boolean; meta: any }>('/api/ai/datalens/meta', {
+        method: 'GET',
+        skipCache: true,
+      }),
+
+    getLegalCoreHealth: () =>
+      request<{ ok: boolean; health: any }>('/api/legal-core/v1/health', {
+        method: 'GET',
+        skipCache: true,
+      }),
   },
 };

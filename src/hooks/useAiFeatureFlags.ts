@@ -18,7 +18,8 @@ export type AiFeatureKey =
   | 'aiPackagingStudio'
   | 'legislativeRadar'
   | 'publicJournalSeo'
-  | 'aiConciergeRag';
+  | 'aiConciergeRag'
+  | 'autoKycProvider';
 
 export interface AiLabPublicConfig {
   masterLabEnabled: boolean;

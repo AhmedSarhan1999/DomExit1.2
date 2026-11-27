@@ -11,6 +11,9 @@ import {
   Shield,
   Loader2,
   Check,
+  Zap,
+  Download,
+  Sparkles,
 } from 'lucide-react';
 import { Lot, LegalRadarCheckItem } from '../../../types';
 import { apiClient } from '../../../services/apiClient';
@@ -100,6 +103,7 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
 }) => {
   const { isFeatureEnabled } = useAiFeatureFlags();
   const dadataEnabled = isFeatureEnabled('dadataAutocomplete');
+  const autoKycEnabled = isFeatureEnabled('autoKycProvider');
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [innLoading, setInnLoading] = useState(false);
@@ -108,6 +112,14 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
   const [dadataLoading, setDadataLoading] = useState(false);
   const [dadataParty, setDadataParty] = useState<any | null>(null);
   const [dadataError, setDadataError] = useState<string | null>(null);
+
+  // 1-Click Auto-KYC state
+  const [kycLoading, setKycLoading] = useState(false);
+  const [kycResult, setKycResult] = useState<any | null>(null);
+  const [kycError, setKycError] = useState<string | null>(null);
+  const [showKycConfirm, setShowKycConfirm] = useState(false);
+  const [protocolDownloading, setProtocolDownloading] = useState(false);
+  const [appliedHints, setAppliedHints] = useState(false);
 
   // Local state for radar checks (resets/syncs when lot changes)
   const buildChecksMap = (items?: LegalRadarCheckItem[]) => {
@@ -182,6 +194,84 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
       setDadataError(err?.message || 'Ошибка запроса DaData ЕГРЮЛ');
     } finally {
       setDadataLoading(false);
+    }
+  };
+
+  const handleRunKycCheck = async (forceRefresh: boolean = false) => {
+    setShowKycConfirm(false);
+    setKycLoading(true);
+    setKycError(null);
+    setAppliedHints(false);
+
+    try {
+      const res = await apiClient.aiLab.runKycCheck({
+        lotCode: lot.lotCode,
+        subjectType: 'individual',
+        fio: lot.ownerDossier?.fullNameMasked || lot.sellerName,
+        inn: lot.sellerInn && lot.sellerInn !== '—' ? lot.sellerInn : undefined,
+        forceRefresh,
+      });
+
+      if (res?.ok && res?.record) {
+        setKycResult(res.record);
+      } else {
+        setKycError(res?.hintRu || 'Не удалось выполнить автоматическую проверку');
+      }
+    } catch (err: any) {
+      setKycError(err?.message || 'Ошибка вызова сервиса автопроверки');
+    } finally {
+      setKycLoading(false);
+    }
+  };
+
+  const handleApplySuggestedRadarUpdates = () => {
+    if (!kycResult?.suggestedRadarUpdates) return;
+    const updates = kycResult.suggestedRadarUpdates;
+
+    const newChecks = { ...checks };
+    const nowIso = new Date().toISOString();
+
+    if (updates.fssp) {
+      newChecks['fssp'] = { status: updates.fssp.status, checkedAt: nowIso };
+    }
+    if (updates.fedresurs) {
+      newChecks['fedresurs'] = { status: updates.fedresurs.status, checkedAt: nowIso };
+    }
+    if (updates.kad_arbitr) {
+      newChecks['kad_arbitr'] = { status: updates.kad_arbitr.status, checkedAt: nowIso };
+    }
+    if (updates.sudrf) {
+      newChecks['sudrf'] = { status: updates.sudrf.status, checkedAt: nowIso };
+    }
+
+    setChecks(newChecks);
+    setAppliedHints(true);
+
+    if (onUpdateChecks) {
+      const formatted: LegalRadarCheckItem[] = Object.entries(newChecks).map(([rId, data]) => ({
+        registry: rId,
+        registryId: rId,
+        status: data.status,
+        checkedAt: data.checkedAt || nowIso,
+        checkedBy: curatorName,
+      }));
+      onUpdateChecks(formatted);
+    }
+  };
+
+  const handleDownloadKycProtocol = async (checkId: string) => {
+    setProtocolDownloading(true);
+    try {
+      const res = await apiClient.aiLab.getKycProtocolUrl(checkId);
+      if (res?.ok && res?.downloadUrl) {
+        window.open(res.downloadUrl, '_blank');
+      } else {
+        alert('Не удалось сформировать ссылку для скачивания протокола');
+      }
+    } catch (err: any) {
+      alert('Ошибка получения протокола: ' + err.message);
+    } finally {
+      setProtocolDownloading(false);
     }
   };
 
@@ -287,6 +377,241 @@ export const LegalRadarPanel: React.FC<LegalRadarPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* 1-Click Real KYC/KYB Banner (Stage 10) */}
+      {autoKycEnabled && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-900/10 via-teal-900/10 to-indigo-900/10 border-2 border-emerald-500/30 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs">
+                <Zap className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase text-emerald-950 tracking-wider flex items-center space-x-2">
+                  <span>⚡ Автопроверка по госреестрам 1-Click</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">ФССП + ЕФРСБ + Суды + ФНС</span>
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  Мгновенный опрос 6 госреестров через сертифицированный шлюз • Кэш 30 дней (0 ₽) • 152-ФЗ Zero-PII
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowKycConfirm(true)}
+                disabled={kycLoading}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                {kycLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Проверка госреестров...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Запустить 1-Click проверку</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Confirmation Dialog */}
+          {showKycConfirm && (
+            <div className="p-3 bg-white rounded-xl border border-emerald-300 shadow-sm space-y-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Подтверждение запуска автопроверки:</p>
+                  <p className="text-[11px] text-slate-600">
+                    Субъект: <span className="font-bold">{sellerFullName}</span> (ИНН: {sellerInn})
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Стоимость: <span className="font-bold text-emerald-700">~15–25 ₽</span> (или <span className="font-bold text-emerald-700">0 ₽</span>, если проверялся за последние 30 дней)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowKycConfirm(false)}
+                  className="text-xs text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => handleRunKycCheck(false)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                >
+                  Запустить (с кэшем 30 дн.)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRunKycCheck(true)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                >
+                  Принудительно обновить
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowKycConfirm(false)}
+                  className="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-700 text-xs"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* KYC Error */}
+          {kycError && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+              <span>{kycError}</span>
+            </div>
+          )}
+
+          {/* KYC Results Card */}
+          {kycResult && (
+            <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-slate-800">Результат 1-Click:</span>
+                  {kycResult.overallRiskLevel === 'clean' && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                      ✓ Чисто (рисков не обнаружено)
+                    </span>
+                  )}
+                  {kycResult.overallRiskLevel === 'attention' && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+                      ⚠ Требует внимания
+                    </span>
+                  )}
+                  {kycResult.overallRiskLevel === 'critical' && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[11px] font-bold">
+                      ⛔ Критический юридический риск
+                    </span>
+                  )}
+
+                  {kycResult.cached ? (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+                      0 ₽ (кэш 30 дн.)
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-mono">
+                      ~{kycResult.estimatedCostRub || 18} ₽
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadKycProtocol(kycResult.id)}
+                    disabled={protocolDownloading}
+                    className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 flex items-center space-x-1"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>{protocolDownloading ? 'Загрузка...' : 'Протокол S3 (JSON)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleApplySuggestedRadarUpdates}
+                    disabled={appliedHints}
+                    className="px-3.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-200 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs"
+                  >
+                    {appliedHints ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Подсказки применены в Радар</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Применить подсказки в карточки Радара</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid of checks */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+                {kycResult.checks?.fssp && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">ФССП (Приставы)</span>
+                      <span className={`text-[10px] font-bold ${kycResult.checks.fssp.status === 'clean' ? 'text-emerald-700' : kycResult.checks.fssp.status === 'critical' ? 'text-red-700' : 'text-amber-700'}`}>
+                        {kycResult.checks.fssp.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{kycResult.checks.fssp.summaryRu}</p>
+                  </div>
+                )}
+                {kycResult.checks?.fedresurs && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">ЕФРСБ (Банкротство)</span>
+                      <span className={`text-[10px] font-bold ${kycResult.checks.fedresurs.status === 'clean' ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {kycResult.checks.fedresurs.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{kycResult.checks.fedresurs.summaryRu}</p>
+                  </div>
+                )}
+                {kycResult.checks?.kadArbitr && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">КАД Арбитраж</span>
+                      <span className={`text-[10px] font-bold ${kycResult.checks.kadArbitr.status === 'clean' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {kycResult.checks.kadArbitr.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{kycResult.checks.kadArbitr.summaryRu}</p>
+                  </div>
+                )}
+                {kycResult.checks?.sudrf && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">ГАС Правосудие (СОЮ)</span>
+                      <span className={`text-[10px] font-bold ${kycResult.checks.sudrf.status === 'clean' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {kycResult.checks.sudrf.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{kycResult.checks.sudrf.summaryRu}</p>
+                  </div>
+                )}
+                {kycResult.checks?.fns && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">ФНС / ЕГРЮЛ</span>
+                      <span className={`text-[10px] font-bold ${kycResult.checks.fns.status === 'clean' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {kycResult.checks.fns.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{kycResult.checks.fns.summaryRu}</p>
+                  </div>
+                )}
+                {kycResult.checks?.passportOrBlacklist && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">МВД Паспорт</span>
+                      <span className={`text-[10px] font-bold ${kycResult.checks.passportOrBlacklist.status === 'clean' ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {kycResult.checks.passportOrBlacklist.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{kycResult.checks.passportOrBlacklist.summaryRu}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Server INN Check Box */}
       <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3">

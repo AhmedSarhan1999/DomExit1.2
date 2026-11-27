@@ -128,6 +128,18 @@ import {
   resolveHandoff,
   getDailyConciergeStats,
 } from '../modules/proptech-ai/ragConciergeService.js';
+import {
+  runCounterpartyCheck,
+  getCachedCheckById,
+  getKycChecksForLot,
+  getKycProviderStatus,
+  getProtocolDownloadUrl,
+} from '../modules/legal-core/kyc/kycOrchestratorService.js';
+import {
+  exportAnalyticsSnapshotsForDataLens,
+  getLatestDataLensExportMeta,
+} from '../modules/proptech-ai/datalensExportService.js';
+import { legalCore } from '../modules/legal-core/index.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -332,6 +344,9 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
             dailyMessagesCap: conciergeStats.dailyMessagesCap,
             pendingHandoffsCount,
           },
+          autoKyc: getKycProviderStatus(),
+          dataLens: await getLatestDataLensExportMeta().catch(() => null),
+          legalCore: legalCore.getHealth('domexit'),
         },
       });
     }
@@ -1940,6 +1955,114 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     } catch (err: any) {
       return json(event, 500, { error: err.message || 'Ошибка закрытия запроса' });
     }
+  }
+
+  // ============================================================
+  // POST /api/ai/kyc/check — requires autoKycProvider feature or owner
+  // ============================================================
+  if (subPath === '/kyc/check' && method === 'POST') {
+    const aiLabConfig = await getAiLabConfig();
+    const canUse = canUseAiFeature(aiLabConfig, 'autoKycProvider', userRole);
+    if (!canUse && userRole !== 'owner') {
+      return json(event, 403, { error: 'Функция 1-Click проверки отключена или недоступна вашей роли' });
+    }
+
+    const body = getEventBody<any>(event);
+    if (!body || !body.subjectType) {
+      return json(event, 400, { error: 'Укажите subjectType (individual | legal_entity)' });
+    }
+
+    const checkRes = await runCounterpartyCheck(
+      {
+        tenantId: 'domexit',
+        lotCode: body.lotCode,
+        subjectType: body.subjectType,
+        fio: body.fio,
+        birthDate: body.birthDate,
+        passportSeries: body.passportSeries,
+        passportNumber: body.passportNumber,
+        inn: body.inn,
+        ogrn: body.ogrn,
+        companyName: body.companyName,
+        regionCode: body.regionCode,
+        forceRefresh: Boolean(body.forceRefresh),
+        provider: body.provider,
+      },
+      authUser?.id || 'anonymous'
+    );
+
+    return json(event, 200, checkRes);
+  }
+
+  // ============================================================
+  // GET /api/ai/kyc/history — staff / owner
+  // ============================================================
+  if (subPath === '/kyc/history' && method === 'GET') {
+    if (!authUser || (userRole !== 'owner' && userRole !== 'employee')) {
+      return json(event, 403, { error: 'Доступ запрещён' });
+    }
+
+    const lotCode = (event.queryStringParameters?.lotCode || '').trim();
+    if (lotCode) {
+      const records = await getKycChecksForLot(lotCode);
+      return json(event, 200, { ok: true, records });
+    }
+
+    const ydb = getYdbClient();
+    try {
+      const records = await ydb.scanAll<any>('kyc_checks', 50).catch(() => []);
+      const sorted = records.sort((a, b) => (b.checkedAt || '').localeCompare(a.checkedAt || ''));
+      return json(event, 200, { ok: true, records: sorted });
+    } catch (err: any) {
+      return json(event, 200, { ok: true, records: [] });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/kyc/protocol/:checkId — staff / owner
+  // ============================================================
+  const aiProtocolMatch = /^\/kyc\/protocol\/([^/]+)$/.exec(subPath);
+  if (aiProtocolMatch && method === 'GET') {
+    if (!authUser || (userRole !== 'owner' && userRole !== 'employee')) {
+      return json(event, 403, { error: 'Доступ запрещён' });
+    }
+
+    const checkId = aiProtocolMatch[1];
+    const check = await getCachedCheckById(checkId);
+    if (!check || !check.protocolS3Key) {
+      return json(event, 404, { error: 'Протокол проверки не найден' });
+    }
+
+    const downloadUrl = await getProtocolDownloadUrl(check.protocolS3Key);
+    return json(event, 200, { ok: true, checkId, protocolS3Key: check.protocolS3Key, downloadUrl });
+  }
+
+  // ============================================================
+  // POST /api/ai/datalens/export — owner only
+  // ============================================================
+  if (subPath === '/datalens/export' && method === 'POST') {
+    if (userRole !== 'owner') {
+      return json(event, 403, { error: 'Экспорт для DataLens доступен только владельцу' });
+    }
+
+    try {
+      const result = await exportAnalyticsSnapshotsForDataLens({ requestedBy: authUser?.id || 'owner' });
+      return json(event, 200, result);
+    } catch (err: any) {
+      return json(event, 500, { error: err.message || 'Ошибка экспорта DataLens' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/datalens/meta — staff / owner
+  // ============================================================
+  if (subPath === '/datalens/meta' && method === 'GET') {
+    if (!authUser || (userRole !== 'owner' && userRole !== 'employee')) {
+      return json(event, 403, { error: 'Доступ запрещён' });
+    }
+
+    const meta = await getLatestDataLensExportMeta();
+    return json(event, 200, { ok: true, meta });
   }
 
   return json(event, 404, { error: `Endpoint /api/ai${subPath} не найден` });

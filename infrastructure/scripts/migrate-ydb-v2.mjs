@@ -278,6 +278,15 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'handoffStatus-updatedAt-index', hashKey: 'handoffStatus', rangeKey: 'updatedAt' },
     ],
   },
+  kyc_checks: {
+    logicalName: 'kyc_checks',
+    v2TableName: 'kyc_checks_v2',
+    gsis: [
+      { indexName: 'lotCode-checkedAt-index', hashKey: 'lotCode', rangeKey: 'checkedAt' },
+      { indexName: 'subjectHash-checkedAt-index', hashKey: 'subjectHash', rangeKey: 'checkedAt' },
+      { indexName: 'tenantId-checkedAt-index', hashKey: 'tenantId', rangeKey: 'checkedAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {
@@ -345,6 +354,11 @@ function sanitizeItemForV2(logicalTable, rawItem) {
   } else if (baseName === 'ai_ocr_jobs') {
     if (!item.status || String(item.status).trim() === '') item.status = 'queued';
     if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
+  } else if (baseName === 'kyc_checks') {
+    if (!item.tenantId || String(item.tenantId).trim() === '') item.tenantId = 'domexit';
+    if (!item.checkedAt || String(item.checkedAt).trim() === '') item.checkedAt = nowIso;
+    if (!item.status || String(item.status).trim() === '') item.status = 'completed';
+    if (!item.provider || String(item.provider).trim() === '') item.provider = 'mock_sandbox';
   }
 
   for (const field of indexedFields) {

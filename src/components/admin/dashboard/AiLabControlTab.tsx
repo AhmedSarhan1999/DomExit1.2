@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react';
+import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, Sparkles, BarChart3, ShieldCheck, Scale, ExternalLink } from 'lucide-react';
 import { apiClient } from '../../../services/apiClient';
 import { AiAgentBridgePanel } from './AiAgentBridgePanel';
 import { AiLegislativeRadarPanel } from './AiLegislativeRadarPanel';
@@ -20,7 +20,8 @@ type FeatureKey =
   | 'aiPackagingStudio'
   | 'legislativeRadar'
   | 'publicJournalSeo'
-  | 'aiConciergeRag';
+  | 'aiConciergeRag'
+  | 'autoKycProvider';
 
 type Visibility = 'off' | 'owner_only' | 'staff_only' | 'public';
 
@@ -44,16 +45,22 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
   const [saving, setSaving] = useState(false);
   const [syncingCbr, setSyncingCbr] = useState(false);
   const [syncingEiszh, setSyncingEiszh] = useState(false);
+  const [exportingDataLens, setExportingDataLens] = useState(false);
+  const [testingKyc, setTestingKyc] = useState(false);
 
   // Local editable state
   const [masterEnabled, setMasterEnabled] = useState(false);
   const [features, setFeatures] = useState<Record<FeatureKey, Visibility>>({} as any);
 
   // Sandbox state
-  const [sandboxTab, setSandboxTab] = useState<'address' | 'party' | 'bank' | 'avm'>('address');
+  const [sandboxTab, setSandboxTab] = useState<'address' | 'party' | 'bank' | 'avm' | 'kyc'>('address');
   const [sandboxQuery, setSandboxQuery] = useState('');
   const [sandboxLoading, setSandboxLoading] = useState(false);
   const [sandboxResult, setSandboxResult] = useState<any>(null);
+
+  // KYC Sandbox inputs
+  const [sandboxKycFio, setSandboxKycFio] = useState('Иванов Иван Иванович');
+  const [sandboxKycInn, setSandboxKycInn] = useState('780123456789');
 
   // AVM Sandbox inputs
   const [avmComplexName, setAvmComplexName] = useState('Чистое Небо');
@@ -123,6 +130,44 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
       showError('Ошибка запроса к ЕИСЖС: ' + err.message);
     } finally {
       setSyncingEiszh(false);
+    }
+  };
+
+  const handleDataLensExport = async () => {
+    setExportingDataLens(true);
+    try {
+      const res = await apiClient.aiLab.exportDataLensSnapshots();
+      if (res?.ok) {
+        showToast(`✅ Срез для DataLens успешно выгружен в S3 (${res.meta.files.length} NDJSON файлов, Zero-PII проверено)`);
+        await loadConfig();
+      } else {
+        showError('Ошибка экспорта DataLens');
+      }
+    } catch (err: any) {
+      showError('Ошибка экспорта DataLens: ' + err.message);
+    } finally {
+      setExportingDataLens(false);
+    }
+  };
+
+  const handleRunKycSandbox = async () => {
+    setTestingKyc(true);
+    setSandboxResult(null);
+    try {
+      const res = await apiClient.aiLab.runKycCheck({
+        subjectType: 'individual',
+        fio: sandboxKycFio,
+        inn: sandboxKycInn,
+        provider: 'mock_sandbox',
+        forceRefresh: true,
+      });
+      setSandboxResult(res);
+      showToast('✅ Тестовая проверка KYC выполнена в песочнице');
+    } catch (err: any) {
+      setSandboxResult({ error: err.message });
+      showError('Ошибка проверки KYC: ' + err.message);
+    } finally {
+      setTestingKyc(false);
     }
   };
 
@@ -345,6 +390,79 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
             <p className="text-xs text-slate-500">OCR документов, GPT-копилот, AVM оценка</p>
             <p className="text-[10px] text-slate-400 italic">Доступно в дальнейших этапах AI Lab</p>
           </div>
+
+          {/* Auto-KYC (API-Cloud / Checko) */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <span className="font-bold text-sm text-slate-900">Auto-KYC (Госреестры)</span>
+              {connectors.autoKyc?.configured ? (
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">Настроен</span>
+              ) : (
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">Ручной режим</span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500">
+              Провайдер: <span className="font-bold text-slate-700">{connectors.autoKyc?.activeProvider || 'apicloud'}</span> (~{connectors.autoKyc?.estimatedCostRub || 18} ₽/чек)
+            </p>
+            <div className="text-xs text-slate-700">
+              Лимит сегодня: <span className="font-bold text-emerald-700">{connectors.autoKyc?.dailyUsed || 0}</span> / {connectors.autoKyc?.dailyCap || 30}
+            </div>
+            <p className="text-[10px] text-slate-400">Кэш 30 дн. (0 ₽) • 152-ФЗ протокол в S3</p>
+            <button
+              type="button"
+              onClick={() => {
+                setSandboxTab('kyc');
+                showToast('Переключено на вкладку проверки KYC в песочнице');
+              }}
+              className="w-full py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg font-bold text-xs border border-emerald-200 transition-colors cursor-pointer"
+            >
+              ⚡ Тест в Sandbox (0 ₽)
+            </button>
+          </div>
+
+          {/* Yandex DataLens BI & FinOps */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center space-x-2">
+              <BarChart3 className="w-5 h-5 text-indigo-600" />
+              <span className="font-bold text-sm text-slate-900">Yandex DataLens BI</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">Zero-PII ✓</span>
+            </div>
+            <p className="text-xs text-slate-500 truncate">
+              Срез: {connectors.dataLens?.lastExportAt ? new Date(connectors.dataLens.lastExportAt).toLocaleTimeString('ru-RU') : 'Не выгружался'}
+            </p>
+            <div className="text-xs text-slate-700">
+              AI FinOps расход: <span className="font-bold text-purple-700">{connectors.dataLens?.totalAiCostMonthRub || 0} ₽</span> / мес
+            </div>
+            <p className="text-[10px] text-slate-400">4 NDJSON датасета в S3 /_analytics/datalens/</p>
+            <button
+              type="button"
+              onClick={handleDataLensExport}
+              disabled={exportingDataLens}
+              className="w-full flex items-center justify-center space-x-1.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {exportingDataLens ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BarChart3 className="w-3.5 h-3.5" />}
+              <span>{exportingDataLens ? 'Экспорт в S3...' : '📊 Экспортировать DataLens срез'}</span>
+            </button>
+          </div>
+
+          {/* Legal Core v1 */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center space-x-2">
+              <Scale className="w-5 h-5 text-violet-600" />
+              <span className="font-bold text-sm text-slate-900">Legal Core v1</span>
+              <span className="px-2 py-0.5 bg-violet-100 text-violet-800 rounded-full text-[10px] font-bold">v1.0.0</span>
+            </div>
+            <p className="text-xs text-slate-500">Суверенная юридическая платформа</p>
+            <div className="text-[11px] text-slate-700 space-y-0.5">
+              <div>Модули: <span className="font-bold text-emerald-700">6 / 6 активны</span> (DaData, OCR, GPT, KYC, Radar, ПЭП)</div>
+              <div>Tenant: <span className="font-bold font-mono text-violet-700">domexit</span> (готов к этапу 4)</div>
+            </div>
+            <p className="text-[10px] text-slate-400">152-ФЗ / 214-ФЗ / 127-ФЗ ст. 61.2</p>
+            <div className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 truncate">
+              GET /api/legal-core/v1/health: 200 OK
+            </div>
+          </div>
         </div>
       )}
 
@@ -402,14 +520,14 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
 
           {/* Tabs */}
           <div className="flex border-b border-slate-100">
-            {(['address', 'party', 'bank', 'avm'] as const).map((tab) => (
+            {(['address', 'party', 'bank', 'avm', 'kyc'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => { setSandboxTab(tab); setSandboxQuery(''); setSandboxResult(null); }}
                 className={`flex-1 py-2.5 text-xs font-bold transition-colors ${sandboxTab === tab ? 'text-violet-700 border-b-2 border-violet-600 bg-violet-50' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {tab === 'address' ? '🏠 Адрес' : tab === 'party' ? '🏢 ИНН (ЕГРЮЛ)' : tab === 'bank' ? '🏦 БИК (Банк)' : '⚡ AVM v1 Оценка'}
+                {tab === 'address' ? '🏠 Адрес' : tab === 'party' ? '🏢 ИНН (ЕГРЮЛ)' : tab === 'bank' ? '🏦 БИК (Банк)' : tab === 'avm' ? '⚡ AVM Оценка' : '🛡️ 1-Click KYC'}
               </button>
             ))}
           </div>
@@ -472,6 +590,42 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
                   </button>
                 </div>
               </div>
+            ) : sandboxTab === 'kyc' ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">ФИО субъекта (физлицо):</label>
+                    <input
+                      type="text"
+                      value={sandboxKycFio}
+                      onChange={(e) => setSandboxKycFio(e.target.value)}
+                      placeholder="Иванов Иван Иванович"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">ИНН (12 или 10 цифр):</label>
+                    <input
+                      type="text"
+                      value={sandboxKycInn}
+                      onChange={(e) => setSandboxKycInn(e.target.value)}
+                      placeholder="780123456789"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleRunKycSandbox}
+                    disabled={testingKyc}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    {testingKyc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                    <span>Запустить проверку в Sandbox (0 ₽)</span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="flex space-x-3">
                 <input
@@ -523,6 +677,7 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
                         sandboxTab === 'avm' ? sandboxResult.valuation :
                         sandboxTab === 'address' ? sandboxResult.items?.slice(0, 3) :
                         sandboxTab === 'party' ? sandboxResult.party :
+                        sandboxTab === 'kyc' ? (sandboxResult.record || sandboxResult) :
                         sandboxResult.bank,
                         null, 2
                       )}

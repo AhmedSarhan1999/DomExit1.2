@@ -222,6 +222,15 @@ export const V2_TABLES_SCHEMA: Record<string, V2TableSchema> = {
       { indexName: 'handoffStatus-updatedAt-index', hashKey: 'handoffStatus', rangeKey: 'updatedAt' },
     ],
   },
+  kyc_checks: {
+    logicalName: 'kyc_checks',
+    v2TableName: 'kyc_checks_v2',
+    gsis: [
+      { indexName: 'lotCode-checkedAt-index', hashKey: 'lotCode', rangeKey: 'checkedAt' },
+      { indexName: 'subjectHash-checkedAt-index', hashKey: 'subjectHash', rangeKey: 'checkedAt' },
+      { indexName: 'tenantId-checkedAt-index', hashKey: 'tenantId', rangeKey: 'checkedAt' },
+    ],
+  },
 };
 
 export const V2_LOGICAL_TABLES = Object.keys(V2_TABLES_SCHEMA);
@@ -348,6 +357,11 @@ export function sanitizeItemForV2(logicalTable: string, rawItem: Record<string, 
     if (!item.channel || String(item.channel).trim() === '') item.channel = 'web';
     if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
     if (!item.updatedAt || String(item.updatedAt).trim() === '') item.updatedAt = nowIso;
+  } else if (baseName === 'kyc_checks') {
+    if (!item.tenantId || String(item.tenantId).trim() === '') item.tenantId = 'domexit';
+    if (!item.checkedAt || String(item.checkedAt).trim() === '') item.checkedAt = nowIso;
+    if (!item.status || String(item.status).trim() === '') item.status = 'completed';
+    if (!item.provider || String(item.provider).trim() === '') item.provider = 'mock_sandbox';
   } else if (baseName === 'seller_requests') {
     if (!item.assignedCuratorId && item.assignedEmployeeId) {
       item.assignedCuratorId = item.assignedEmployeeId;
@@ -377,6 +391,11 @@ export function sanitizeItemForV2(logicalTable: string, rawItem: Record<string, 
     if (!item.channel || String(item.channel).trim() === '') item.channel = 'web';
     if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
     if (!item.updatedAt || String(item.updatedAt).trim() === '') item.updatedAt = nowIso;
+  } else if (baseName === 'kyc_checks') {
+    if (!item.tenantId || String(item.tenantId).trim() === '') item.tenantId = 'domexit';
+    if (!item.checkedAt || String(item.checkedAt).trim() === '') item.checkedAt = nowIso;
+    if (!item.status || String(item.status).trim() === '') item.status = 'completed';
+    if (!item.provider || String(item.provider).trim() === '') item.provider = 'mock_sandbox';
   }
 
   for (const field of indexedFields) {

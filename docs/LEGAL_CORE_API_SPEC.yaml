@@ -1,0 +1,296 @@
+openapi: 3.0.3
+info:
+  title: DomExit Legal Core v1 API
+  description: |
+    Sovereign legal intelligence engine for Russian real estate transactions,
+    specializing in DDU assignment (214-FZ), bankruptcy risk audits (127-FZ),
+    counterparty verification (KYC/KYB), digital signatures (63-FZ), and legislative monitoring.
+    Compliant with Russian Federal Law 152-FZ on Personal Data Protection.
+  version: 1.0.0
+  contact:
+    name: DomExit LegalTech Team
+    email: support@domexit.ru
+
+servers:
+  - url: https://api.domexit.ru/api/legal-core/v1
+    description: Production Environment
+  - url: https://d5dpccovifu701p9lvga.bu9mdbe1.apigw.yandexcloud.net/api/legal-core/v1
+    description: Staging API Gateway
+
+security:
+  - BearerAuth: []
+  - TenantKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Legal Core health and readiness
+      description: Returns status of all 6 legal-core sub-modules and 152-FZ compliance indicators.
+      responses:
+        '200':
+          description: Health metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /kyc/check:
+    post:
+      summary: 1-Click Counterparty Legal Check (KYC/KYB)
+      description: |
+        Runs automated checks across FSSP, Fedresurs/EFRSB, KAD Arbitrazh, Sud RF (SOYU),
+        and FNS/EGRUL. Incorporates a 30-day SHA-256 dedupe cache returning cached protocols at 0 ₽.
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: false
+          schema:
+            type: string
+            default: domexit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KycCheckRequest'
+      responses:
+        '200':
+          description: Check result with risk badges and suggested radar updates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycCheckResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /kyc/history:
+    get:
+      summary: Retrieve KYC checks history
+      parameters:
+        - name: lotCode
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of checks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  records:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KycRecord'
+
+  /kyc/protocol/{checkId}:
+    get:
+      summary: Get presigned download URL for KYC protocol
+      parameters:
+        - name: checkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Presigned S3 URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  checkId:
+                    type: string
+                  protocolS3Key:
+                    type: string
+                  downloadUrl:
+                    type: string
+                    nullable: true
+
+  /party/lookup:
+    post:
+      summary: DaData company and entrepreneur lookup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - inn
+              properties:
+                inn:
+                  type: string
+                  example: '7801267540'
+      responses:
+        '200':
+          description: Company details
+
+  /radar/alerts:
+    get:
+      summary: Get legislative alerts
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ddu_214, tax_ndfl, mortgage_cbr, maternity_capital, bankruptcy_127, supreme_court]
+      responses:
+        '200':
+          description: Legislative items
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    TenantKeyAuth:
+      type: apiKey
+      in: header
+      name: X-LegalCore-Tenant-Key
+
+  responses:
+    Forbidden:
+      description: Forbidden - Requires owner role or valid X-LegalCore-Tenant-Key
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              hintRu:
+                type: string
+    BadRequest:
+      description: Bad request - Missing or invalid parameters
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        health:
+          type: object
+          properties:
+            version:
+              type: string
+              example: '1.0.0'
+            tenantId:
+              type: string
+              example: 'domexit'
+            status:
+              type: string
+              example: 'operational'
+            modules:
+              type: object
+            compliance:
+              type: object
+
+    KycCheckRequest:
+      type: object
+      required:
+        - subjectType
+      properties:
+        lotCode:
+          type: string
+          example: 'SPB-104'
+        subjectType:
+          type: string
+          enum: [individual, legal_entity]
+        fio:
+          type: string
+          example: 'Иванов Иван Иванович'
+        birthDate:
+          type: string
+          format: date
+          example: '1988-04-12'
+        passportSeries:
+          type: string
+          example: '4012'
+        passportNumber:
+          type: string
+          example: '483921'
+        inn:
+          type: string
+          example: '780123456789'
+        companyName:
+          type: string
+          example: 'ООО Пример'
+        regionCode:
+          type: string
+          example: '78'
+        forceRefresh:
+          type: boolean
+          default: false
+        provider:
+          type: string
+          enum: [apicloud, checko, mock_sandbox]
+
+    KycCheckResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        record:
+          $ref: '#/components/schemas/KycRecord'
+        hintRu:
+          type: string
+
+    KycRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        lotCode:
+          type: string
+        subjectType:
+          type: string
+        subjectHash:
+          type: string
+        subjectLabelMasked:
+          type: string
+        provider:
+          type: string
+        status:
+          type: string
+          enum: [completed, partial, failed]
+        overallRiskLevel:
+          type: string
+          enum: [clean, attention, critical]
+        checks:
+          type: object
+        protocolS3Key:
+          type: string
+        estimatedCostRub:
+          type: number
+        cached:
+          type: boolean
+        checkedAt:
+          type: string
+        expiresAt:
+          type: string
+        suggestedRadarUpdates:
+          type: object

@@ -201,6 +201,18 @@ export class YdbClient {
     if (this.isV2TablesEnabled() && V2_TABLES_SCHEMA[logicalTable]) {
       return V2_TABLES_SCHEMA[logicalTable].v2TableName;
     }
+    if (V2_TABLES_SCHEMA[logicalTable] && (
+      logicalTable.startsWith('kyc_') ||
+      logicalTable.startsWith('ai_') ||
+      logicalTable.startsWith('journal_') ||
+      logicalTable.startsWith('legislative_') ||
+      logicalTable.startsWith('avm_') ||
+      logicalTable.startsWith('eiszh_') ||
+      logicalTable.startsWith('market_') ||
+      logicalTable.startsWith('agent_')
+    )) {
+      return V2_TABLES_SCHEMA[logicalTable].v2TableName;
+    }
     return logicalTable;
   }
 
