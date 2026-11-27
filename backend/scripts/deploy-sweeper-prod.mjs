@@ -96,6 +96,7 @@ const envMap = {
   JWT_SIGNING_SECRET: envVars.JWT_SIGNING_SECRET_PROD || envVars.JWT_SIGNING_SECRET || 'sweeper-runner-secret',
   TELEGRAM_BOT_TOKEN: envVars.TELEGRAM_BOT_TOKEN_PROD || envVars.TELEGRAM_BOT_TOKEN || '',
   TELEGRAM_BOT_USERNAME: envVars.TELEGRAM_BOT_USERNAME_PROD || 'DomExitOfficialBot',
+  YDB_USE_V2_TABLES: 'true',
 };
 
 const envEntries = Object.entries(envMap)

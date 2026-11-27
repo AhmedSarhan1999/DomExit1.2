@@ -175,6 +175,11 @@ const envMap = {
   MAX_WEBHOOK_SECRET: envVars.MAX_WEBHOOK_SECRET || '',
   MAX_API_BASE_URL: envVars.MAX_API_BASE_URL || 'https://api.max-messenger.ru/bot/v1',
   DADATA_API_KEY: envVars.DADATA_API_KEY || '',
+  YDB_USE_V2_TABLES: 'true',
+  YMQ_OCR_QUEUE_URL: manifest.production.ymqOcrQueueUrl || '',
+  YC_FOLDER_ID: manifest.folderId || 'b1g46uad3gc3h34k5b0f',
+  DAILY_OCR_PAGES_CAP: '200',
+  MAX_PAGES_PER_DOC: '15',
 };
 
 // Build environment string without printing secrets to console
