@@ -178,6 +178,7 @@ const envMap = {
   YDB_USE_V2_TABLES: 'true',
   YMQ_OCR_QUEUE_URL: manifest.production.ymqOcrQueueUrl || '',
   YC_FOLDER_ID: manifest.folderId || 'b1g46uad3gc3h34k5b0f',
+  DAILY_GPT_CALLS_CAP: '200',
   DAILY_OCR_PAGES_CAP: '200',
   MAX_PAGES_PER_DOC: '15',
 };
