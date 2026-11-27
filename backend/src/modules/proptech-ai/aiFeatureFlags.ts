@@ -91,9 +91,9 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
     key: 'legislativeRadar',
     labelRu: 'Законодательный Радар',
     descriptionRu: 'Мониторинг изменений в законодательстве, влияющих на сделки с недвижимостью',
-    implemented: false,
+    implemented: true,
     roadmapStep: 'Этап 07',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
   {
     key: 'aiConciergeRag',

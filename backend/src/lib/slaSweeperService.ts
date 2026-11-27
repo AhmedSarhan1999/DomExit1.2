@@ -9,6 +9,7 @@ import { computeMatchScore } from './buyBoxEngine.js';
 import { logger } from './logger.js';
 import { getAiLabConfig } from '../modules/proptech-ai/aiFeatureFlags.js';
 import { syncCbrKeyRate } from '../modules/proptech-ai/cbrSyncService.js';
+import { runLegislativeRadarScan } from '../modules/legal-core/legislativeRadarService.js';
 import {
   LotDropConfig,
   BuyerBuyBox,
@@ -459,6 +460,17 @@ export async function runSlaSweep(
       }
     } catch (err: any) {
       logger.warn('Error in Task 8 (CBR key rate sync)', { meta: { error: err.message } });
+    }
+
+    // Task 9: Daily Legislative Radar Scan (when AI Lab legislativeRadar is enabled)
+    try {
+      const aiCfg = await getAiLabConfig();
+      if (aiCfg.masterLabEnabled && aiCfg.features?.legislativeRadar !== 'off' && !dryRun) {
+        logger.info('[SlaSweeper] Running daily legislative radar scan');
+        await runLegislativeRadarScan({ maxDraftsToGenerate: 0, operatorId: 'system-sweeper' });
+      }
+    } catch (err: any) {
+      logger.warn('Error in Task 9 (Legislative radar daily scan)', { meta: { error: err.message } });
     }
   }
 

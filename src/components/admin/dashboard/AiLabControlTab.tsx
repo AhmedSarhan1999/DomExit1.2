@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, AlertTriangle, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react';
 import { apiClient } from '../../../services/apiClient';
 import { AiAgentBridgePanel } from './AiAgentBridgePanel';
+import { AiLegislativeRadarPanel } from './AiLegislativeRadarPanel';
 
 type FeatureKey =
   | 'dadataAutocomplete'
@@ -531,6 +532,13 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
           </div>
         </div>
       )}
+
+      {/* Legislative Radar & Journal Drafts Panel */}
+      <AiLegislativeRadarPanel
+        connectors={connectors}
+        showToast={showToast}
+        showError={showError}
+      />
 
       {/* Agent Research Bridge Panel */}
       <AiAgentBridgePanel

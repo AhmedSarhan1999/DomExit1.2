@@ -99,6 +99,17 @@ import {
   generateListingCopy,
   ListingCopyInput,
 } from '../modules/proptech-ai/aiListingCopyService.js';
+import {
+  runLegislativeRadarScan,
+  ingestManualRadarTopic,
+  LegislativeRadarItem,
+  RadarCategory,
+  RadarItemStatus,
+} from '../modules/legal-core/legislativeRadarService.js';
+import {
+  generateArticleDraftFromRadar,
+  JournalArticleRecord,
+} from '../modules/proptech-ai/contentDraftService.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -225,6 +236,26 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
       const eiszhStats = await getEiszhStats();
       const avmStats = await getAvmStats();
 
+      let radarStats = {
+        lastScanAt: null as string | null,
+        totalRadarItems: 0,
+        highImpactPendingCount: 0,
+        articleDraftsCount: 0,
+      };
+      try {
+        const radarItems = await ydb.scanAll<any>('legislative_radar_items', 100).catch(() => []);
+        radarStats.totalRadarItems = radarItems.length;
+        radarStats.highImpactPendingCount = radarItems.filter((r) => r.complianceImpact === 'high' && r.status === 'new').length;
+        if (radarItems.length > 0) {
+          const sorted = [...radarItems].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          radarStats.lastScanAt = sorted[0].createdAt || null;
+        }
+        const drafts = await ydb.scanAll<any>('journal_articles', 100).catch(() => []);
+        radarStats.articleDraftsCount = drafts.length;
+      } catch {
+        // non-fatal
+      }
+
       return json(event, 200, {
         ...publicResponse,
         config,
@@ -262,6 +293,7 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
             configured: Boolean(process.env.YC_FOLDER_ID),
             yandexMapsKeyConfigured: Boolean(process.env.YANDEX_MAPS_API_KEY),
           },
+          legislativeRadar: radarStats,
         },
       });
     }
@@ -1344,6 +1376,261 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     } catch (err: any) {
       logger.error('Failed fetching packaging results', { meta: { lotCode, error: err.message } });
       return json(event, 500, { error: 'Ошибка получения результатов упаковки' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/radar/scan — owner only
+  // ============================================================
+  if (subPath === '/radar/scan' && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'legislativeRadar', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'legislativeRadar' });
+    }
+
+    try {
+      const result = await runLegislativeRadarScan({ operatorId: authUser.id });
+      return json(event, 200, { ok: true, result });
+    } catch (err: any) {
+      logger.error('Legislative radar scan failed', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка сканирования законодательного радара' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/radar/manual — owner only
+  // ============================================================
+  if (subPath === '/radar/manual' && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'legislativeRadar', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'legislativeRadar' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    const originalTitle = (body.originalTitle || '').trim();
+    if (!originalTitle) {
+      return json(event, 400, { error: 'Заголовок новости/закона обязателен' });
+    }
+
+    try {
+      const item = await ingestManualRadarTopic({
+        originalTitle,
+        originalUrl: body.originalUrl,
+        excerptRaw: body.excerptRaw,
+        category: body.category as RadarCategory,
+        operatorId: authUser.id,
+      });
+
+      return json(event, 200, { ok: true, item });
+    } catch (err: any) {
+      logger.error('Manual radar ingestion failed', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка ручного добавления в радар' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/radar/items — requires legislativeRadar feature
+  // ============================================================
+  if (subPath === '/radar/items' && method === 'GET') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'legislativeRadar', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'legislativeRadar' });
+    }
+
+    const q = event.queryStringParameters || {};
+    const status = q.status ? String(q.status).trim() : '';
+    const category = q.category ? String(q.category).trim() : '';
+    const limit = Math.min(100, Math.max(1, parseInt(q.limit || '50', 10)));
+
+    const ydb = getYdbClient();
+    try {
+      let items: LegislativeRadarItem[] = [];
+      if (status && ydb.isV2TablesEnabled()) {
+        items = await ydb.queryAllByIndex<LegislativeRadarItem>({
+          tableName: 'legislative_radar_items',
+          indexName: 'status-publishedAt-index',
+          hashKey: 'status',
+          hashValue: status,
+          limit,
+        });
+      } else if (category && ydb.isV2TablesEnabled()) {
+        items = await ydb.queryAllByIndex<LegislativeRadarItem>({
+          tableName: 'legislative_radar_items',
+          indexName: 'category-publishedAt-index',
+          hashKey: 'category',
+          hashValue: category,
+          limit,
+        });
+      } else {
+        items = await ydb.scanAll<LegislativeRadarItem>('legislative_radar_items', limit);
+      }
+
+      // Sort by publishedAt or createdAt descending
+      items.sort((a, b) => (b.publishedAt || b.createdAt || '').localeCompare(a.publishedAt || a.createdAt || ''));
+
+      return json(event, 200, { ok: true, items });
+    } catch (err: any) {
+      logger.error('Failed fetching radar items', { meta: { error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения элементов законодательного радара' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/radar/items/:id/generate-draft — owner only
+  // ============================================================
+  if (subPath.startsWith('/radar/items/') && subPath.endsWith('/generate-draft') && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'legislativeRadar', userRole)) {
+      return json(event, 403, { error: 'AI_FEATURE_DISABLED', feature: 'legislativeRadar' });
+    }
+
+    const radarItemId = subPath.replace('/radar/items/', '').replace('/generate-draft', '').trim();
+    if (!radarItemId) {
+      return json(event, 400, { error: 'Идентификатор элемента радара обязателен' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    try {
+      const result = await generateArticleDraftFromRadar({
+        radarItemId,
+        customAngleRu: body.customAngleRu,
+        requestedBy: authUser.id,
+        forceRegenerate: Boolean(body.forceRegenerate),
+      });
+
+      return json(event, 200, result);
+    } catch (err: any) {
+      logger.error('Article draft generation from radar failed', { meta: { radarItemId, error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка генерации статьи YandexGPT Pro' });
+    }
+  }
+
+  // ============================================================
+  // PATCH /api/ai/radar/items/:id — owner only
+  // ============================================================
+  if (subPath.startsWith('/radar/items/') && method === 'PATCH') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const radarItemId = subPath.replace('/radar/items/', '').split('/')[0].trim();
+    if (!radarItemId) {
+      return json(event, 400, { error: 'Идентификатор элемента радара обязателен' });
+    }
+
+    const ydb = getYdbClient();
+    try {
+      const existing = await ydb.getItem<LegislativeRadarItem>('legislative_radar_items', radarItemId);
+      if (!existing) {
+        return json(event, 404, { error: 'Элемент радара не найден' });
+      }
+
+      const body = getEventBody<any>(event) || {};
+      const updated: LegislativeRadarItem = {
+        ...existing,
+        status: (body.status as RadarItemStatus) || existing.status,
+        reviewNotes: body.reviewNotes !== undefined ? String(body.reviewNotes) : existing.reviewNotes,
+        complianceActionPlanRu: body.complianceActionPlanRu !== undefined ? String(body.complianceActionPlanRu) : existing.complianceActionPlanRu,
+        reviewedBy: authUser.id,
+        reviewedAt: new Date().toISOString(),
+      };
+
+      await ydb.putItem('legislative_radar_items', updated);
+      return json(event, 200, { ok: true, item: updated });
+    } catch (err: any) {
+      logger.error('Failed updating radar item', { meta: { radarItemId, error: err.message } });
+      return json(event, 500, { error: 'Ошибка обновления элемента радара' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/journal/drafts — owner only
+  // ============================================================
+  if (subPath === '/journal/drafts' && method === 'GET') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const q = event.queryStringParameters || {};
+    const status = q.status ? String(q.status).trim() : '';
+    const limit = Math.min(100, Math.max(1, parseInt(q.limit || '50', 10)));
+
+    const ydb = getYdbClient();
+    try {
+      let drafts: JournalArticleRecord[] = [];
+      if (status && ydb.isV2TablesEnabled()) {
+        drafts = await ydb.queryAllByIndex<JournalArticleRecord>({
+          tableName: 'journal_articles',
+          indexName: 'status-publishedAt-index',
+          hashKey: 'status',
+          hashValue: status,
+          limit,
+        });
+      } else {
+        drafts = await ydb.scanAll<JournalArticleRecord>('journal_articles', limit);
+      }
+
+      drafts.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      return json(event, 200, { ok: true, drafts });
+    } catch (err: any) {
+      logger.error('Failed fetching journal drafts', { meta: { error: err.message } });
+      return json(event, 500, { error: 'Ошибка получения черновиков журнала' });
+    }
+  }
+
+  // ============================================================
+  // PATCH /api/ai/journal/drafts/:id — owner only
+  // ============================================================
+  if (subPath.startsWith('/journal/drafts/') && method === 'PATCH') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const draftId = subPath.replace('/journal/drafts/', '').split('/')[0].trim();
+    if (!draftId) {
+      return json(event, 400, { error: 'Идентификатор статьи обязателен' });
+    }
+
+    const ydb = getYdbClient();
+    try {
+      const existing = await ydb.getItem<JournalArticleRecord>('journal_articles', draftId);
+      if (!existing) {
+        return json(event, 404, { error: 'Черновик статьи не найден' });
+      }
+
+      const body = getEventBody<any>(event) || {};
+      const nowIso = new Date().toISOString();
+
+      const updated: JournalArticleRecord = {
+        ...existing,
+        titleRu: body.titleRu !== undefined ? String(body.titleRu).trim() : existing.titleRu,
+        subtitleRu: body.subtitleRu !== undefined ? String(body.subtitleRu).trim() : existing.subtitleRu,
+        markdownBodyRu: body.markdownBodyRu !== undefined ? String(body.markdownBodyRu) : existing.markdownBodyRu,
+        telegramPostDraftRu: body.telegramPostDraftRu !== undefined ? String(body.telegramPostDraftRu) : existing.telegramPostDraftRu,
+        newsletterSnippetRu: body.newsletterSnippetRu !== undefined ? String(body.newsletterSnippetRu) : existing.newsletterSnippetRu,
+        status: body.status || (existing.status === 'ai_draft' ? 'in_review' : existing.status),
+        tagsRu: Array.isArray(body.tagsRu) ? body.tagsRu : existing.tagsRu,
+        humanEdited: true, // Mark human-edited when updated by owner
+        updatedAt: nowIso,
+      };
+
+      await ydb.putItem('journal_articles', updated);
+      return json(event, 200, { ok: true, article: updated });
+    } catch (err: any) {
+      logger.error('Failed updating journal draft', { meta: { draftId, error: err.message } });
+      return json(event, 500, { error: 'Ошибка обновления черновика статьи' });
     }
   }
 

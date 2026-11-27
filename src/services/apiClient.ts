@@ -1145,5 +1145,81 @@ export const apiClient = {
           skipCache: true,
         }
       ),
+
+    scanRadar: () =>
+      request<{ ok: boolean; result: any }>('/api/ai/radar/scan', {
+        method: 'POST',
+        skipCache: true,
+      }),
+
+    ingestManualRadar: (payload: {
+      originalTitle: string;
+      originalUrl?: string;
+      excerptRaw?: string;
+      category?: string;
+    }) =>
+      request<{ ok: boolean; item: any }>('/api/ai/radar/manual', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getRadarItems: (params?: { status?: string; category?: string; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.status) q.set('status', params.status);
+      if (params?.category) q.set('category', params.category);
+      if (params?.limit) q.set('limit', String(params.limit));
+      const qs = q.toString() ? `?${q.toString()}` : '';
+      return request<{ ok: boolean; items: any[] }>(`/api/ai/radar/items${qs}`, {
+        method: 'GET',
+        skipCache: true,
+      });
+    },
+
+    updateRadarItem: (id: string, payload: { status?: string; reviewNotes?: string; complianceActionPlanRu?: string }) =>
+      request<{ ok: boolean; item: any }>(`/api/ai/radar/items/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    generateRadarDraft: (id: string, payload?: { customAngleRu?: string; forceRegenerate?: boolean }) =>
+      request<{ ok: boolean; article: any; usageTokens?: number; estimatedCostRub?: number; isCached?: boolean }>(
+        `/api/ai/radar/items/${encodeURIComponent(id)}/generate-draft`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload || {}),
+          skipCache: true,
+        }
+      ),
+
+    getJournalDrafts: (params?: { status?: string; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.status) q.set('status', params.status);
+      if (params?.limit) q.set('limit', String(params.limit));
+      const qs = q.toString() ? `?${q.toString()}` : '';
+      return request<{ ok: boolean; drafts: any[] }>(`/api/ai/journal/drafts${qs}`, {
+        method: 'GET',
+        skipCache: true,
+      });
+    },
+
+    updateJournalDraft: (
+      id: string,
+      payload: {
+        titleRu?: string;
+        subtitleRu?: string;
+        markdownBodyRu?: string;
+        telegramPostDraftRu?: string;
+        newsletterSnippetRu?: string;
+        status?: string;
+        tagsRu?: string[];
+      }
+    ) =>
+      request<{ ok: boolean; article: any }>(`/api/ai/journal/drafts/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
   },
 };

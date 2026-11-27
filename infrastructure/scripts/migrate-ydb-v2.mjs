@@ -251,6 +251,24 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'lotCode-createdAt-index', hashKey: 'lotCode', rangeKey: 'createdAt' },
     ],
   },
+  legislative_radar_items: {
+    logicalName: 'legislative_radar_items',
+    v2TableName: 'legislative_radar_items_v2',
+    gsis: [
+      { indexName: 'status-publishedAt-index', hashKey: 'status', rangeKey: 'publishedAt' },
+      { indexName: 'category-publishedAt-index', hashKey: 'category', rangeKey: 'publishedAt' },
+      { indexName: 'sourceId-publishedAt-index', hashKey: 'sourceId', rangeKey: 'publishedAt' },
+    ],
+  },
+  journal_articles: {
+    logicalName: 'journal_articles',
+    v2TableName: 'journal_articles_v2',
+    gsis: [
+      { indexName: 'status-publishedAt-index', hashKey: 'status', rangeKey: 'publishedAt' },
+      { indexName: 'slug-index', hashKey: 'slug' },
+      { indexName: 'category-publishedAt-index', hashKey: 'category', rangeKey: 'publishedAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {
