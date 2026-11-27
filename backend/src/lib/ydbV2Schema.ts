@@ -213,6 +213,15 @@ export const V2_TABLES_SCHEMA: Record<string, V2TableSchema> = {
       { indexName: 'category-publishedAt-index', hashKey: 'category', rangeKey: 'publishedAt' },
     ],
   },
+  ai_concierge_sessions: {
+    logicalName: 'ai_concierge_sessions',
+    v2TableName: 'ai_concierge_sessions_v2',
+    gsis: [
+      { indexName: 'userId-updatedAt-index', hashKey: 'userId', rangeKey: 'updatedAt' },
+      { indexName: 'telegramChatId-updatedAt-index', hashKey: 'telegramChatId', rangeKey: 'updatedAt' },
+      { indexName: 'handoffStatus-updatedAt-index', hashKey: 'handoffStatus', rangeKey: 'updatedAt' },
+    ],
+  },
 };
 
 export const V2_LOGICAL_TABLES = Object.keys(V2_TABLES_SCHEMA);
@@ -334,6 +343,11 @@ export function sanitizeItemForV2(logicalTable: string, rawItem: Record<string, 
   } else if (baseName === 'ai_ocr_jobs') {
     if (!item.status || String(item.status).trim() === '') item.status = 'queued';
     if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
+  } else if (baseName === 'ai_concierge_sessions') {
+    if (!item.handoffStatus || String(item.handoffStatus).trim() === '') item.handoffStatus = 'none';
+    if (!item.channel || String(item.channel).trim() === '') item.channel = 'web';
+    if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
+    if (!item.updatedAt || String(item.updatedAt).trim() === '') item.updatedAt = nowIso;
   } else if (baseName === 'seller_requests') {
     if (!item.assignedCuratorId && item.assignedEmployeeId) {
       item.assignedCuratorId = item.assignedEmployeeId;
@@ -358,6 +372,11 @@ export function sanitizeItemForV2(logicalTable: string, rawItem: Record<string, 
   } else if (baseName === 'ai_ocr_jobs') {
     if (!item.status || String(item.status).trim() === '') item.status = 'queued';
     if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
+  } else if (baseName === 'ai_concierge_sessions') {
+    if (!item.handoffStatus || String(item.handoffStatus).trim() === '') item.handoffStatus = 'none';
+    if (!item.channel || String(item.channel).trim() === '') item.channel = 'web';
+    if (!item.createdAt || String(item.createdAt).trim() === '') item.createdAt = nowIso;
+    if (!item.updatedAt || String(item.updatedAt).trim() === '') item.updatedAt = nowIso;
   }
 
   for (const field of indexedFields) {

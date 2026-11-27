@@ -8,6 +8,7 @@ import { Bot, FlaskConical, Zap, Building2, Landmark, Globe, RefreshCw, Save, Al
 import { apiClient } from '../../../services/apiClient';
 import { AiAgentBridgePanel } from './AiAgentBridgePanel';
 import { AiLegislativeRadarPanel } from './AiLegislativeRadarPanel';
+import { AiConciergeAdminPanel } from './AiConciergeAdminPanel';
 
 type FeatureKey =
   | 'dadataAutocomplete'
@@ -533,6 +534,13 @@ export const AiLabControlTab: React.FC<AiLabControlTabProps> = ({ showToast, sho
           </div>
         </div>
       )}
+
+      {/* AI Concierge & S3 Vector RAG Panel */}
+      <AiConciergeAdminPanel
+        connectors={connectors}
+        showToast={showToast}
+        showError={showError}
+      />
 
       {/* Legislative Radar & Journal Drafts Panel */}
       <AiLegislativeRadarPanel

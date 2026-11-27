@@ -45,6 +45,11 @@ const FAQPage = React.lazy(() => import('./pages/knowledge/FAQPage').then((m) =>
 const JournalListPage = React.lazy(() => import('./pages/JournalListPage'));
 const JournalArticlePage = React.lazy(() => import('./pages/JournalArticlePage'));
 
+// AI Concierge Floating Widget (Phase 5 — Order 09)
+const DomExitConciergeWidget = React.lazy(() =>
+  import('./components/ai/DomExitConciergeWidget').then((m) => ({ default: m.DomExitConciergeWidget }))
+);
+
 import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
@@ -152,6 +157,9 @@ export const App: React.FC = () => {
               {/* Catch-all Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+
+            {/* AI Concierge Floating Widget */}
+            <DomExitConciergeWidget />
           </Suspense>
         </BrowserRouter>
       </AuthProvider>

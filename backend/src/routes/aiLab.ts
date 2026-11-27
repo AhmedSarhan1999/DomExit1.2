@@ -116,6 +116,18 @@ import {
   createManualJournalArticle,
   validateArticleForPublish,
 } from '../modules/proptech-ai/journalSeoService.js';
+import {
+  rebuildRagKnowledgeIndex,
+  getRagIndexMeta,
+} from '../modules/proptech-ai/ragKnowledgeIndexer.js';
+import {
+  handleConciergeMessage,
+  applyConciergeBuyBoxDraft,
+  requestConciergeHumanHandoff,
+  getPendingHandoffs,
+  resolveHandoff,
+  getDailyConciergeStats,
+} from '../modules/proptech-ai/ragConciergeService.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -262,6 +274,17 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
         // non-fatal
       }
 
+      let ragMeta = null;
+      let pendingHandoffsCount = 0;
+      try {
+        ragMeta = await getRagIndexMeta();
+        const pending = await getPendingHandoffs();
+        pendingHandoffsCount = pending.length;
+      } catch {
+        // non-fatal
+      }
+      const conciergeStats = getDailyConciergeStats();
+
       return json(event, 200, {
         ...publicResponse,
         config,
@@ -300,6 +323,15 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
             yandexMapsKeyConfigured: Boolean(process.env.YANDEX_MAPS_API_KEY),
           },
           legislativeRadar: radarStats,
+          conciergeRag: {
+            configured: Boolean(cfg.S3_PRIVATE_BUCKET),
+            indexChunksCount: ragMeta?.chunksCount || 0,
+            lastIndexedAt: ragMeta?.lastIndexedAt || null,
+            compressedSizeKb: ragMeta?.compressedSizeKb || 0,
+            dailyMessagesUsed: conciergeStats.dailyMessagesUsed,
+            dailyMessagesCap: conciergeStats.dailyMessagesCap,
+            pendingHandoffsCount,
+          },
         },
       });
     }
@@ -1767,6 +1799,146 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     } catch (err: any) {
       logger.error('Failed deleting article', { meta: { articleId, error: err.message } });
       return json(event, 500, { error: 'Ошибка удаления статьи' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/rag/reindex — owner only
+  // ============================================================
+  if (subPath === '/rag/reindex' && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    try {
+      const meta = await rebuildRagKnowledgeIndex({ requestedBy: authUser.id });
+      return json(event, 200, { ok: true, meta });
+    } catch (err: any) {
+      logger.error('Failed rebuilding RAG index', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка переиндексации базы знаний' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/concierge/chat — gated by aiConciergeRag
+  // ============================================================
+  if (subPath === '/concierge/chat' && method === 'POST') {
+    const config = await getAiLabConfig();
+    if (!canUseAiFeature(config, 'aiConciergeRag', userRole)) {
+      return json(event, 403, { error: 'Функция AI-Консьерж временно недоступна для вашей роли' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    if (!body.messageText || typeof body.messageText !== 'string' || !body.messageText.trim()) {
+      return json(event, 400, { error: 'messageText обязателен' });
+    }
+
+    try {
+      const res = await handleConciergeMessage({
+        sessionId: body.sessionId,
+        channel: 'web',
+        user: authUser ? { id: authUser.id, role: authUser.role, name: authUser.name, phone: authUser.phone } : undefined,
+        anonymousId: body.anonymousId,
+        messageText: body.messageText.trim(),
+      });
+      return json(event, 200, { ok: true, ...res });
+    } catch (err: any) {
+      const isQuota = err.message === 'DAILY_CONCIERGE_QUOTA_EXCEEDED';
+      return json(event, isQuota ? 429 : 500, {
+        error: isQuota
+          ? 'Превышен дневной лимит сообщений AI-Консьержа. Попробуйте снова завтра или вызовите куратора.'
+          : err.message || 'Ошибка обработки сообщения консьержа',
+      });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/concierge/sessions/:sessionId
+  // ============================================================
+  if (
+    subPath.startsWith('/concierge/sessions/') &&
+    !subPath.includes('/apply-buybox') &&
+    !subPath.includes('/handoff') &&
+    method === 'GET'
+  ) {
+    const sessionId = subPath.replace('/concierge/sessions/', '').trim();
+    const ydb = getYdbClient();
+    try {
+      const session = await ydb.getItem<any>('ai_concierge_sessions', sessionId);
+      if (!session) {
+        return json(event, 404, { error: 'Сессия не найдена' });
+      }
+      return json(event, 200, { ok: true, session });
+    } catch (err: any) {
+      return json(event, 500, { error: err.message || 'Ошибка загрузки сессии' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/concierge/sessions/:sessionId/apply-buybox
+  // ============================================================
+  if (subPath.startsWith('/concierge/sessions/') && subPath.endsWith('/apply-buybox') && method === 'POST') {
+    if (!authUser) {
+      return json(event, 401, { error: 'Для сохранения Buy-Box необходимо войти в аккаунт' });
+    }
+
+    const sessionId = subPath.replace('/concierge/sessions/', '').replace('/apply-buybox', '').trim();
+    try {
+      const res = await applyConciergeBuyBoxDraft(sessionId, authUser);
+      return json(event, 200, res);
+    } catch (err: any) {
+      return json(event, 400, { error: err.message || 'Ошибка сохранения Buy-Box' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/concierge/sessions/:sessionId/handoff
+  // ============================================================
+  if (subPath.startsWith('/concierge/sessions/') && subPath.endsWith('/handoff') && method === 'POST') {
+    const sessionId = subPath.replace('/concierge/sessions/', '').replace('/handoff', '').trim();
+    const body = getEventBody<any>(event) || {};
+    try {
+      const res = await requestConciergeHumanHandoff(
+        sessionId,
+        authUser ? { id: authUser.id, name: authUser.name, phone: authUser.phone, role: authUser.role } : undefined,
+        body.contactNote
+      );
+      return json(event, 200, res);
+    } catch (err: any) {
+      return json(event, 500, { error: err.message || 'Ошибка запроса куратора' });
+    }
+  }
+
+  // ============================================================
+  // GET /api/ai/concierge/handoffs — staff / owner only
+  // ============================================================
+  if (subPath === '/concierge/handoffs' && method === 'GET') {
+    if (!authUser || (userRole !== 'owner' && userRole !== 'employee')) {
+      return json(event, 403, { error: 'Доступ запрещён: только сотрудники платформы' });
+    }
+
+    try {
+      const handoffs = await getPendingHandoffs();
+      return json(event, 200, { ok: true, handoffs });
+    } catch (err: any) {
+      return json(event, 500, { error: err.message || 'Ошибка загрузки запросов куратора' });
+    }
+  }
+
+  // ============================================================
+  // PATCH /api/ai/concierge/handoffs/:sessionId — staff / owner only
+  // ============================================================
+  if (subPath.startsWith('/concierge/handoffs/') && method === 'PATCH') {
+    if (!authUser || (userRole !== 'owner' && userRole !== 'employee')) {
+      return json(event, 403, { error: 'Доступ запрещён: только сотрудники платформы' });
+    }
+
+    const sessionId = subPath.replace('/concierge/handoffs/', '').trim();
+    try {
+      const res = await resolveHandoff(sessionId, authUser.id);
+      return json(event, 200, res);
+    } catch (err: any) {
+      return json(event, 500, { error: err.message || 'Ошибка закрытия запроса' });
     }
   }
 

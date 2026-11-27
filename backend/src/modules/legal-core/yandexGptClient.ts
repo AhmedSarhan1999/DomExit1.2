@@ -302,3 +302,9 @@ export async function completeJson<T>(options: CompleteJsonOptions<T>): Promise<
 
   throw new Error(`Не удалось получить корректный JSON от YandexGPT после 2 попыток: ${lastError?.message}`);
 }
+
+export const yandexGptClient = {
+  completeJson,
+  getGptUsageSummary,
+  resolveIamToken,
+};

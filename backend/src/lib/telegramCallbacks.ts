@@ -23,6 +23,10 @@ import { consumeQuota } from './anomalyDetector.js';
 import { computeMatchScore, computeClosingScore, rankApplications } from './buyBoxEngine.js';
 import { logger } from './logger.js';
 import { BuyerApplication, BuyerBuyBox, PriceAcceptance } from '../types.js';
+import {
+  applyConciergeBuyBoxDraft,
+  requestConciergeHumanHandoff,
+} from '../modules/proptech-ai/ragConciergeService.js';
 
 async function notifyStaffTg(text: string): Promise<void> {
   try {
@@ -118,6 +122,90 @@ export async function handleTelegramCallback(
   }
   if (data === 'cmd_demand') {
     await showDemand(chatId, binding, ydb, cfg);
+    return;
+  }
+
+  // AI Concierge Callbacks
+  if (data === 'cmd_ai_concierge') {
+    if (binding) {
+      binding.aiConciergeActive = true;
+      binding.updatedAt = new Date().toISOString();
+      await ydb.putItem('telegram_bindings', binding);
+    }
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: [
+        `🤖 <b>AI-Консьерж DomExit</b>`,
+        ``,
+        `Я официальный ассистент по переуступкам ДДУ (214-ФЗ). Отвечу на ваши вопросы по:`,
+        `• Безопасным расчетам через СБР и аккредитив`,
+        `• Комиссиям (0% для продавца, 2.5% для покупателя)`,
+        `• Проверке рисков банкротства по 61.2 ФЗ-127`,
+        `• Подбору квартир в строящихся домах под ваш Buy-Box`,
+        ``,
+        `Напишите ваш вопрос прямо сюда или нажмите «✕ Выйти из AI-консьержа» для возврата к меню.`,
+      ].join('\n'),
+      reply_markup: {
+        keyboard: [
+          [{ text: '✕ Выйти из AI-консьержа' }],
+          [{ text: 'Как работает переуступка ДДУ?' }, { text: 'Подобрать квартиру в Buy-Box' }],
+        ],
+        resize_keyboard: true,
+      },
+    });
+    return;
+  }
+
+  if (data.startsWith('concierge_save_bb:')) {
+    const sessionId = data.replace('concierge_save_bb:', '').trim();
+    if (!binding?.userId) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: '⚠️ Для сохранения Buy-Box привяжите ваш аккаунт на сайте.',
+      });
+      return;
+    }
+    try {
+      await applyConciergeBuyBoxDraft(sessionId, { id: binding.userId, role: binding.role });
+      if (cq.message?.message_id) {
+        await telegramClient.editMessageText({
+          chat_id: chatId,
+          message_id: cq.message.message_id,
+          text: (cq.message.text || '') + '\n\n✅ <b>Параметры успешно сохранены в ваш Buy-Box!</b>',
+          parse_mode: 'HTML',
+        });
+      }
+    } catch (err: any) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ Ошибка сохранения: ${escapeHtml(err.message)}`,
+      });
+    }
+    return;
+  }
+
+  if (data.startsWith('concierge_handoff:')) {
+    const sessionId = data.replace('concierge_handoff:', '').trim();
+    try {
+      await requestConciergeHumanHandoff(sessionId, {
+        id: binding?.userId,
+        name: `${cq.from?.first_name || ''} ${cq.from?.last_name || ''}`.trim() || 'Клиент Telegram',
+        role: binding?.role,
+      });
+      if (cq.message?.message_id) {
+        await telegramClient.editMessageText({
+          chat_id: chatId,
+          message_id: cq.message.message_id,
+          text: (cq.message.text || '') + '\n\n✅ <b>Куратор уведомлен и свяжется с вами в ближайшее время!</b>',
+          parse_mode: 'HTML',
+        });
+      }
+    } catch (err: any) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `⚠️ Ошибка: ${escapeHtml(err.message)}`,
+      });
+    }
     return;
   }
 

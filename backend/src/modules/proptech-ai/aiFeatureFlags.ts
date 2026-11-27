@@ -107,10 +107,10 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
   {
     key: 'aiConciergeRag',
     labelRu: 'AI Консьерж (RAG)',
-    descriptionRu: 'Интеллектуальный ассистент на основе базы знаний платформы для ответов на вопросы клиентов',
-    implemented: false,
+    descriptionRu: 'Интеллектуальный суверенный ассистент на базе RAG и YandexGPT для консультации покупателей и продавцов 24/7',
+    implemented: true,
     roadmapStep: 'Этап 09',
-    defaultVisibility: 'off',
+    defaultVisibility: 'owner_only',
   },
 ];
 

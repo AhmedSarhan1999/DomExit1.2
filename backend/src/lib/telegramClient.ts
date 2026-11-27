@@ -188,3 +188,16 @@ export const telegramClient = {
     return await callTelegramApi('setMyCommands', params);
   },
 };
+
+export async function sendTelegramMessage(
+  chatId: number | string,
+  text: string,
+  options: { parseMode?: 'HTML'; replyMarkup?: any } = {}
+) {
+  return await telegramClient.sendMessage({
+    chat_id: chatId,
+    text,
+    parse_mode: options.parseMode || 'HTML',
+    reply_markup: options.replyMarkup,
+  });
+}

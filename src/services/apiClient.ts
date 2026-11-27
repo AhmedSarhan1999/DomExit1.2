@@ -1291,5 +1291,69 @@ export const apiClient = {
         `/api/ai/journal/articles/${encodeURIComponent(id)}`,
         { method: 'DELETE', skipCache: true }
       ),
+
+    // --- DomExit AI Concierge & RAG Methods ---
+    rebuildRagIndex: () =>
+      request<{
+        ok: boolean;
+        meta: {
+          chunksCount: number;
+          embeddedNewCount: number;
+          reusedCachedCount: number;
+          compressedSizeKb: number;
+          sourcesBreakdown: Record<string, number>;
+          lastIndexedAt: string;
+        };
+      }>('/api/ai/rag/reindex', { method: 'POST', skipCache: true }),
+
+    sendConciergeMessage: (payload: { messageText: string; sessionId?: string; anonymousId?: string }) =>
+      request<{
+        ok: boolean;
+        sessionId: string;
+        replyRu: string;
+        citations: Array<{ title: string; url: string; sourceType: string }>;
+        matchedLots: any[];
+        suggestedBuyBox: Record<string, any> | null;
+        shouldOfferHandoff: boolean;
+        remainingDailyQuota: number;
+      }>('/api/ai/concierge/chat', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    getConciergeSession: (sessionId: string) =>
+      request<{ ok: boolean; session: any }>(`/api/ai/concierge/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'GET',
+        skipCache: true,
+      }),
+
+    applyConciergeBuyBox: (sessionId: string) =>
+      request<{ ok: boolean; buyBox: any }>(
+        `/api/ai/concierge/sessions/${encodeURIComponent(sessionId)}/apply-buybox`,
+        { method: 'POST', skipCache: true }
+      ),
+
+    requestConciergeHandoff: (sessionId: string, payload?: { contactNote?: string }) =>
+      request<{ ok: boolean; handoffSummaryRu: string }>(
+        `/api/ai/concierge/sessions/${encodeURIComponent(sessionId)}/handoff`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload || {}),
+          skipCache: true,
+        }
+      ),
+
+    getConciergeHandoffs: () =>
+      request<{ ok: boolean; handoffs: any[] }>('/api/ai/concierge/handoffs', {
+        method: 'GET',
+        skipCache: true,
+      }),
+
+    resolveConciergeHandoff: (sessionId: string) =>
+      request<{ ok: boolean }>(`/api/ai/concierge/handoffs/${encodeURIComponent(sessionId)}`, {
+        method: 'PATCH',
+        skipCache: true,
+      }),
   },
 };

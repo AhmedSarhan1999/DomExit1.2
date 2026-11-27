@@ -7,6 +7,13 @@ import {
 import { handleTelegramCallback } from './telegramCallbacks.js';
 import { computeMatchScore, rankApplications } from './buyBoxEngine.js';
 import { logger } from './logger.js';
+import {
+  getAiLabConfig,
+  canUseAiFeature,
+} from '../modules/proptech-ai/aiFeatureFlags.js';
+import {
+  handleConciergeMessage,
+} from '../modules/proptech-ai/ragConciergeService.js';
 
 export async function showMainMenu(chatId: string | number, binding: any, cfg: any): Promise<void> {
   if (!binding) {
@@ -55,6 +62,15 @@ export async function showMainMenu(chatId: string | number, binding: any, cfg: a
     buttons.push([
       { text: '🌐 Личный кабинет', url: `${cfg.PUBLIC_BASE_URL}/client/portal` },
     ]);
+  }
+
+  try {
+    const config = await getAiLabConfig();
+    if (canUseAiFeature(config, 'aiConciergeRag', role)) {
+      buttons.push([{ text: '🤖 AI-Консьерж /ai', callback_data: 'cmd_ai_concierge' }]);
+    }
+  } catch {
+    // non-fatal
   }
 
   await telegramClient.sendMessage({
@@ -880,6 +896,76 @@ export async function handleTelegramMessage(
     return;
   }
 
+  // Command: /ai or 🤖 AI-Консьерж
+  if (text.startsWith('/ai') || text === '🤖 AI-Консьерж' || text === 'AI-Консьерж') {
+    const config = await getAiLabConfig();
+    const role = binding?.role || 'guest';
+    if (!canUseAiFeature(config, 'aiConciergeRag', role)) {
+      await telegramClient.sendMessage({
+        chat_id: chatId,
+        text: '🔒 Функция AI-Консьержа временно отключена или доступна только владельцу платформы.',
+      });
+      return;
+    }
+
+    const query = text.replace(/^\/ai\s*/i, '').trim();
+    if (query && query !== '🤖 AI-Консьерж' && query !== 'AI-Консьерж') {
+      await processTelegramConciergeQuery(chatId, query, binding);
+      return;
+    }
+
+    if (binding) {
+      binding.aiConciergeActive = true;
+      binding.updatedAt = new Date().toISOString();
+      await ydb.putItem('telegram_bindings', binding);
+    }
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: [
+        `🤖 <b>AI-Консьерж DomExit</b>`,
+        ``,
+        `Я официальный ассистент по переуступкам ДДУ (214-ФЗ). Отвечу на ваши вопросы по:`,
+        `• Безопасным расчетам через СБР и аккредитив`,
+        `• Комиссиям (0% для продавца, 2.5% для покупателя)`,
+        `• Проверке рисков банкротства по 61.2 ФЗ-127`,
+        `• Подбору квартир в строящихся домах под ваш Buy-Box`,
+        ``,
+        `Напишите ваш вопрос прямо сюда или нажмите «✕ Выйти из AI-консьержа» для возврата к меню.`,
+      ].join('\n'),
+      reply_markup: {
+        keyboard: [
+          [{ text: '✕ Выйти из AI-консьержа' }],
+          [{ text: 'Как работает переуступка ДДУ?' }, { text: 'Подобрать квартиру в Buy-Box' }],
+        ],
+        resize_keyboard: true,
+      },
+    });
+    return;
+  }
+
+  // Exit AI Concierge mode
+  if (text === '✕ Выйти из AI-консьержа' || text === '/exit_ai' || text === 'Выйти из AI-консьержа') {
+    if (binding && binding.aiConciergeActive) {
+      delete binding.aiConciergeActive;
+      binding.updatedAt = new Date().toISOString();
+      await ydb.putItem('telegram_bindings', binding);
+    }
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: '👋 Вы вышли из режима AI-Консьержа. Возвращаю главное меню.',
+      reply_markup: { remove_keyboard: true },
+    });
+    await showMainMenu(chatId, binding, cfg);
+    return;
+  }
+
+  // AI Concierge Active Session Handler (when user sends normal text and didn't swipe-reply to curator)
+  if (binding?.aiConciergeActive && !msg.reply_to_message?.message_id && !text.startsWith('/')) {
+    await processTelegramConciergeQuery(chatId, text, binding);
+    return;
+  }
+
   // Native Telegram Reply Bridge: User swiped and replied to a bot message
   if (msg.reply_to_message?.message_id) {
     const parentMsgId = msg.reply_to_message.message_id;
@@ -944,6 +1030,53 @@ export async function handleTelegramMessage(
       inline_keyboard: [[{ text: '📋 Главное меню', callback_data: 'menu' }]],
     },
   });
+}
+
+async function processTelegramConciergeQuery(
+  chatId: string | number,
+  query: string,
+  binding: any
+): Promise<void> {
+  try {
+    const res = await handleConciergeMessage({
+      channel: 'telegram',
+      telegramChatId: String(chatId),
+      messageText: query,
+      user: binding?.userId ? { id: binding.userId, role: binding.role } : undefined,
+    });
+
+    let msgText = res.replyRu;
+    if (res.citations && res.citations.length > 0) {
+      msgText +=
+        '\n\n📚 <b>Источники:</b>\n' +
+        res.citations.map((c) => `• <a href="https://domexit.ru${c.url}">${escapeHtml(c.title)}</a>`).join('\n');
+    }
+
+    const inlineKeyboard: any[] = [];
+    if (res.suggestedBuyBox && binding?.userId) {
+      inlineKeyboard.push([
+        { text: '✓ Сохранить параметры в Buy-Box', callback_data: `concierge_save_bb:${res.sessionId}` },
+      ]);
+    }
+    inlineKeyboard.push([
+      { text: '👤 Позвать живого куратора', callback_data: `concierge_handoff:${res.sessionId}` },
+    ]);
+
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: msgText,
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: inlineKeyboard },
+    });
+  } catch (err: any) {
+    const isQuota = err.message === 'DAILY_CONCIERGE_QUOTA_EXCEEDED';
+    await telegramClient.sendMessage({
+      chat_id: chatId,
+      text: isQuota
+        ? '⚠️ Вы исчерпали дневной лимит сообщений AI-Консьержа. Для срочных вопросов вы можете связаться с куратором.'
+        : `⚠️ Ошибка AI-Консьержа: ${escapeHtml(err.message)}`,
+    });
+  }
 }
 
 export async function processTelegramUpdate(update: any, ydb: any, cfg: any): Promise<void> {

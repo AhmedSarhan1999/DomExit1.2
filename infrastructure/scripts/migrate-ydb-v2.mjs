@@ -269,6 +269,15 @@ const V2_TABLES_SCHEMA = {
       { indexName: 'category-publishedAt-index', hashKey: 'category', rangeKey: 'publishedAt' },
     ],
   },
+  ai_concierge_sessions: {
+    logicalName: 'ai_concierge_sessions',
+    v2TableName: 'ai_concierge_sessions_v2',
+    gsis: [
+      { indexName: 'userId-updatedAt-index', hashKey: 'userId', rangeKey: 'updatedAt' },
+      { indexName: 'telegramChatId-updatedAt-index', hashKey: 'telegramChatId', rangeKey: 'updatedAt' },
+      { indexName: 'handoffStatus-updatedAt-index', hashKey: 'handoffStatus', rangeKey: 'updatedAt' },
+    ],
+  },
 };
 
 function getIndexedFields(schema) {
