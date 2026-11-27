@@ -64,8 +64,30 @@ export async function optimizeImageFile(file: File, maxWidth = 1920, maxHeight =
 
         canvas.toBlob(
           (blob) => {
+            if (!blob) {
+              // Browser canvas failed to export WebP (e.g. older browser or unsupported format)
+              // Fallback to high-quality compressed JPEG
+              canvas.toBlob(
+                (jpegBlob) => {
+                  if (!jpegBlob) {
+                    resolve(file);
+                    return;
+                  }
+                  resolve(
+                    new File([jpegBlob], toSafePhotoFilename(file.name, 'jpg'), {
+                      type: 'image/jpeg',
+                      lastModified: Date.now(),
+                    })
+                  );
+                },
+                'image/jpeg',
+                quality
+              );
+              return;
+            }
+
             const supportedOrig = ['image/webp', 'image/jpeg', 'image/png'].includes(file.type);
-            if (!blob || (supportedOrig && maxWidth > 500 && blob.size >= file.size)) {
+            if (supportedOrig && maxWidth > 500 && blob.size >= file.size) {
               const origExt = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
               resolve(
                 new File([file], toSafePhotoFilename(file.name, origExt), {

@@ -9,6 +9,9 @@
 import { execSync } from 'node:child_process';
 import { getConfig } from '../../lib/config.js';
 import { logger } from '../../lib/logger.js';
+import { callTelegramApi } from '../../lib/telegramClient.js';
+import { findTelegramBindingByUser } from '../../lib/telegramWorkflow.js';
+import { getYdbClient } from '../../lib/ydbClient.js';
 
 export type GptModelTier = 'lite' | 'pro';
 
@@ -44,6 +47,7 @@ interface DailyGptTracker {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalEstimatedCostRub: number;
+  hasAlerted80Percent?: boolean;
 }
 
 let dailyTracker: DailyGptTracker = {
@@ -52,6 +56,7 @@ let dailyTracker: DailyGptTracker = {
   totalInputTokens: 0,
   totalOutputTokens: 0,
   totalEstimatedCostRub: 0,
+  hasAlerted80Percent: false,
 };
 
 function getDailyTracker(): DailyGptTracker {
@@ -63,9 +68,35 @@ function getDailyTracker(): DailyGptTracker {
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalEstimatedCostRub: 0,
+      hasAlerted80Percent: false,
     };
   }
   return dailyTracker;
+}
+
+async function notifyOwnerGptCapAlert(usedCalls: number, cap: number): Promise<void> {
+  try {
+    const ydb = getYdbClient();
+    const users = ydb.isV2TablesEnabled?.()
+      ? await ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' })
+      : (await ydb.scanAll<any>('users', 200).catch(() => [])) || [];
+    const owner = (users || []).find((u: any) => u.role === 'owner');
+    if (!owner) return;
+    const binding = await findTelegramBindingByUser(owner.id);
+    if (binding?.chatId && binding.notificationsEnabled !== false) {
+      const text =
+        `⚠️ <b>Внимание: Порог 80% суточного лимита YandexGPT</b>\n` +
+        `Использовано <b>${usedCalls}</b> из <b>${cap}</b> вызовов за сегодня.\n` +
+        `При достижении 100% запросы AI Lab перейдут в режим ожидания до полуночи MSK.`;
+      await callTelegramApi('sendMessage', {
+        chat_id: binding.chatId,
+        text,
+        parse_mode: 'HTML',
+      }).catch(() => {});
+    }
+  } catch (err: any) {
+    logger.warn('Failed to dispatch 80% GPT budget telegram alert', { meta: { error: err.message } });
+  }
 }
 
 export function getGptUsageSummary() {
@@ -254,6 +285,13 @@ export async function completeJson<T>(options: CompleteJsonOptions<T>): Promise<
     tracker.totalInputTokens += inputTokens;
     tracker.totalOutputTokens += outputTokens;
     tracker.totalEstimatedCostRub += costRub;
+
+    // Proactive Alert at 80% Daily Budget Threshold
+    const threshold80 = Math.floor(dailyCap * 0.8);
+    if (tracker.callsCount >= threshold80 && !tracker.hasAlerted80Percent) {
+      tracker.hasAlerted80Percent = true;
+      void notifyOwnerGptCapAlert(tracker.callsCount, dailyCap);
+    }
 
     const cleanedText = cleanJsonString(textOutput);
 

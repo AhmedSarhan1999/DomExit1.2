@@ -19,6 +19,7 @@ import {
 import { KnowledgeRepository } from '../../dal/repositories/KnowledgeRepository';
 import { KnowledgeArticle } from '../../types';
 import { JsonLdStructuredData } from '../../components/seo/JsonLdStructuredData';
+import { sanitizeHtml } from '../../utils/sanitizer';
 
 export const ArticleDetailPage: React.FC = () => {
   const { articleSlug } = useParams<{ articleSlug: string }>();
@@ -248,7 +249,7 @@ export const ArticleDetailPage: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-xs prose prose-slate max-w-none">
               <div
                 className="text-slate-700 leading-relaxed text-sm sm:text-base space-y-6"
-                dangerouslySetInnerHTML={{ __html: article.content }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(article.content) }}
               />
             </div>
 

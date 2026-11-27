@@ -10,6 +10,7 @@ import { logger } from './logger.js';
 import { getAiLabConfig } from '../modules/proptech-ai/aiFeatureFlags.js';
 import { syncCbrKeyRate } from '../modules/proptech-ai/cbrSyncService.js';
 import { runLegislativeRadarScan } from '../modules/legal-core/legislativeRadarService.js';
+import { getUnifiedBuyBox, syncBuyBoxAndUser } from './buyBoxSync.js';
 import {
   LotDropConfig,
   BuyerBuyBox,
@@ -471,6 +472,68 @@ export async function runSlaSweep(
       }
     } catch (err: any) {
       logger.warn('Error in Task 9 (Legislative radar daily scan)', { meta: { error: err.message } });
+    }
+
+    // Task 10: Clean up stale anonymous concierge sessions (> 30 days old without userId and without buyBoxAppliedAt)
+    try {
+      const thirtyDaysAgoMs = now.getTime() - 30 * 24 * 3600 * 1000;
+      const sessions = (await ydb.scanAll<any>('ai_concierge_sessions', 500).catch(() => [])) || [];
+      const staleAnonymousSessionIds = sessions
+        .filter((s: any) => {
+          if (!s?.id) return false;
+          if (s.userId || s.buyBoxAppliedAt) return false;
+          const ts = new Date(s.updatedAt || s.createdAt || 0).getTime();
+          return Number.isFinite(ts) && ts > 0 && ts < thirtyDaysAgoMs;
+        })
+        .map((s: any) => String(s.id));
+
+      if (!dryRun && staleAnonymousSessionIds.length > 0) {
+        await ydb.batchDelete('ai_concierge_sessions', staleAnonymousSessionIds);
+        logger.info(`[SlaSweeper] Pruned ${staleAnonymousSessionIds.length} stale anonymous concierge sessions`);
+      }
+    } catch (err: any) {
+      logger.warn('Error in Task 10 (clean stale anonymous concierge sessions)', { meta: { error: err.message } });
+    }
+
+    // Task 11: Solvency approval expiry check (mortgage approvals / tier verification requests)
+    try {
+      const tierReqs = (await ydb.scanAll<any>('tier_verification_requests', 300).catch(() => [])) || [];
+      const expiredReqs = tierReqs.filter((req: any) => {
+        if (!req?.id || req.status !== 'approved' || !req.userId) return false;
+        if (!req.expiresAt) return false;
+        const expMs = new Date(req.expiresAt).getTime();
+        return Number.isFinite(expMs) && expMs < now.getTime();
+      });
+
+      for (const req of expiredReqs) {
+        req.status = 'expired';
+        req.updatedAt = isoNow;
+        if (!dryRun) {
+          await ydb.putItem('tier_verification_requests', req);
+          const currentBb = (await getUnifiedBuyBox(ydb, req.userId)) || ({ tier: 'silver' } as any);
+          await syncBuyBoxAndUser(ydb, req.userId, {
+            ...currentBb,
+            tier: 'silver',
+          });
+          await recordJournalEvent({
+            action: 'UPDATE',
+            collection: 'tier_verification_requests',
+            recordId: req.id,
+            actor: { role: 'system', email: 'sla-sweeper' },
+            payload: {
+              status: 'expired',
+              reason: 'solvency_approval_validity_period_ended',
+              previousTier: currentBb.tier,
+            },
+          });
+          const text =
+            `⚠️ <b>Срок действия подтверждения платежеспособности истек</b>\n` +
+            `Ваш статус инвестора возвращен к уровню <b>Silver</b>. Для участия в закрытых пулах Gold/Platinum обновите решение банка в личном кабинете.`;
+          void notifyUser(req.userId, text);
+        }
+      }
+    } catch (err: any) {
+      logger.warn('Error in Task 11 (solvency approval expiry sweep)', { meta: { error: err.message } });
     }
   }
 

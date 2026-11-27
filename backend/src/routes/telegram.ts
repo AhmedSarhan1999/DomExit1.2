@@ -19,7 +19,7 @@ import { processTelegramUpdate } from '../lib/telegramCommands.js';
 const seenUpdates = new Set<number>();
 const updateIdsQueue: number[] = [];
 
-function isDuplicateUpdate(updateId: number): boolean {
+function isDuplicateUpdateL1(updateId: number): boolean {
   if (!updateId) return false;
   if (seenUpdates.has(updateId)) return true;
   seenUpdates.add(updateId);
@@ -28,6 +28,36 @@ function isDuplicateUpdate(updateId: number): boolean {
     const oldest = updateIdsQueue.shift();
     if (oldest !== undefined) seenUpdates.delete(oldest);
   }
+  return false;
+}
+
+/**
+ * Distributed deduplication across serverless instances using rate_limits_v2 table.
+ * TTL is 1 hour (3600_000 ms), fail-safe with L1 in-memory fallback.
+ */
+async function isDuplicateUpdateDistributed(updateId: number, ydb: any): Promise<boolean> {
+  if (!updateId) return false;
+  // 1. Fast L1 memory check
+  if (isDuplicateUpdateL1(updateId)) return true;
+
+  // 2. Distributed L2 check in YDB rate_limits
+  try {
+    const key = `tg_update:${updateId}`;
+    const existing = await ydb.getItem('rate_limits', key).catch(() => null);
+    if (existing) {
+      seenUpdates.add(updateId);
+      return true;
+    }
+    const expiresAt = Date.now() + 3600_000;
+    await ydb.putItem('rate_limits', {
+      id: key,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+    }).catch(() => null);
+  } catch (err: any) {
+    logger.warn('Distributed telegram dedupe fallback to L1 memory', { meta: { error: err.message, updateId } });
+  }
+
   return false;
 }
 
@@ -78,8 +108,8 @@ export async function handleTelegram(event: YcHttpEvent, subPath: string): Promi
       return json(event, 200, { ok: true, skipped: 'empty_body' });
     }
 
-    // De-duplicate update_id
-    if (body.update_id && isDuplicateUpdate(body.update_id)) {
+    // Distributed De-duplicate update_id (L1 Memory + L2 YDB rate_limits)
+    if (body.update_id && (await isDuplicateUpdateDistributed(Number(body.update_id), ydb))) {
       return json(event, 200, { ok: true, skipped: 'duplicate_update' });
     }
 

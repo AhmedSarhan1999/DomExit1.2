@@ -28,10 +28,69 @@ import {
   requestConciergeHumanHandoff,
 } from '../modules/proptech-ai/ragConciergeService.js';
 
+async function findLot(ydb: any, lotCode: string): Promise<any | null> {
+  const clean = String(lotCode || '').trim();
+  if (!clean) return null;
+  let lot = await ydb.getItem('lots', clean).catch(() => null);
+  if (lot) return lot;
+  if (ydb.isV2TablesEnabled?.()) {
+    const [exactMatches, upperMatches] = await Promise.all([
+      ydb.queryAllByIndex({
+        tableName: 'lots',
+        indexName: 'lotCode-index',
+        hashKey: 'lotCode',
+        hashValue: clean,
+        limit: 5,
+      }).catch(() => []),
+      clean.toUpperCase() !== clean
+        ? ydb.queryAllByIndex({
+            tableName: 'lots',
+            indexName: 'lotCode-index',
+            hashKey: 'lotCode',
+            hashValue: clean.toUpperCase(),
+            limit: 5,
+          }).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    const found = exactMatches[0] || upperMatches[0];
+    if (found) return found;
+  }
+  const all = (await ydb.scanAll('lots', 500).catch(() => [])) || [];
+  return (
+    all.find(
+      (l: any) =>
+        String(l.lotCode || '').trim().toUpperCase() === clean.toUpperCase() ||
+        String(l.id || '').trim().toUpperCase() === clean.toUpperCase()
+    ) || null
+  );
+}
+
+async function findLotApplications(ydb: any, lotCode: string): Promise<any[]> {
+  const cleanUpper = String(lotCode || '').trim().toUpperCase();
+  if (ydb.isV2TablesEnabled?.()) {
+    const apps = await ydb.queryAllByIndex({
+      tableName: 'buyer_applications',
+      indexName: 'lotId-createdAt-index',
+      hashKey: 'lotId',
+      hashValue: cleanUpper,
+    }).catch(() => []);
+    if (apps && apps.length > 0) return apps;
+  }
+  const allApps = (await ydb.scanAll('buyer_applications', 300).catch(() => [])) || [];
+  return allApps.filter((a: any) => String(a.lotCode || '').trim().toUpperCase() === cleanUpper);
+}
+
 async function notifyStaffTg(text: string): Promise<void> {
   try {
     const ydb = getYdbClient();
-    const users = await ydb.scanAll<any>('users', 200);
+    const users = ydb.isV2TablesEnabled?.()
+      ? (
+          await Promise.all([
+            ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'owner' }),
+            ydb.queryAllByIndex<any>({ tableName: 'users', indexName: 'role-createdAt-index', hashKey: 'role', hashValue: 'employee' }),
+          ])
+        ).flat()
+      : await ydb.scanAll<any>('users', 200);
     const staff = (users || []).filter((u: any) => u.role === 'owner' || u.role === 'employee');
     for (const s of staff) {
       const b = await findTelegramBindingByUser(s.id);
@@ -289,11 +348,7 @@ export async function handleTelegramCallback(
   // Stage change menu
   if (data.startsWith('stage_menu:')) {
     const lotCode = data.replace(/^stage_menu:/, '');
-    let lot = await ydb.getItem('lots', lotCode);
-    if (!lot) {
-      const all = await ydb.scanAll('lots', 200);
-      lot = all.find((l: any) => l.lotCode === lotCode || l.id === lotCode);
-    }
+    const lot = await findLot(ydb, lotCode);
 
     if (!lot) {
       await telegramClient.sendMessage({
@@ -424,11 +479,7 @@ export async function handleTelegramCallback(
       return;
     }
 
-    let lot = await ydb.getItem('lots', lotCode);
-    if (!lot) {
-      const all = await ydb.scanAll('lots', 500);
-      lot = (all || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
-    }
+    const lot = await findLot(ydb, lotCode);
     if (!lot) {
       await telegramClient.sendMessage({
         chat_id: chatId,
@@ -567,11 +618,7 @@ export async function handleTelegramCallback(
       return;
     }
 
-    let lot = await ydb.getItem('lots', lotCode);
-    if (!lot) {
-      const all = await ydb.scanAll('lots', 500);
-      lot = (all || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
-    }
+    const lot = await findLot(ydb, lotCode);
     if (!lot) {
       await telegramClient.sendMessage({
         chat_id: chatId,
@@ -583,7 +630,7 @@ export async function handleTelegramCallback(
     const targetLotCode = lot.lotCode || lotCode;
 
     // Check existing application
-    const allApps = await ydb.scanAll('buyer_applications', 300);
+    const allApps = await findLotApplications(ydb, targetLotCode);
     const existing = (allApps || []).find(
       (a: any) =>
         (a.lotCode === targetLotCode || a.lotCode === lotCode) &&
@@ -715,16 +762,11 @@ export async function handleTelegramCallback(
       return;
     }
 
-    let lot = await ydb.getItem('lots', lotCode);
-    if (!lot) {
-      const allLots = await ydb.scanAll('lots', 500);
-      lot = (allLots || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
-    }
+    const lot = await findLot(ydb, lotCode);
     const targetLotCode = lot?.lotCode || lotCode;
 
-    const allApps = await ydb.scanAll('buyer_applications', 300);
-    const lotApps = (allApps || []).filter(
-      (a: any) => (a.lotCode === lotCode || a.lotCode === targetLotCode) && a.queueStatus !== 'withdrawn'
+    const lotApps = (await findLotApplications(ydb, targetLotCode)).filter(
+      (a: any) => a.queueStatus !== 'withdrawn'
     );
 
     if (lotApps.length === 0) {
@@ -735,9 +777,14 @@ export async function handleTelegramCallback(
       return;
     }
 
-    const allBuyBoxes = await ydb.scanAll('buy_boxes', 300);
     const bbMap = new Map<string, any>();
-    for (const bb of allBuyBoxes || []) bbMap.set(bb.userId, bb);
+    const uniqueUserIds = Array.from(new Set(lotApps.map((a: any) => a.userId).filter(Boolean)));
+    const boxes = await Promise.all(
+      uniqueUserIds.map((uid) => ydb.getItem('buy_boxes', `bb:${uid}`).catch(() => null))
+    );
+    for (let i = 0; i < uniqueUserIds.length; i++) {
+      if (boxes[i]) bbMap.set(uniqueUserIds[i], boxes[i]);
+    }
 
     const enriched = lotApps.map((a: any) => ({
       ...a,
@@ -824,16 +871,11 @@ export async function handleTelegramCallback(
       return;
     }
 
-    let lot = await ydb.getItem('lots', lotCode);
-    if (!lot) {
-      const allLots = await ydb.scanAll('lots', 500);
-      lot = (allLots || []).find((l: any) => l.lotCode === lotCode || l.id === lotCode);
-    }
+    const lot = await findLot(ydb, lotCode);
     const targetLotCode = lot?.lotCode || lotCode;
 
-    const allApps = await ydb.scanAll('buyer_applications', 300);
-    const lotApps = (allApps || []).filter(
-      (a: any) => (a.lotCode === lotCode || a.lotCode === targetLotCode) && a.queueStatus !== 'withdrawn'
+    const lotApps = (await findLotApplications(ydb, targetLotCode)).filter(
+      (a: any) => a.queueStatus !== 'withdrawn'
     );
 
     const currentP1 = lotApps.find((a: any) => a.queueStatus === 'priority_1');

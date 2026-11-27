@@ -106,6 +106,42 @@ async function findLotByCode(ydb: any, lotCode: string): Promise<any | null> {
   return lot || null;
 }
 
+async function findDealByIdOrLookup(ydb: any, dealId: string): Promise<any | null> {
+  const cleanId = String(dealId || '').trim();
+  if (!cleanId) return null;
+  let deal = await ydb.getItem('deals', cleanId).catch(() => null);
+  if (deal) return deal;
+  if (ydb.isV2TablesEnabled?.()) {
+    // 1. Try finding by lotId index if dealId might be a lotId or lotCode
+    const byLot = await ydb.queryAllByIndex({
+      tableName: 'deals',
+      indexName: 'lotId-createdAt-index',
+      hashKey: 'lotId',
+      hashValue: cleanId,
+    }).catch(() => []);
+    if (byLot && byLot.length > 0) return byLot[0];
+
+    const upperClean = cleanId.toUpperCase();
+    if (upperClean !== cleanId) {
+      const byLotUpper = await ydb.queryAllByIndex({
+        tableName: 'deals',
+        indexName: 'lotId-createdAt-index',
+        hashKey: 'lotId',
+        hashValue: upperClean,
+      }).catch(() => []);
+      if (byLotUpper && byLotUpper.length > 0) return byLotUpper[0];
+    }
+
+    // 2. Try with 'deal-' prefix stripped or added
+    const altId = cleanId.startsWith('deal-') ? cleanId.replace(/^deal-/, '') : `deal-${cleanId}`;
+    const altDeal = await ydb.getItem('deals', altId).catch(() => null);
+    if (altDeal) return altDeal;
+    return null;
+  }
+  const allDeals = (await ydb.scanAll('deals', 500).catch(() => [])) || [];
+  return allDeals.find((d: any) => d.id === cleanId || d.dealId === cleanId) || null;
+}
+
 const VERIFICATION_STATUS_SET = new Set(['pending', 'verified', 'needs_clarification']);
 const WAITLIST_TARGET_SET = new Set(['reserve_2', 'reserve_3', 'waitlist', 'pending_review']);
 
@@ -291,7 +327,14 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     }
 
     try {
-      const allBuyBoxes = await ydb.scanAll<BuyerBuyBox>('buy_boxes', 500);
+      const allBuyBoxes = ydb.isV2TablesEnabled?.()
+        ? await ydb.queryAllByIndex<BuyerBuyBox>({
+            tableName: 'buy_boxes',
+            indexName: 'status-createdAt-index',
+            hashKey: 'status',
+            hashValue: 'active',
+          }).catch(() => [])
+        : await ydb.scanAll<BuyerBuyBox>('buy_boxes', 500);
       const activeBoxes = (allBuyBoxes || []).filter((bb) => bb.active !== false);
 
       let goldCount = 0;
@@ -726,7 +769,14 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
 
     try {
       // Scan active buy-boxes to compute matched gold and silver buyers
-      const allBuyBoxes = await ydb.scanAll<BuyerBuyBox>('buy_boxes', 500);
+      const allBuyBoxes = ydb.isV2TablesEnabled?.()
+        ? await ydb.queryAllByIndex<BuyerBuyBox>({
+            tableName: 'buy_boxes',
+            indexName: 'status-createdAt-index',
+            hashKey: 'status',
+            hashValue: 'active',
+          }).catch(() => [])
+        : await ydb.scanAll<BuyerBuyBox>('buy_boxes', 500);
       let matchedGoldCount = 0;
       let matchedSilverCount = 0;
       const matchedGoldChatIds: string[] = [];
@@ -2486,13 +2536,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const bankOfficerName = body?.bankOfficerName || authUser.name || authUser.email || 'Куратор DomExit';
 
     try {
-      let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
-      if (!deal) {
-        const allDeals = await ydb.scanAll<any>('deals', 500);
-        deal = (allDeals || []).find(
-          (d: any) => d.id === dealId || d.dealId === dealId
-        );
-      }
+      let deal = await findDealByIdOrLookup(ydb, dealId);
       if (!deal) {
         return json(event, 404, { error: `Сделка ${dealId} не найдена` });
       }
@@ -2726,11 +2770,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       return json(event, 400, { error: 'Укажите title и assignee (seller|buyer)' });
     }
 
-    let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
-    if (!deal) {
-      const allDeals = await ydb.scanAll<any>('deals', 500);
-      deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
-    }
+    let deal = await findDealByIdOrLookup(ydb, dealId);
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }
@@ -2785,11 +2825,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
       note?: string;
     }>(event);
 
-    let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
-    if (!deal) {
-      const allDeals = await ydb.scanAll<any>('deals', 500);
-      deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
-    }
+    let deal = await findDealByIdOrLookup(ydb, dealId);
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }
@@ -2848,11 +2884,7 @@ export async function handleMatching(event: YcHttpEvent, subPath: string): Promi
     const dealId = decodeURIComponent(approveTaskMatch[1]);
     const taskId = decodeURIComponent(approveTaskMatch[2]);
 
-    let deal = await ydb.getItem<any>('deals', dealId).catch(() => null);
-    if (!deal) {
-      const allDeals = await ydb.scanAll<any>('deals', 500);
-      deal = (allDeals || []).find((d: any) => d.id === dealId || d.dealId === dealId);
-    }
+    let deal = await findDealByIdOrLookup(ydb, dealId);
     if (!deal) {
       return json(event, 404, { error: `Сделка ${dealId} не найдена` });
     }
