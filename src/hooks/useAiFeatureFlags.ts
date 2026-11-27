@@ -17,6 +17,7 @@ export type AiFeatureKey =
   | 'avmValuation'
   | 'aiPackagingStudio'
   | 'legislativeRadar'
+  | 'publicJournalSeo'
   | 'aiConciergeRag';
 
 export interface AiLabPublicConfig {

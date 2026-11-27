@@ -41,6 +41,10 @@ const KnowledgeHubPage = React.lazy(() => import('./pages/knowledge/KnowledgeHub
 const ArticleDetailPage = React.lazy(() => import('./pages/knowledge/ArticleDetailPage').then((m) => ({ default: m.ArticleDetailPage })));
 const FAQPage = React.lazy(() => import('./pages/knowledge/FAQPage').then((m) => ({ default: m.FAQPage })));
 
+// DomExit Journal & SEO Engine (Phase 5 — Order 08)
+const JournalListPage = React.lazy(() => import('./pages/JournalListPage'));
+const JournalArticlePage = React.lazy(() => import('./pages/JournalArticlePage'));
+
 import { AdminRouteGuard } from './components/auth/AdminRouteGuard';
 import { CookieConsentBanner } from './components/compliance/CookieConsentBanner';
 import { ConsentGateModal } from './components/compliance/ConsentGateModal';
@@ -93,6 +97,10 @@ export const App: React.FC = () => {
                 <Route path="/knowledge" element={<KnowledgeHubPage />} />
                 <Route path="/knowledge/:articleSlug" element={<ArticleDetailPage />} />
                 <Route path="/faq" element={<FAQPage />} />
+
+                {/* DomExit Journal & SEO Engine */}
+                <Route path="/journal" element={<JournalListPage />} />
+                <Route path="/journal/:slug" element={<JournalArticlePage />} />
 
                 {/* Unified Federal Law 152-FZ / 38-FZ Legal Engine */}
                 <Route path="/legal" element={<LegalIndexPage />} />

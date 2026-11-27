@@ -18,6 +18,7 @@ export type AiFeatureKey =
   | 'avmValuation'
   | 'aiPackagingStudio'
   | 'legislativeRadar'
+  | 'publicJournalSeo'
   | 'aiConciergeRag';
 
 export type FeatureVisibility = 'off' | 'owner_only' | 'staff_only' | 'public';
@@ -93,6 +94,14 @@ export const AI_FEATURES_CATALOG: AiFeatureMeta[] = [
     descriptionRu: 'Мониторинг изменений в законодательстве, влияющих на сделки с недвижимостью',
     implemented: true,
     roadmapStep: 'Этап 07',
+    defaultVisibility: 'owner_only',
+  },
+  {
+    key: 'publicJournalSeo',
+    labelRu: 'Публичный SEO-журнал и блог',
+    descriptionRu: 'Публикация статей в /journal, генерация sitemap.xml, RSS и OpenGraph превью для Telegram и Yandex',
+    implemented: true,
+    roadmapStep: 'Этап 08',
     defaultVisibility: 'owner_only',
   },
   {

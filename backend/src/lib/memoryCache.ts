@@ -23,6 +23,10 @@ class MemoryCacheFacade {
     appCache.set(key, data, ttlMs);
   }
 
+  delete(key: string): void {
+    appCache.delete(key);
+  }
+
   invalidate(collection: string): void {
     appCache.invalidatePrefix(collection);
   }

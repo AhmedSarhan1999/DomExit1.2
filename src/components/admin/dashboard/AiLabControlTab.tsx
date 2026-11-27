@@ -18,6 +18,7 @@ type FeatureKey =
   | 'avmValuation'
   | 'aiPackagingStudio'
   | 'legislativeRadar'
+  | 'publicJournalSeo'
   | 'aiConciergeRag';
 
 type Visibility = 'off' | 'owner_only' | 'staff_only' | 'public';

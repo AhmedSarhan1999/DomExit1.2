@@ -4,11 +4,14 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { ShieldCheck, Phone, Mail, MapPin, Send, Building2, MessageCircle, Bot } from 'lucide-react';
 import { useCompanyProfileStore } from '../../stores/useCompanyProfileStore';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
+import { useAiFeatureFlags } from '../../hooks/useAiFeatureFlags';
 
 export const UnifiedFooter: React.FC = () => {
   const { language, t } = useLanguage();
   const { profile } = useCompanyProfileStore();
   const { channels } = usePublicChannelsStore();
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const isJournalVisible = isFeatureEnabled('publicJournalSeo');
 
   return (
     <footer className="bg-[#F8FAFC] border-t border-slate-200 text-slate-700 pt-16 pb-12 transition-colors">
@@ -61,6 +64,13 @@ export const UnifiedFooter: React.FC = () => {
                   {language === 'ru' ? 'База знаний по переуступкам' : 'Knowledge Hub'}
                 </Link>
               </li>
+              {isJournalVisible && (
+                <li>
+                  <Link to="/journal" className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors">
+                    {language === 'ru' ? 'DomExit Журнал (Статьи)' : 'DomExit Journal'}
+                  </Link>
+                </li>
+              )}
               <li>
                 <Link to="/faq" className="text-slate-600 hover:text-emerald-600 transition-colors">
                   {language === 'ru' ? 'Частые вопросы (FAQ)' : 'FAQ & Legal Answers'}

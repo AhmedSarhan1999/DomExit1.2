@@ -1221,5 +1221,75 @@ export const apiClient = {
         body: JSON.stringify(payload),
         skipCache: true,
       }),
+
+    // --- DomExit Journal Public & SEO Methods ---
+    getPublicJournalArticles: (params?: { category?: string; limit?: number; cursor?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.category) q.set('category', params.category);
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.cursor) q.set('cursor', params.cursor);
+      const qs = q.toString() ? `?${q.toString()}` : '';
+      return request<{ ok: boolean; items: any[]; nextCursor: string | null; hasMore: boolean }>(
+        `/api/public/journal${qs}`,
+        { method: 'GET', skipCache: true }
+      );
+    },
+
+    getPublicJournalArticle: (slug: string, preview?: boolean) => {
+      const q = preview ? '?preview=1' : '';
+      return request<{
+        ok: boolean;
+        article: any;
+        relatedArticles: any[];
+        featuredLots: any[];
+        isPreview?: boolean;
+      }>(`/api/public/journal/${encodeURIComponent(slug)}${q}`, {
+        method: 'GET',
+        skipCache: true,
+      });
+    },
+
+    createJournalArticle: (payload: any) =>
+      request<{ ok: boolean; article: any }>('/api/ai/journal/articles', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipCache: true,
+      }),
+
+    validateJournalArticle: (id: string) =>
+      request<{ ok: boolean; validation: { ready: boolean; blockers: string[]; warnings: string[] } }>(
+        `/api/ai/journal/articles/${encodeURIComponent(id)}/validate`,
+        { method: 'POST', skipCache: true }
+      ),
+
+    publishJournalArticle: (
+      id: string,
+      payload?: { publishToTelegram?: boolean; telegramDryRun?: boolean; forceTelegramRepost?: boolean }
+    ) =>
+      request<{
+        ok: boolean;
+        article: any;
+        telegramSent: boolean;
+        telegramDryRun?: boolean;
+        telegramMessagePreview?: string;
+        telegramNotice?: string;
+        warnings?: string[];
+      }>(`/api/ai/journal/articles/${encodeURIComponent(id)}/publish`, {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+        skipCache: true,
+      }),
+
+    unpublishJournalArticle: (id: string) =>
+      request<{ ok: boolean; article: any }>(
+        `/api/ai/journal/articles/${encodeURIComponent(id)}/unpublish`,
+        { method: 'POST', skipCache: true }
+      ),
+
+    deleteJournalArticle: (id: string) =>
+      request<{ ok: boolean; deleted: string }>(
+        `/api/ai/journal/articles/${encodeURIComponent(id)}`,
+        { method: 'DELETE', skipCache: true }
+      ),
   },
 };

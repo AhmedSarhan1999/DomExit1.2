@@ -4,6 +4,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePublicChannelsStore } from '../../stores/usePublicChannelsStore';
 import { EmployeesRepository } from '../../dal/repositories/EmployeesRepository';
+import { useAiFeatureFlags } from '../../hooks/useAiFeatureFlags';
 import { 
   ShieldCheck, 
   User, 
@@ -31,6 +32,8 @@ export const UnifiedNavbar: React.FC = () => {
   const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const [servicesDropdownOpen, setServicesDropdownOpen] = useState(false);
   const [hasStaffAccess, setHasStaffAccess] = useState<boolean>(false);
+  const { isFeatureEnabled } = useAiFeatureFlags();
+  const isJournalVisible = isFeatureEnabled('publicJournalSeo');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const roleSwitcherRef = useRef<HTMLDivElement>(null);
@@ -201,6 +204,19 @@ export const UnifiedNavbar: React.FC = () => {
             >
               {t.nav.story}
             </Link>
+
+            {isJournalVisible && (
+              <Link
+                to="/journal"
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                  isActive('/journal')
+                    ? 'bg-slate-800 text-indigo-400 border border-slate-700'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                {language === 'ru' ? 'Журнал' : 'Journal'}
+              </Link>
+            )}
 
             {/* Operational Services Dropdown */}
             {hasStaffAccess && (
@@ -471,6 +487,19 @@ export const UnifiedNavbar: React.FC = () => {
           >
             {t.nav.story}
           </Link>
+          {isJournalVisible && (
+            <Link
+              to="/journal"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                isActive('/journal')
+                  ? 'text-indigo-300 bg-indigo-950/60 border border-indigo-500/40'
+                  : 'text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              {language === 'ru' ? 'Журнал' : 'Journal'}
+            </Link>
+          )}
 
           {/* Mobile Client Portal Link */}
           <button

@@ -49,6 +49,14 @@ paths:
         bucket: domexit-web-staging
         object: index.html
         service_account_id: aje70eogmpm04c84rsnl
+  /sitemap.xml:
+    get:
+      summary: Dynamic Sitemap
+      operationId: dynamicSitemap
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: d4ep633b03be8trc7d28
+        service_account_id: aje70eogmpm04c84rsnl
   /{file+}:
     get:
       summary: Web Static SPA Fallback

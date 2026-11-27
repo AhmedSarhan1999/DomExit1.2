@@ -30,6 +30,7 @@ import {
   Tag,
   Clock,
   Eye,
+  Globe,
 } from 'lucide-react';
 import { apiClient } from '../../../services/apiClient';
 
@@ -70,6 +71,19 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
   const [editingDraft, setEditingDraft] = useState<any | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
+
+  // Publish / Unpublish state
+  const [publishingArticleId, setPublishingArticleId] = useState<string | null>(null);
+  const [modalPublishTelegram, setModalPublishTelegram] = useState(false);
+  const [modalTelegramDryRun, setModalTelegramDryRun] = useState(true);
+
+  // Manual article create modal
+  const [showManualArticleModal, setShowManualArticleModal] = useState(false);
+  const [newArticleTitle, setNewArticleTitle] = useState('');
+  const [newArticleSubtitle, setNewArticleSubtitle] = useState('');
+  const [newArticleBody, setNewArticleBody] = useState('');
+  const [newArticleCategory, setNewArticleCategory] = useState('ddu_214fz');
+  const [creatingArticle, setCreatingArticle] = useState(false);
 
   // 1. Load radar items
   const loadRadarItems = useCallback(async () => {
@@ -221,6 +235,93 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
       showError('Ошибка сохранения: ' + err.message);
     } finally {
       setSavingDraft(false);
+    }
+  };
+
+  // Publish article with YMYL gate check
+  const handlePublishArticle = async (
+    id: string,
+    options: { publishToTelegram?: boolean; telegramDryRun?: boolean } = {}
+  ) => {
+    try {
+      setPublishingArticleId(id);
+      const res = await apiClient.aiLab.publishJournalArticle(id, {
+        publishToTelegram: options.publishToTelegram ?? modalPublishTelegram,
+        telegramDryRun: options.telegramDryRun ?? modalTelegramDryRun,
+      });
+      if (res.ok) {
+        showToast(
+          `Статья опубликована в Журнале!${
+            res.telegramSent
+              ? ' Пост опубликован в Telegram.'
+              : res.telegramDryRun
+              ? ' (Telegram проверен в режиме dry-run)'
+              : ''
+          }`
+        );
+        if (editingDraft && editingDraft.id === id) {
+          setEditingDraft(null);
+        }
+        loadJournalDrafts();
+      }
+    } catch (err: any) {
+      if (err.message?.includes('ARTICLE_YMYL_PLACEHOLDER_UNEDITED')) {
+        showError(
+          'Защита YMYL: В статье обнаружены неисправленные плейсхолдеры ([Добавьте..., TODO:). Отредактируйте текст перед публикацией!'
+        );
+      } else {
+        showError('Ошибка публикации статьи: ' + err.message);
+      }
+    } finally {
+      setPublishingArticleId(null);
+    }
+  };
+
+  // Unpublish article
+  const handleUnpublishArticle = async (id: string) => {
+    try {
+      setPublishingArticleId(id);
+      const res = await apiClient.aiLab.unpublishJournalArticle(id);
+      if (res.ok) {
+        showToast('Статья снята с публикации (переведена в статус in_review)');
+        loadJournalDrafts();
+      }
+    } catch (err: any) {
+      showError('Ошибка снятия статьи с публикации: ' + err.message);
+    } finally {
+      setPublishingArticleId(null);
+    }
+  };
+
+  // Create manual article
+  const handleCreateManualArticle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newArticleTitle.trim() || !newArticleBody.trim()) {
+      showError('Заполните заголовок и текст статьи');
+      return;
+    }
+
+    try {
+      setCreatingArticle(true);
+      const res = await apiClient.aiLab.createJournalArticle({
+        titleRu: newArticleTitle.trim(),
+        subtitleRu: newArticleSubtitle.trim() || undefined,
+        markdownBodyRu: newArticleBody.trim(),
+        category: newArticleCategory,
+      });
+
+      if (res.ok) {
+        showToast('Новая статья успешно создана в статусе черновика!');
+        setShowManualArticleModal(false);
+        setNewArticleTitle('');
+        setNewArticleSubtitle('');
+        setNewArticleBody('');
+        loadJournalDrafts();
+      }
+    } catch (err: any) {
+      showError('Ошибка создания статьи: ' + err.message);
+    } finally {
+      setCreatingArticle(false);
     }
   };
 
@@ -517,16 +618,26 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
       {/* SUB-TAB 2: JOURNAL ARTICLES & TELEGRAM DRAFTS */}
       {activeSubTab === 'journal' && (
         <div className="p-6 space-y-5">
-          <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl flex items-start space-x-3 text-xs text-indigo-900">
-            <ShieldCheck className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold">Защита Yandex YMYL & Human-in-the-Loop:</p>
-              <p className="text-indigo-800 mt-0.5">
-                Все статьи сохраняются в статусе <span className="font-mono font-bold">ai_draft</span> с пометкой{' '}
-                <span className="font-mono font-bold">humanEdited: false</span>. Перед публикацией в Журнале
-                отредактируйте текст и добавьте блок «Комментарий эксперта DomExit» (5 минут) для высокого поискового рейтинга в Яндексе.
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl text-xs text-indigo-900">
+            <div className="flex items-start space-x-3">
+              <ShieldCheck className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Защита Yandex YMYL & Human-in-the-Loop:</p>
+                <p className="text-indigo-800 mt-0.5">
+                  Все статьи сохраняются в статусе <span className="font-mono font-bold">ai_draft</span> с пометкой{' '}
+                  <span className="font-mono font-bold">humanEdited: false</span>. Перед публикацией в Журнале
+                  отредактируйте текст и добавьте блок «Комментарий эксперта DomExit» (5 минут) для высокого поискового рейтинга в Яндексе.
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowManualArticleModal(true)}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>+ Написать статью вручную</span>
+            </button>
           </div>
 
           {draftsLoading ? (
@@ -539,7 +650,7 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
               <FileText className="w-8 h-8 mx-auto text-slate-300 mb-2" />
               <p className="text-sm font-medium text-slate-600">Черновиков статей пока нет</p>
               <p className="text-xs text-slate-400 mt-1">
-                Перейдите в «Ленту рисков» и нажмите «Создать черновик статьи» у любой важной новости
+                Перейдите в «Ленту рисков» и нажмите «Создать черновик статьи» у любой важной новости или напишите вручную
               </p>
             </div>
           ) : (
@@ -552,15 +663,25 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1 max-w-2xl">
                       <div className="flex flex-wrap items-center gap-2">
-                        {draft.humanEdited ? (
+                        {draft.status === 'published' ? (
                           <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-bold flex items-center space-x-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            <span>✓ Отредактировано экспертом</span>
+                            <Globe className="w-3 h-3 text-emerald-600" />
+                            <span>Опубликовано</span>
+                          </span>
+                        ) : draft.status === 'in_review' ? (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-[10px] font-bold flex items-center space-x-1">
+                            <CheckCircle2 className="w-3 h-3 text-amber-600" />
+                            <span>На проверке</span>
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-full text-[10px] font-bold flex items-center space-x-1">
                             <Sparkles className="w-3 h-3 text-indigo-600" />
                             <span>AI-черновик</span>
+                          </span>
+                        )}
+                        {draft.humanEdited && draft.status !== 'published' && (
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-medium">
+                            ✓ Проверено экспертом
                           </span>
                         )}
                         <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">
@@ -575,23 +696,65 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
                       <p className="text-xs text-slate-500">{draft.subtitleRu}</p>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={`/journal/${draft.slug}?preview=1`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Предпросмотр</span>
+                      </a>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(draft.telegramPostDraftRu)}
                         className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5 text-sky-600" />
-                        <span>{copiedTelegram ? 'Скопировано!' : 'Скопировать для Telegram'}</span>
+                        <span>{copiedTelegram ? 'Скопировано!' : 'Telegram'}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingDraft(draft)}
-                        className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                         <span>Редактировать</span>
                       </button>
+                      {draft.status === 'published' ? (
+                        <button
+                          type="button"
+                          disabled={publishingArticleId === draft.id}
+                          onClick={() => handleUnpublishArticle(draft.id)}
+                          className="px-3 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                        >
+                          {publishingArticleId === draft.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <span>Снять</span>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={publishingArticleId === draft.id}
+                          onClick={() =>
+                            handlePublishArticle(draft.id, {
+                              publishToTelegram: false,
+                              telegramDryRun: true,
+                            })
+                          }
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer shadow-xs disabled:opacity-50"
+                        >
+                          {publishingArticleId === draft.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Globe className="w-3.5 h-3.5" />
+                          )}
+                          <span>Опубликовать</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -734,6 +897,17 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
+              {/\[(Добавьте|TODO|PLACEHOLDER)/i.test(editingDraft.markdownBodyRu) && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl flex items-start space-x-2 text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Блокиратор YMYL:</span> В тексте статьи есть шаблонные плейсхолдеры{' '}
+                    <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">[Добавьте...</code>. Замените их реальным
+                    экспертным анализом, иначе публикация будет заблокирована.
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Заголовок статьи (H1):</label>
                 <input
@@ -785,11 +959,11 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
               </div>
             </div>
 
-            <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="px-6 py-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
               <span className="text-[11px] text-slate-500 font-mono">
                 id: {editingDraft.id} | slug: /{editingDraft.slug}
               </span>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingDraft(null)}
@@ -801,13 +975,149 @@ export const AiLegislativeRadarPanel: React.FC<AiLegislativeRadarPanelProps> = (
                   type="button"
                   onClick={handleSaveDraft}
                   disabled={savingDraft}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 text-xs shadow-xs"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 text-xs shadow-xs"
                 >
                   {savingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  <span>Сохранить правки</span>
+                  <span>Сохранить черновик</span>
                 </button>
+                <div className="flex items-center space-x-2 border-l border-slate-200 pl-2">
+                  <label className="flex items-center space-x-1 text-[11px] text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={modalPublishTelegram}
+                      onChange={(e) => setModalPublishTelegram(e.target.checked)}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>TG</span>
+                  </label>
+                  {modalPublishTelegram && (
+                    <label className="flex items-center space-x-1 text-[10px] text-slate-500 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={modalTelegramDryRun}
+                        onChange={(e) => setModalTelegramDryRun(e.target.checked)}
+                        className="rounded text-indigo-600"
+                      />
+                      <span>DryRun</span>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    disabled={publishingArticleId === editingDraft.id}
+                    onClick={() =>
+                      handlePublishArticle(editingDraft.id, {
+                        publishToTelegram: modalPublishTelegram,
+                        telegramDryRun: modalTelegramDryRun,
+                      })
+                    }
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 text-xs shadow-xs"
+                  >
+                    {publishingArticleId === editingDraft.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Globe className="w-3.5 h-3.5" />
+                    )}
+                    <span>🚀 Опубликовать</span>
+                  </button>
+                </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: MANUAL ARTICLE CREATION */}
+      {showManualArticleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-xl w-full overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <PlusCircle className="w-4 h-4 text-indigo-600" />
+                <span>Написать статью вручную для DomExit Журнал</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowManualArticleModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualArticle} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Заголовок статьи (H1) <span className="text-rose-500">*</span>:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newArticleTitle}
+                  onChange={(e) => setNewArticleTitle(e.target.value)}
+                  placeholder="Например: Как безопасно переуступить ДДУ в 2026 году..."
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Краткий лид / подзаголовок:</label>
+                <input
+                  type="text"
+                  value={newArticleSubtitle}
+                  onChange={(e) => setNewArticleSubtitle(e.target.value)}
+                  placeholder="Пошаговая инструкция для покупателей и продавцов..."
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Категория:</label>
+                <select
+                  value={newArticleCategory}
+                  onChange={(e) => setNewArticleCategory(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-900 focus:outline-none"
+                >
+                  <option value="ddu_214fz">214-ФЗ и ДДУ</option>
+                  <option value="mortgage_cbr">Ипотека и ставка ЦБ</option>
+                  <option value="tax_ndfl">Налоги и НДФЛ</option>
+                  <option value="matkapital">Материнский капитал</option>
+                  <option value="bankruptcy_127fz">Банкротство 127-ФЗ</option>
+                  <option value="court_practice">Судебная практика</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Текст статьи (Markdown) <span className="text-rose-500">*</span>:
+                </label>
+                <textarea
+                  rows={8}
+                  required
+                  value={newArticleBody}
+                  onChange={(e) => setNewArticleBody(e.target.value)}
+                  placeholder="## Раздел 1&#10;&#10;Текст статьи с экспертными комментариями...&#10;&#10;> **Комментарий эксперта DomExit:**&#10;> Рекомендация юриста..."
+                  className="w-full border border-slate-200 rounded-xl p-3 text-slate-900 font-mono text-[11px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowManualArticleModal(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingArticle}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {creatingArticle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span>Создать статью</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

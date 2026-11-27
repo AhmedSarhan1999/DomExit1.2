@@ -110,6 +110,12 @@ import {
   generateArticleDraftFromRadar,
   JournalArticleRecord,
 } from '../modules/proptech-ai/contentDraftService.js';
+import {
+  publishJournalArticle,
+  unpublishJournalArticle,
+  createManualJournalArticle,
+  validateArticleForPublish,
+} from '../modules/proptech-ai/journalSeoService.js';
 
 const VALID_VISIBILITIES: FeatureVisibility[] = ['off', 'owner_only', 'staff_only', 'public'];
 
@@ -1631,6 +1637,136 @@ export async function handleAiLab(event: YcHttpEvent, subPath: string): Promise<
     } catch (err: any) {
       logger.error('Failed updating journal draft', { meta: { draftId, error: err.message } });
       return json(event, 500, { error: 'Ошибка обновления черновика статьи' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/journal/articles — owner only (Manual article create)
+  // ============================================================
+  if (subPath === '/journal/articles' && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const body = getEventBody<any>(event) || {};
+    if (!body.titleRu || !body.titleRu.trim()) {
+      return json(event, 400, { error: 'Поле titleRu обязательно' });
+    }
+
+    try {
+      const article = await createManualJournalArticle(body, {
+        id: authUser.id,
+        name: authUser.name,
+      });
+      return json(event, 201, { ok: true, article });
+    } catch (err: any) {
+      logger.error('Failed creating manual article', { meta: { error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка создания статьи' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/journal/articles/:id/validate — owner only
+  // ============================================================
+  if (subPath.startsWith('/journal/articles/') && subPath.endsWith('/validate') && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const articleId = subPath.replace('/journal/articles/', '').replace('/validate', '').trim();
+    const ydb = getYdbClient();
+    try {
+      const article = await ydb.getItem<JournalArticleRecord>('journal_articles', articleId);
+      if (!article) {
+        return json(event, 404, { error: 'Статья не найдена' });
+      }
+      const validation = validateArticleForPublish(article);
+      return json(event, 200, { ok: true, validation });
+    } catch (err: any) {
+      logger.error('Failed validating article', { meta: { articleId, error: err.message } });
+      return json(event, 500, { error: 'Ошибка валидации статьи' });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/journal/articles/:id/publish — owner only
+  // ============================================================
+  if (subPath.startsWith('/journal/articles/') && subPath.endsWith('/publish') && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const articleId = subPath.replace('/journal/articles/', '').replace('/publish', '').trim();
+    const body = getEventBody<any>(event) || {};
+
+    try {
+      const result = await publishJournalArticle({
+        articleId,
+        actor: {
+          id: authUser.id,
+          name: authUser.name,
+          role: authUser.role,
+        },
+        publishToTelegram: Boolean(body.publishToTelegram),
+        telegramDryRun: Boolean(body.telegramDryRun),
+        forceTelegramRepost: Boolean(body.forceTelegramRepost),
+        publicBaseUrl: cfg.PUBLIC_BASE_URL || 'https://domexit.ru',
+      });
+
+      return json(event, 200, result);
+    } catch (err: any) {
+      logger.error('Failed publishing article', { meta: { articleId, error: err.message } });
+      const statusCode = err.statusCode || 400;
+      return json(event, statusCode, {
+        error: err.message || 'Ошибка публикации статьи',
+        errorCode: err.errorCode || 'PUBLISH_FAILED',
+        blockers: err.blockers || [],
+      });
+    }
+  }
+
+  // ============================================================
+  // POST /api/ai/journal/articles/:id/unpublish — owner only
+  // ============================================================
+  if (subPath.startsWith('/journal/articles/') && subPath.endsWith('/unpublish') && method === 'POST') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const articleId = subPath.replace('/journal/articles/', '').replace('/unpublish', '').trim();
+    try {
+      const article = await unpublishJournalArticle(articleId, {
+        id: authUser.id,
+        role: authUser.role,
+      });
+      return json(event, 200, { ok: true, article });
+    } catch (err: any) {
+      logger.error('Failed unpublishing article', { meta: { articleId, error: err.message } });
+      return json(event, 500, { error: err.message || 'Ошибка снятия с публикации' });
+    }
+  }
+
+  // ============================================================
+  // DELETE /api/ai/journal/articles/:id — owner only
+  // ============================================================
+  if (subPath.startsWith('/journal/articles/') && method === 'DELETE') {
+    if (!authUser || userRole !== 'owner') {
+      return json(event, 403, { error: 'Доступ запрещён: только владелец платформы' });
+    }
+
+    const articleId = subPath.replace('/journal/articles/', '').split('/')[0].trim();
+    const ydb = getYdbClient();
+    try {
+      const existing = await ydb.getItem<JournalArticleRecord>('journal_articles', articleId);
+      if (!existing) {
+        return json(event, 404, { error: 'Статья не найдена' });
+      }
+
+      await ydb.deleteItem('journal_articles', articleId);
+      return json(event, 200, { ok: true, deleted: articleId });
+    } catch (err: any) {
+      logger.error('Failed deleting article', { meta: { articleId, error: err.message } });
+      return json(event, 500, { error: 'Ошибка удаления статьи' });
     }
   }
 

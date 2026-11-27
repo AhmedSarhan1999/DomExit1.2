@@ -19,6 +19,7 @@ import { handleMatching } from './routes/matching.js';
 import { handleMessenger } from './routes/messenger.js';
 import { handleTierVerification } from './routes/tierVerification.js';
 import { handleAiLab } from './routes/aiLab.js';
+import { handlePublicJournal } from './routes/publicJournal.js';
 
 export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
   const startTime = Date.now();
@@ -107,6 +108,13 @@ export async function handler(event: YcHttpEvent): Promise<YcHttpResponse> {
     else if (path.startsWith('/api/ai')) {
       const subPath = path.substring('/api/ai'.length) || '/';
       response = await handleAiLab(event, subPath);
+    }
+    // 10c. Public SEO & Journal (/api/public/* and /sitemap.xml)
+    else if (path.startsWith('/api/public') || path === '/sitemap.xml') {
+      const subPath = path.startsWith('/api/public')
+        ? path.substring('/api/public'.length) || '/'
+        : path;
+      response = await handlePublicJournal(event, subPath);
     }
     // 10. Data Gateway (/api/data/*)
     else if (path.startsWith('/api/data')) {
